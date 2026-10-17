@@ -1,0 +1,91 @@
+{
+  "name": "datn-qlns-chamcong-facerec",
+  "version": "1.0.0",
+  "description": "DATN - Hệ thống quản lý nhân sự và chấm công ứng dụng thị giác máy tính",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "server": "nodemon --quiet server/server.js",
+    "client": "vite",
+    "dev:server": "nodemon --quiet server/server.js",
+    "dev:client": "vite",
+    "dev:face": "py -3.12 -m uvicorn app:app --app-dir face-service --reload-dir face-service --host 127.0.0.1 --port 8001 --reload --log-level warning",
+    "dev": "concurrently -k -n \"SERVER,CLIENT,FACE\" -c \"cyan.bold,magenta.bold,yellow.bold\" \"nodemon --quiet server/server.js\" \"vite\" \"py -3.12 -m uvicorn app:app --app-dir face-service --reload-dir face-service --host 127.0.0.1 --port 8001 --reload --log-level warning\"",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "seed": "node server/utils/seeder.js",
+    "db:sync-indexes": "node server/scripts/syncIndexes.js",
+    "test": "node server/tests/punchLogGeo.test.js && node server/tests/rbacAndTokenRotation.test.js && node server/tests/payrollAndRevocation.test.js && node server/tests/faceEnrollment.test.js && node server/tests/scheduleConflictAndRealtime.test.js && node server/tests/modelValidation.test.js && node server/tests/attendanceEvidence.test.js && node server/tests/config.test.js && node server/tests/leaveValidation.test.js && node server/tests/farFrrBiometrics.test.js && node server/tests/leaveMultiLevelAndRetroactive.test.js && node server/tests/payrollSnapshotAndLock.test.js && node server/tests/aiAssistantMultiModelAndPolicy.test.js && node server/tests/systemHealthAndAudit.test.js",
+    "test:ai": "node server/tests/aiAssistantMultiModelAndPolicy.test.js"
+  },
+  "nodemonConfig": {
+    "watch": [
+      "server",
+      ".env"
+    ],
+    "ext": "js,json,env",
+    "ignore": [
+      "src/*",
+      "node_modules/*",
+      "dist/*"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vu-Tien-Duc/DATN_QLNS_ChamCong_FaceRec.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Vu-Tien-Duc/DATN_QLNS_ChamCong_FaceRec/issues"
+  },
+  "homepage": "https://github.com/Vu-Tien-Duc/DATN_QLNS_ChamCong_FaceRec#readme",
+  "dependencies": {
+    "@hookform/resolvers": "^5.9.1",
+    "axios": "^1.20.0",
+    "bcryptjs": "^3.0.3",
+    "canvas-confetti": "^1.9.4",
+    "clsx": "^2.1.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "jsqr": "^1.4.0",
+    "lucide-react": "^1.46.0",
+    "mongoose": "^9.9.4",
+    "morgan": "^1.12.0",
+    "multer": "^2.4.0",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^10.0.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-hook-form": "^7.88.0",
+    "react-hot-toast": "^2.6.1",
+    "react-router-dom": "^7.18.4",
+    "recharts": "^3.10.1",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1",
+    "tailwind-merge": "^3.7.0",
+    "xlsx": "^0.18.5",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.5",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "autoprefixer": "^10.6.1",
+    "concurrently": "^10.0.5",
+    "nodemon": "^3.1.14",
+    "oxlint": "^1.81.0",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  }
+}

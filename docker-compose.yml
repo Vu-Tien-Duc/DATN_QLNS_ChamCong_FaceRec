@@ -1,0 +1,122 @@
+# =============================================================================
+# Docker Compose Orchestration - Toàn Diện Hệ Thống Quản Lý Chấm Công Đại Học
+# Đồ án tốt nghiệp: Vũ Tiến Đức - MSV: 2310900023
+# Kiến trúc 3 Containers:
+#   1. mongo: MongoDB 7.0 Replica Set (Hỗ trợ ACID Multi-Document Transactions)
+#   2. face-service: FastAPI + InsightFace + ArcFace 512D + FAISS RAM
+#   3. web: Node.js Express Backend + React Vite Static Frontend (Single-Port 5000)
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------
+  # 1. Cơ sở dữ liệu MongoDB 7.0 (Replica Set rs0)
+  # -------------------------------------------------------------
+  mongo:
+    image: mongo:7.0
+    container_name: qlns_mongo
+    restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app_network
+    healthcheck:
+      test: >
+        mongosh --quiet --eval "
+          try {
+            rs.status().ok
+          } catch(e) {
+            rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: '127.0.0.1:27017' }] }).ok
+          }
+        "
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # -------------------------------------------------------------
+  # 2. Python FastAPI InsightFace Biometrics Service
+  # -------------------------------------------------------------
+  face-service:
+    build:
+      context: ./face-service
+      dockerfile: Dockerfile
+    container_name: qlns_face_service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+      - PYTHONUNBUFFERED=1
+      - FACE_MODEL_NAME=buffalo_s
+      - FACE_DETECTION_SIZE=320
+      - FACE_MATCH_THRESHOLD=0.45
+    volumes:
+      - insightface_models:/root/.insightface
+      - ./uploads:/app/uploads
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # -------------------------------------------------------------
+  # 3. Web Application: Express API + Vite Frontend Static
+  # -------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qlns_web_app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      face-service:
+        condition: service_healthy
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongo:27017/qlns_chamcong?replicaSet=rs0&directConnection=true
+      - FACE_SERVICE_URL=http://face-service:8001
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_daihoc_2026_datn_qlns}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-super_secret_refresh_key_daihoc_2026_datn_qlns}
+      - JWT_EXPIRES_IN=1d
+      - REFRESH_TOKEN_EXPIRES_IN=7d
+      - CORS_WHITELIST=http://localhost:5000,http://localhost:3000,http://localhost:5173,http://127.0.0.1:5500,https://chamcongdh.io.vn
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+# -------------------------------------------------------------
+# Volumes lưu trữ dữ liệu vĩnh cửu
+# -------------------------------------------------------------
+volumes:
+  mongo_data:
+    name: qlns_mongo_data
+  insightface_models:
+    name: qlns_insightface_models
+
+# -------------------------------------------------------------
+# Mạng nội bộ kết nối giữa các Containers
+# -------------------------------------------------------------
+networks:
+  app_network:
+    name: qlns_network
+    driver: bridge

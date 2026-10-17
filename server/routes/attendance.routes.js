@@ -1,0 +1,655 @@
+const express = require('express');
+const router = express.Router();
+const {
+  checkIn,
+  checkOut,
+  getAttendanceHistory,
+  getAttendanceById,
+  getAttendanceEvidence,
+  updateAttendanceByAdmin,
+  triggerDailyAbsentCheck,
+  faceCheckIn,
+  faceCheckInBatch,
+  detectPose,
+  generateQRCode,
+  scanQRCode,
+  getCampusLocationConfig,
+  updateCampusLocationConfig,
+  getLivenessChallengeController,
+  verifyLivenessChallengeController,
+  getFaissStatsController,
+  syncFaissIndexController,
+} = require('../controllers/attendance.controller');
+const { verifyToken, authorizeRoles, verifyTerminalKey } = require('../middlewares/auth.middleware');
+const { faceCheckInRateLimit } = require('../middlewares/rateLimiter.middleware');
+const { uploadFaceImage } = require('../middlewares/faceImageUpload.middleware');
+
+/**
+ * @swagger
+ * tags:
+ *   name: Attendance
+ *   description: Quản lý và xử lý chấm công tự động cho Giảng viên & Nhân viên
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     CheckInInput:
+ *       type: object
+ *       properties:
+ *         shiftId:
+ *           type: string
+ *           example: "6a9d57378cf3a6165de25ddc"
+ *           description: ID ca làm việc (dành cho Check-in thủ công chỉ định ca)
+ *         method:
+ *           type: string
+ *           enum: [manual, face, qr, gps, fingerprint]
+ *           default: manual
+ *           example: qr
+ *           description: Phương thức xác thực điểm danh
+ *         deviceId:
+ *           type: string
+ *           example: "TERMINAL_GATE_A2"
+ *           description: Mã định danh thiết bị chấm công
+ *         location:
+ *           type: object
+ *           properties:
+ *             lat:
+ *               type: number
+ *               example: 21.028511
+ *             lng:
+ *               type: number
+ *               example: 105.854167
+ *           description: Tọa độ GPS của người dùng tại thời điểm điểm danh
+ *     AdminUpdateAttendanceInput:
+ *       type: object
+ *       properties:
+ *         status:
+ *           type: string
+ *           enum: [ON_TIME, LATE, EARLY_LEAVE, ABSENT, EXCUSED_ABSENCE]
+ *           example: ON_TIME
+ *           description: Trạng thái chấm công cần điều chỉnh
+ *         checkInTime:
+ *           type: string
+ *           format: date-time
+ *           example: "2026-09-11T07:05:00.000Z"
+ *           description: Mốc thời gian check-in mới
+ *         checkOutTime:
+ *           type: string
+ *           format: date-time
+ *           example: "2026-09-11T11:30:00.000Z"
+ *           description: Mốc thời gian check-out mới
+ *         leaveRequestId:
+ *           type: string
+ *           example: "6a9d57378cf3a6165de25df5"
+ *           description: ID đơn xin nghỉ phép/dạy bù liên kết (nếu có)
+ *     AttendanceLogResponse:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *           example: "6a9d57378cf3a6165de25deb"
+ *         userId:
+ *           type: object
+ *           properties:
+ *             _id:
+ *               type: string
+ *             fullName:
+ *               type: string
+ *               example: "TS. Trần Thị Bích"
+ *             email:
+ *               type: string
+ *               example: "giangvien.bich@university.edu.vn"
+ *         shiftId:
+ *           type: object
+ *           properties:
+ *             _id:
+ *               type: string
+ *             name:
+ *               type: string
+ *               example: "Ca Sáng (Tiết 1 - 4)"
+ *             startTime:
+ *               type: string
+ *               example: "07:00"
+ *             endTime:
+ *               type: string
+ *               example: "11:30"
+ *         scheduleId:
+ *           type: object
+ *           properties:
+ *             _id:
+ *               type: string
+ *             roomId:
+ *               type: string
+ *               example: "Giảng đường A2-301"
+ *             weekday:
+ *               type: integer
+ *               example: 2
+ *         checkInTime:
+ *           type: string
+ *           format: date-time
+ *         checkOutTime:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
+ *         status:
+ *           type: string
+ *           enum: [ON_TIME, LATE, EARLY_LEAVE, ABSENT, EXCUSED_ABSENCE]
+ *           example: "ON_TIME"
+ *         method:
+ *           type: string
+ *           example: "qr"
+ *         isManualOverride:
+ *           type: boolean
+ *           example: false
+ *         isFraud:
+ *           type: boolean
+ *           description: Cờ phát hiện gian lận điểm danh
+ *           example: false
+ *         fraudReason:
+ *           type: string
+ *           nullable: true
+ *           description: "Lý do gian lận (sai vị trí geofence, sai thời gian ca, Fake GPS...)"
+ *           example: "Sai vị trí: vượt quá bán kính geofence cho phép"
+ *     ErrorResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *           example: false
+ *         message:
+ *           type: string
+ *           example: "Mô tả chi tiết lỗi."
+ *         errorCode:
+ *           type: string
+ *           example: "ATTENDANCE_004"
+ */
+
+/**
+ * @swagger
+ * /api/attendance/face-checkin:
+ *   post:
+ *     summary: Điểm danh khuôn mặt qua Máy chấm công Face ID (Dành cho thiết bị Máy chấm công tại văn phòng khoa/giảng đường)
+ *     description: Xác thực bằng header x-terminal-key hoặc Bearer Token Admin. Ưu tiên multipart/form-data với ảnh image để Face Service InsightFace nhận diện phía server; dữ liệu JSON faceDescriptor chỉ giữ tương thích client cũ.
+ *     tags: [Attendance]
+ *     parameters:
+ *       - in: header
+ *         name: x-terminal-key
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Khóa bảo mật của thiết bị Máy chấm công Face ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh JPEG, PNG hoặc WebP được gửi tới Face Service
+ *               mode:
+ *                 type: string
+ *                 enum: [auto, check_in, check_out]
+ *     responses:
+ *       201:
+ *         description: Điểm danh khuôn mặt thành công
+ *       400:
+ *         description: Dữ liệu vector không hợp lệ hoặc không có ca/lịch phù hợp
+ *       401:
+ *         description: Thiếu header xác thực
+ *       403:
+ *         description: Khóa xác thực máy chấm công không hợp lệ
+ *       404:
+ *         description: Không nhận diện được khuôn mặt hoặc chưa đăng ký
+ *       409:
+ *         description: Giảng viên đã check-in cho ca này hôm nay rồi
+ *       429:
+ *         description: Vượt quá giới hạn tần suất quét máy chấm công
+ */
+router.post('/face-checkin', faceCheckInRateLimit, verifyTerminalKey, uploadFaceImage, faceCheckIn);
+router.post('/face-recognize', uploadFaceImage, faceCheckIn);
+router.post('/face/checkin', uploadFaceImage, faceCheckIn);
+router.post('/face/checkout', uploadFaceImage, faceCheckIn);
+router.post('/face-checkin-batch', faceCheckInRateLimit, verifyTerminalKey, faceCheckInBatch);
+router.post('/detect-pose', uploadFaceImage, detectPose);
+router.get('/liveness/challenge', getLivenessChallengeController);
+router.post('/liveness/verify-challenge', uploadFaceImage, verifyLivenessChallengeController);
+router.get('/faiss/stats', getFaissStatsController);
+router.post('/faiss/sync', verifyToken, authorizeRoles('admin'), syncFaissIndexController);
+
+/**
+ * @swagger
+ * /api/attendance/qr/generate:
+ *   get:
+ *     summary: Sinh mã QR Động TOTP (Hiệu lực 20s) phục vụ điểm danh
+ *     description: Dùng cho màn hình Máy chấm công / Máy chiếu giảng đường. Tự động thay đổi sau mỗi 20s.
+ *     tags: [Attendance]
+ *     responses:
+ *       200:
+ *         description: Trả về token QR động và thời gian hiệu lực
+ */
+router.get('/qr/generate', generateQRCode);
+router.get('/campus-config', getCampusLocationConfig);
+
+router.use(verifyToken);
+router.get('/:id/evidence', getAttendanceEvidence);
+router.post('/campus-config', authorizeRoles('admin'), updateCampusLocationConfig);
+
+/**
+ * @swagger
+ * /api/attendance/qr/scan:
+ *   post:
+ *     summary: Quét mã QR Động trên di động để điểm danh
+ *     description: Người dùng dùng điện thoại quét mã QR động trên màn hình Máy chấm công hoặc lớp học. Có thể kết hợp GPS Geofencing.
+ *     tags: [Attendance]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - qrToken
+ *             properties:
+ *               qrToken:
+ *                 type: string
+ *               location:
+ *                 type: object
+ *                 properties:
+ *                   lat:
+ *                     type: number
+ *                   lng:
+ *                     type: number
+ *               deviceId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Điểm danh QR thành công
+ */
+router.post('/qr/scan', scanQRCode);
+
+/**
+ * @swagger
+ * /api/attendance/check-in:
+ *   post:
+ *     summary: Chấm công Check-in (Tự động nhận diện ca & lịch giảng dạy hiệu lực)
+ *     description: Lấy userId từ JWT. Client chỉ cần gửi method, deviceId, location. Backend tự động quy đổi giờ Asia/Ho_Chi_Minh (UTC+7), tìm lịch dạy khớp hôm nay trong khung [startTime - 30p, endTime] và đánh giá ON_TIME hoặc LATE.
+ *     tags: [Attendance]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CheckInInput'
+ *     responses:
+ *       201:
+ *         description: Chấm công Check-in thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Chấm công Check-in thành công."
+ *                 data:
+ *                   $ref: '#/components/schemas/AttendanceLogResponse'
+ *       400:
+ *         description: Không tìm thấy ca làm việc/lịch công tác phù hợp thời điểm hiện tại (Mã ATTENDANCE_004)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Chưa xác thực hoặc Token không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: Đã check-in cho ca này hôm nay rồi (Mã ATTENDANCE_002)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post('/check-in', checkIn);
+
+/**
+ * @swagger
+ * /api/attendance/check-out:
+ *   post:
+ *     summary: Chấm công Check-out & Tự động đánh giá về sớm (EARLY_LEAVE)
+ *     description: Tự động tìm bản ghi Check-in đang mở trong ngày hôm nay theo giờ UTC+7. So khớp với endTime của ca; nếu ra sớm và ban đầu là ON_TIME thì chuyển sang EARLY_LEAVE (nếu ban đầu đã LATE thì giữ nguyên). Trả về workingDuration thực tế.
+ *     tags: [Attendance]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             example: {}
+ *     responses:
+ *       200:
+ *         description: Chấm công Check-out thành công kèm thời lượng làm việc thực tế
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Chấm công Check-out thành công."
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     workingDuration:
+ *                       type: object
+ *                       properties:
+ *                         totalMinutes:
+ *                           type: integer
+ *                           example: 210
+ *                         formatted:
+ *                           type: string
+ *                           example: "3 giờ 30 phút"
+ *                     earlyLeave:
+ *                       type: object
+ *                       properties:
+ *                         isEarlyLeave:
+ *                           type: boolean
+ *                           example: false
+ *                         earlyMinutes:
+ *                           type: integer
+ *                           example: 0
+ *       401:
+ *         description: Chưa xác thực hoặc Token không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Không tìm thấy bản ghi check-in nào còn mở trong ngày hôm nay (Mã ATTENDANCE_003)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post('/check-out', checkOut);
+
+/**
+ * @swagger
+ * /api/attendance/history:
+ *   get:
+ *     summary: Tra cứu lịch sử chấm công (Phân quyền 4 cấp & Phân trang)
+ *     description: Giảng viên/Nhân viên chỉ xem của chính mình. Trưởng khoa tự động lọc theo khoa mình (departmentId). Admin xem toàn trường và lọc theo userId, departmentId, status, from, to.
+ *     tags: [Attendance]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         description: Lọc theo ID nhân sự (Chỉ Admin hoặc Trưởng khoa lọc người trong khoa)
+ *       - in: query
+ *         name: departmentId
+ *         schema:
+ *           type: string
+ *         description: Lọc theo ID khoa/phòng ban (Dành cho Admin)
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [ON_TIME, LATE, EARLY_LEAVE, ABSENT, EXCUSED_ABSENCE]
+ *         description: Lọc theo trạng thái chấm công
+ *       - in: query
+ *         name: from
+ *         schema:
+ *           type: string
+ *           format: date
+ *         example: "2026-01-01"
+ *         description: Từ ngày (YYYY-MM-DD)
+ *       - in: query
+ *         name: to
+ *         schema:
+ *           type: string
+ *           format: date
+ *         example: "2026-12-31"
+ *         description: Đến ngày (YYYY-MM-DD)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Trang số hiện tại
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Số bản ghi trên mỗi trang
+ *     responses:
+ *       200:
+ *         description: Lấy lịch sử chấm công thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Lấy lịch sử chấm công thành công."
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                       example: 45
+ *                     page:
+ *                       type: integer
+ *                       example: 1
+ *                     totalPages:
+ *                       type: integer
+ *                       example: 3
+ *                     records:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/AttendanceLogResponse'
+ *       401:
+ *         description: Chưa xác thực hoặc Token không hợp lệ
+ *       403:
+ *         description: Trưởng khoa cố tình truy vấn nhân sự ngoài khoa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.get('/history', getAttendanceHistory);
+
+/**
+ * @swagger
+ * /api/attendance/trigger-absent-cron:
+ *   post:
+ *     summary: "[🔒 Admin] Kích hoạt thủ công tiến trình quét vắng mặt tự động (trigger-absent-cron)"
+ *     description: Dành riêng cho Quản trị viên (Admin) hoặc người chấm đồ án có thể kích hoạt tiến trình quét vắng mặt ngay tức thì mà không cần đợi đến 23:59 đêm. Cho phép truyền body hoặc query ?date=YYYY-MM-DD để quét bù các ngày trong quá khứ.
+ *     tags: [Attendance]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               date:
+ *                 type: string
+ *                 format: date
+ *                 example: "2026-09-15"
+ *                 description: Ngày cần quét vắng mặt (YYYY-MM-DD). Mặc định là ngày hôm nay.
+ *     parameters:
+ *       - in: query
+ *         name: date
+ *         schema:
+ *           type: string
+ *           format: date
+ *           example: "2026-09-15"
+ *         description: Ngày cần quét vắng mặt (nếu truyền qua query string)
+ *     responses:
+ *       200:
+ *         description: Tiến trình quét vắng mặt hoàn tất thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Tiến trình quét vắng mặt hoàn tất."
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     scannedSchedules:
+ *                       type: integer
+ *                       example: 12
+ *                     alreadyAttended:
+ *                       type: integer
+ *                       example: 10
+ *                     excusedAbsences:
+ *                       type: integer
+ *                       example: 1
+ *                     newlyMarkedAbsent:
+ *                       type: integer
+ *                       example: 1
+ *       400:
+ *         description: Định dạng ngày không hợp lệ
+ *       401:
+ *         description: Chưa xác thực hoặc Token không hợp lệ
+ *       403:
+ *         description: Quyền truy cập bị từ chối (Chỉ Admin)
+ */
+router.post('/trigger-absent-cron', authorizeRoles('admin'), triggerDailyAbsentCheck);
+router.post('/cron/test-daily-check', authorizeRoles('admin'), triggerDailyAbsentCheck);
+
+/**
+ * @swagger
+ * /api/attendance/{id}:
+ *   get:
+ *     summary: Xem chi tiết một bản ghi chấm công
+ *     description: Kiểm tra phân quyền truy cập. Giảng viên chỉ xem được bản ghi của mình, Trưởng khoa xem của khoa mình, Admin xem toàn bộ.
+ *     tags: [Attendance]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID bản ghi chấm công (MongoDB ObjectId)
+ *     responses:
+ *       200:
+ *         description: Lấy chi tiết chấm công thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Lấy chi tiết chấm công thành công."
+ *                 data:
+ *                   $ref: '#/components/schemas/AttendanceLogResponse'
+ *       400:
+ *         description: Định dạng ID không hợp lệ
+ *       401:
+ *         description: Chưa xác thực hoặc Token không hợp lệ
+ *       403:
+ *         description: Không có quyền xem bản ghi của người khác
+ *       404:
+ *         description: Không tìm thấy bản ghi chấm công
+ */
+router.get('/:id', getAttendanceById);
+
+/**
+ * @swagger
+ * /api/attendance/{id}:
+ *   put:
+ *     summary: Admin điều chỉnh log chấm công (Manual Override & Ghi Audit Log)
+ *     description: Chỉ Admin có quyền can thiệp. Bắt buộc hệ thống tự động gán isManualOverride = true và method = 'admin_override'. Tự động lưu vết dữ liệu trước và sau khi sửa vào Collection audit_logs.
+ *     tags: [Attendance]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID bản ghi chấm công cần điều chỉnh
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AdminUpdateAttendanceInput'
+ *     responses:
+ *       200:
+ *         description: Admin điều chỉnh bản ghi chấm công thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Admin điều chỉnh bản ghi chấm công thành công."
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     updatedLog:
+ *                       $ref: '#/components/schemas/AttendanceLogResponse'
+ *                     previousData:
+ *                       type: object
+ *       400:
+ *         description: Định dạng ID không hợp lệ
+ *       401:
+ *         description: Chưa xác thực hoặc Token không hợp lệ
+ *       403:
+ *         description: Quyền truy cập bị từ chối (Không phải Admin)
+ *       404:
+ *         description: Không tìm thấy bản ghi chấm công
+ */
+router.put('/:id', authorizeRoles('admin'), updateAttendanceByAdmin);
+
+module.exports = router;

@@ -1,0 +1,2294 @@
+/**
+ * Định nghĩa chi tiết các Endpoints và Schemas cho OpenAPI 3.0 (Swagger UI)
+ * Đầy đủ 9 phân hệ chức năng + Health check
+ */
+
+const swaggerComponents = {
+  securitySchemes: {
+    BearerAuth: {
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      description: 'Nhập Token JWT (sau khi login tại /api/auth/login) theo định dạng: Bearer <token>',
+    },
+  },
+  schemas: {
+    ApiResponse: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Thực hiện thao tác thành công.' },
+        data: { type: 'object' },
+      },
+    },
+    User: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        fullName: { type: 'string', example: 'TS. Trần Thị Bích' },
+        email: { type: 'string', example: 'giangvien.bich@university.edu.vn' },
+        staffCode: { type: 'string', example: 'GV001' },
+        phoneNumber: { type: 'string', example: '0901234567' },
+        academicTitle: { type: 'string', example: 'Tiến sĩ' },
+        role: {
+          type: 'string',
+          enum: ['admin', 'truongkhoa', 'giangvien', 'nhanvien'],
+          example: 'giangvien',
+        },
+        departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+        annualLeaveQuota: { type: 'number', example: 12 },
+        isActive: { type: 'boolean', example: true },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' },
+      },
+    },
+    Department: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+        name: { type: 'string', example: 'Khoa Công nghệ Thông tin' },
+        type: { type: 'string', enum: ['khoa', 'bomon', 'phongban'], example: 'khoa' },
+        parentId: { type: 'string', nullable: true, example: null },
+        managerId: { type: 'string', nullable: true, example: '6a9d57378cf3a6165de25dd7' },
+        location: {
+          type: 'object',
+          properties: {
+            lat: { type: 'number', example: 21.028511 },
+            lng: { type: 'number', example: 105.854444 },
+          },
+        },
+      },
+    },
+    ShiftConfig: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25ddc' },
+        name: { type: 'string', example: 'Tiết 1-3 (Sáng)' },
+        code: { type: 'string', example: 'T1_3' },
+        startTime: { type: 'string', example: '07:00' },
+        endTime: { type: 'string', example: '09:30' },
+        lateThresholdMinutes: { type: 'number', example: 15 },
+        earlyLeaveThresholdMinutes: { type: 'number', example: 15 },
+        type: { type: 'string', enum: ['tietday', 'hanhchinh'], example: 'tietday' },
+        description: { type: 'string', example: 'Ca học buổi sáng tiết 1 đến tiết 3' },
+      },
+    },
+    Schedule: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25de0' },
+        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        shiftId: { type: 'string', example: '6a9d57378cf3a6165de25ddc' },
+        subjectId: { type: 'string', example: '6a9d57378cf3a6165de25d01' },
+        roomId: { type: 'string', example: 'A1-402' },
+        latitude: { type: 'number', example: 21.028511 },
+        longitude: { type: 'number', example: 105.854444 },
+        weekday: { type: 'integer', description: '0: CN, 1: T2, ..., 6: T7', example: 2 },
+        startDate: { type: 'string', format: 'date', example: '2026-01-01' },
+        endDate: { type: 'string', format: 'date', example: '2026-12-31' },
+      },
+    },
+    Subject: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25d01' },
+        code: { type: 'string', example: 'INT3105' },
+        name: { type: 'string', example: 'Lập trình Web nâng cao' },
+        credits: { type: 'number', example: 3 },
+        departmentId: { type: 'string', nullable: true, example: '6a9d57378cf3a6165de25dd1' },
+        description: { type: 'string', example: 'Học phần Lập trình Web chuyên ngành CNTT' },
+        isActive: { type: 'boolean', example: true },
+      },
+    },
+    AttendanceLog: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25deb' },
+        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        shiftId: { type: 'string', example: '6a9d57378cf3a6165de25ddc' },
+        scheduleId: { type: 'string', example: '6a9d57378cf3a6165de25de0' },
+        checkInTime: { type: 'string', format: 'date-time' },
+        checkOutTime: { type: 'string', format: 'date-time', nullable: true },
+        status: {
+          type: 'string',
+          enum: ['ON_TIME', 'LATE', 'EARLY_LEAVE', 'ABSENT', 'EXCUSED_ABSENCE'],
+          example: 'ON_TIME',
+        },
+        method: { type: 'string', enum: ['GPS', 'QR', 'MANUAL'], example: 'GPS' },
+        checkInLocation: {
+          type: 'object',
+          properties: {
+            lat: { type: 'number', example: 21.028511 },
+            lng: { type: 'number', example: 105.854444 },
+          },
+        },
+        isFraud: { type: 'boolean', example: false },
+        fraudReason: { type: 'string', nullable: true, example: 'Sai vị trí: ngoài bán kính geofence cho phép' },
+      },
+    },
+    LeaveRequest: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25dea' },
+        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd9' },
+        type: {
+          type: 'string',
+          enum: ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om'],
+          example: 'nghi_phep',
+        },
+        startDate: { type: 'string', format: 'date', example: '2026-09-10' },
+        endDate: { type: 'string', format: 'date', example: '2026-09-12' },
+        reason: { type: 'string', example: 'Bận việc gia đình cá nhân' },
+        attachmentUrl: { type: 'string', nullable: true },
+        status: {
+          type: 'string',
+          enum: ['PENDING', 'APPROVED', 'REJECTED'],
+          example: 'PENDING',
+        },
+        approvedBy: { type: 'string', nullable: true },
+        approvalNote: { type: 'string', nullable: true },
+      },
+    },
+    AuditLog: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25ded' },
+        actor: { type: 'string', example: '6a9d57378cf3a6165de25dd6' },
+        action: { type: 'string', example: 'USER_LOGIN' },
+        targetType: { type: 'string', example: 'User' },
+        targetId: { type: 'string', nullable: true },
+        ipAddress: { type: 'string', example: '127.0.0.1' },
+        status: { type: 'string', enum: ['SUCCESS', 'FAILED'], example: 'SUCCESS' },
+        timestamp: { type: 'string', format: 'date-time' },
+        details: { type: 'object' },
+      },
+    },
+    Payroll: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25df1' },
+        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        thang: { type: 'integer', example: 10 },
+        nam: { type: 'integer', example: 2026 },
+        luong_co_ban: { type: 'number', example: 18000000 },
+        so_tiet_chuan: { type: 'number', example: 45 },
+        so_tiet_thuc_te: { type: 'number', example: 52 },
+        so_tiet_vuot_chuan: { type: 'number', example: 7 },
+        don_gia_tiet_vuot: { type: 'number', example: 120000 },
+        tien_vuot_gio: { type: 'number', example: 840000 },
+        phu_cap_chuc_vu: { type: 'number', example: 1500000 },
+        khau_tru_bhxh: { type: 'number', example: 1890000 },
+        thu_nhap_chiu_thue: { type: 'number', example: 7450000 },
+        thue_tncn: { type: 'number', example: 372500 },
+        thuc_linh: { type: 'number', example: 18077500 },
+        trang_thai: { type: 'string', enum: ['CHUA_KHOA', 'DA_KHOA'], example: 'DA_KHOA' },
+        isLocked: { type: 'boolean', example: true },
+        snapshot_thoi_diem: { type: 'string', format: 'date-time' },
+      },
+    },
+    FaceTemplate: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25df2' },
+        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        angles: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              angle: { type: 'string', enum: ['front', 'left', 'right', 'up', 'down'] },
+              embedding: { type: 'array', items: { type: 'number' } },
+              quality: { type: 'number', example: 0.98 },
+            },
+          },
+        },
+        centroidEmbedding: { type: 'array', items: { type: 'number' } },
+        isRegistered: { type: 'boolean', example: true },
+        registeredAt: { type: 'string', format: 'date-time' },
+      },
+    },
+    SystemConfig: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25df3' },
+        khoa_cau_hinh: { type: 'string', example: 'CAMPUS_GPS_RADIUS_METERS' },
+        gia_tri: { type: 'object', example: 100 },
+        kieu_du_lieu: { type: 'string', enum: ['NUMBER', 'STRING', 'BOOLEAN', 'JSON'], example: 'NUMBER' },
+        mo_ta: { type: 'string', example: 'Bán kính GPS hợp lệ quanh khuôn viên cơ sở (mét)' },
+        nhom_cau_hinh: { type: 'string', example: 'CHAM_CONG' },
+      },
+    },
+  },
+};
+
+const swaggerPaths = {
+  // -------------------------------------------------------------
+  // SYSTEM & HEALTH CHECK
+  // -------------------------------------------------------------
+  '/api/health': {
+    get: {
+      tags: ['3.8 - Hạ Tầng & Kiểm Tra Hệ Thống'],
+      summary: '[🔓 Public] Kiểm tra trạng thái máy chủ và 14 Collections MongoDB CSDL v2.5',
+      responses: {
+        200: {
+          description: 'Hệ thống hoạt động bình thường',
+          content: {
+            'application/json': {
+              example: {
+                status: 'OK',
+                database: 'CONNECTED',
+                uptimeSeconds: 3600,
+                environment: 'development',
+                message: 'Hệ thống Quản lý Chấm công Trường Đại học đang hoạt động bình thường.',
+                collectionsCount: 14,
+                collections: [
+                  'nguoi_dung',
+                  'khuon_mat_nguoi_dung',
+                  'nhat_ky_diem_danh',
+                  'du_lieu_quet_raw',
+                  'don_tu',
+                  'thoi_khoa_bieu',
+                  'don_vi',
+                  'ca_lam_viec',
+                  'hoc_phan',
+                  'nhat_ky_kiem_toan',
+                  'bang_luong',
+                  'ngay_nghi_le',
+                  'cau_hinh_he_thong',
+                  'phien_dang_nhap',
+                ],
+                timestamp: '2026-10-16T12:00:00.000Z',
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.1 AUTHENTICATION
+  // -------------------------------------------------------------
+  '/api/auth/login': {
+    get: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔓 Public] Hướng dẫn phương thức đăng nhập (Trả về 405 Method Not Allowed)',
+      description: 'Nhắc nhở người dùng và nhà phát triển gửi yêu cầu POST /api/auth/login kèm theo body JSON { email, password } thay vì gọi GET.',
+      security: [],
+      responses: {
+        405: {
+          description: 'Phương thức GET không được hỗ trợ',
+          content: {
+            'application/json': {
+              example: {
+                success: false,
+                message: 'Phương thức GET không được hỗ trợ cho route này. Vui lòng gửi HTTP POST với Body JSON { email, password } để đăng nhập.',
+                hint: 'Sử dụng POST /api/auth/login',
+              },
+            },
+          },
+        },
+      },
+    },
+    post: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔓 Public] Đăng nhập người dùng (Rate Limit 5 lần/15p, JWT Access & Refresh Token)',
+      description: 'Đăng nhập vào hệ thống bằng Email và Mật khẩu. Áp dụng giới hạn tối đa 5 lần thử/15 phút. Mặc định mật khẩu các tài khoản demo: password123',
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['email', 'password'],
+              properties: {
+                email: { type: 'string', example: 'daihocdtd@gmail.com' },
+                password: { type: 'string', example: 'password123' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Đăng nhập thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                message: 'Đăng nhập thành công.',
+                data: {
+                  token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                  refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                  user: {
+                    _id: '6a9d57378cf3a6165de25dd6',
+                    fullName: 'Quản Trị Viên Hệ Thống (Admin Trường)',
+                    email: 'daihocdtd@gmail.com',
+                    role: 'admin',
+                    departmentId: '6a9d57378cf3a6165de25dd4',
+                    annualLeaveQuota: 15,
+                    isActive: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        401: { description: 'Email hoặc mật khẩu không chính xác' },
+      },
+    },
+  },
+
+  '/api/auth/me': {
+    get: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔒 Cá nhân] Lấy thông tin cá nhân hiện tại của người dùng đang đăng nhập',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: {
+          description: 'Lấy thông tin thành công',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ApiResponse' },
+            },
+          },
+        },
+        401: { description: 'Chưa xác thực hoặc Token không hợp lệ' },
+      },
+    },
+  },
+
+  '/api/auth/refresh': {
+    post: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔓 Public] Cấp mới Access Token từ Refresh Token (Alias)',
+      description: 'Hệ thống tự động đọc Refresh Token từ httpOnly cookie hoặc JSON Request Body để cấp mới Access Token 15 phút.',
+      security: [],
+      requestBody: {
+        required: false,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                refreshToken: { type: 'string', example: 'eyJhbGciOiJIUzI1Ni...' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Cấp token mới thành công' },
+        400: { description: 'Thiếu Refresh Token trong Cookie hoặc Body' },
+        403: { description: 'Refresh token không hợp lệ hoặc đã hết hạn' },
+      },
+    },
+  },
+
+  '/api/auth/refresh-token': {
+    post: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔓 Public] Cấp mới Access Token từ Refresh Token (Tuyến đường chuẩn)',
+      description: 'Đọc Refresh Token từ httpOnly cookie hoặc JSON Request Body để cấp mới Access Token 15 phút.',
+      security: [],
+      requestBody: {
+        required: false,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                refreshToken: { type: 'string', example: 'eyJhbGciOiJIUzI1Ni...' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Cấp token mới thành công' },
+        400: { description: 'Thiếu Refresh Token trong Cookie hoặc Body' },
+        403: { description: 'Refresh token không hợp lệ hoặc đã hết hạn' },
+      },
+    },
+  },
+
+  '/api/auth/logout': {
+    post: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔒 Xác thực] Đăng xuất khỏi hệ thống (Blacklist Access Token, xóa Refresh Token & clear Cookie)',
+      description: 'Đưa Access Token hiện tại vào Blacklist để vô hiệu hóa ngay lập tức, xóa Refresh Token trong CSDL và xóa httpOnly cookie.',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: false,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                refreshToken: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Đăng xuất thành công' },
+      },
+    },
+  },
+
+  '/api/auth/register': {
+    post: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔓 Public] Đăng ký tài khoản người dùng mới (Gửi mã OTP 6 chữ số qua Email, hạn 10 phút)',
+      description: 'Đăng ký tài khoản mới và nhận mã OTP 6 số để kích hoạt tài khoản. Tài khoản ở trạng thái chưa xác minh (isVerified: false).',
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['fullName', 'email', 'password', 'departmentId'],
+              properties: {
+                fullName: { type: 'string', example: 'ThS. Nguyễn Văn Mới' },
+                email: { type: 'string', example: 'nguyenvanmoi@university.edu.vn' },
+                password: { type: 'string', example: 'password123' },
+                role: { type: 'string', enum: ['admin', 'truongkhoa', 'giangvien', 'nhanvien'], example: 'giangvien' },
+                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+                annualLeaveQuota: { type: 'number', example: 12 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Đăng ký thành công, mã OTP 6 số đã được gửi qua email (hạn 10 phút)' },
+        400: { description: 'Thiếu dữ liệu bắt buộc hoặc Email đã được sử dụng' },
+      },
+    },
+  },
+
+  '/api/auth/verify-otp': {
+    post: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔓 Public] Xác minh tài khoản bằng mã OTP (Quá 10 phút -> Xóa tài khoản)',
+      description: 'Người dùng nhập mã OTP 6 chữ số nhận từ Email để kích hoạt tài khoản. Nếu quá 10 phút, hệ thống tự động xóa tài khoản và yêu cầu đăng ký lại.',
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['email', 'otp'],
+              properties: {
+                email: { type: 'string', example: 'nguyenvanmoi@university.edu.vn' },
+                otp: { type: 'string', example: '123456' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Xác minh tài khoản thành công, gửi email chúc mừng' },
+        400: { description: 'Mã OTP không hợp lệ HOẶC đã hết hạn (quá 10 phút, tài khoản đã bị xóa)' },
+        404: { description: 'Không tìm thấy thông tin tài khoản' },
+      },
+    },
+  },
+
+  '/api/auth/verify-account': {
+    post: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔓 Public] Kích hoạt tài khoản bằng mã OTP 6 số (Alias chuẩn)',
+      description: 'Người dùng nhập mã OTP 6 chữ số nhận từ Email để kích hoạt tài khoản (tương tự /verify-otp).',
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['email', 'otp'],
+              properties: {
+                email: { type: 'string', example: 'nguyenvanmoi@university.edu.vn' },
+                otp: { type: 'string', example: '123456' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Xác minh tài khoản thành công' },
+        400: { description: 'Mã OTP không hợp lệ hoặc đã hết hạn' },
+      },
+    },
+  },
+
+  '/api/auth/forgot-password': {
+    post: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔓 Public] Yêu cầu mã OTP đặt lại mật khẩu (Hạn 10 phút)',
+      description: 'Gửi mã OTP 6 chữ số đến email để xác thực yêu cầu đổi mật khẩu mới.',
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['email'],
+              properties: {
+                email: { type: 'string', example: 'daihocdtd@gmail.com' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Mã OTP đặt lại mật khẩu đã được gửi đến email (hạn 10 phút)' },
+        400: { description: 'Thiếu email' },
+        403: { description: 'Tài khoản chưa được kích hoạt hoặc đã bị vô hiệu hóa' },
+        404: { description: 'Không tìm thấy tài khoản với email này' },
+      },
+    },
+  },
+
+  '/api/auth/reset-password': {
+    post: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔓 Public] Xác thực OTP và đặt lại mật khẩu mới',
+      description: 'Nhập mã OTP 6 số còn hiệu lực (< 10 phút) và mật khẩu mới để đổi mật khẩu (thu hồi các token cũ).',
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['email', 'otp', 'newPassword'],
+              properties: {
+                email: { type: 'string', example: 'daihocdtd@gmail.com' },
+                otp: { type: 'string', example: '123456' },
+                newPassword: { type: 'string', example: 'new_password123' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Đặt lại mật khẩu thành công' },
+        400: { description: 'Mã OTP không hợp lệ, đã hết hạn (>10 phút) hoặc mật khẩu dưới 6 ký tự' },
+        404: { description: 'Không tìm thấy tài khoản' },
+      },
+    },
+  },
+
+  '/api/auth/change-password': {
+    put: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔒 Cá nhân] Đổi mật khẩu tài khoản đang đăng nhập',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['oldPassword', 'newPassword'],
+              properties: {
+                oldPassword: { type: 'string', example: 'password123' },
+                newPassword: { type: 'string', example: 'new_secret_pass_2026' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Đổi mật khẩu thành công' },
+        400: { description: 'Mật khẩu cũ không chính xác hoặc mật khẩu mới dưới 6 ký tự' },
+      },
+    },
+  },
+
+  '/api/auth/avatar': {
+    put: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔒 Cá nhân] Cập nhật ảnh đại diện cá nhân (PUT - Upload file hoặc URL)',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              properties: {
+                avatar: { type: 'string', format: 'binary', description: 'File ảnh JPG/PNG' },
+              },
+            },
+          },
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                avatarUrl: { type: 'string', example: '/uploads/avatar_user.png' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Cập nhật ảnh đại diện thành công' },
+      },
+    },
+    post: {
+      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      summary: '[🔒 Cá nhân] Cập nhật ảnh đại diện cá nhân (POST - Upload file hoặc URL)',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              properties: {
+                avatar: { type: 'string', format: 'binary' },
+              },
+            },
+          },
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                avatarUrl: { type: 'string', example: '/uploads/avatar_user.png' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Cập nhật ảnh đại diện thành công' },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.1 USERS MANAGEMENT
+  // -------------------------------------------------------------
+  '/api/users': {
+    get: {
+      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      summary: '[🔒 Admin / Trưởng khoa] Lấy danh sách người dùng (Admin xem toàn trường, Trưởng khoa chỉ xem khoa mình)',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'role', in: 'query', schema: { type: 'string', enum: ['admin', 'truongkhoa', 'giangvien', 'nhanvien'] }, description: 'Lọc theo chức vụ' },
+        { name: 'departmentId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo mã phòng ban (Chỉ có tác dụng với Admin)' },
+        { name: 'isActive', in: 'query', schema: { type: 'boolean' }, description: 'Lọc tài khoản còn hoạt động hay không' },
+        { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Tìm theo họ tên hoặc email' },
+      ],
+      responses: {
+        200: { description: 'Lấy danh sách thành công' },
+        403: { description: 'Không có quyền truy cập' },
+      },
+    },
+    post: {
+      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      summary: '[🔒 Admin] Thêm người dùng mới (Ghi Audit Log)',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['fullName', 'email', 'password', 'departmentId'],
+              properties: {
+                fullName: { type: 'string', example: 'TS. Lê Thanh Sơn' },
+                email: { type: 'string', example: 'lethanhson@university.edu.vn' },
+                password: { type: 'string', example: 'password123' },
+                role: { type: 'string', enum: ['admin', 'truongkhoa', 'giangvien', 'nhanvien'], example: 'giangvien' },
+                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+                annualLeaveQuota: { type: 'number', example: 12 },
+                staffCode: { type: 'string', example: 'GV001' },
+                phoneNumber: { type: 'string', example: '0901234567' },
+                academicTitle: { type: 'string', example: 'Tiến sĩ' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Tạo người dùng thành công' },
+        400: { description: 'Dữ liệu không hợp lệ hoặc Email đã tồn tại' },
+        403: { description: 'Chỉ Admin mới có quyền thực hiện' },
+      },
+    },
+  },
+
+  '/api/users/{id}': {
+    get: {
+      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      summary: '[🔒 Admin / Trưởng khoa] Xem thông tin chi tiết một người dùng',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Lấy thông tin thành công' },
+        404: { description: 'Không tìm thấy người dùng' },
+      },
+    },
+    put: {
+      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      summary: '[🔒 Admin / Trưởng khoa] Cập nhật thông tin người dùng (Ghi Audit Log)',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                fullName: { type: 'string', example: 'TS. Trần Thị Bích (Cập nhật)' },
+                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+                role: { type: 'string', enum: ['admin', 'truongkhoa', 'giangvien', 'nhanvien'] },
+                isActive: { type: 'boolean' },
+                annualLeaveQuota: { type: 'number', example: 14 },
+                staffCode: { type: 'string', example: 'GV001' },
+                phoneNumber: { type: 'string', example: '0901234567' },
+                academicTitle: { type: 'string', example: 'Tiến sĩ' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Cập nhật thành công' },
+        404: { description: 'Không tìm thấy người dùng' },
+      },
+    },
+    delete: {
+      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      summary: '[🔒 Admin] Vô hiệu hóa người dùng (Soft Delete: isActive = false, Ghi Audit Log)',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Vô hiệu hóa tài khoản thành công' },
+        404: { description: 'Không tìm thấy người dùng' },
+      },
+    },
+  },
+
+  '/api/users/{id}/face-descriptor': {
+    post: {
+      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      summary: '[🔒 Admin] Đăng ký Face ID đa góc từ ảnh bằng InsightFace (512 chiều)',
+      description: 'Gửi tối đa 5 ảnh góc độ JPEG, PNG hoặc WebP dạng multipart/form-data (chính diện, nghiêng trái, nghiêng phải, ngửa lên, cúi xuống). Face Service trích xuất embedding 512 chiều; backend lưu vector trong face_templates.',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'ID người dùng cần gán Face ID' }],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['images'],
+              properties: {
+                images: { type: 'array', items: { type: 'string', format: 'binary' }, maxItems: 5 },
+                poses: { type: 'string', description: 'Mảng JSON hoặc chuỗi danh mục các góc mặt' },
+                force: { type: 'string', enum: ['true', 'false'] },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Đăng ký Face ID thành công' },
+        400: { description: 'Vector không đúng chuẩn 512 chiều hoặc ảnh không phát hiện khuôn mặt' },
+        403: { description: 'Chỉ Admin mới có quyền thực hiện' },
+        404: { description: 'Không tìm thấy người dùng' },
+        409: { description: 'Khuôn mặt đã được đăng ký cho người khác (USER_003)' },
+      },
+    },
+    delete: {
+      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      summary: '[🔒 Admin] Xóa dữ liệu Face ID của nhân sự',
+      description: 'Xóa mẫu khuôn mặt khỏi collection face_templates và đặt lại faceRegistered = false để cho phép đăng ký lại.',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'ID người dùng cần xóa Face ID' }],
+      responses: {
+        200: { description: 'Xóa Face ID thành công' },
+        403: { description: 'Chỉ Admin mới có quyền thực hiện' },
+        404: { description: 'Không tìm thấy người dùng' },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.2 DEPARTMENTS
+  // -------------------------------------------------------------
+  '/api/departments': {
+    get: {
+      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      summary: '[🔒 Xác thực] Lấy danh sách Khoa / Viện / Phòng ban (Cây phân cấp)',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'tree', in: 'query', schema: { type: 'boolean', default: true }, description: 'Trả về cấu trúc dạng cây phân cấp (true/false)' },
+        { name: 'type', in: 'query', schema: { type: 'string', enum: ['khoa', 'bomon', 'phongban'] }, description: 'Lọc theo loại' },
+        { name: 'parentId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID đơn vị cha' },
+      ],
+      responses: {
+        200: { description: 'Lấy danh sách thành công' },
+      },
+    },
+    post: {
+      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      summary: '[🔒 Admin] Tạo mới Khoa / Phòng ban / Bộ môn',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['name', 'type'],
+              properties: {
+                name: { type: 'string', example: 'Bộ môn Khoa học Dữ liệu' },
+                type: { type: 'string', enum: ['khoa', 'bomon', 'phongban'], example: 'bomon' },
+                parentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1', nullable: true },
+                managerId: { type: 'string', example: '6a9d57378cf3a6165de25dd7', nullable: true },
+                location: {
+                  type: 'object',
+                  properties: {
+                    lat: { type: 'number', example: 21.028511 },
+                    lng: { type: 'number', example: 105.854444 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Tạo đơn vị thành công' },
+        400: { description: 'Thiếu thông tin bắt buộc hoặc vi phạm quy tắc phân cấp / managerId không hợp lệ' },
+      },
+    },
+  },
+
+  '/api/departments/tree': {
+    get: {
+      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      summary: '[🔒 Xác thực] Lấy cây cơ cấu tổ chức phân cấp (Trường > Khoa > Bộ môn)',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: { description: 'Lấy cây tổ chức thành công' },
+      },
+    },
+  },
+
+  '/api/departments/{id}': {
+    get: {
+      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      summary: '[🔒 Xác thực] Lấy chi tiết Khoa / Phòng ban',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Lấy chi tiết thành công' },
+        404: { description: 'Không tìm thấy phòng ban' },
+      },
+    },
+    put: {
+      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      summary: '[🔒 Admin / Trưởng khoa] Cập nhật thông tin Khoa / Phòng ban',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', example: 'Khoa CNTT & Truyền thông' },
+                managerId: { type: 'string', example: '6a9d57378cf3a6165de25dd7' },
+                location: {
+                  type: 'object',
+                  properties: {
+                    lat: { type: 'number', example: 21.028511 },
+                    lng: { type: 'number', example: 105.854444 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Cập nhật thành công' },
+      },
+    },
+    delete: {
+      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      summary: '[🔒 Admin] Xóa Khoa / Phòng ban (Ràng buộc nhân sự & đơn vị con)',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Xóa thành công' },
+        400: { description: 'Không thể xóa do còn nhân sự hoặc đơn vị con trực thuộc' },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.3 SHIFT CONFIGS
+  // -------------------------------------------------------------
+  '/api/shifts': {
+    get: {
+      tags: ['3.3 - Ca Làm Việc & Tiết Học (Shifts)'],
+      summary: '[🔒 Xác thực] Danh sách cấu hình ca làm việc / tiết học',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: { description: 'Lấy danh sách thành công' },
+      },
+    },
+    post: {
+      tags: ['3.3 - Ca Làm Việc & Tiết Học (Shifts)'],
+      summary: '[🔒 Admin] Thêm mới ca làm việc / tiết dạy',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['name', 'code', 'startTime', 'endTime'],
+              properties: {
+                name: { type: 'string', example: 'Tiết 10-12 (Tối)' },
+                code: { type: 'string', example: 'T10_12' },
+                startTime: { type: 'string', example: '18:00' },
+                endTime: { type: 'string', example: '20:30' },
+                lateThresholdMinutes: { type: 'number', default: 15, example: 15 },
+                earlyLeaveThresholdMinutes: { type: 'number', default: 15, example: 15 },
+                type: { type: 'string', enum: ['tietday', 'hanhchinh'], example: 'tietday' },
+                description: { type: 'string', example: 'Ca học buổi tối' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Tạo ca làm việc thành công' },
+      },
+    },
+  },
+
+  '/api/shifts/{id}': {
+    get: {
+      tags: ['3.3 - Ca Làm Việc & Tiết Học (Shifts)'],
+      summary: '[🔒 Xác thực] Chi tiết ca làm việc theo ID',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Lấy chi tiết thành công' },
+        404: { description: 'Không tìm thấy ca làm việc' },
+      },
+    },
+    put: {
+      tags: ['3.3 - Ca Làm Việc & Tiết Học (Shifts)'],
+      summary: '[🔒 Admin] Cập nhật ca làm việc',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                startTime: { type: 'string', example: '07:15' },
+                endTime: { type: 'string', example: '09:45' },
+                lateThresholdMinutes: { type: 'number' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Cập nhật thành công' },
+      },
+    },
+    delete: {
+      tags: ['3.3 - Ca Làm Việc & Tiết Học (Shifts)'],
+      summary: '[🔒 Admin] Xóa ca làm việc',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Xóa thành công' },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.3 SCHEDULES
+  // -------------------------------------------------------------
+  '/api/schedules': {
+    get: {
+      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      summary: '[🔒 Xác thực] Tra cứu lịch giảng dạy và lịch làm việc',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'userId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID giảng viên' },
+        { name: 'shiftId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID ca' },
+        { name: 'weekday', in: 'query', schema: { type: 'integer' }, description: 'Thứ trong tuần (0: CN, 1: T2, ..., 6: T7)' },
+        { name: 'date', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Lọc lịch học vào ngày cụ thể (YYYY-MM-DD)' },
+      ],
+      responses: {
+        200: { description: 'Lấy danh sách lịch thành công' },
+      },
+    },
+    post: {
+      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      summary: '[🔒 Admin / Trưởng khoa] Tạo mới lịch phân công giảng dạy',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['userId', 'shiftId', 'roomId', 'weekday', 'startDate', 'endDate'],
+              properties: {
+                userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+                shiftId: { type: 'string', example: '6a9d57378cf3a6165de25ddc' },
+                roomId: { type: 'string', example: 'A1-402' },
+                weekday: { type: 'integer', example: 2 },
+                startDate: { type: 'string', format: 'date', example: '2026-09-01' },
+                endDate: { type: 'string', format: 'date', example: '2026-12-31' },
+                notes: { type: 'string', example: 'Hệ điều hành nâng cao - K21' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Tạo lịch phân công thành công' },
+        400: { description: 'Xung đột lịch giảng dạy hoặc dữ liệu thiếu' },
+      },
+    },
+  },
+
+  '/api/schedules/today': {
+    get: {
+      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      summary: '[🔒 Xác thực] Lấy danh sách lịch giảng dạy hiệu lực trong ngày hôm nay',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'date', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Ngày cần tra cứu (mặc định là hôm nay)' },
+        { name: 'userId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID giảng viên (Dành cho Admin/Trưởng khoa)' },
+      ],
+      responses: {
+        200: { description: 'Lấy danh sách lịch trong ngày thành công' },
+      },
+    },
+  },
+
+  '/api/schedules/{id}': {
+    get: {
+      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      summary: '[🔒 Xác thực] Xem chi tiết một lịch giảng dạy',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Lấy thông tin thành công' },
+      },
+    },
+    put: {
+      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      summary: '[🔒 Admin / Trưởng khoa] Cập nhật lịch giảng dạy',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                roomId: { type: 'string', example: 'B2-205' },
+                notes: { type: 'string', example: 'Chuyển phòng học thực hành' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Cập nhật thành công' },
+      },
+    },
+    delete: {
+      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      summary: '[🔒 Admin / Trưởng khoa] Xóa lịch giảng dạy',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Xóa thành công' },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.4 ATTENDANCE
+  // -------------------------------------------------------------
+  '/api/attendance/check-in': {
+    post: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Cá nhân] Điểm danh đầu ca (Check-in GPS / QR / Manual)',
+      description: 'Hệ thống tự động tìm lịch dạy phù hợp của người dùng trong khoảng [startTime - 30p, endTime] và đánh giá trạng thái Đúng giờ / Đi muộn.',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                method: { type: 'string', enum: ['GPS', 'QR', 'MANUAL'], default: 'GPS', example: 'GPS' },
+                deviceId: { type: 'string', example: 'BROWSER-CHROME-122' },
+                location: {
+                  type: 'object',
+                  properties: {
+                    lat: { type: 'number', example: 21.028511 },
+                    lng: { type: 'number', example: 105.854444 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Điểm danh Check-in thành công' },
+        400: { description: 'Đã check-in ca này rồi hoặc không có lịch phù hợp trong khung giờ hiện tại' },
+      },
+    },
+  },
+
+  '/api/attendance/check-out': {
+    post: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Cá nhân] Điểm danh kết thúc ca (Check-out)',
+      description: 'Tự động tìm kiếm bản ghi check-in mở gần nhất trong ngày để đóng ca và cập nhật thời gian check-out.',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: { description: 'Điểm danh Check-out thành công' },
+        404: { description: 'Không tìm thấy lượt check-in mở nào trong ngày' },
+      },
+    },
+  },
+
+  '/api/attendance/history': {
+    get: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Xác thực] Lịch sử chấm công (Phân quyền: GV cá nhân, Trưởng khoa xem khoa, Admin toàn trường)',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'userId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo nhân sự' },
+        { name: 'departmentId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo phòng ban' },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['ON_TIME', 'LATE', 'EARLY_LEAVE', 'ABSENT', 'EXCUSED_ABSENCE'] }, description: 'Lọc theo trạng thái' },
+        { name: 'from', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Từ ngày (YYYY-MM-DD)' },
+        { name: 'to', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Đến ngày (YYYY-MM-DD)' },
+        { name: 'page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Số trang' },
+        { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 }, description: 'Số bản ghi / trang' },
+      ],
+      responses: {
+        200: { description: 'Lấy lịch sử chấm công thành công' },
+      },
+    },
+  },
+
+  '/api/attendance/{id}': {
+    get: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Xác thực] Xem chi tiết bản ghi chấm công',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Lấy thông tin thành công' },
+      },
+    },
+    put: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Admin] Điều chỉnh bản ghi chấm công (Ghi Audit Log)',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['reason'],
+              properties: {
+                status: { type: 'string', enum: ['ON_TIME', 'LATE', 'EARLY_LEAVE', 'ABSENT', 'EXCUSED_ABSENCE'], example: 'ON_TIME' },
+                checkInTime: { type: 'string', format: 'date-time' },
+                checkOutTime: { type: 'string', format: 'date-time' },
+                reason: { type: 'string', example: 'Điều chỉnh bổ sung do giảng viên quên quẹt thẻ có sự xác nhận' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Điều chỉnh chấm công thành công' },
+      },
+    },
+  },
+
+  '/api/attendance/cron/test-daily-check': {
+    post: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Admin] Kích hoạt thủ công tiến trình quét vắng mặt (Test Demo)',
+      description: 'Kích hoạt thủ công tiến trình cron kiểm tra vắng mặt ngay lập tức mà không cần đợi 23:59 đêm để phục vụ test demo.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        {
+          name: 'date',
+          in: 'query',
+          schema: { type: 'string', format: 'date', example: '2026-09-14' },
+          description: 'Ngày cần kiểm tra (YYYY-MM-DD). Mặc định là hôm nay.',
+        },
+      ],
+      responses: {
+        200: { description: 'Kích hoạt tiến trình quét vắng mặt thành công' },
+        403: { description: 'Không có quyền truy cập (Chỉ Admin)' },
+      },
+    },
+  },
+
+  '/api/attendance/trigger-absent-cron': {
+    post: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Admin] Kích hoạt thủ công tiến trình quét vắng mặt (Alias URL)',
+      description: 'Kích hoạt thủ công tiến trình cron kiểm tra vắng mặt ngay lập tức (Alias của /api/attendance/cron/test-daily-check).',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        {
+          name: 'date',
+          in: 'query',
+          schema: { type: 'string', format: 'date', example: '2026-09-14' },
+          description: 'Ngày cần kiểm tra (YYYY-MM-DD). Mặc định là hôm nay.',
+        },
+      ],
+      responses: {
+        200: { description: 'Kích hoạt tiến trình quét vắng mặt thành công' },
+        403: { description: 'Không có quyền truy cập (Chỉ Admin)' },
+      },
+    },
+  },
+
+  '/api/attendance/face-checkin': {
+    post: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Máy chấm công] Điểm danh nhận diện khuôn mặt qua Máy chấm công Face ID',
+      description: 'Xác thực qua header x-terminal-key hoặc Bearer Token kèm rate limit 15 req/phút. Gửi ảnh multipart/form-data để Face Service nhận diện bằng InsightFace 512D, tự động tìm ca dạy phù hợp trong ngày và ghi nhận điểm danh.',
+      security: [],
+      parameters: [
+        {
+          name: 'x-terminal-key',
+          in: 'header',
+          required: false,
+          schema: { type: 'string' },
+          description: 'Khóa bảo mật của thiết bị Máy chấm công Face ID, được cấu hình qua biến môi trường TERMINAL_KEY.',
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['image'],
+              properties: {
+                image: {
+                  type: 'string',
+                  format: 'binary',
+                  description: 'Ảnh JPEG/PNG chụp từ camera máy chấm công gửi tới InsightFace',
+                },
+                mode: {
+                  type: 'string',
+                  enum: ['auto', 'check_in', 'check_out'],
+                  default: 'auto',
+                },
+                location: {
+                  type: 'object',
+                  properties: {
+                    lat: { type: 'number', example: 21.028511 },
+                    lng: { type: 'number', example: 105.854444 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Điểm danh Face ID thành công' },
+        400: { description: 'Vector không hợp lệ hoặc không có ca/lịch phù hợp' },
+        401: { description: 'Thiếu header x-terminal-key' },
+        403: { description: 'Khóa xác thực máy chấm công không hợp lệ' },
+        404: { description: 'Không nhận diện được khuôn mặt' },
+        409: { description: 'Giảng viên đã check-in cho ca này hôm nay rồi' },
+      },
+    },
+  },
+
+  '/api/attendance/face-checkin-batch': {
+    post: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Máy chấm công] Điểm danh nhận diện khuôn mặt hàng loạt (Batch)',
+      description: 'Nhận danh sách nhiều vector khuôn mặt quét được đồng thời trong một khung hình camera Máy chấm công để xử lý điểm danh song song.',
+      security: [],
+      parameters: [
+        {
+          name: 'x-terminal-key',
+          in: 'header',
+          required: false,
+          schema: { type: 'string' },
+          description: 'Khóa bảo mật của thiết bị Máy chấm công Face ID',
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['descriptors'],
+              properties: {
+                descriptors: {
+                  type: 'array',
+                  items: {
+                    type: 'array',
+                    items: { type: 'number' },
+                  },
+                  description: 'Danh sách mảng vector 128 số thực',
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Xử lý batch điểm danh thành công' },
+      },
+    },
+  },
+
+  '/api/attendance/qr/generate': {
+    get: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔓 Public] Sinh mã QR Động TOTP (Hiệu lực 15-20s) phục vụ điểm danh Máy chấm công / Lớp học',
+      description: 'Sinh chuỗi mã hóa ký HMAC-SHA256 kèm timestamp làm mới liên tục mỗi 15-20 giây để hiển thị trên màn hình Máy chấm công hoặc máy chiếu giảng đường.',
+      security: [],
+      responses: {
+        200: {
+          description: 'Sinh mã QR động thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                message: 'Tạo mã QR thành công.',
+                data: {
+                  qrToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                  expiresIn: 15,
+                  generatedAt: '2026-09-23T12:00:00.000Z',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  '/api/attendance/qr/scan': {
+    post: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Cá nhân] Quét mã QR Động trên di động để điểm danh vào ca',
+      description: 'Giảng viên dùng điện thoại di động quét mã QR động hiển thị trên máy chiếu / Máy chấm công kết hợp xác thực tọa độ GPS khuôn viên trường (Geofence).',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['qrToken'],
+              properties: {
+                qrToken: { type: 'string', description: 'Token trích xuất từ mã QR động' },
+                location: {
+                  type: 'object',
+                  properties: {
+                    lat: { type: 'number', example: 21.028511 },
+                    lng: { type: 'number', example: 105.854444 },
+                  },
+                },
+                deviceId: { type: 'string', example: 'MOBILE_CLIENT_IPHONE15' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Điểm danh qua QR thành công' },
+        400: { description: 'Mã QR đã hết hạn, không hợp lệ hoặc vị trí GPS ngoài khuôn viên' },
+      },
+    },
+  },
+
+  '/api/attendance/campus-config': {
+    get: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔓 Public] Lấy cấu hình tọa độ khuôn viên trường & bán kính Geofencing GPS',
+      description: 'Trả về tọa độ trung tâm khuôn viên trường đại học và bán kính hợp lệ (mét) cho phép điểm danh di động.',
+      security: [],
+      responses: {
+        200: {
+          description: 'Lấy cấu hình thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                data: {
+                  campusCenter: { lat: 21.028511, lng: 105.854444 },
+                  radiusMeters: 500,
+                  name: 'Khuôn viên Cơ sở Chính',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    post: {
+      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      summary: '[🔒 Admin] Cập nhật tọa độ khuôn viên trường & bán kính Geofencing GPS',
+      description: 'Chỉ Quản trị viên (Admin) mới có quyền hiệu chỉnh tọa độ trung tâm và bán kính cho phép chấm công GPS.',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['lat', 'lng', 'radiusMeters'],
+              properties: {
+                lat: { type: 'number', example: 21.028511 },
+                lng: { type: 'number', example: 105.854444 },
+                radiusMeters: { type: 'number', example: 600 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Cập nhật cấu hình khuôn viên thành công' },
+        403: { description: 'Chỉ Admin mới có quyền thực hiện' },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.5 LEAVE REQUESTS
+  // -------------------------------------------------------------
+  '/api/leave-requests': {
+    post: {
+      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      summary: '[🔒 Cá nhân] Tạo đơn xin nghỉ phép / dạy bù / đổi ca',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['type', 'reason', 'startDate', 'endDate'],
+              properties: {
+                type: { type: 'string', enum: ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om'], example: 'nghi_phep' },
+                startDate: { type: 'string', format: 'date', example: '2026-09-15' },
+                endDate: { type: 'string', format: 'date', example: '2026-09-17' },
+                reason: { type: 'string', example: 'Đi tham dự hội thảo khoa học quốc tế' },
+                attachmentUrl: { type: 'string', example: 'https://cdn.university.edu.vn/giay-moi-hoi-thao.pdf' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Gửi đơn thành công' },
+        400: { description: 'Thiếu dữ liệu hoặc ngày kết thúc trước ngày bắt đầu' },
+      },
+    },
+    get: {
+      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      summary: '[🔒 Xác thực] Danh sách đơn xin nghỉ phép (Phân quyền theo vai trò)',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED'] }, description: 'Lọc trạng thái' },
+        { name: 'type', in: 'query', schema: { type: 'string', enum: ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om'] }, description: 'Lọc loại đơn' },
+        { name: 'userId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID người làm đơn' },
+      ],
+      responses: {
+        200: { description: 'Lấy danh sách đơn thành công' },
+      },
+    },
+  },
+
+  '/api/leave-requests/balance': {
+    get: {
+      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      summary: '[🔒 Cá nhân / Xác thực] Xem số ngày phép còn lại trong năm (Leave Balance)',
+      description: 'Dùng Aggregate pipeline tính tổng ngày phép tiêu chuẩn, ngày đã sử dụng và ngày còn lại.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'userId', in: 'query', schema: { type: 'string' }, description: 'ID người dùng cần tra cứu (Mặc định là chính mình)' },
+      ],
+      responses: {
+        200: {
+          description: 'Tính toán hạn mức phép thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                message: 'Lấy thông tin số ngày phép thành công.',
+                data: {
+                  userId: '6a9d57378cf3a6165de25dd8',
+                  year: 2026,
+                  quota: 12,
+                  usedDays: 3,
+                  remainingDays: 9,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  '/api/leave-requests/{id}': {
+    get: {
+      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      summary: '[🔒 Xác thực] Xem chi tiết một đơn xin nghỉ',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Lấy chi tiết thành công' },
+        404: { description: 'Không tìm thấy đơn' },
+      },
+    },
+  },
+
+  '/api/leave-requests/{id}/approve': {
+    put: {
+      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      summary: '[🔒 Admin / Trưởng khoa] Phê duyệt đơn xin nghỉ',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                approvalNote: { type: 'string', example: 'Đồng ý cho nghỉ phép, khoa đã bố trí giảng viên dạy thay.' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Duyệt đơn thành công' },
+      },
+    },
+  },
+
+  '/api/leave-requests/{id}/reject': {
+    put: {
+      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      summary: '[🔒 Admin / Trưởng khoa] Từ chối đơn xin nghỉ',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                approvalNote: { type: 'string', example: 'Trùng lịch thi kết thúc học phần, đề nghị chọn ngày khác.' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Từ chối đơn thành công' },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.6 AUDIT LOGS
+  // -------------------------------------------------------------
+  '/api/audit-logs': {
+    get: {
+      tags: ['3.6 - Nhật Ký Kiểm Toán An Toàn (Audit Logs)'],
+      summary: '[🔒 Admin] Tra cứu nhật ký kiểm toán hệ thống',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'actor', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID người thao tác' },
+        { name: 'action', in: 'query', schema: { type: 'string' }, description: 'Lọc theo hành động (USER_LOGIN, ATTENDANCE_CHECKIN, ...)' },
+        { name: 'targetType', in: 'query', schema: { type: 'string' }, description: 'Lọc theo đối tượng (User, AttendanceLog, ...)' },
+        { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Từ ngày' },
+        { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Đến ngày' },
+      ],
+      responses: {
+        200: { description: 'Lấy danh sách nhật ký thành công' },
+        403: { description: 'Không có quyền truy cập (yêu cầu quyền Admin)' },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.5.1 UPLOAD ATTACHMENT
+  // -------------------------------------------------------------
+  '/api/upload': {
+    post: {
+      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      summary: '[🔒 Đã đăng nhập] Tải file minh chứng đính kèm (ảnh, PDF, tài liệu)',
+      description: 'Hỗ trợ tải lên file minh chứng (giấy khám sức khỏe, minh chứng đổi ca...) với định dạng PNG, JPG, WEBP, PDF, DOC, DOCX. Giới hạn 10MB.',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              properties: {
+                file: {
+                  type: 'string',
+                  format: 'binary',
+                  description: 'File tài liệu hoặc ảnh cần tải lên',
+                },
+              },
+              required: ['file'],
+            },
+          },
+        },
+      },
+      responses: {
+        201: {
+          description: 'Tải lên file thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                message: 'Tải lên file thành công.',
+                data: {
+                  originalName: 'giay_kham_benh.pdf',
+                  filename: 'attachment-1726410000000-123456789.pdf',
+                  mimetype: 'application/pdf',
+                  size: 204800,
+                  fileUrl: '/uploads/attachment-1726410000000-123456789.pdf',
+                },
+              },
+            },
+          },
+        },
+        400: { description: 'File không hợp lệ hoặc vượt quá 10MB' },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.7 REPORTS
+  // -------------------------------------------------------------
+  '/api/reports/attendance': {
+    get: {
+      tags: ['3.7 - Báo Cáo & Thống Kê (Reports)'],
+      summary: '[🔒 Cá nhân / Trưởng khoa / Admin] Báo cáo tổng hợp số liệu chấm công và ngày phép',
+      description: 'Giảng viên/Nhân viên chỉ xem của chính mình; Trưởng khoa xem của khoa; Admin xem toàn trường.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'userId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo giảng viên / nhân viên (chỉ dành cho Trưởng khoa và Admin)' },
+        { name: 'departmentId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo khoa / phòng ban (chỉ dành cho Admin)' },
+        { name: 'from', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Từ ngày (YYYY-MM-DD)' },
+        { name: 'to', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Đến ngày (YYYY-MM-DD)' },
+      ],
+      responses: {
+        200: {
+          description: 'Lấy báo cáo thống kê thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                message: 'Lấy báo cáo thống kê chấm công thành công.',
+                data: {
+                  totalRecords: 15,
+                  onTimeCount: 12,
+                  lateCount: 2,
+                  earlyLeaveCount: 1,
+                  absentCount: 0,
+                  excusedAbsenceCount: 0,
+                  approvedLeaveDays: 2,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  '/api/reports/monthly': {
+    get: {
+      tags: ['3.7 - Báo Cáo & Thống Kê (Reports)'],
+      summary: '[🔒 Admin / Trưởng khoa] Báo cáo tổng hợp ngày công chi tiết theo tháng',
+      description: 'Tổng hợp chi tiết danh sách từng nhân sự trong tháng gồm: tổng buổi dạy, đúng giờ, đi muộn, về sớm, vắng mặt, nghỉ có phép.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'month', in: 'query', schema: { type: 'integer', example: 10 }, description: 'Tháng (1-12)' },
+        { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 }, description: 'Năm (YYYY)' },
+        { name: 'departmentId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo mã Khoa / Phòng ban (chỉ dành cho Admin)' },
+      ],
+      responses: {
+        200: {
+          description: 'Lấy báo cáo tháng thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                message: 'Lấy báo cáo tổng hợp tháng 10/2026 thành công.',
+                data: {
+                  month: 10,
+                  year: 2026,
+                  totalUsers: 5,
+                  report: [
+                    {
+                      user: {
+                        id: '6a9d57378cf3a6165de25dd8',
+                        fullName: 'TS. Trần Thị Bích',
+                        email: 'giangvien.bich@university.edu.vn',
+                        role: 'giangvien',
+                      },
+                      totalWorkingDays: 16,
+                      onTimeCount: 14,
+                      lateCount: 1,
+                      earlyLeaveCount: 1,
+                      absentCount: 0,
+                      excusedCount: 2,
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  '/api/reports/export-data': {
+    get: {
+      tags: ['3.7 - Báo Cáo & Thống Kê (Reports)'],
+      summary: '[🔒 Xác thực] Trích xuất dữ liệu đa chiều 5 Sheets phục vụ xuất file Excel tổng hợp',
+      description: 'Trả về cấu trúc dữ liệu hoàn chỉnh 5 sheet: Tổng hợp công, Bảng chấm công chi tiết, Danh sách đi muộn/về sớm, Thống kê đơn nghỉ phép, và Phân bổ giờ giảng theo khoa.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'month', in: 'query', schema: { type: 'integer', example: 9 }, description: 'Tháng cần xuất (1-12)' },
+        { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 }, description: 'Năm (YYYY)' },
+        { name: 'departmentId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo khoa (Admin có thể lọc, Trưởng khoa tự động giới hạn)' },
+      ],
+      responses: {
+        200: {
+          description: 'Lấy dữ liệu xuất báo cáo thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                message: 'Lấy dữ liệu xuất báo cáo thành công.',
+                data: {
+                  summarySheet: [],
+                  dailyAttendanceSheet: [],
+                  lateEarlySheet: [],
+                  leaveRequestsSheet: [],
+                  departmentStatsSheet: [],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.9 AI ASSISTANT
+  // -------------------------------------------------------------
+  '/api/ai/chat': {
+    post: {
+      tags: ['3.9 - Trợ Lý Thông Minh AI (AI Assistant)'],
+      summary: '[🔒 Xác thực] Hỏi đáp & Tra cứu thống kê chấm công thông minh qua AI Chatbot (Gemini / Analytics Engine)',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['question'],
+              properties: {
+                question: { type: 'string', example: 'Hôm nay có bao nhiêu giảng viên đi muộn và vắng mặt?' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Phản hồi từ AI Assistant',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                message: 'Phản hồi từ AI thành công.',
+                data: {
+                  reply: '### Báo cáo nhanh hôm nay:\n- **Đi muộn:** 1 trường hợp\n- **Vắng mặt:** 0 trường hợp',
+                  source: 'gemini-1.5-flash',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.10 NOTIFICATIONS
+  // -------------------------------------------------------------
+  '/api/notifications': {
+    get: {
+      tags: ['3.10 - Hệ Thống Thông Báo (Notifications)'],
+      summary: '[🔒 Cá nhân] Lấy danh sách thông báo của người dùng (kết quả duyệt đơn, cảnh báo đi muộn/vắng mặt)',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'isRead', in: 'query', schema: { type: 'boolean' }, description: 'Lọc thông báo đã đọc hoặc chưa đọc' },
+        { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 }, description: 'Số lượng thông báo' },
+      ],
+      responses: {
+        200: {
+          description: 'Lấy danh sách thông báo thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                data: [
+                  {
+                    _id: '6a9d57378cf3a6165de25df9',
+                    title: 'Đơn nghỉ phép đã được phê duyệt',
+                    message: 'Đơn nghỉ phép ngày 25/09/2026 của Thầy/Cô đã được Trưởng khoa phê duyệt.',
+                    type: 'LEAVE_APPROVED',
+                    isRead: false,
+                    createdAt: '2026-09-23T08:30:00.000Z',
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  // -------------------------------------------------------------
+  // 3.6 AUDIT LOGS
+  // -------------------------------------------------------------
+  '/api/audit-logs': {
+    get: {
+      tags: ['3.6 - Nhật Ký Kiểm Toán An Toàn (Audit Logs)'],
+      summary: '[🔒 Admin/BGH] Tra cứu nhật ký kiểm toán hệ thống (Audit Logs)',
+      description: 'Chỉ dành cho Admin, Hiệu trưởng và Hiệu phó. Hỗ trợ lọc theo actor, action, targetType, status, khoảng thời gian và phân trang.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'actor', in: 'query', schema: { type: 'string' }, description: 'ID người thực hiện hoặc SYSTEM' },
+        { name: 'action', in: 'query', schema: { type: 'string' }, description: 'Tên hành động (e.g. USER_LOGIN, LOCK_PAYROLL)' },
+        { name: 'targetType', in: 'query', schema: { type: 'string' }, description: 'Loại đối tượng (User, Payroll, LeaveRequest)' },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['SUCCESS', 'FAILED'] }, description: 'Trạng thái thành công hay thất bại' },
+        { name: 'keyword', in: 'query', schema: { type: 'string' }, description: 'Từ khóa tìm kiếm' },
+        { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Từ ngày' },
+        { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Đến ngày' },
+        { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+        { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+      ],
+      responses: {
+        200: {
+          description: 'Lấy danh sách nhật ký kiểm toán thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                message: 'Lấy danh sách nhật ký kiểm toán (Audit Logs) thành công.',
+                data: {
+                  totalRecords: 1,
+                  logs: [
+                    {
+                      _id: '6a9d57378cf3a6165de25ded',
+                      actor: { _id: '6a9d57378cf3a6165de25dd6', fullName: 'Quản trị viên', email: 'admin@university.edu.vn', role: 'admin' },
+                      action: 'UPDATE_SYSTEM_CONFIG',
+                      targetType: 'SystemConfig',
+                      targetId: 'CAMPUS_GPS_RADIUS_METERS',
+                      status: 'SUCCESS',
+                      timestamp: '2026-10-16T08:00:00.000Z',
+                    },
+                  ],
+                  pagination: { page: 1, limit: 20, totalPages: 1, totalDocs: 1 },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.11 PAYROLLS
+  // -------------------------------------------------------------
+  '/api/payrolls/generate': {
+    post: {
+      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH/Trưởng khoa] Tạo & tính toán Snapshot bảng lương năm 2026',
+      description: 'Tính toán giờ dạy thực tế, giờ vượt chuẩn, phụ cấp, trích nộp BHXH 10.5% và thuế TNCN lũy tiến 5 bậc.',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['thang', 'nam'],
+              properties: {
+                thang: { type: 'integer', example: 10 },
+                nam: { type: 'integer', example: 2026 },
+                phong_ban_id: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Tạo hoặc làm mới bảng lương thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/payrolls': {
+    get: {
+      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH/Trưởng khoa] Lấy danh sách bảng lương toàn trường/khoa',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'thang', in: 'query', schema: { type: 'integer' } },
+        { name: 'nam', in: 'query', schema: { type: 'integer' } },
+        { name: 'phong_ban_id', in: 'query', schema: { type: 'string' } },
+        { name: 'trang_thai', in: 'query', schema: { type: 'string', enum: ['CHUA_KHOA', 'DA_KHOA'] } },
+        { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+        { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+      ],
+      responses: {
+        200: {
+          description: 'Lấy danh sách bảng lương thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/payrolls/my-payroll': {
+    get: {
+      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Cá nhân] Giảng viên/Nhân viên tra cứu bảng lương của chính mình',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'thang', in: 'query', schema: { type: 'integer' } },
+        { name: 'nam', in: 'query', schema: { type: 'integer' } },
+      ],
+      responses: {
+        200: {
+          description: 'Lấy phiếu lương cá nhân thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/payrolls/summary': {
+    get: {
+      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH] Tổng hợp thống kê quỹ lương, tổng giờ vượt chuẩn và thuế TNCN',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'thang', in: 'query', schema: { type: 'integer', example: 10 } },
+        { name: 'nam', in: 'query', schema: { type: 'integer', example: 2026 } },
+      ],
+      responses: {
+        200: {
+          description: 'Lấy báo cáo tổng hợp quỹ lương thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/payrolls/{id}': {
+    get: {
+      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Chi tiết] Xem chi tiết một phiếu lương kèm snapshot các buổi dạy',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: {
+          description: 'Chi tiết phiếu lương và snapshot',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/payrolls/{id}/lock': {
+    put: {
+      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH] Khóa bảng lương chống sửa đổi (isLocked = true)',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: {
+          description: 'Khóa bảng lương thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/payrolls/{id}/unlock': {
+    put: {
+      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH] Mở khóa bảng lương (isLocked = false)',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: {
+          description: 'Mở khóa bảng lương thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/payrolls/export/excel': {
+    get: {
+      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH/Trưởng khoa] Xuất file Excel bảng lương toàn trường/khoa',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'thang', in: 'query', schema: { type: 'integer', example: 10 } },
+        { name: 'nam', in: 'query', schema: { type: 'integer', example: 2026 } },
+      ],
+      responses: {
+        200: {
+          description: 'File Excel bảng lương tải về',
+          content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {} },
+        },
+      },
+    },
+  },
+  '/api/payrolls/export/pdf': {
+    get: {
+      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH/Cá nhân] Xuất file PDF phiếu lương chi tiết',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'id', in: 'query', schema: { type: 'string' } },
+        { name: 'thang', in: 'query', schema: { type: 'integer' } },
+        { name: 'nam', in: 'query', schema: { type: 'integer' } },
+      ],
+      responses: {
+        200: {
+          description: 'File PDF phiếu lương tải về',
+          content: { 'application/pdf': {} },
+        },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.12 FACE BIOMETRICS
+  // -------------------------------------------------------------
+  '/api/face/detect-pose': {
+    post: {
+      tags: ['3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Điểm danh/Đăng ký] Kiểm tra tư thế đầu 3D (Pitch, Yaw, Roll) & độ nét khuôn mặt',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              properties: {
+                image: { type: 'string', format: 'binary' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Phát hiện tư thế khuôn mặt thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/face/enroll-multi-angle': {
+    post: {
+      tags: ['3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Admin/Trưởng khoa/Tự đăng ký] Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D',
+      description: 'Nhận 5 ảnh các góc (chính diện, trái, phải, ngửa, cúi), trích xuất 5 vector ArcFace 512D và tính toán vector Centroid L2 chuẩn hóa.',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              properties: {
+                userId: { type: 'string' },
+                image_front: { type: 'string', format: 'binary' },
+                image_left: { type: 'string', format: 'binary' },
+                image_right: { type: 'string', format: 'binary' },
+                image_up: { type: 'string', format: 'binary' },
+                image_down: { type: 'string', format: 'binary' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Đăng ký khuôn mặt 5 góc thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/face/registration-status/{userId}': {
+    get: {
+      tags: ['3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Quyền tra cứu] Kiểm tra trạng thái đã đăng ký khuôn mặt của người dùng',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: {
+          description: 'Trạng thái khuôn mặt của người dùng',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/face/faces/{userId}': {
+    delete: {
+      tags: ['3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Admin/Trưởng khoa] Xóa toàn bộ dữ liệu mẫu khuôn mặt và xóa khỏi RAM FAISS',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: {
+          description: 'Xóa dữ liệu khuôn mặt thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/face/health': {
+    get: {
+      tags: ['3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔓 Public/Kiểm tra] Kiểm tra tình trạng kết nối tới Python FastAPI InsightFace Microservice',
+      responses: {
+        200: {
+          description: 'Face Service đang hoạt động tốt',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.13 SYSTEM CONFIGS
+  // -------------------------------------------------------------
+  '/api/system/configs': {
+    get: {
+      tags: ['3.13 - Cấu Hình Hệ Thống Tập Trung (System Configs)'],
+      summary: '[🔒 Admin] Lấy toàn bộ tham số cấu hình hệ thống (In-memory Cache)',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: {
+          description: 'Lấy danh sách cấu hình hệ thống thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+    put: {
+      tags: ['3.13 - Cấu Hình Hệ Thống Tập Trung (System Configs)'],
+      summary: '[🔒 Admin] Cập nhật tham số cấu hình (tự động ghi Audit Log & làm mới RAM Cache)',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                key: { type: 'string', example: 'CAMPUS_GPS_RADIUS_METERS' },
+                value: { example: 100 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Cập nhật cấu hình thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+};
+
+const swaggerTags = [
+  { name: '3.8 - Hạ Tầng & Kiểm Tra Hệ Thống', description: 'Kiểm tra trạng thái máy chủ và kết nối CSDL MongoDB' },
+  { name: '3.1 - Xác Thực & Phiên Làm Việc (Auth)', description: 'Đăng nhập, cấp mới Token JWT và phân quyền' },
+  { name: '3.1 - Quản Lý Người Dùng (Users)', description: 'Quản lý thông tin giảng viên, nhân viên, phân quyền' },
+  { name: '3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)', description: 'Quản lý cây đơn vị Trường > Khoa > Bộ môn/Phòng ban' },
+  { name: '3.3 - Ca Làm Việc & Tiết Học (Shifts)', description: 'Định nghĩa khung giờ tiết học, ca hành chính và ngưỡng đi muộn/về sớm' },
+  { name: '3.3 - Lịch Phân Công Giảng Dạy (Schedules)', description: 'Thời khóa biểu, lịch giảng dạy và công tác' },
+  { name: '3.4 - Quản Lý Chấm Công (Attendance)', description: 'Check-in, Check-out tự động khớp ca, lịch sử điểm danh' },
+  { name: '3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)', description: 'Quy trình tạo đơn, tính hạn mức nghỉ phép (balance) và phê duyệt' },
+  { name: '3.6 - Nhật Ký Kiểm Toán An Toàn (Audit Logs)', description: 'Lưu vết lịch sử thao tác quan trọng để giám sát' },
+  { name: '3.7 - Báo Cáo & Thống Kê (Reports)', description: 'Thống kê tổng hợp số giờ dạy, đi muộn, nghỉ phép' },
+  { name: '3.9 - Trợ Lý Thông Minh AI (AI Assistant)', description: 'Chatbot AI hỗ trợ thanh tra đào tạo & truy vấn dữ liệu chấm công' },
+  { name: '3.10 - Hệ Thống Thông Báo (Notifications)', description: 'Quản lý thông báo người dùng, cảnh báo chấm công và kết quả phê duyệt đơn' },
+  { name: '3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)', description: 'Bảng lương Snapshot năm 2026, khóa lương và thuế TNCN lũy tiến 5 bậc' },
+  { name: '3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)', description: 'Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D, kiểm tra tư thế và FAISS Index' },
+  { name: '3.13 - Cấu Hình Hệ Thống Tập Trung (System Configs)', description: 'Quản lý các tham số vận hành: ngưỡng AI, cooldown, bán kính GPS, hạn mức nghỉ phép' },
+];
+
+module.exports = {
+  swaggerPaths,
+  swaggerComponents,
+  swaggerTags,
+};
