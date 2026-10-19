@@ -174,11 +174,11 @@ const getCachedUsersWithFace = async () => {
     return _cachedUsersWithFace;
   }
 
-  const templates = await FaceTemplate.find().select('+descriptors +vector_dac_trung');
+  const templates = await FaceTemplate.find().select('+descriptors');
   const validTemplates = (templates || [])
     .map((template) => {
-      const uId = template.userId || template.ma_nguoi_dung;
-      const descs = template.descriptors || template.vector_dac_trung || [];
+      const uId = template.userId;
+      const descs = template.descriptors || [];
       return {
         userId: uId ? uId.toString() : null,
         descriptors: Array.isArray(descs) ? descs : [],
@@ -199,7 +199,7 @@ const getCachedUsersWithFace = async () => {
       const userObj = user.toObject ? user.toObject({ virtuals: true }) : { ...user };
       return {
         ...userObj,
-        fullName: userObj.fullName || userObj.ho_ten || '',
+        fullName: userObj.fullName || '',
         faceDescriptors: descriptorsByUserId.get(user._id.toString()) || [],
       };
     })

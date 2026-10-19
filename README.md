@@ -204,12 +204,12 @@ DATN_QLNS_ChamCong_FaceRec/
 │   │   ├── user.model.js                # Collection 1: nguoi_dung (10 vai trò đại học, nhiệm kỳ, Face ID flag)
 │   │   ├── faceTemplate.model.js        # Collection 2: mau_khuon_mat (512D ArcFace, 5 góc, L2 Centroid)
 │   │   ├── department.model.js          # Collection 3: don_vi / phong_ban (Cây cơ cấu Khoa/Viện/Bộ môn)
-│   │   ├── shiftConfig.model.js         # Collection 4: ca_lam_viec / cau_hinh_ca (Khung giờ, buffer, hệ số)
+│   │   ├── shiftConfig.model.js         # Collection 4: ca_lam_viec (Khung giờ, buffer, hệ số)
 │   │   ├── subject.model.js             # Collection 5: mon_hoc (Mã môn, tín chỉ, lý thuyết/thực hành)
 │   │   ├── schedule.model.js            # Collection 6: lich_giang_day / lich_trinh (TKB học kỳ, dạy bù, ngoại lệ)
 │   │   ├── holiday.model.js             # Collection 7: ngay_nghi_le (Danh mục ngày nghỉ lễ toàn trường)
 │   │   ├── punchLog.model.js            # Collection 8: luot_quet_cham_cong / luot_quet (Raw punches, GeoJSON GPS)
-│   │   ├── attendanceLog.model.js       # Collection 9: cong_tong_hop / nhat_ky_cham_cong (Bản ghi công tổng hợp)
+│   │   ├── attendanceLog.model.js       # Collection 9: nhat_ky_cham_cong (Bản ghi nhật ký chấm công)
 │   │   ├── leaveRequest.model.js        # Collection 10: don_tu / don_nghi_phep (Duyệt đa cấp, khóa lạc quan 409)
 │   │   ├── payroll.model.js             # Collection 11: phieu_luong (Bảng lương 2026, thuế 5 bậc, isLocked)
 │   │   ├── refreshToken.model.js        # Collection 12: ma_lam_moi (Token Rotation, Grace Period 15s, TTL 30 ngày)
@@ -281,12 +281,12 @@ Hệ thống áp dụng kiến trúc dữ liệu **Chuẩn hóa kép (Dual-Stand
 | 1 | `User` | `nguoi_dung` | `server/models/user.model.js` | Hồ sơ cán bộ, phân quyền RBAC 10 vai trò đại học, nhiệm kỳ, Face ID flag |
 | 2 | `FaceTemplate` | `mau_khuon_mat` / `du_lieu_khuon_mat` | `server/models/faceTemplate.model.js` | Vector sinh trắc học 512D (ArcFace), 5 góc mặt và vector trọng tâm L2 norm |
 | 3 | `Department` | `don_vi` / `phong_ban` | `server/models/department.model.js` | Đơn vị tổ chức (Khoa, Viện, Bộ môn), quan hệ cây đệ quy và trưởng/phó đơn vị |
-| 4 | `ShiftConfig` | `ca_lam_viec` / `cau_hinh_ca` | `server/models/shiftConfig.model.js` | Cấu hình ca làm việc/ca giảng dạy, khung giờ quẹt hợp lệ, buffer đi muộn/về sớm |
+| 4 | `ShiftConfig` | `ca_lam_viec` | `server/models/shiftConfig.model.js` | Cấu hình ca làm việc/ca giảng dạy, khung giờ quẹt hợp lệ, buffer đi muộn/về sớm |
 | 5 | `Subject` | `mon_hoc` | `server/models/subject.model.js` | Danh mục môn học, học phần giảng dạy, số tín chỉ đào tạo, số tiết lý thuyết/thực hành |
 | 6 | `Schedule` | `lich_giang_day` / `lich_trinh` | `server/models/schedule.model.js` | Thời khóa biểu học kỳ phân công giảng viên, ca dạy, phòng học, dạy bù và ngoại lệ |
 | 7 | `Holiday` | `ngay_nghi_le` | `server/models/holiday.model.js` | Danh mục ngày nghỉ lễ toàn trường theo năm dương lịch, loại trừ ngày công chuẩn |
 | 8 | `PunchLog` | `luot_quet_cham_cong` / `luot_quet` | `server/models/punchLog.model.js` | Bằng chứng thô từng lượt quét thẻ/mặt (raw punches), AI score, cờ gian lận, GeoJSON GPS |
-| 9 | `AttendanceLog`| `cong_tong_hop` / `nhat_ky_cham_cong` | `server/models/attendanceLog.model.js`| Bản ghi tổng hợp công ngày/ca (Check-in, Check-out, trạng thái, phút muộn, da_chot) |
+| 9 | `AttendanceLog`| `nhat_ky_cham_cong` | `server/models/attendanceLog.model.js`| Bản ghi nhật ký chấm công ngày/ca (Check-in, Check-out, trạng thái, phút muộn, da_chot) |
 | 10 | `LeaveRequest` | `don_tu` / `don_nghi_phep` | `server/models/leaveRequest.model.js` | Đơn xin nghỉ phép, dạy bù, luồng duyệt 1-2 cấp Khoa -> BGH, khóa lạc quan 409 |
 | 11 | `Payroll` | `phieu_luong` | `server/models/payroll.model.js` | Phiếu lương snapshot năm 2026, thuế TNCN lũy tiến 5 bậc, khóa sổ lương isLocked |
 | 12 | `RefreshToken` | `ma_lam_moi` | `server/models/refreshToken.model.js`| Token làm mới phiên (Token Rotation Grace Period 15s, TTL Index tự hủy 30 ngày) |
@@ -299,34 +299,34 @@ Hệ thống áp dụng kiến trúc dữ liệu **Chuẩn hóa kép (Dual-Stand
 
 ```mermaid
 erDiagram
-    PHONG_BAN ||--o{ NGUOI_DUNG : "thuoc_phong_ban (phong_ban_id)"
+    PHONG_BAN ||--o{ NGUOI_DUNG : "thuoc_phong_ban (don_vi_chinh_id)"
     PHONG_BAN ||--o{ MON_HOC : "quan_ly_mon (phong_ban_id)"
     PHONG_BAN ||--o{ PHONG_BAN : "don_vi_cha (don_vi_cha_id)"
     
-    NGUOI_DUNG ||--o| MAU_KHUON_MAT : "so_huu_face_template (ma_nguoi_dung)"
+    NGUOI_DUNG ||--o| MAU_KHUON_MAT : "so_huu_face_template (nguoi_dung_id)"
     NGUOI_DUNG ||--o{ LICH_TRINH : "duoc_phan_cong (nguoi_dung_id)"
     NGUOI_DUNG ||--o{ NHAT_KY_CHAM_CONG : "co_ban_ghi_cong (nguoi_dung_id)"
     NGUOI_DUNG ||--o{ LUOT_QUET : "thuc_hien_quet (nguoi_dung_id)"
     NGUOI_DUNG ||--o{ DON_NGHI_PHEP : "gui_don (nguoi_dung_id)"
     NGUOI_DUNG ||--o{ MA_LAM_MOI : "so_huu_refresh_token (nguoi_dung_id)"
-    NGUOI_DUNG ||--o{ NHAT_KY_KIEM_TOAN : "nguoi_thuc_hien (nguoi_thuc_hien)"
+    NGUOI_DUNG ||--o{ NHAT_KY_KIEM_TOAN : "nguoi_thuc_hien (nguoi_thuc_hien_id)"
 
-    CAU_HINH_CA ||--o{ LICH_TRINH : "ap_dung_ca (ca_id)"
-    CAU_HINH_CA ||--o{ NHAT_KY_CHAM_CONG : "tinh_theo_ca (ca_id)"
+    CA_LAM_VIEC ||--o{ LICH_TRINH : "ap_dung_ca (ca_id)"
+    CA_LAM_VIEC ||--o{ NHAT_KY_CHAM_CONG : "tinh_theo_ca (ca_id)"
 
     MON_HOC ||--o{ LICH_TRINH : "thuoc_mon (mon_hoc_id)"
 
     LICH_TRINH ||--o{ NHAT_KY_CHAM_CONG : "cham_cong_cho_lich (lich_trinh_id)"
 
     NHAT_KY_CHAM_CONG ||--o{ LUOT_QUET : "gom_cac_luot_quet (cham_cong_id)"
-    DON_NGHI_PHEP ||--o{ NHAT_KY_CHAM_CONG : "mien_diem_danh (don_nghi_phep_id)"
+    DON_NGHI_PHEP ||--o{ NHAT_KY_CHAM_CONG : "mien_diem_danh (don_tu_id)"
 
-    CAU_HINH_CA {
+    CA_LAM_VIEC {
         ObjectId _id PK
         string ten_ca "Tên ca học / làm việc"
         string gio_bat_dau "Thời gian bắt đầu (HH:mm)"
         string gio_ket_thuc "Thời gian kết thúc (HH:mm)"
-        int phut_cho_phep_di_muon "Ngưỡng cho phép đi muộn (phút)"
+        int so_phut_cho_phep_di_muon "Ngưỡng cho phép đi muộn (phút)"
     }
 
     NGUOI_DUNG {
@@ -334,16 +334,16 @@ erDiagram
         string ma_can_bo UK "Mã cán bộ (NV001)"
         string ho_ten "Họ tên hiển thị"
         string email UK "Email đăng nhập"
-        string mat_khau "Mật khẩu băm bcrypt (select: false)"
-        string vai_tro "admin, truongkhoa, giangvien, nhanvien"
-        ObjectId ma_phong_ban FK "Tham chiếu phong_ban"
-        int so_ngay_phep_nam "Hạn mức ngày phép năm (mặc định: 12)"
+        string mat_khau_ma_hoa "Mật khẩu băm bcrypt (select: false)"
+        string vai_tro_chinh "admin, truongkhoa, giangvien, nhanvien"
+        ObjectId don_vi_chinh_id FK "Tham chiếu don_vi"
+        int han_muc_phep_nam "Hạn mức ngày phép năm (mặc định: 12)"
         string trang_thai_lam_viec "ACTIVE, INACTIVE, PROBATION, ON_LEAVE"
     }
 
     MAU_KHUON_MAT {
         ObjectId _id PK
-        ObjectId ma_nguoi_dung FK UK "Tham chiếu nguoi_dung"
+        ObjectId nguoi_dung_id FK UK "Tham chiếu nguoi_dung"
         Array vector_dac_trung "Mảng 2 chiều 512 số thực (select: false)"
         int so_chieu_vector "Cố định 512 chiều"
         string mo_hinh_ai "insightface-buffalo_l"
@@ -354,12 +354,12 @@ erDiagram
     NHAT_KY_CHAM_CONG {
         ObjectId _id PK
         ObjectId nguoi_dung_id FK "Tham chiếu nguoi_dung"
-        ObjectId ca_id FK "Tham chiếu cau_hinh_ca"
+        ObjectId ca_id FK "Tham chiếu ca_lam_viec"
         ObjectId lich_trinh_id FK "Tham chiếu lich_trinh"
         string ngay_cong "YYYY-MM-DD (Múi giờ UTC+7)"
         date thoi_gian_vao "Check-in time"
         date thoi_gian_ra "Check-out time"
-        string trang_thai "PRESENT, LATE, EARLY_LEAVE, ABSENT, EXCUSED_ABSENCE"
+        string trang_thai "ON_TIME, LATE, EARLY_LEAVE, ABSENT, EXCUSED_ABSENCE"
         int di_muon_phut "Số phút vào trễ"
         int ve_som_phut "Số phút về sớm"
         string anh_minh_chung "Tên file attendance-UUID.jpg"
@@ -371,7 +371,7 @@ erDiagram
         ObjectId nguoi_dung_id FK "Tham chiếu nguoi_dung"
         string loai_quet "CHECK_IN, CHECK_OUT"
         date thoi_gian_quet "Thời điểm quét thực tế"
-        string phuong_thuc "face, qr, gps, manual"
+        string phuong_thuc "FACE_AI, QR_CODE, GPS_MOBILE, THU_CONG_ADMIN, SYSTEM_AUTO"
         float do_tin_cay_ai "Cosine similarity score (0.0 - 1.0)"
         float diem_mat_that "Liveness score (0.0 - 1.0)"
         string goc_mat_nhan_dien "Góc mặt khớp lúc quét"

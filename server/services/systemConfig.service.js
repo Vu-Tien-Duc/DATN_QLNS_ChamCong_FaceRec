@@ -23,16 +23,16 @@ const loadConfigsIntoCache = async (force = false) => {
   const configs = await SystemConfig.find().lean();
   cache.clear();
   for (const cfg of configs) {
-    const key = (cfg.khoa_cau_hinh || '').toUpperCase();
+    const key = (cfg.key || '').toUpperCase();
     if (key) {
       cache.set(key, {
         id: cfg._id,
-        key: cfg.khoa_cau_hinh,
-        value: cfg.gia_tri,
-        group: cfg.nhom || 'SYSTEM',
-        description: cfg.mo_ta || null,
-        updatedAt: cfg.cap_nhat_luc || cfg.updatedAt,
-        updatedBy: cfg.nguoi_cap_nhat_id,
+        key: cfg.key,
+        value: cfg.value,
+        group: cfg.group || 'SYSTEM',
+        description: cfg.description || null,
+        updatedAt: cfg.updatedAt,
+        updatedBy: cfg.updatedBy,
       });
     }
   }
@@ -69,8 +69,8 @@ const getConfig = async (key, defaultValue = null) => {
 const getAllConfigs = async () => {
   await loadConfigsIntoCache(true);
   const configs = await SystemConfig.find()
-    .sort({ nhom: 1, khoa_cau_hinh: 1 })
-    .populate('nguoi_cap_nhat_id', 'fullName email role');
+    .sort({ group: 1, key: 1 })
+    .populate('updatedBy', 'fullName email role');
 
   return configs;
 };
@@ -144,47 +144,47 @@ const updateConfig = async (key, rawValue, currentUser = null, req = null) => {
   }
 
   const upperKey = key.trim().toUpperCase();
-  const configDoc = await SystemConfig.findOne({ khoa_cau_hinh: upperKey });
+  const configDoc = await SystemConfig.findOne({ key: upperKey });
   if (!configDoc) {
     throw new ServiceError(`Không tìm thấy khóa cấu hình "${upperKey}".`, 404, 'CONFIG_NOT_FOUND');
   }
 
   const validatedValue = validateConfigValue(upperKey, rawValue);
-  const oldValue = configDoc.gia_tri;
+  const oldValue = configDoc.value;
 
-  configDoc.gia_tri = validatedValue;
-  configDoc.nguoi_cap_nhat_id = currentUser?._id || currentUser?.id || null;
+  configDoc.value = validatedValue;
+  configDoc.updatedBy = currentUser?._id || currentUser?.id || null;
   await configDoc.save();
 
   // Cập nhật bộ đệm RAM
   cache.set(upperKey, {
     id: configDoc._id,
-    key: configDoc.khoa_cau_hinh,
+    key: configDoc.key,
     value: validatedValue,
-    group: configDoc.nhom,
-    description: configDoc.mo_ta,
-    updatedAt: configDoc.cap_nhat_luc,
-    updatedBy: configDoc.nguoi_cap_nhat_id,
+    group: configDoc.group,
+    description: configDoc.description,
+    updatedAt: configDoc.updatedAt,
+    updatedBy: configDoc.updatedBy,
   });
 
   // Ghi nhật ký kiểm toán (Audit Log)
   try {
     await AuditLog.create({
-      nguoi_thuc_hien: currentUser?._id || currentUser?.id || null,
-      loai_chu_the: 'USER',
-      hanh_dong: 'UPDATE_SYSTEM_CONFIG',
-      ma_doi_tuong: upperKey,
-      loai_doi_tuong: 'SystemConfig',
-      dia_chi_ip: req?.ip || req?.connection?.remoteAddress || '127.0.0.1',
-      user_agent: req?.headers?.['user-agent'] || 'SystemConfigAdmin',
-      ket_qua: 'SUCCESS',
-      thoi_diem: new Date(),
-      chi_tiet: {
+      actor: currentUser?._id || currentUser?.id || null,
+      actorType: 'USER',
+      action: 'UPDATE_SYSTEM_CONFIG',
+      targetId: upperKey,
+      targetType: 'SystemConfig',
+      ipAddress: req?.ip || req?.connection?.remoteAddress || '127.0.0.1',
+      userAgent: req?.headers?.['user-agent'] || 'SystemConfigAdmin',
+      status: 'SUCCESS',
+      timestamp: new Date(),
+      details: {
         key: upperKey,
         oldValue,
         newValue: validatedValue,
-        group: configDoc.nhom,
-        description: configDoc.mo_ta,
+        group: configDoc.group,
+        description: configDoc.description,
       },
     });
   } catch (auditErr) {
@@ -204,8 +204,8 @@ const bulkUpdateConfigs = async (configs = [], currentUser = null, req = null) =
 
   const results = [];
   for (const item of configs) {
-    const key = item.key || item.khoa_cau_hinh;
-    const value = item.value !== undefined ? item.value : item.gia_tri;
+    const key = item.key;
+    const value = item.value;
     if (key) {
       const updated = await updateConfig(key, value, currentUser, req);
       results.push(updated);

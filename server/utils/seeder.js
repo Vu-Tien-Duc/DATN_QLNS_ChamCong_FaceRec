@@ -34,43 +34,12 @@ const seedData = async () => {
     await connectDB();
 
     console.log('\n--- 1. BẮT ĐẦU XÓA COLLECTIONS VÀ INDEX CŨ ---');
-    const collections = [
-      'nguoi_dung',
-      'phong_ban',
-      'cau_hinh_ca',
-      'mon_hoc',
-      'lich_trinh',
-      'mau_khuon_mat',
-      'nhat_ky_cham_cong',
-      'luot_quet',
-      'don_nghi_phep',
-      'nhat_ky_kiem_toan',
-      'ma_lam_moi',
-      'danh_sach_den_token',
-      'ngay_nghi_le',
-      'cau_hinh_he_thong',
-      'phieu_luong',
-      'payrolls',
-      'users',
-      'departments',
-      'shift_configs',
-      'subjects',
-      'schedules',
-      'face_templates',
-      'attendance_logs',
-      'punch_logs',
-      'leave_requests',
-      'audit_logs',
-      'refresh_tokens',
-      'holidays',
-      'system_configs',
-    ];
-
-    for (const col of collections) {
+    const existingCols = await mongoose.connection.db.listCollections().toArray();
+    for (const col of existingCols) {
       try {
-        await mongoose.connection.collection(col).drop();
+        await mongoose.connection.collection(col.name).drop();
       } catch (err) {
-        // Bỏ qua nếu collection chưa tồn tại
+        // Bỏ qua nếu lỗi
       }
     }
 
@@ -251,7 +220,7 @@ const seedData = async () => {
       annualLeaveQuota: 18,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'BGH', pham_vi: 'TOAN_TRUONG' }],
+      roles: [{ role: 'BGH', scope: 'TOAN_TRUONG' }],
     });
     boardOfPresidents.managerId = presidentUser._id;
     await boardOfPresidents.save();
@@ -266,7 +235,7 @@ const seedData = async () => {
       annualLeaveQuota: 15,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'ADMIN', pham_vi: 'TOAN_TRUONG' }],
+      roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }],
     });
 
     // Admin 2: Trưởng phòng Hành chính - Tổng hợp (HR quản lý nhân sự & báo cáo)
@@ -279,7 +248,7 @@ const seedData = async () => {
       annualLeaveQuota: 15,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'ADMIN', pham_vi: 'TOAN_TRUONG' }],
+      roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }],
     });
     hrDept.managerId = hrManager._id;
     await hrDept.save();
@@ -297,7 +266,7 @@ const seedData = async () => {
       annualLeaveQuota: 14,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'TRUONG_KHOA', pham_vi: 'KHOA', ma_don_vi: itFaculty._id }],
+      roles: [{ role: 'TRUONG_KHOA', scope: 'KHOA', departmentId: itFaculty._id }],
     });
     itFaculty.managerId = itDean._id;
     await itFaculty.save();
@@ -312,13 +281,13 @@ const seedData = async () => {
       annualLeaveQuota: 14,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [
+      roles: [
         {
-          ma_vai_tro: 'PHO_TRUONG_KHOA',
-          pham_vi: 'KHOA',
-          ma_don_vi: itFaculty._id,
-          duoc_uy_quyen: true,
-          uy_quyen_den: new Date('2028-12-31'),
+          role: 'PHO_TRUONG_KHOA',
+          scope: 'KHOA',
+          departmentId: itFaculty._id,
+          isDelegated: true,
+          delegationExpiresAt: new Date('2028-12-31'),
         },
       ],
     });
@@ -333,7 +302,7 @@ const seedData = async () => {
       annualLeaveQuota: 14,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'TRUONG_KHOA', pham_vi: 'KHOA', ma_don_vi: econFaculty._id }],
+      roles: [{ role: 'TRUONG_KHOA', scope: 'KHOA', departmentId: econFaculty._id }],
     });
     econFaculty.managerId = econDean._id;
     await econFaculty.save();
@@ -350,7 +319,7 @@ const seedData = async () => {
       annualLeaveQuota: 13,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'TRUONG_BO_MON', pham_vi: 'BO_MON', ma_don_vi: seDept._id }],
+      roles: [{ role: 'TRUONG_BO_MON', scope: 'BO_MON', departmentId: seDept._id }],
     });
     seDept.managerId = headSeDept._id;
     await seDept.save();
@@ -368,7 +337,7 @@ const seedData = async () => {
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'GIANG_VIEN', pham_vi: 'KHOA', ma_don_vi: itFaculty._id }],
+      roles: [{ role: 'GIANG_VIEN', scope: 'KHOA', departmentId: itFaculty._id }],
     });
 
     // GV 2: Giảng viên Bộ môn Hệ thống thông tin (Khoa CNTT)
@@ -381,7 +350,7 @@ const seedData = async () => {
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'GIANG_VIEN', pham_vi: 'KHOA', ma_don_vi: itFaculty._id }],
+      roles: [{ role: 'GIANG_VIEN', scope: 'KHOA', departmentId: itFaculty._id }],
     });
 
     // GV 3: Giảng viên Bộ môn Kế toán (Khoa Kinh tế)
@@ -394,7 +363,7 @@ const seedData = async () => {
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'GIANG_VIEN', pham_vi: 'KHOA', ma_don_vi: econFaculty._id }],
+      roles: [{ role: 'GIANG_VIEN', scope: 'KHOA', departmentId: econFaculty._id }],
     });
 
     // GV 4: Giảng viên Bộ môn Thiết kế đồ họa (Khoa MTUD)
@@ -407,7 +376,7 @@ const seedData = async () => {
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'GIANG_VIEN', pham_vi: 'KHOA', ma_don_vi: designFaculty._id }],
+      roles: [{ role: 'GIANG_VIEN', scope: 'KHOA', departmentId: designFaculty._id }],
     });
 
     // =========================================================================
@@ -423,7 +392,7 @@ const seedData = async () => {
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'DAO_TAO', pham_vi: 'TOAN_TRUONG' }],
+      roles: [{ role: 'DAO_TAO', scope: 'TOAN_TRUONG' }],
     });
 
     // Chuyên viên Phòng Khảo thí
@@ -436,7 +405,7 @@ const seedData = async () => {
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      danh_sach_vai_tro: [{ ma_vai_tro: 'KIEM_TOAN', pham_vi: 'TOAN_TRUONG' }],
+      roles: [{ role: 'KIEM_TOAN', scope: 'TOAN_TRUONG' }],
     });
 
     // =========================================================================
@@ -451,24 +420,18 @@ const seedData = async () => {
       const avgVec = generateNormalized512Vector(uIdx * 10 + 99);
 
       await FaceTemplate.create({
-        ma_nguoi_dung: u._id,
         userId: u._id,
-        vector_dac_trung: descriptors,
         faceDescriptors: descriptors,
-        goc_chup: poses,
         poses: poses,
-        vector_trung_binh: avgVec,
         averageEmbedding: avgVec,
-        so_luong_anh: 5,
-        mo_hinh_ai: 'buffalo_s',
-        dieu_khoan_dong_y: true,
-        phi_chuan_hoa_l2: true,
+        imageCount: 5,
+        model: 'buffalo_s',
+        consentGiven: true,
+        isL2Normalized: true,
       });
 
       u.isFaceRegistered = true;
-      u.da_dang_ky_khuon_mat = true;
       u.faceRegisteredAt = new Date();
-      u.ngay_dang_ky_khuon_mat = new Date();
       await u.save();
     }
 
@@ -728,27 +691,26 @@ const seedData = async () => {
       isManualOverride: false,
     });
 
-    const PunchLog = require('../models/punchLog.model');
     await PunchLog.create([
       {
-        cham_cong_id: seededLog._id,
-        nguoi_dung_id: lecturerBich._id,
-        loai_quet: 'CHECK_IN',
-        thoi_gian_quet: yesterday,
-        phuong_thuc: 'qr',
-        toa_do: { vi_do: 21.028511, kinh_do: 105.854167 },
-        ma_thiet_bi: 'MAY_CHAM_CONG_A2',
-        co_gian_lan: false,
+        attendanceLogId: seededLog._id,
+        userId: lecturerBich._id,
+        punchType: 'CHECK_IN',
+        punchTime: yesterday,
+        method: 'QR_CODE',
+        coordinates: { latitude: 21.028511, longitude: 105.854167 },
+        deviceId: 'MAY_CHAM_CONG_A2',
+        isFraud: false,
       },
       {
-        cham_cong_id: seededLog._id,
-        nguoi_dung_id: lecturerBich._id,
-        loai_quet: 'CHECK_OUT',
-        thoi_gian_quet: yesterdayOut,
-        phuong_thuc: 'qr',
-        toa_do: { vi_do: 21.028511, kinh_do: 105.854167 },
-        ma_thiet_bi: 'MAY_CHAM_CONG_A2',
-        co_gian_lan: false,
+        attendanceLogId: seededLog._id,
+        userId: lecturerBich._id,
+        punchType: 'CHECK_OUT',
+        punchTime: yesterdayOut,
+        method: 'QR_CODE',
+        coordinates: { latitude: 21.028511, longitude: 105.854167 },
+        deviceId: 'MAY_CHAM_CONG_A2',
+        isFraud: false,
       },
     ]);
     console.log('✔ Đã tạo bản ghi chấm công mẫu hôm qua (ĐÚNG GIỜ) và 2 lượt quét luot_quet.');
@@ -770,58 +732,58 @@ const seedData = async () => {
     console.log('\n--- 9. TẠO DANH MỤC NGÀY NGHỈ LỄ NĂM 2026 (HOLIDAYS) ---');
     await Holiday.create([
       {
-        ten_ngay_le: 'Tết Dương Lịch 2026',
-        ngay_bat_dau: '2026-01-01',
-        ngay_ket_thuc: '2026-01-01',
-        nam: 2026,
-        huong_luong: true,
-        mo_ta: 'Nghỉ Tết Dương Lịch theo quy định Nhà nước',
-        nguoi_tao_id: adminUser._id,
+        name: 'Tết Dương Lịch 2026',
+        startDate: '2026-01-01',
+        endDate: '2026-01-01',
+        year: 2026,
+        isPaid: true,
+        description: 'Nghỉ Tết Dương Lịch theo quy định Nhà nước',
+        createdBy: adminUser._id,
       },
       {
-        ten_ngay_le: 'Tết Nguyên Đán Bính Ngọ 2026',
-        ngay_bat_dau: '2026-02-15',
-        ngay_ket_thuc: '2026-02-23',
-        nam: 2026,
-        huong_luong: true,
-        mo_ta: 'Kỳ nghỉ Tết Âm lịch Bính Ngọ (9 ngày)',
-        nguoi_tao_id: adminUser._id,
+        name: 'Tết Nguyên Đán Bính Ngọ 2026',
+        startDate: '2026-02-15',
+        endDate: '2026-02-23',
+        year: 2026,
+        isPaid: true,
+        description: 'Kỳ nghỉ Tết Âm lịch Bính Ngọ (9 ngày)',
+        createdBy: adminUser._id,
       },
       {
-        ten_ngay_le: 'Giỗ Tổ Hùng Vương 2026',
-        ngay_bat_dau: '2026-04-26',
-        ngay_ket_thuc: '2026-04-26',
-        nam: 2026,
-        huong_luong: true,
-        mo_ta: 'Nghỉ Lễ Giỗ Tổ Hùng Vương (mùng 10 tháng 3 Âm lịch)',
-        nguoi_tao_id: adminUser._id,
+        name: 'Giỗ Tổ Hùng Vương 2026',
+        startDate: '2026-04-26',
+        endDate: '2026-04-26',
+        year: 2026,
+        isPaid: true,
+        description: 'Nghỉ Lễ Giỗ Tổ Hùng Vương (mùng 10 tháng 3 Âm lịch)',
+        createdBy: adminUser._id,
       },
       {
-        ten_ngay_le: 'Ngày Giải Phóng Miền Nam & Quốc Tế Lao Động',
-        ngay_bat_dau: '2026-04-30',
-        ngay_ket_thuc: '2026-05-01',
-        nam: 2026,
-        huong_luong: true,
-        mo_ta: 'Nghỉ Lễ 30/4 và 1/5 theo luật lao động',
-        nguoi_tao_id: adminUser._id,
+        name: 'Ngày Giải Phóng Miền Nam & Quốc Tế Lao Động',
+        startDate: '2026-04-30',
+        endDate: '2026-05-01',
+        year: 2026,
+        isPaid: true,
+        description: 'Nghỉ Lễ 30/4 và 1/5 theo luật lao động',
+        createdBy: adminUser._id,
       },
       {
-        ten_ngay_le: 'Lễ Quốc Khánh 2026',
-        ngay_bat_dau: '2026-09-01',
-        ngay_ket_thuc: '2026-09-02',
-        nam: 2026,
-        huong_luong: true,
-        mo_ta: 'Kỷ niệm ngày Quốc khánh 2/9',
-        nguoi_tao_id: adminUser._id,
+        name: 'Lễ Quốc Khánh 2026',
+        startDate: '2026-09-01',
+        endDate: '2026-09-02',
+        year: 2026,
+        isPaid: true,
+        description: 'Kỷ niệm ngày Quốc khánh 2/9',
+        createdBy: adminUser._id,
       },
       {
-        ten_ngay_le: 'Ngày Nhà Giáo Việt Nam',
-        ngay_bat_dau: '2026-11-20',
-        ngay_ket_thuc: '2026-11-20',
-        nam: 2026,
-        huong_luong: true,
-        mo_ta: 'Nghỉ lễ truyền thống ngành giáo dục',
-        nguoi_tao_id: adminUser._id,
+        name: 'Ngày Nhà Giáo Việt Nam',
+        startDate: '2026-11-20',
+        endDate: '2026-11-20',
+        year: 2026,
+        isPaid: true,
+        description: 'Nghỉ lễ truyền thống ngành giáo dục',
+        createdBy: adminUser._id,
       },
     ]);
     console.log('✔ Đã khởi tạo 6 kỳ nghỉ lễ chuẩn năm 2026 (ngay_nghi_le).');
@@ -829,198 +791,198 @@ const seedData = async () => {
     console.log('\n--- 10. TẠO CẤU HÌNH HỆ THỐNG TẬP TRUNG (SYSTEM_CONFIG - MỤC 3 ĐẶC TẢ) ---');
     await SystemConfig.create([
       {
-        khoa_cau_hinh: 'HOC_KY',
-        gia_tri: { nam_hoc: '2026-2027', hoc_ky: 1, ngay_bat_dau: '2026-09-07', so_tuan: 18 },
-        nhom: 'DAO_TAO',
-        mo_ta: 'Thông tin học kỳ hiện tại, ngày bắt đầu và tổng số tuần học',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'HOC_KY',
+        value: { academicYear: '2026-2027', semester: 1, startDate: '2026-09-07', totalWeeks: 18 },
+        group: 'DAO_TAO',
+        description: 'Thông tin học kỳ hiện tại, ngày bắt đầu và tổng số tuần học',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'GEOFENCE_TRUONG',
-        gia_tri: { ten_co_so: 'Trụ sở chính', toa_do: [105.7826, 21.0378], ban_kinh_met: 150 },
-        nhom: 'GPS',
-        mo_ta: 'Tọa độ GPS trụ sở chính trường và bán kính geofence cho phép chấm công',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'GEOFENCE_TRUONG',
+        value: { facilityName: 'Trụ sở chính', coordinates: [105.7826, 21.0378], radiusMeters: 150 },
+        group: 'GPS',
+        description: 'Tọa độ GPS trụ sở chính trường và bán kính geofence cho phép chấm công',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'DANH_SACH_PHONG_HOC',
-        gia_tri: [
-          { ma_phong: 'A101', toa_do: [105.78261, 21.03781], ban_kinh_met: 30 },
-          { ma_phong: 'B202', toa_do: [105.7827, 21.0379], ban_kinh_met: 30 },
-          { ma_phong: 'C303', toa_do: [105.7828, 21.038], ban_kinh_met: 30 },
+        key: 'DANH_SACH_PHONG_HOC',
+        value: [
+          { roomCode: 'A101', coordinates: [105.78261, 21.03781], radiusMeters: 30 },
+          { roomCode: 'B202', coordinates: [105.7827, 21.0379], radiusMeters: 30 },
+          { roomCode: 'C303', coordinates: [105.7828, 21.038], radiusMeters: 30 },
         ],
-        nhom: 'DAO_TAO',
-        mo_ta: 'Danh mục phòng học hợp lệ kèm tọa độ GPS phòng máy',
-        nguoi_cap_nhat_id: adminUser._id,
+        group: 'DAO_TAO',
+        description: 'Danh mục phòng học hợp lệ kèm tọa độ GPS phòng máy',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'LUONG_CO_SO',
-        gia_tri: 2530000,
-        nhom: 'TIEN_LUONG',
-        mo_ta: 'Mức lương cơ sở nội bộ quy định (đồng/tháng)',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'LUONG_CO_SO',
+        value: 2530000,
+        group: 'TIEN_LUONG',
+        description: 'Mức lương cơ sở nội bộ quy định (đồng/tháng)',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'GIAM_TRU',
-        gia_tri: { ban_than: 15500000, phu_thuoc: 6200000 },
-        nhom: 'THUE',
-        mo_ta: 'Mức giảm trừ gia cảnh thuế TNCN cho bản thân và người phụ thuộc',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'GIAM_TRU',
+        value: { personalDeduction: 15500000, dependentDeduction: 6200000 },
+        group: 'THUE',
+        description: 'Mức giảm trừ gia cảnh thuế TNCN cho bản thân và người phụ thuộc',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'TY_LE_BAO_HIEM',
-        gia_tri: { bhxh: 0.08, bhyt: 0.015, bhtn: 0.01 },
-        nhom: 'TIEN_LUONG',
-        mo_ta: 'Tỷ lệ trích đóng bảo hiểm bắt buộc của người lao động',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'TY_LE_BAO_HIEM',
+        value: { socialInsurance: 0.08, healthInsurance: 0.015, unemploymentInsurance: 0.01 },
+        group: 'TIEN_LUONG',
+        description: 'Tỷ lệ trích đóng bảo hiểm bắt buộc của người lao động',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'BIEU_THUE_5_BAC',
-        gia_tri: [
-          { bac: 1, tu: 0, den: 10000000, thue_suat: 0.05 },
-          { bac: 2, tu: 10000000, den: 30000000, thue_suat: 0.1 },
-          { bac: 3, tu: 30000000, den: 60000000, thue_suat: 0.2 },
-          { bac: 4, tu: 60000000, den: 100000000, thue_suat: 0.3 },
-          { bac: 5, tu: 100000000, den: null, thue_suat: 0.35 },
+        key: 'BIEU_THUE_5_BAC',
+        value: [
+          { tier: 1, from: 0, to: 10000000, taxRate: 0.05 },
+          { tier: 2, from: 10000000, to: 30000000, taxRate: 0.1 },
+          { tier: 3, from: 30000000, to: 60000000, taxRate: 0.2 },
+          { tier: 4, from: 60000000, to: 100000000, taxRate: 0.3 },
+          { tier: 5, from: 100000000, to: null, taxRate: 0.35 },
         ],
-        nhom: 'THUE',
-        mo_ta: 'Biểu thuế lũy tiến từng phần thuế TNCN 5 bậc',
-        nguoi_cap_nhat_id: adminUser._id,
+        group: 'THUE',
+        description: 'Biểu thuế lũy tiến từng phần thuế TNCN 5 bậc',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'DON_GIA_GIO',
-        gia_tri: 120000,
-        nhom: 'TIEN_LUONG',
-        mo_ta: 'Đơn giá thanh toán một giờ chuẩn giảng dạy vượt định mức (đồng/giờ)',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'DON_GIA_GIO',
+        value: 120000,
+        group: 'TIEN_LUONG',
+        description: 'Đơn giá thanh toán một giờ chuẩn giảng dạy vượt định mức (đồng/giờ)',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'DINH_MUC_GIO_CHUAN',
-        gia_tri: 135,
-        nhom: 'TIEN_LUONG',
-        mo_ta: 'Định mức giờ chuẩn giảng dạy tiêu chuẩn mỗi học kỳ của giảng viên',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'DINH_MUC_GIO_CHUAN',
+        value: 135,
+        group: 'TIEN_LUONG',
+        description: 'Định mức giờ chuẩn giảng dạy tiêu chuẩn mỗi học kỳ của giảng viên',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'TY_LE_UU_DAI',
-        gia_tri: { GIANG_VIEN: 0.3, HANH_CHINH: 0.0 },
-        nhom: 'TIEN_LUONG',
-        mo_ta: 'Tỷ lệ phụ cấp ưu đãi đứng lớp nghề giáo',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'TY_LE_UU_DAI',
+        value: { GIANG_VIEN: 0.3, HANH_CHINH: 0.0 },
+        group: 'TIEN_LUONG',
+        description: 'Tỷ lệ phụ cấp ưu đãi đứng lớp nghề giáo',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'CHUC_VU',
-        gia_tri: [
-          { ma_chuc_vu: 'HIEU_TRUONG', he_so_phu_cap: 1.0, ty_le_giam_dinh_muc: 0.8 },
-          { ma_chuc_vu: 'TRUONG_KHOA', he_so_phu_cap: 0.7, ty_le_giam_dinh_muc: 0.3 },
-          { ma_chuc_vu: 'PHO_TRUONG_KHOA', he_so_phu_cap: 0.5, ty_le_giam_dinh_muc: 0.2 },
-          { ma_chuc_vu: 'TRUONG_BO_MON', he_so_phu_cap: 0.5, ty_le_giam_dinh_muc: 0.2 },
-          { ma_chuc_vu: 'TRUONG_PHONG', he_so_phu_cap: 0.6, ty_le_giam_dinh_muc: 0.0 },
-          { ma_chuc_vu: 'PHO_TRUONG_PHONG', he_so_phu_cap: 0.4, ty_le_giam_dinh_muc: 0.0 },
+        key: 'CHUC_VU',
+        value: [
+          { positionCode: 'HIEU_TRUONG', allowanceCoefficient: 1.0, quotaReductionRate: 0.8 },
+          { positionCode: 'TRUONG_KHOA', allowanceCoefficient: 0.7, quotaReductionRate: 0.3 },
+          { positionCode: 'PHO_TRUONG_KHOA', allowanceCoefficient: 0.5, quotaReductionRate: 0.2 },
+          { positionCode: 'TRUONG_BO_MON', allowanceCoefficient: 0.5, quotaReductionRate: 0.2 },
+          { positionCode: 'TRUONG_PHONG', allowanceCoefficient: 0.6, quotaReductionRate: 0.0 },
+          { positionCode: 'PHO_TRUONG_PHONG', allowanceCoefficient: 0.4, quotaReductionRate: 0.0 },
         ],
-        nhom: 'CHUC_VU',
-        mo_ta: 'Bảng hệ số phụ cấp chức vụ và tỷ lệ giảm trừ định mức giảng dạy',
-        nguoi_cap_nhat_id: adminUser._id,
+        group: 'CHUC_VU',
+        description: 'Bảng hệ số phụ cấp chức vụ và tỷ lệ giảm trừ định mức giảng dạy',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'HE_SO_QUY_DOI_GIO',
-        gia_tri: {
-          hinh_thuc: { LY_THUYET: 1.0, THUC_HANH: 0.7 },
-          he_dao_tao: { CHINH_QUY: 1.0, CHAT_LUONG_CAO: 1.2, VUA_LAM_VUA_HOC: 1.1, SAU_DAI_HOC: 1.5 },
-          si_so: [
-            { den: 40, he_so: 1.0 },
-            { den: 80, he_so: 1.1 },
-            { den: 999, he_so: 1.2 },
+        key: 'HE_SO_QUY_DOI_GIO',
+        value: {
+          format: { THEORY: 1.0, PRACTICE: 0.7 },
+          trainingType: { FORMAL: 1.0, HIGH_QUALITY: 1.2, IN_SERVICE: 1.1, POST_GRADUATE: 1.5 },
+          classSize: [
+            { upTo: 40, coefficient: 1.0 },
+            { upTo: 80, coefficient: 1.1 },
+            { upTo: 999, coefficient: 1.2 },
           ],
         },
-        nhom: 'DAO_TAO',
-        mo_ta: 'Hệ số quy đổi giờ chuẩn theo hình thức, hệ đào tạo và sĩ số lớp',
-        nguoi_cap_nhat_id: adminUser._id,
+        group: 'DAO_TAO',
+        description: 'Hệ số quy đổi giờ chuẩn theo hình thức, hệ đào tạo và sĩ số lớp',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'NGUONG_AI',
-        gia_tri: { mo_hinh: 'buffalo_s', so_chieu: 512, cosine_min: 0.45, liveness_min: 0.85 },
-        nhom: 'AI',
-        mo_ta: 'Ngưỡng khoảng cách Cosine và Liveness điểm danh khuôn mặt InsightFace',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'NGUONG_AI',
+        value: { model: 'buffalo_s', dimensions: 512, minCosine: 0.45, minLiveness: 0.85 },
+        group: 'AI',
+        description: 'Ngưỡng khoảng cách Cosine và Liveness điểm danh khuôn mặt InsightFace',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'MARGIN_TOP1_TOP2',
-        gia_tri: 0.05,
-        nhom: 'AI',
-        mo_ta: 'Độ lệch khoảng cách tối thiểu giữa Top 1 và Top 2 chống nhận nhầm',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'MARGIN_TOP1_TOP2',
+        value: 0.05,
+        group: 'AI',
+        description: 'Độ lệch khoảng cách tối thiểu giữa Top 1 và Top 2 chống nhận nhầm',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'COOLDOWN_QUET_GIAY',
-        gia_tri: 60,
-        nhom: 'CHAM_CONG',
-        mo_ta: 'Thời gian cooldown tối thiểu giữa 2 lần quét thành công chống lặp',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'COOLDOWN_QUET_GIAY',
+        value: 60,
+        group: 'CHAM_CONG',
+        description: 'Thời gian cooldown tối thiểu giữa 2 lần quét thành công chống lặp',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'QUY_TAC_DIEM_DANH',
-        gia_tri: { cua_so_checkin_truoc_phut: 30, ty_le_du_gio: 0.8, ty_le_nua_gio: 0.5, lam_tron_tiet: 'FLOOR' },
-        nhom: 'CHAM_CONG',
-        mo_ta: 'Quy tắc tính giờ công và điều kiện ghi nhận tiết giảng dạy',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'QUY_TAC_DIEM_DANH',
+        value: { checkInWindowBeforeMinutes: 30, fullHourRatio: 0.8, halfHourRatio: 0.5, roundPeriod: 'FLOOR' },
+        group: 'CHAM_CONG',
+        description: 'Quy tắc tính giờ công và điều kiện ghi nhận tiết giảng dạy',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'RETENTION_ANH_NAM',
-        gia_tri: 1,
-        nhom: 'HE_THONG',
-        mo_ta: 'Thời gian lưu trữ ảnh minh chứng chấm công (năm)',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'RETENTION_ANH_NAM',
+        value: 1,
+        group: 'HE_THONG',
+        description: 'Thời gian lưu trữ ảnh minh chứng chấm công (năm)',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'RETENTION_METADATA_NAM',
-        gia_tri: 5,
-        nhom: 'HE_THONG',
-        mo_ta: 'Thời gian lưu trữ metadata chấm công phục vụ thanh tra (năm)',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'RETENTION_METADATA_NAM',
+        value: 5,
+        group: 'HE_THONG',
+        description: 'Thời gian lưu trữ metadata chấm công phục vụ thanh tra (năm)',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'CRON_LAST_RUN',
-        gia_tri: '2026-10-15',
-        nhom: 'HE_THONG',
-        mo_ta: 'Ngày chạy thành công gần nhất của tiến trình cron phục vụ Catch-Up',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'CRON_LAST_RUN',
+        value: '2026-10-15',
+        group: 'HE_THONG',
+        description: 'Ngày chạy thành công gần nhất của tiến trình cron phục vụ Catch-Up',
+        updatedBy: adminUser._id,
       },
       // Các khóa cũ để đảm bảo tương thích 100%
       {
-        khoa_cau_hinh: 'FACE_MATCH_THRESHOLD',
-        gia_tri: 0.45,
-        nhom: 'AI',
-        mo_ta: 'Ngưỡng khoảng cách cosine tối đa để chấp nhận khớp khuôn mặt Face ID',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'FACE_MATCH_THRESHOLD',
+        value: 0.45,
+        group: 'AI',
+        description: 'Ngưỡng khoảng cách cosine tối đa để chấp nhận khớp khuôn mặt Face ID',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'LIVENESS_CONFIDENCE_THRESHOLD',
-        gia_tri: 0.85,
-        nhom: 'AI',
-        mo_ta: 'Ngưỡng tin cậy tối thiểu của thuật toán chống giả mạo sinh trắc học',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'LIVENESS_CONFIDENCE_THRESHOLD',
+        value: 0.85,
+        group: 'AI',
+        description: 'Ngưỡng tin cậy tối thiểu của thuật toán chống giả mạo sinh trắc học',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'CAMPUS_GPS_RADIUS_METERS',
-        gia_tri: 100,
-        nhom: 'GPS',
-        mo_ta: 'Bán kính hợp lệ mặc định xung quanh khuôn viên đại học (mét)',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'CAMPUS_GPS_RADIUS_METERS',
+        value: 100,
+        group: 'GPS',
+        description: 'Bán kính hợp lệ mặc định xung quanh khuôn viên đại học (mét)',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'CAMERA_AUTO_RESET_SECONDS',
-        gia_tri: 8,
-        nhom: 'DEVICE',
-        mo_ta: 'Thời gian chờ (giây) tự động đặt lại camera sau khi nhận diện thành công',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'CAMERA_AUTO_RESET_SECONDS',
+        value: 8,
+        group: 'DEVICE',
+        description: 'Thời gian chờ (giây) tự động đặt lại camera sau khi nhận diện thành công',
+        updatedBy: adminUser._id,
       },
       {
-        khoa_cau_hinh: 'ATTENDANCE_LATE_THRESHOLD_DEFAULT',
-        gia_tri: 15,
-        nhom: 'ATTENDANCE',
-        mo_ta: 'Số phút tối đa cho phép đi muộn trước khi tự động hủy lịch và đánh vắng',
-        nguoi_cap_nhat_id: adminUser._id,
+        key: 'ATTENDANCE_LATE_THRESHOLD_DEFAULT',
+        value: 15,
+        group: 'ATTENDANCE',
+        description: 'Số phút tối đa cho phép đi muộn trước khi tự động hủy lịch và đánh vắng',
+        updatedBy: adminUser._id,
       },
     ]);
     console.log('✔ Đã khởi tạo đầy đủ 19 tham số cấu hình tập trung chuẩn đặc tả (cau_hinh_he_thong).');
@@ -1028,31 +990,31 @@ const seedData = async () => {
     console.log('\n--- 11. TẠO PHIẾU LƯƠNG MẪU (PAYROLL - PHIEU_LUONG) ---');
     await Payroll.create([
       {
-        nguoi_dung_id: lecturerBich._id,
-        thang: 9,
-        nam: 2026,
-        nguoi_lap_id: adminUser._id,
-        nguoi_duyet_id: itDean._id,
-        he_so_luong: 3.0,
-        luong_co_so: 2530000,
-        luong_chinh: 3.0 * 2530000,
-        phu_cap_uu_dai_nghe: 3.0 * 2530000 * 0.3,
-        phu_cap_tham_nien: 500000,
-        tong_thu_nhap_gross: 11000000,
-        bao_hiem: {
-          bhxh: 607200,
-          bhyt: 113850,
-          bhtn: 75900,
-          tong_bao_hiem: 796950,
+        userId: lecturerBich._id,
+        month: 9,
+        year: 2026,
+        createdBy: adminUser._id,
+        approvedBy: itDean._id,
+        salaryCoefficient: 3.0,
+        baseSalary: 2530000,
+        primarySalary: 3.0 * 2530000,
+        vocationalAllowance: 3.0 * 2530000 * 0.3,
+        seniorityAllowance: 500000,
+        grossIncome: 11000000,
+        insurance: {
+          socialInsurance: 607200,
+          healthInsurance: 113850,
+          unemploymentInsurance: 75900,
+          totalInsurance: 796950,
         },
-        thue_tncn: {
-          giam_tru_ban_than: 15500000,
-          giam_tru_phu_thuoc: 0,
-          thu_nhap_tinh_thue: 0,
-          tien_thue: 0,
+        personalIncomeTax: {
+          personalDeduction: 15500000,
+          dependentDeduction: 0,
+          taxableIncome: 0,
+          taxAmount: 0,
         },
-        thuc_linh_net: 10203050,
-        trang_thai: 'DA_DUYET',
+        netSalary: 10203050,
+        status: 'DA_DUYET',
       },
     ]);
     console.log('✔ Đã khởi tạo phiếu lương mẫu tháng 9/2026 (phieu_luong).');

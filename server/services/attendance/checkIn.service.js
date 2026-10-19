@@ -131,44 +131,24 @@ const performCheckIn = async ({
 
   // 4. Tạo bản ghi PunchLog (Collection 4 - nhat_ky_quet_the)
   const punchPayload = {
-    ma_nguoi_dung: userId,
     userId,
-    thoi_diem_quet: nowVN,
     punchTime: nowVN,
-    loai_quet: 'VAO',
-    punchType: 'VAO',
-    phuong_thuc: method.toUpperCase(),
+    punchType: 'CHECK_IN',
     method: method.toUpperCase(),
-    thiet_bi_id: finalDeviceId,
     deviceId: finalDeviceId,
-    dia_chi_ip: ip || null,
     clientIp: ip || null,
-    ipAddress: ip || null,
-    mang_noi_bo_truong: geofenceMeta ? geofenceMeta.isCampusNetwork : null,
     isCampusNetwork: geofenceMeta ? geofenceMeta.isCampusNetwork : null,
-    nghi_van_gia_mao: Boolean(geofenceMeta?.isSuspicious),
     isSuspicious: Boolean(geofenceMeta?.isSuspicious),
-    ly_do_nghi_van: geofenceMeta?.suspiciousReason || null,
     suspiciousReason: geofenceMeta?.suspiciousReason || null,
-    phuong_thuc_xac_thuc_vi_tri: geofenceMeta?.verificationMethod || null,
     verificationMethod: geofenceMeta?.verificationMethod || null,
-    dia_diem: validatedLocationName,
     locationName: validatedLocationName,
-    co_gian_lan: isFraud,
-    isFraud,
-    ly_do_gian_lan: fraudReason,
+    isFraudulent: isFraud,
     fraudReason,
-    ma_ca: shiftId || effectiveShift?._id || null,
     shiftId: shiftId || effectiveShift?._id || null,
-    ma_lich: scheduleId || null,
     scheduleId: scheduleId || null,
   };
 
   if (hasCoordinates) {
-    punchPayload.toa_do_gps = {
-      type: 'Point',
-      coordinates: [lng, lat],
-    };
     punchPayload.gpsCoordinates = {
       latitude: lat,
       longitude: lng,
@@ -186,11 +166,9 @@ const performCheckIn = async ({
       checkInTime: nowVN,
       status: calculatedStatus,
       method: method.toUpperCase(),
-      phuong_thuc_vao: method.toUpperCase(),
       deviceId: finalDeviceId,
       shiftId: shiftId || effectiveShift?._id || null,
       scheduleId: scheduleId || null,
-      di_muon_phut: lateMinutes,
       lateMinutes,
       isFraud,
       fraudReason,
@@ -201,9 +179,7 @@ const performCheckIn = async ({
     attendance.checkInTime = nowVN;
     attendance.status = calculatedStatus;
     attendance.method = method.toUpperCase();
-    attendance.phuong_thuc_vao = method.toUpperCase();
     attendance.deviceId = finalDeviceId;
-    attendance.di_muon_phut = lateMinutes;
     attendance.lateMinutes = lateMinutes;
     if (isFraud) {
       attendance.isFraud = true;
@@ -220,10 +196,10 @@ const performCheckIn = async ({
 
   // Gửi email thông báo không đồng bộ
   User.findById(userId)
-    .select('email fullName ho_ten')
+    .select('email fullName')
     .then((user) => {
       if (user && user.email) {
-        sendCheckInNotificationEmail(user.email, user.fullName || user.ho_ten, nowVN, calculatedStatus).catch(
+        sendCheckInNotificationEmail(user.email, user.fullName, nowVN, calculatedStatus).catch(
           () => {}
         );
       }

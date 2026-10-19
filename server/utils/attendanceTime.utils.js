@@ -220,7 +220,7 @@ const buildAttendanceDateFilter = (startDate, endDate) => {
  * Hàm DUY NHẤT để tính toán lại toàn bộ dữ liệu tổng hợp chấm công (AttendanceLog) từ dữ liệu gốc (PunchLog)
  * Đảm bảo:
  * 1. Single Source of Truth là bảng `luot_quet` (PunchLog)
- * 2. `trang_thai` được suy diễn hoàn toàn từ `di_muon_phut`, `ve_som_phut` và `don_nghi_id`, không cho phép nhập tay lệch trạng thái
+ * 2. `status` được suy diễn hoàn toàn từ `lateMinutes`, `earlyMinutes` và `leaveRequestId`, không cho phép nhập tay lệch trạng thái
  * 3. Khi một lượt quét được thêm/xóa/ghi đè bởi Admin, gọi hàm này để đồng bộ lại
  * @param {string|mongoose.Types.ObjectId} attendanceLogId
  * @returns {Promise<Object>}
@@ -236,13 +236,13 @@ const recalculateAttendanceSummary = async (attendanceLogId) => {
   }
 
   // 1. Lấy tất cả lượt quét gốc của phiên chấm công này
-  const punches = await PunchLog.find({ cham_cong_id: attendanceLog._id }).sort({ thoi_gian_quet: 1 });
+  const punches = await PunchLog.find({ attendanceLogId: attendanceLog._id }).sort({ punchTime: 1 });
 
-  const checkIns = punches.filter((p) => p.loai_quet === 'CHECK_IN');
-  const checkOuts = punches.filter((p) => p.loai_quet === 'CHECK_OUT');
+  const checkIns = punches.filter((p) => p.punchType === 'CHECK_IN');
+  const checkOuts = punches.filter((p) => p.punchType === 'CHECK_OUT');
 
-  const earliestCheckIn = checkIns.length > 0 ? checkIns[0].thoi_gian_quet : null;
-  const latestCheckOut = checkOuts.length > 0 ? checkOuts[checkOuts.length - 1].thoi_gian_quet : null;
+  const earliestCheckIn = checkIns.length > 0 ? checkIns[0].punchTime : null;
+  const latestCheckOut = checkOuts.length > 0 ? checkOuts[checkOuts.length - 1].punchTime : null;
 
   const shift = attendanceLog.shiftId;
   let lateMinutes = 0;
@@ -251,7 +251,7 @@ const recalculateAttendanceSummary = async (attendanceLogId) => {
   let status = 'ON_TIME';
 
   // 2. Nếu có đơn nghỉ phép
-  const hasLeave = Boolean(attendanceLog.don_nghi_id || attendanceLog.leaveRequestId);
+  const hasLeave = Boolean(attendanceLog.leaveRequestId);
 
   if (hasLeave) {
     status = 'EXCUSED_ABSENCE';
@@ -291,12 +291,12 @@ const recalculateAttendanceSummary = async (attendanceLogId) => {
   }
 
   // Cập nhật lại snapshot tổng hợp
-  attendanceLog.thoi_gian_vao = earliestCheckIn;
-  attendanceLog.thoi_gian_ra = latestCheckOut;
-  attendanceLog.di_muon_phut = lateMinutes;
-  attendanceLog.ve_som_phut = earlyMinutes;
-  attendanceLog.thoi_luong_lam_viec_phut = workingMinutes;
-  attendanceLog.trang_thai = status;
+  attendanceLog.checkInTime = earliestCheckIn;
+  attendanceLog.checkOutTime = latestCheckOut;
+  attendanceLog.lateMinutes = lateMinutes;
+  attendanceLog.earlyExitMinutes = earlyMinutes;
+  attendanceLog.workDurationMinutes = workingMinutes;
+  attendanceLog.status = status;
 
   await attendanceLog.save();
   return attendanceLog;

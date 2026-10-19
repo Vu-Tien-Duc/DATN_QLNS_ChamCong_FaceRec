@@ -105,6 +105,15 @@ app.use(cookieParser());
 app.get('/uploads/:filename', downloadFile);
 app.get('/api/uploads/:filename', downloadFile);
 app.get('/api/v1/uploads/:filename', downloadFile);
+app.get('/uploads/faces/:filename', (req, res, next) => {
+  req.params.filename = `face-${req.params.filename.replace(/^face-/, '')}`;
+  return downloadFile(req, res, next);
+});
+app.get('/api/uploads/faces/:filename', (req, res, next) => {
+  req.params.filename = `face-${req.params.filename.replace(/^face-/, '')}`;
+  return downloadFile(req, res, next);
+});
+
 
 // 4. Swagger UI Documentation Route
 const swaggerUiOptions = {
@@ -128,19 +137,19 @@ app.get('/health', (req, res) => {
     collectionsCount: 14,
     collections: [
       'nguoi_dung',
-      'khuon_mat_nguoi_dung',
-      'nhat_ky_diem_danh',
-      'du_lieu_quet_raw',
-      'don_tu',
-      'thoi_khoa_bieu',
-      'don_vi',
+      'mau_khuon_mat',
+      'phong_ban',
       'ca_lam_viec',
-      'hoc_phan',
-      'nhat_ky_kiem_toan',
-      'bang_luong',
+      'mon_hoc',
+      'lich_trinh',
       'ngay_nghi_le',
+      'luot_quet_cham_cong',
+      'nhat_ky_cham_cong',
+      'don_nghi_phep',
+      'phieu_luong',
+      'ma_lam_moi',
       'cau_hinh_he_thong',
-      'phien_dang_nhap',
+      'nhat_ky_kiem_toan',
     ],
     timestamp: new Date().toISOString(),
   });

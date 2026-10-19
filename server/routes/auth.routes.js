@@ -7,6 +7,8 @@ const {
   getMe,
   changePassword,
   updateAvatar,
+  forgotPassword,
+  resetPassword,
 } = require('../controllers/auth.controller');
 const { verifyToken } = require('../middlewares/auth.middleware');
 const { upload } = require('../middlewares/upload.middleware');
@@ -46,5 +48,9 @@ router.put('/change-password', verifyToken, passwordResetLimiter, changePassword
 // 4. Cập nhật ảnh đại diện (Hỗ trợ cả PUT & POST, multipart & JSON)
 router.put('/avatar', verifyToken, handleAvatarUpload, updateAvatar);
 router.post('/avatar', verifyToken, handleAvatarUpload, updateAvatar);
+
+// 5. Quên mật khẩu & Đặt lại mật khẩu bằng mã OTP (Public, có Rate Limiting)
+router.post('/forgot-password', passwordResetLimiter, forgotPassword);
+router.post('/reset-password', passwordResetLimiter, resetPassword);
 
 module.exports = router;

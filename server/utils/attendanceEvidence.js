@@ -1,22 +1,56 @@
-const crypto = require('crypto');
-const fs = require('fs/promises');
-const path = require('path');
+/**
+ * Module Xử Lý Ảnh Minh Chứng Điểm Danh (server/utils/attendanceEvidence.js)
+ * Tích hợp MinIO S3-Compatible Object Storage & Xác thực sinh trắc học an toàn:
+ * - Kiểm tra chữ ký định dạng nhị phân JPEG, PNG, WebP và giới hạn dung lượng <= 2MB.
+ * - Lưu trữ đối tượng tập trung trên MinIO bucket prefix 'evidence/attendance-[UUID].[ext]'.
+ * - Cung cấp cơ chế sinh Presigned Signed URL có thời hạn phục vụ xem ảnh minh chứng bảo mật.
+ * - Đã loại bỏ 100% các đoạn code cũ ghi đĩa cục bộ trực tiếp (toàn bộ ủy quyền cho minioStorage).
+ */
 
-const evidenceDir = path.resolve(
-  process.env.ATTENDANCE_EVIDENCE_DIR || path.join(__dirname, '../../private/attendance-evidence')
-);
+const crypto = require('crypto');
+const minioStorage = require('../config/minio');
+
 const MAX_EVIDENCE_BYTES = 2 * 1024 * 1024;
 const DATA_URL_PATTERN = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
 const FILE_NAME_PATTERN = /^attendance-[0-9a-f-]{36}\.(jpg|png|webp)$/i;
 
-const validateImageDataUrl = (imageDataUrl) => {
-  if (typeof imageDataUrl !== 'string') {
+/**
+ * Xác thực dữ liệu ảnh minh chứng (Hỗ trợ Data URL Base64 và Buffer nhị phân)
+ */
+const validateImageDataUrl = (imageData) => {
+  if (Buffer.isBuffer(imageData)) {
+    if (imageData.length === 0 || imageData.length > MAX_EVIDENCE_BYTES) {
+      const error = new Error('Ảnh minh chứng không được rỗng và không được vượt quá 2 MB.');
+      error.statusCode = imageData.length > MAX_EVIDENCE_BYTES ? 413 : 400;
+      throw error;
+    }
+    const isJpeg = imageData.length >= 3 && imageData[0] === 0xff && imageData[1] === 0xd8 && imageData[2] === 0xff;
+    const isPng = imageData.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const isWebp =
+      imageData.length >= 12 &&
+      imageData.toString('ascii', 0, 4) === 'RIFF' &&
+      imageData.toString('ascii', 8, 12) === 'WEBP';
+
+    if (!isJpeg && !isPng && !isWebp) {
+      const error = new Error('Nội dung ảnh minh chứng không khớp với định dạng JPEG, PNG hoặc WebP.');
+      error.statusCode = 400;
+      throw error;
+    }
+    const format = isJpeg ? 'jpeg' : isPng ? 'png' : 'webp';
+    return {
+      buffer: imageData,
+      contentType: `image/${format}`,
+      extension: format === 'jpeg' ? 'jpg' : format,
+    };
+  }
+
+  if (typeof imageData !== 'string') {
     const error = new Error('Ảnh minh chứng phải là Data URL dạng JPEG, PNG hoặc WebP.');
     error.statusCode = 400;
     throw error;
   }
 
-  const match = DATA_URL_PATTERN.exec(imageDataUrl);
+  const match = DATA_URL_PATTERN.exec(imageData);
   if (!match) {
     const error = new Error('Ảnh minh chứng phải có định dạng JPEG, PNG hoặc WebP hợp lệ.');
     error.statusCode = 400;
@@ -63,14 +97,25 @@ const validateImageDataUrl = (imageDataUrl) => {
   };
 };
 
-const storeAttendanceEvidence = async (imageDataUrl) => {
-  const { buffer, extension } = validateImageDataUrl(imageDataUrl);
+/**
+ * Lưu ảnh minh chứng điểm danh / gian lận trực tiếp lên MinIO Object Storage
+ */
+const storeAttendanceEvidence = async (imageData) => {
+  const { buffer, extension, contentType } = validateImageDataUrl(imageData);
   const filename = `attendance-${crypto.randomUUID()}.${extension}`;
-  await fs.mkdir(evidenceDir, { recursive: true });
-  await fs.writeFile(path.join(evidenceDir, filename), buffer, { flag: 'wx', mode: 0o600 });
+  const objectKey = `evidence/${filename}`;
+
+  await minioStorage.putObject(objectKey, buffer, contentType, {
+    category: 'attendance-evidence',
+    uploadedAt: new Date().toISOString(),
+  });
+
   return filename;
 };
 
+/**
+ * Đọc ảnh minh chứng điểm danh từ MinIO Object Storage
+ */
 const readAttendanceEvidence = async (reference) => {
   if (typeof reference !== 'string' || !reference) {
     return null;
@@ -85,17 +130,36 @@ const readAttendanceEvidence = async (reference) => {
     throw new Error('Tham chiếu ảnh minh chứng không hợp lệ.');
   }
 
-  const buffer = await fs.readFile(path.join(evidenceDir, reference));
-  const extension = path.extname(reference).toLowerCase();
-  const contentType = extension === '.jpg' ? 'image/jpeg' : `image/${extension.slice(1)}`;
-  return { buffer, contentType };
+  try {
+    const objectKey = `evidence/${reference}`;
+    const file = await minioStorage.getObject(objectKey);
+    return { buffer: file.buffer, contentType: file.contentType };
+  } catch (error) {
+    const notFoundError = new Error(`Không tìm thấy ảnh minh chứng: ${reference}`);
+    notFoundError.code = 'ENOENT';
+    notFoundError.statusCode = 404;
+    throw notFoundError;
+  }
 };
 
+/**
+ * Xóa ảnh minh chứng điểm danh khỏi MinIO Object Storage
+ */
 const removeAttendanceEvidence = async (reference) => {
   if (typeof reference !== 'string' || !FILE_NAME_PATTERN.test(reference)) {
     return;
   }
-  await fs.rm(path.join(evidenceDir, reference), { force: true });
+  await minioStorage.deleteObject(`evidence/${reference}`);
+};
+
+/**
+ * Sinh Presigned URL an toàn để xem ảnh minh chứng từ MinIO
+ */
+const getEvidencePresignedUrl = async (reference, expirySeconds = 900) => {
+  if (!FILE_NAME_PATTERN.test(reference)) {
+    return null;
+  }
+  return await minioStorage.getPresignedUrl(`evidence/${reference}`, expirySeconds);
 };
 
 module.exports = {
@@ -103,4 +167,5 @@ module.exports = {
   storeAttendanceEvidence,
   readAttendanceEvidence,
   removeAttendanceEvidence,
+  getEvidencePresignedUrl,
 };

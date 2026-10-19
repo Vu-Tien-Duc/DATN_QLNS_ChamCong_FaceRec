@@ -4,11 +4,11 @@ require('./schedule.model');
 
 const leaveRequestSchema = new mongoose.Schema(
   {
-    ma_nguoi_dung: {
+    nguoi_dung_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'userId',
       ref: 'User',
-      required: [true, 'Người gửi đơn (userId / ma_nguoi_dung) là bắt buộc'],
+      required: [true, 'Người gửi đơn (userId / nguoi_dung_id) là bắt buộc'],
     },
     loai_don: {
       type: String,
@@ -56,7 +56,7 @@ const leaveRequestSchema = new mongoose.Schema(
     },
     tep_dinh_kem: {
       type: String,
-      alias: 'attachment',
+      alias: 'attachmentUrl',
       default: null,
       trim: true,
     },
@@ -90,14 +90,15 @@ const leaveRequestSchema = new mongoose.Schema(
     lich_su_duyet: [
       {
         cap: { type: Number, required: true },
-        nguoi_duyet: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        nguoi_duyet_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        nguoi_duyet: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
         vai_tro: { type: String, default: '' },
         hanh_dong: { type: String, enum: ['APPROVED', 'REJECTED'], required: true },
         ghi_chu: { type: String, default: '' },
         thoi_gian: { type: Date, default: Date.now },
       },
     ],
-    nguoi_duyet: {
+    nguoi_duyet_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'approvedBy',
       ref: 'User',
@@ -142,9 +143,7 @@ const leaveRequestSchema = new mongoose.Schema(
             cleaned = cleaned.replace('chamcongdh.io.vn/uploads/', 'chamcongdh.io.vn/api/uploads/');
           }
           ret.tep_dinh_kem = cleaned;
-          ret.attachment = cleaned;
           ret.attachmentUrl = cleaned;
-          ret.evidenceFile = cleaned;
         }
         return ret;
       },
@@ -163,9 +162,7 @@ const leaveRequestSchema = new mongoose.Schema(
             cleaned = cleaned.replace('chamcongdh.io.vn/uploads/', 'chamcongdh.io.vn/api/uploads/');
           }
           ret.tep_dinh_kem = cleaned;
-          ret.attachment = cleaned;
           ret.attachmentUrl = cleaned;
-          ret.evidenceFile = cleaned;
         }
         return ret;
       },
@@ -174,21 +171,17 @@ const leaveRequestSchema = new mongoose.Schema(
 );
 
 leaveRequestSchema.aliases = {
-  userId: 'ma_nguoi_dung',
-  nguoi_dung_id: 'ma_nguoi_dung',
+  userId: 'nguoi_dung_id',
   type: 'loai_don',
-  leaveType: 'loai_don',
   reason: 'ly_do',
   startDate: 'ngay_bat_dau',
   endDate: 'ngay_ket_thuc',
   numberOfDays: 'so_ngay',
   scheduleId: 'lich_trinh_id',
   makeupDate: 'ngay_day_bu',
-  attachment: 'tep_dinh_kem',
   attachmentUrl: 'tep_dinh_kem',
-  evidenceFile: 'tep_dinh_kem',
   status: 'trang_thai',
-  approvedBy: 'nguoi_duyet',
+  approvedBy: 'nguoi_duyet_id',
   approvalNote: 'ghi_chu_duyet',
   rejectionReason: 'ly_do_tu_choi',
   version: 'phien_ban',
@@ -199,15 +192,6 @@ leaveRequestSchema.aliases = {
   updatedAt: 'cap_nhat_luc',
 };
 
-leaveRequestSchema.virtual('createdAt').get(function () { return this.tao_luc; });
-leaveRequestSchema.virtual('updatedAt').get(function () { return this.cap_nhat_luc; });
-leaveRequestSchema.virtual('nguoi_dung_id').get(function () { return this.ma_nguoi_dung; });
-leaveRequestSchema.virtual('attachmentUrl').get(function () { return this.tep_dinh_kem; });
-leaveRequestSchema.virtual('evidenceFile').get(function () { return this.tep_dinh_kem; });
-leaveRequestSchema.virtual('leaveType').get(function () { return this.loai_don; });
-leaveRequestSchema.virtual('version').get(function () { return this.phien_ban; });
-leaveRequestSchema.virtual('requiredLevels').get(function () { return this.so_cap_duyet; });
-leaveRequestSchema.virtual('currentLevel').get(function () { return this.cap_duyet_hien_tai; });
 leaveRequestSchema.virtual('approvalHistory')
   .get(function () { return this.lich_su_duyet; })
   .set(function (val) { this.lich_su_duyet = val; });
@@ -224,7 +208,7 @@ leaveRequestSchema.pre('validate', function () {
   }
 });
 
-leaveRequestSchema.index({ ma_nguoi_dung: 1, ngay_bat_dau: -1 });
+leaveRequestSchema.index({ nguoi_dung_id: 1, ngay_bat_dau: -1 });
 leaveRequestSchema.index({ trang_thai: 1, ngay_bat_dau: -1 });
 leaveRequestSchema.index({ lich_trinh_id: 1 }, { sparse: true });
 

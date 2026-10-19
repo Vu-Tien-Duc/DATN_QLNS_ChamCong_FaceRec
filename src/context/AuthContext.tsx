@@ -19,6 +19,7 @@ import {
 import axios from 'axios';
 import { useAuthStore, AuthUser } from '../store/useAuthStore';
 import { apiClient, configureApiClient } from '../api/apiClient';
+import { updateSocketAuthToken, disconnectSocket } from '../api/socket';
 
 const safeRedirect = (path: string) => {
   if (window.location.pathname !== path) {
@@ -87,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       useAuthStore.getState().setAccessToken(newToken);
+      updateSocketAuthToken(newToken);
 
       const res = await apiClient.get('/auth/me');
       const userData = res.data.data || res.data;
@@ -126,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!accessToken) throw new Error('Server không trả về mã truy cập');
 
       useAuthStore.getState().setAccessToken(accessToken);
+      updateSocketAuthToken(accessToken);
 
       const permissions =
         (typeof u?.role === 'object' && u?.role?.permissions) ||
@@ -142,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await apiClient.post('/auth/logout', {}, { withCredentials: true });
     } catch (_) {}
+    disconnectSocket();
     useAuthStore.getState().clearSession();
     window.location.href = '/login';
   }, []);

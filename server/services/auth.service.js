@@ -4,21 +4,21 @@
  * - Đăng nhập tài khoản cán bộ/giảng viên (so khớp bcrypt).
  * - JWT Access Token (15 phút) & Refresh Token Rotation có Grace Period 15s.
  * - Phát hiện và phòng chống Replay Attack (thu hồi toàn bộ Token Family).
- * - Thu hồi tức thì qua In-Memory Token Revocation & tăng phien_ban_token.
+ * - Thu hồi tức thì qua In-Memory Token Revocation & tăng tokenVersion.
  * - Đổi mật khẩu & cập nhật ảnh đại diện người dùng.
  * - Triệt tiêu hoàn toàn các luồng cũ không dùng (OTP, tự đăng ký tự do).
  */
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const path = require('path');
-const fs = require('fs');
 
 const User = require('../models/user.model');
 const RefreshToken = require('../models/refreshToken.model');
 const AuditLog = require('../models/auditLog.model');
 const { revokeToken } = require('../utils/tokenRevocation');
-const { uploadDir } = require('../middlewares/upload.middleware');
+const minioStorage = require('../config/minio');
+const { setGraceToken, getGraceToken } = require('../config/redis');
+const { transporter } = require('../config/mailer');
 
 class ServiceError extends Error {
   constructor(message, statusCode = 400, errorCode = null, data = null) {
@@ -34,7 +34,7 @@ class ServiceError extends Error {
 const hashToken = (tokenStr) => crypto.createHash('sha256').update(String(tokenStr).trim()).digest('hex');
 
 // In-Memory Grace Period Cache (15 giây) xử lý Race Condition khi trình duyệt gửi nhiều request refresh đồng thời
-// Key: token_hash, Value: { newAccessToken, newRefreshTokenString, expiresAt }
+// Key: hashedToken, Value: { newAccessToken, newRefreshTokenString, expiresAt }
 const rotationGraceCache = new Map();
 
 if (process.env.NODE_ENV !== 'test') {
@@ -57,12 +57,9 @@ const generateAccessToken = (user) => {
     id: user._id.toString(),
     userId: user._id.toString(),
     email: user.email,
-    role: user.role || user.vai_tro,
-    vai_tro: user.vai_tro || user.role,
+    role: user.role,
     departmentId: user.departmentId ? user.departmentId.toString() : null,
-    ma_don_vi: user.ma_don_vi ? user.ma_don_vi.toString() : null,
-    tokenVersion: user.phien_ban_token || user.tokenVersion || 0,
-    phien_ban_token: user.phien_ban_token || user.tokenVersion || 0,
+    tokenVersion: user.tokenVersion || 0,
   };
 
   const secret = process.env.JWT_SECRET || 'secret-jwt-fallback-key';
@@ -102,19 +99,19 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
 
   const normalizedEmail = email.trim().toLowerCase();
   const user = await User.findOne({ email: normalizedEmail })
-    .select('+mat_khau_ma_hoa +passwordHash')
+    .select('+passwordHash')
     .populate('departmentId', 'name code type location');
 
   if (!user) {
     throw new ServiceError('Tài khoản hoặc mật khẩu không chính xác.', 401);
   }
 
-  const isUserActive = user.isActive !== false && user.trang_thai !== 'KHOA';
+  const isUserActive = user.isActive !== false;
   if (!isUserActive) {
     throw new ServiceError('Tài khoản của bạn đã bị vô hiệu hóa hoặc tạm khóa. Vui lòng liên hệ phòng Tổ chức Cán bộ.', 403);
   }
 
-  const targetPasswordHash = user.mat_khau_ma_hoa || user.passwordHash;
+  const targetPasswordHash = user.passwordHash;
   const isMatch = targetPasswordHash ? await bcrypt.compare(password, targetPasswordHash) : false;
   if (!isMatch) {
     throw new ServiceError('Tài khoản hoặc mật khẩu không chính xác.', 401);
@@ -129,25 +126,16 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
 
   // Lưu bản ghi Refresh Token vào MongoDB
   await RefreshToken.create({
-    ma_nguoi_dung: user._id,
     userId: user._id,
-    chuoi_ma_hoa: hashToken(refreshTokenString),
     tokenHash: hashToken(refreshTokenString),
-    nhom_token: tokenFamily,
     tokenFamily,
-    dia_chi_ip: ipAddress || null,
     ipAddress: ipAddress || null,
-    thiet_bi: userAgent || null,
     userAgent: userAgent || null,
-    ngay_het_han: expiresAt,
     expiresAt,
-    trang_thai: 'DANG_HOAT_DONG',
   });
 
   // Cập nhật thông tin đăng nhập cuối
-  user.lan_dang_nhap_cuoi = new Date();
-  user.lastLogin = user.lan_dang_nhap_cuoi;
-  user.so_lan_dang_nhap_that_bai = 0;
+  user.lastLogin = new Date();
   await user.save();
 
   // Ghi Audit Log
@@ -158,11 +146,10 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
     targetId: user._id.toString(),
     targetType: 'User',
     ipAddress: ipAddress || null,
-    details: { email: user.email, role: user.role || user.vai_tro },
+    details: { email: user.email, role: user.role },
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   const userObj = user.toObject ? user.toObject() : { ...user };
-  delete userObj.mat_khau_ma_hoa;
   delete userObj.passwordHash;
 
   return {
@@ -183,8 +170,11 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
 
   const incomingHash = hashToken(incomingToken);
 
-  // 1. Kiểm tra In-Memory Grace Period Cache (15s) giải quyết Race Condition
-  const graceItem = rotationGraceCache.get(incomingHash) || rotationGraceCache.get(incomingToken);
+  // 1. Kiểm tra Grace Period Cache (15s) giải quyết Race Condition (Ưu tiên Redis -> Fallback Memory)
+  let graceItem = (await getGraceToken(incomingHash)) || (await getGraceToken(incomingToken));
+  if (!graceItem) {
+    graceItem = rotationGraceCache.get(incomingHash) || rotationGraceCache.get(incomingToken);
+  }
   if (graceItem && graceItem.expiresAt > Date.now()) {
     return {
       accessToken: graceItem.newAccessToken,
@@ -196,30 +186,20 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
   }
 
   // 2. Tìm bản ghi Refresh Token trong Database
-  const tokenDoc = await RefreshToken.findOne({
-    $or: [
-      { chuoi_ma_hoa: incomingHash },
-      { tokenHash: incomingHash },
-      { token: incomingHash },
-      { token: incomingToken },
-      { chuoi_token: incomingHash },
-      { chuoi_token: incomingToken },
-      { ma_hash: incomingHash },
-    ],
-  });
+  const tokenDoc = await RefreshToken.findOne({ tokenHash: incomingHash });
 
   if (!tokenDoc) {
     throw new ServiceError('Refresh token không hợp lệ hoặc đã bị hủy.', 403);
   }
 
-  const tokenFamily = tokenDoc.nhom_token || tokenDoc.tokenFamily || tokenDoc.ma_ho;
-  const userId = tokenDoc.ma_nguoi_dung || tokenDoc.userId || tokenDoc.nguoi_dung_id;
+  const tokenFamily = tokenDoc.tokenFamily;
+  const userId = tokenDoc.userId;
 
   // 3. PHÁT HIỆN REPLAY ATTACK: Token này đã bị sử dụng hoặc đã bị thu hồi trước đó
-  const isUsed = tokenDoc.da_su_dung || tokenDoc.isUsed || tokenDoc.isRevoked || tokenDoc.da_thu_hoi || tokenDoc.trang_thai === 'DA_THU_HOI';
+  const isUsed = tokenDoc.isUsed || tokenDoc.da_su_dung;
   if (isUsed) {
-    const elapsedMs = tokenDoc.thoi_diem_su_dung
-      ? Date.now() - new Date(tokenDoc.thoi_diem_su_dung).getTime()
+    const elapsedMs = tokenDoc.usedAt
+      ? Date.now() - new Date(tokenDoc.usedAt).getTime()
       : Infinity;
 
     if (elapsedMs <= 15000 && graceItem) {
@@ -235,27 +215,28 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
     // Quá 15 giây hoặc không có grace cache: PHÁT HIỆN REPLAY ATTACK
     if (tokenFamily) {
       if (typeof RefreshToken.deleteMany === 'function') {
-        await RefreshToken.deleteMany({ ma_ho: tokenFamily });
+        await RefreshToken.deleteMany({ tokenFamily });
       }
     } else if (userId && typeof RefreshToken.deleteMany === 'function') {
-      await RefreshToken.deleteMany({
-        $or: [{ userId }, { ma_nguoi_dung: userId }],
-      });
+      await RefreshToken.deleteMany({ userId });
     }
 
     if (userId) {
-      await User.findByIdAndUpdate(userId, { $inc: { phien_ban_token: 1 } });
+      await User.findByIdAndUpdate(userId, { $inc: { tokenVersion: 1 } });
     }
 
-    AuditLog.create({
-      actor: userId,
-      actorType: 'USER',
-      action: 'REPLAY_ATTACK_DETECTED',
-      targetId: String(userId),
-      targetType: 'User',
-      ipAddress: ipAddress || null,
-      details: { tokenFamily, warning: 'Phát hiện tái sử dụng Refresh Token! Toàn bộ phiên liên quan đã bị thu hồi.' },
-    }).catch((err) => console.error('[AuditLog Error]:', err.message));
+    const mongoose = require('mongoose');
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+      AuditLog.create({
+        actor: userId,
+        actorType: 'USER',
+        action: 'REPLAY_ATTACK_DETECTED',
+        targetId: String(userId),
+        targetType: 'User',
+        ipAddress: ipAddress || null,
+        details: { tokenFamily, warning: 'Phát hiện tái sử dụng Refresh Token! Toàn bộ phiên liên quan đã bị thu hồi.' },
+      }).catch((err) => console.error('[AuditLog Error]:', err.message));
+    }
 
     throw new ServiceError(
       'Cảnh báo an ninh: Phát hiện Refresh Token đã qua sử dụng. Toàn bộ phiên đăng nhập đã bị vô hiệu hóa để bảo vệ an toàn danh tính.',
@@ -265,21 +246,19 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
   }
 
   // Kiểm tra thời hạn
-  const expiry = tokenDoc.ngay_het_han || tokenDoc.expiresAt || tokenDoc.het_han_luc;
+  const expiry = tokenDoc.expiresAt;
   if (expiry && new Date(expiry).getTime() < Date.now()) {
     throw new ServiceError('Refresh token đã hết hạn.', 403);
   }
 
   const user = await User.findById(userId);
-  if (!user || user.isActive === false || user.trang_thai === 'KHOA') {
+  if (!user || user.isActive === false) {
     throw new ServiceError('Tài khoản người dùng không còn tồn tại hoặc đã bị khóa.', 401);
   }
 
   // 4. Đánh dấu token hiện tại đã sử dụng
-  tokenDoc.da_su_dung = true;
   tokenDoc.isUsed = true;
-  tokenDoc.trang_thai = 'DA_THU_HOI';
-  tokenDoc.thoi_diem_su_dung = new Date();
+  tokenDoc.usedAt = new Date();
   if (typeof tokenDoc.save === 'function') {
     await tokenDoc.save();
   }
@@ -293,30 +272,25 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
 
   if (typeof RefreshToken.create === 'function') {
     await RefreshToken.create({
-      ma_nguoi_dung: user._id,
       userId: user._id,
-      chuoi_ma_hoa: hashToken(newRefreshTokenString),
       tokenHash: hashToken(newRefreshTokenString),
-      token: hashToken(newRefreshTokenString),
-      nhom_token: tokenFamily,
       tokenFamily,
-      ma_ho: tokenFamily,
-      dia_chi_ip: ipAddress || null,
       ipAddress: ipAddress || null,
-      thiet_bi: userAgent || null,
       userAgent: userAgent || null,
-      ngay_het_han: expiresAt,
       expiresAt,
-      trang_thai: 'DANG_HOAT_DONG',
     });
   }
 
-  // 6. Lưu vào Grace Period Cache (15s)
+  // 6. Lưu vào Grace Period Cache (15s) đồng bộ đa container qua Redis và Memory
   const graceData = {
     newAccessToken,
     newRefreshTokenString,
     expiresAt: Date.now() + 15000,
   };
+  await Promise.all([
+    setGraceToken(incomingHash, graceData, 15),
+    setGraceToken(incomingToken, graceData, 15),
+  ]).catch(() => {});
   rotationGraceCache.set(incomingHash, graceData);
   rotationGraceCache.set(incomingToken, graceData);
 
@@ -342,8 +316,8 @@ const logout = async ({ refreshTokenString, accessTokenString, userId }) => {
   if (refreshTokenString) {
     const hashed = hashToken(refreshTokenString);
     await RefreshToken.updateMany(
-      { $or: [{ chuoi_ma_hoa: hashed }, { tokenHash: hashed }] },
-      { $set: { da_su_dung: true, isUsed: true, trang_thai: 'DA_THU_HOI' } }
+      { tokenHash: hashed },
+      { $set: { isUsed: true, da_su_dung: true } }
     );
   }
 
@@ -368,7 +342,7 @@ const logout = async ({ refreshTokenString, accessTokenString, userId }) => {
 const getMe = async (userId) => {
   const user = await User.findById(userId)
     .populate('departmentId', 'name code type location')
-    .select('-mat_khau_ma_hoa -passwordHash');
+    .select('-passwordHash');
 
   if (!user) {
     throw new ServiceError('Không tìm thấy thông tin người dùng.', 404);
@@ -390,12 +364,12 @@ const changePassword = async ({ userId, currentPassword, oldPassword, newPasswor
     throw new ServiceError('Mật khẩu mới phải có ít nhất 6 ký tự.', 400);
   }
 
-  const user = await User.findById(userId).select('+mat_khau_ma_hoa +passwordHash');
+  const user = await User.findById(userId).select('+passwordHash');
   if (!user) {
     throw new ServiceError('Không tìm thấy người dùng.', 404);
   }
 
-  const targetHash = user.mat_khau_ma_hoa || user.passwordHash;
+  const targetHash = user.passwordHash;
   const isMatch = targetHash ? await bcrypt.compare(currentPass, targetHash) : false;
   if (!isMatch) {
     throw new ServiceError('Mật khẩu hiện tại không chính xác.', 400);
@@ -404,16 +378,15 @@ const changePassword = async ({ userId, currentPassword, oldPassword, newPasswor
   const salt = await bcrypt.genSalt(10);
   const newHashedPassword = await bcrypt.hash(newPassword, salt);
 
-  user.mat_khau_ma_hoa = newHashedPassword;
   user.passwordHash = newHashedPassword;
   user.passwordChangedAt = new Date();
-  user.phien_ban_token = (user.phien_ban_token || 0) + 1;
+  user.tokenVersion = (user.tokenVersion || 0) + 1;
   await user.save();
 
   // Hủy tất cả refresh token cũ của user
   await RefreshToken.updateMany(
-    { $or: [{ ma_nguoi_dung: user._id }, { userId: user._id }] },
-    { $set: { da_su_dung: true, isUsed: true, trang_thai: 'DA_THU_HOI' } }
+    { userId: user._id },
+    { $set: { isUsed: true, da_su_dung: true } }
   );
 
   AuditLog.create({
@@ -445,8 +418,10 @@ const updateAvatar = async ({ userId, avatarUrl, imageBuffer, file, ipAddress })
   } else if (imageBuffer) {
     const ext = 'jpg';
     const fileName = `avatar-${userId}-${Date.now()}.${ext}`;
-    const filePath = path.join(uploadDir, fileName);
-    fs.writeFileSync(filePath, imageBuffer);
+    await minioStorage.putObject(`avatars/${fileName}`, imageBuffer, 'image/jpeg', {
+      userId: userId.toString(),
+      category: 'avatar',
+    });
     finalAvatarPath = `/uploads/${fileName}`;
   }
 
@@ -455,7 +430,6 @@ const updateAvatar = async ({ userId, avatarUrl, imageBuffer, file, ipAddress })
   }
 
   user.avatar = finalAvatarPath;
-  user.anh_dai_dien = finalAvatarPath;
   await user.save();
 
   AuditLog.create({
@@ -474,6 +448,192 @@ const updateAvatar = async ({ userId, avatarUrl, imageBuffer, file, ipAddress })
   };
 };
 
+/**
+ * 7. Yêu cầu đặt lại mật khẩu qua mã OTP gửi về Email
+ * Vận hành chuẩn xác các trường: ma_otp, otp_het_han_luc, loai_otp, so_lan_thu_otp, otp_gui_luc
+ */
+const forgotPassword = async ({ email, ipAddress }) => {
+  if (!email || !String(email).trim()) {
+    throw new ServiceError('Email là bắt buộc.', 400);
+  }
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const user = await User.findOne({ email: cleanEmail })
+    .select('+ma_otp +otp_het_han_luc +loai_otp +so_lan_thu_otp +otp_gui_luc');
+
+  if (!user) {
+    throw new ServiceError('Không tìm thấy tài khoản với email này trong hệ thống.', 404);
+  }
+
+  if (user.kich_hoat === false || user.trang_thai_lam_viec === 'DA_NGHI_VIEC') {
+    throw new ServiceError('Tài khoản đã bị vô hiệu hóa hoặc đã nghỉ việc. Vui lòng liên hệ Phòng Tổ chức cán bộ.', 403);
+  }
+
+  // 1. Kiểm tra Cooldown chống spam gửi OTP liên tục (Sử dụng trường otp_gui_luc)
+  const COOLDOWN_SECONDS = 60;
+  if (user.otp_gui_luc) {
+    const elapsedSeconds = Math.floor((Date.now() - new Date(user.otp_gui_luc).getTime()) / 1000);
+    if (elapsedSeconds < COOLDOWN_SECONDS) {
+      const waitSeconds = COOLDOWN_SECONDS - elapsedSeconds;
+      throw new ServiceError(`Vui lòng đợi ${waitSeconds} giây trước khi yêu cầu mã OTP mới.`, 429);
+    }
+  }
+
+  // 2. Sinh mã OTP 6 chữ số ngẫu nhiên
+  const rawOtp = crypto.randomInt(100000, 1000000).toString();
+  // Mã hóa băm SHA-256 lưu trong CSDL để đảm bảo an toàn tuyệt đối
+  const hashedOtp = crypto.createHash('sha256').update(rawOtp).digest('hex');
+
+  // 3. Cập nhật đầy đủ cả 5 trường OTP trong Schema nguoi_dung
+  user.ma_otp = hashedOtp;
+  user.otp_het_han_luc = new Date(Date.now() + 10 * 60 * 1000); // 10 phút hiệu lực
+  user.loai_otp = 'FORGOT_PASSWORD';
+  user.so_lan_thu_otp = 0;
+  user.otp_gui_luc = new Date();
+  await user.save();
+
+  // 4. Gửi email chứa mã OTP đến hòm thư của giảng viên
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"QLNS & Chấm Công Đại Học" <no-reply@uni.edu.vn>',
+    to: user.email,
+    subject: '[QLNS] Mã OTP xác thực đặt lại mật khẩu',
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h2 style="color: #2563eb; text-align: center;">Yêu Cầu Đặt Lại Mật Khẩu</h2>
+        <p>Kính gửi Thầy/Cô <strong>${user.ho_ten || 'Giảng viên'}</strong>,</p>
+        <p>Hệ thống nhận được yêu cầu đặt lại mật khẩu cho tài khoản liên kết với địa chỉ email này.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #1e40af; background: #eff6ff; padding: 12px 24px; border-radius: 8px; border: 1px dashed #3b82f6;">${rawOtp}</span>
+        </div>
+        <p>Mã OTP có hiệu lực trong vòng <strong>10 phút</strong>. Vì lý do bảo mật, Thầy/Cô tuyệt đối không chia sẻ mã này cho bất kỳ ai.</p>
+        <p style="color: #64748b; font-size: 13px;">Nếu Thầy/Cô không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này hoặc liên hệ ngay với Ban Quản trị hệ thống.</p>
+      </div>
+    `,
+  };
+
+  try {
+    if (transporter && transporter.sendMail) {
+      await transporter.sendMail(mailOptions);
+    }
+  } catch (mailErr) {
+    console.error('[Mailer Error] Không thể gửi email OTP:', mailErr.message);
+  }
+
+  // 5. Ghi Audit Log vết kiểm toán
+  AuditLog.create({
+    actor: user._id,
+    actorType: 'USER',
+    action: 'FORGOT_PASSWORD_REQUESTED',
+    targetId: user._id.toString(),
+    targetType: 'User',
+    ipAddress: ipAddress || null,
+    details: { email: user.email, expiresAt: user.otp_het_han_luc },
+  }).catch((err) => console.error('[AuditLog Error]:', err.message));
+
+  return {
+    message: 'Mã xác thực OTP đã được gửi đến email của bạn. Mã có hiệu lực trong 10 phút.',
+    email: user.email,
+    expiresInMinutes: 10,
+    ...(process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development' ? { devOtp: rawOtp } : {}),
+  };
+};
+
+/**
+ * 8. Xác thực mã OTP và đặt lại mật khẩu mới
+ * Vận hành chuẩn xác: so_lan_thu_otp (chống brute-force), otp_het_han_luc, loai_otp, ma_otp
+ */
+const resetPassword = async ({ email, otp, newPassword, ipAddress }) => {
+  if (!email || !String(email).trim()) {
+    throw new ServiceError('Email là bắt buộc.', 400);
+  }
+  if (!otp || !String(otp).trim()) {
+    throw new ServiceError('Mã OTP là bắt buộc.', 400);
+  }
+  if (!newPassword || String(newPassword).length < 6) {
+    throw new ServiceError('Mật khẩu mới phải có ít nhất 6 ký tự.', 400);
+  }
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanOtp = String(otp).trim();
+
+  const user = await User.findOne({ email: cleanEmail })
+    .select('+ma_otp +otp_het_han_luc +loai_otp +so_lan_thu_otp +otp_gui_luc +mat_khau_ma_hoa');
+
+  if (!user) {
+    throw new ServiceError('Không tìm thấy tài khoản người dùng.', 404);
+  }
+
+  // 1. Kiểm tra loại OTP
+  if (user.loai_otp !== 'FORGOT_PASSWORD' || !user.ma_otp) {
+    throw new ServiceError('Không có yêu cầu đặt lại mật khẩu nào đang chờ xử lý.', 400);
+  }
+
+  // 2. Kiểm tra số lần thử sai (Chống dò mã Brute-force - Sử dụng so_lan_thu_otp)
+  const MAX_ATTEMPTS = 5;
+  if ((user.so_lan_thu_otp || 0) >= MAX_ATTEMPTS) {
+    user.ma_otp = null;
+    user.otp_het_han_luc = null;
+    user.loai_otp = null;
+    user.so_lan_thu_otp = 0;
+    await user.save();
+    throw new ServiceError('Bạn đã nhập sai mã OTP quá 5 lần. Mã xác thực đã bị vô hiệu hóa vì lý do an toàn. Vui lòng yêu cầu mã mới.', 400);
+  }
+
+  // 3. Kiểm tra thời hạn hiệu lực của mã OTP (Sử dụng otp_het_han_luc)
+  if (!user.otp_het_han_luc || new Date() > new Date(user.otp_het_han_luc)) {
+    user.ma_otp = null;
+    user.otp_het_han_luc = null;
+    user.loai_otp = null;
+    user.so_lan_thu_otp = 0;
+    await user.save();
+    throw new ServiceError('Mã OTP đã hết hạn sử dụng (quá 10 phút). Vui lòng yêu cầu mã mới.', 400);
+  }
+
+  // 4. So khớp mã OTP (So sánh băm SHA-256)
+  const hashedInputOtp = crypto.createHash('sha256').update(cleanOtp).digest('hex');
+  if (hashedInputOtp !== user.ma_otp) {
+    user.so_lan_thu_otp = (user.so_lan_thu_otp || 0) + 1;
+    await user.save();
+    const remaining = MAX_ATTEMPTS - user.so_lan_thu_otp;
+    throw new ServiceError(`Mã OTP không chính xác. Bạn còn ${remaining} lần thử trước khi mã bị khóa.`, 400);
+  }
+
+  // 5. Cập nhật mật khẩu mới và hủy toàn bộ phiên làm việc cũ
+  const salt = await bcrypt.genSalt(10);
+  user.mat_khau_ma_hoa = await bcrypt.hash(newPassword, salt);
+  user.doi_mat_khau_luc = new Date();
+  user.phien_ban_token = (user.phien_ban_token || 1) + 1; // Thu hồi token tức thì
+
+  // Xóa sạch toàn bộ 5 trường OTP về null sau khi đổi mật khẩu thành công
+  user.ma_otp = null;
+  user.otp_het_han_luc = null;
+  user.loai_otp = null;
+  user.so_lan_thu_otp = 0;
+  user.otp_gui_luc = null;
+  await user.save();
+
+  // 6. Thu hồi toàn bộ Refresh Tokens của user trong cơ sở dữ liệu
+  await RefreshToken.updateMany(
+    { nguoi_dung_id: user._id, da_su_dung: false },
+    { da_su_dung: true, thoi_diem_su_dung: new Date() }
+  );
+
+  // 7. Ghi Audit Log kiểm toán
+  AuditLog.create({
+    actor: user._id,
+    actorType: 'USER',
+    action: 'PASSWORD_RESET_SUCCESS',
+    targetId: user._id.toString(),
+    targetType: 'User',
+    ipAddress: ipAddress || null,
+    details: { email: user.email },
+  }).catch((err) => console.error('[AuditLog Error]:', err.message));
+
+  return {
+    message: 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.',
+  };
+};
+
 module.exports = {
   ServiceError,
   login,
@@ -482,6 +642,8 @@ module.exports = {
   getMe,
   changePassword,
   updateAvatar,
+  forgotPassword,
+  resetPassword,
   generateAccessToken,
   generateRefreshToken,
   rotationGraceCache,

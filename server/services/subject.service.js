@@ -54,7 +54,14 @@ const getSubjectById = async (id) => {
   return subject;
 };
 
-const createSubject = async ({ code, name, credits, departmentId, description, isActive }) => {
+const createSubject = async (payload = {}) => {
+  const code = payload.code;
+  const name = payload.name;
+  const credits = payload.credits;
+  const departmentId = payload.departmentId;
+  const description = payload.description;
+  const isActive = payload.isActive;
+
   if (typeof code !== 'string' || !code.trim() || typeof name !== 'string' || !name.trim()) {
     throw new ServiceError(
       'Mã môn học (code) và tên môn học (name) là bắt buộc.',
@@ -79,14 +86,20 @@ const createSubject = async ({ code, name, credits, departmentId, description, i
   return Subject.findById(subject._id).populate(POPULATE_DEPARTMENT);
 };
 
-const updateSubject = async (id, data) => {
+const updateSubject = async (id, data = {}) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new ServiceError('Định dạng ID môn học không hợp lệ.', 400, 'SUBJECT_INVALID_DATA');
   }
   const subject = await Subject.findById(id);
   if (!subject) throw new ServiceError('Không tìm thấy môn học để cập nhật.', 404, 'SUBJECT_001');
 
-  const { code, name, credits, departmentId, description, isActive } = data;
+  const code = data.code;
+  const name = data.name;
+  const credits = data.credits;
+  const departmentId = data.departmentId;
+  const description = data.description;
+  const isActive = data.isActive;
+
   if (code) {
     const normalizedCode = code.trim().toUpperCase();
     if (normalizedCode !== subject.code) {
@@ -104,7 +117,7 @@ const updateSubject = async (id, data) => {
   if (name) subject.name = name.trim();
   if (credits !== undefined) subject.credits = Number(credits);
   if (departmentId !== undefined) subject.departmentId = departmentId || null;
-  if (description !== undefined) subject.description = description.trim();
+  if (description !== undefined) subject.description = typeof description === 'string' ? description.trim() : '';
   if (isActive !== undefined) subject.isActive = isActive;
 
   await subject.save();

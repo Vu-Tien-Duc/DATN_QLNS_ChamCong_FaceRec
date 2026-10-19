@@ -24,21 +24,9 @@ const attendanceLogSchema = new mongoose.Schema(
       ref: 'ShiftConfig',
       required: [true, 'Ca chấm công (shiftId / ca_id) là bắt buộc'],
     },
-    ca_lam_viec_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      alias: 'workShiftId',
-      ref: 'ShiftConfig',
-      default: null,
-    },
     lich_trinh_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'scheduleId',
-      ref: 'Schedule',
-      default: null,
-    },
-    lich_giang_day_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      alias: 'teachingScheduleId',
       ref: 'Schedule',
       default: null,
     },
@@ -96,11 +84,21 @@ const attendanceLogSchema = new mongoose.Schema(
     trang_thai: {
       type: String,
       alias: 'status',
-      enum: [
-        'ON_TIME', 'LATE', 'EARLY_LEAVE', 'ABSENT', 'EXCUSED_ABSENCE',
-        'DUNG_GIO', 'DI_MUON', 'VE_SOM', 'VANG_MAT', 'NGHI_PHEP', 'NGHI_LE', 'NGHI_KHONG_LUONG'
-      ],
+      enum: ['ON_TIME', 'LATE', 'EARLY_LEAVE', 'ABSENT', 'EXCUSED_ABSENCE'],
       default: 'ON_TIME',
+      set: function (val) {
+        if (!val) return val;
+        const map = {
+          DUNG_GIO: 'ON_TIME',
+          DI_MUON: 'LATE',
+          VE_SOM: 'EARLY_LEAVE',
+          VANG_MAT: 'ABSENT',
+          NGHI_PHEP: 'EXCUSED_ABSENCE',
+          NGHI_LE: 'EXCUSED_ABSENCE',
+          NGHI_KHONG_LUONG: 'EXCUSED_ABSENCE',
+        };
+        return map[val] || val;
+      },
     },
     danh_sach_luot_quet_ids: [{
       type: mongoose.Schema.Types.ObjectId,
@@ -108,12 +106,6 @@ const attendanceLogSchema = new mongoose.Schema(
       ref: 'PunchLog',
     }],
     don_tu_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      alias: 'requestFormId',
-      ref: 'LeaveRequest',
-      default: null,
-    },
-    don_nghi_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'leaveRequestId',
       ref: 'LeaveRequest',
@@ -177,7 +169,7 @@ const attendanceLogSchema = new mongoose.Schema(
       kinh_do: { type: Number, default: null, alias: 'longitude' },
       do_chinh_xac: { type: Number, default: null, alias: 'accuracy' },
     },
-    ma_thiet_bi: {
+    thiet_bi_id: {
       type: String,
       alias: 'deviceId',
       default: null,
@@ -185,13 +177,25 @@ const attendanceLogSchema = new mongoose.Schema(
     phuong_thuc: {
       type: String,
       alias: 'method',
-      enum: ['face', 'qr', 'gps', 'fingerprint', 'manual', 'admin_override', 'system', 'FACE_AI', 'QR_CODE', 'GPS_MOBILE', 'THU_CONG_ADMIN'],
-      default: 'face',
+      enum: ['FACE_AI', 'QR_CODE', 'GPS_MOBILE', 'THU_CONG_ADMIN', 'SYSTEM_AUTO', 'FACE', 'QR', 'GPS', 'MANUAL', 'SYSTEM', 'ADMIN_OVERRIDE'],
+      default: 'FACE_AI',
+      set: function (val) {
+        if (!val) return val;
+        const v = String(val).toUpperCase();
+        const map = {
+          FACE: 'FACE_AI',
+          QR: 'QR_CODE',
+          GPS: 'GPS_MOBILE',
+          MANUAL: 'THU_CONG_ADMIN',
+          SYSTEM: 'SYSTEM_AUTO',
+        };
+        return map[v] || v;
+      },
     },
   },
   {
     timestamps: { createdAt: 'tao_luc', updatedAt: 'cap_nhat_luc' },
-    collection: 'cong_tong_hop',
+    collection: 'nhat_ky_cham_cong',
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
@@ -218,27 +222,6 @@ attendanceLogSchema.virtual('location')
     }
   });
 
-attendanceLogSchema.virtual('createdAt')
-  .get(function () { return this.tao_luc; });
-
-attendanceLogSchema.virtual('updatedAt')
-  .get(function () { return this.cap_nhat_luc; });
-
-attendanceLogSchema.virtual('date')
-  .get(function () { return this.ngay_cong; });
-
-attendanceLogSchema.virtual('earlyMinutes')
-  .get(function () { return this.ve_som_phut; });
-
-attendanceLogSchema.virtual('isLate')
-  .get(function () { return this.co_di_muon; });
-
-attendanceLogSchema.virtual('isEarlyLeave')
-  .get(function () { return this.co_ve_som; });
-
-attendanceLogSchema.virtual('isMissingCheckOut')
-  .get(function () { return this.quen_quet_ra; });
-
 attendanceLogSchema.virtual('punches', {
   ref: 'PunchLog',
   localField: '_id',
@@ -255,18 +238,12 @@ attendanceLogSchema.aliases = {
   workKey: 'khoa_cong',
   userId: 'nguoi_dung_id',
   shiftId: 'ca_id',
-  workShiftId: 'ca_lam_viec_id',
-  ca_lam_viec_id: 'ca_id',
   scheduleId: 'lich_trinh_id',
-  teachingScheduleId: 'lich_giang_day_id',
-  lich_giang_day_id: 'lich_trinh_id',
-  workDate: 'ngay_cong',
   date: 'ngay_cong',
   checkInTime: 'thoi_gian_vao',
   checkOutTime: 'thoi_gian_ra',
   workDurationMinutes: 'thoi_luong_lam_viec_phut',
   lateMinutes: 'di_muon_phut',
-  earlyExitMinutes: 've_som_phut',
   earlyMinutes: 've_som_phut',
   isLate: 'co_di_muon',
   isEarlyLeave: 'co_ve_som',
@@ -274,10 +251,8 @@ attendanceLogSchema.aliases = {
   actualTeachingPeriods: 'so_tiet_thuc_day',
   workHours: 'so_gio_cong',
   status: 'trang_thai',
-  punchIds: 'danh_sach_luot_quet_ids',
   punchLogIds: 'danh_sach_luot_quet_ids',
-  leaveRequestId: 'don_nghi_id',
-  requestFormId: 'don_tu_id',
+  leaveRequestId: 'don_tu_id',
   isLocked: 'da_chot',
   modifiedBy: 'nguoi_sua_id',
   modificationReason: 'ly_do_sua',
@@ -290,7 +265,7 @@ attendanceLogSchema.aliases = {
   latitude: 'toa_do.vi_do',
   longitude: 'toa_do.kinh_do',
   accuracy: 'toa_do.do_chinh_xac',
-  deviceId: 'ma_thiet_bi',
+  deviceId: 'thiet_bi_id',
   method: 'phuong_thuc',
   createdAt: 'tao_luc',
   updatedAt: 'cap_nhat_luc',
@@ -324,7 +299,7 @@ attendanceLogSchema.pre('validate', function () {
   }
 
   if (!this.ghi_de_thu_cong) {
-    if (this.don_nghi_id) {
+    if (this.don_tu_id) {
       this.trang_thai = 'EXCUSED_ABSENCE';
     } else if (this.thoi_gian_vao) {
       if (this.di_muon_phut > 0 && this.ve_som_phut > 0) {
@@ -362,21 +337,20 @@ attendanceLogSchema.index({ khoa_cong: 1 }, { unique: true, sparse: true });
 attendanceLogSchema.index({ nguoi_dung_id: 1, ngay_cong: -1 });
 attendanceLogSchema.index({ ngay_cong: 1, trang_thai: 1 });
 attendanceLogSchema.index({ ngay_cong: 1, da_chot: 1 });
-attendanceLogSchema.index({ don_nghi_id: 1 }, { sparse: true });
 attendanceLogSchema.index({ don_tu_id: 1 }, { sparse: true });
 attendanceLogSchema.index({ co_gian_lan: 1, ngay_cong: -1 });
 attendanceLogSchema.index({ co_di_muon: 1, ngay_cong: -1 });
 attendanceLogSchema.index({ co_ve_som: 1, ngay_cong: -1 });
 attendanceLogSchema.index({ quen_quet_ra: 1, ngay_cong: -1 });
 
-const AttendanceLog = mongoose.models.AttendanceLog || mongoose.model('AttendanceLog', attendanceLogSchema, 'cong_tong_hop');
+const AttendanceLog = mongoose.models.AttendanceLog || mongoose.model('AttendanceLog', attendanceLogSchema, 'nhat_ky_cham_cong');
 
 if (!mongoose.models.NhatKyChamCong) {
-  mongoose.model('NhatKyChamCong', attendanceLogSchema, 'cong_tong_hop');
+  mongoose.model('NhatKyChamCong', attendanceLogSchema, 'nhat_ky_cham_cong');
 }
 
 if (!mongoose.models.CongTongHop) {
-  mongoose.model('CongTongHop', attendanceLogSchema, 'cong_tong_hop');
+  mongoose.model('CongTongHop', attendanceLogSchema, 'nhat_ky_cham_cong');
 }
 
 module.exports = AttendanceLog;

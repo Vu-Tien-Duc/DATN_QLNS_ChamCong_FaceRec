@@ -3,6 +3,11 @@
  * Chuẩn CSDL v2.5: Đa góc ArcFace 512D, Margin Top 1-2, Liveness & Tự phục hồi RAM Cache.
  */
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL || 'http://127.0.0.1:8001';
+const {
+  cacheFaceVectors,
+  getCachedFaceVectors,
+  invalidateFaceCache,
+} = require('../config/redis');
 
 const safeJson = async (response) => {
   const text = await response.text();
@@ -182,23 +187,27 @@ const syncFaissTemplates = async (templates) => {
 };
 
 const addFaissTemplate = async ({ userId, embedding, embeddings }) => {
-  return callFaceService({
+  const result = await callFaceService({
     path: '/v1/faiss/add',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, embedding, embeddings }),
     timeoutMs: 8000,
   });
+  await invalidateFaceCache().catch(() => {});
+  return result;
 };
 
 const removeFaissTemplate = async (userId) => {
-  return callFaceService({
+  const result = await callFaceService({
     path: '/v1/faiss/remove',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId }),
     timeoutMs: 8000,
   });
+  await invalidateFaceCache().catch(() => {});
+  return result;
 };
 
 const getFaissStats = async () => {
@@ -211,27 +220,38 @@ const getFaissStats = async () => {
 
 /**
  * Cơ chế Tự phục hồi RAM Cache (Auto Self-Healing on Service Restart)
- * Kiểm tra RAM Index, nếu rỗng (total_vectors == 0) tự động nạp từ MongoDB
+ * Kiểm tra RAM Index, nếu rỗng (total_vectors == 0) tự động nạp từ Redis Cache hoặc MongoDB
  */
 const ensureRamCacheWarm = async () => {
   try {
     const stats = await getFaissStats();
     if (stats && (stats.total_vectors === 0 || stats.total_users === 0)) {
-      console.log('[Face AI Self-Healing] Phát hiện RAM Index rỗng, đang tự phục hồi đồng bộ từ MongoDB...');
+      console.log('[Face AI Self-Healing] Phát hiện RAM Index rỗng, đang tự phục hồi đồng bộ...');
+
+      // 1. Thử nạp từ Redis Distributed Cache
+      const cached = await getCachedFaceVectors().catch(() => null);
+      if (Array.isArray(cached) && cached.length > 0) {
+        await syncFaissTemplates(cached);
+        console.log(`[Face AI Self-Healing] Tự phục hồi thành công ${cached.length} mẫu khuôn mặt từ Redis Cache lên RAM.`);
+        return { healed: true, count: cached.length, source: 'redis' };
+      }
+
+      // 2. Nếu Redis chưa có cache, nạp từ MongoDB
       const FaceTemplate = require('../models/faceTemplate.model');
-      const templates = await FaceTemplate.find({ trang_thai_hoat_dong: { $ne: false } })
-        .populate('ma_nguoi_dung', 'ho_ten fullName staffCode ma_can_bo')
+      const templates = await FaceTemplate.find({ isActive: { $ne: false } })
+        .populate('userId', 'fullName staffCode')
         .lean();
 
       const payload = templates
         .map((t) => {
-          const u = t.ma_nguoi_dung || {};
-          const avg = t.vector_trung_binh || t.averageEmbedding;
-          const allVecs = t.vector_dac_trung || t.faceDescriptors || [];
+          const u = (t.userId && typeof t.userId === 'object') ? t.userId : {};
+          const avg = t.averageEmbedding;
+          const allVecs = t.faceDescriptors || [];
+          const resolvedUserId = (u._id || t.userId || '').toString();
           return {
-            userId: (t.userId || t.ma_nguoi_dung?._id || t.ma_nguoi_dung || '').toString(),
-            employeeId: u.staffCode || u.ma_can_bo || (t.userId || t.ma_nguoi_dung?._id || t.ma_nguoi_dung || '').toString(),
-            fullName: u.fullName || u.ho_ten || 'User',
+            userId: resolvedUserId,
+            employeeId: u.staffCode || resolvedUserId,
+            fullName: u.fullName || 'User',
             embedding: avg || (allVecs.length > 0 ? allVecs[0] : null),
           };
         })
@@ -239,9 +259,10 @@ const ensureRamCacheWarm = async () => {
 
       if (payload.length > 0) {
         await syncFaissTemplates(payload);
-        console.log(`[Face AI Self-Healing] Tự phục hồi thành công ${payload.length} mẫu khuôn mặt lên RAM.`);
+        await cacheFaceVectors(payload, 1800).catch(() => {});
+        console.log(`[Face AI Self-Healing] Tự phục hồi thành công ${payload.length} mẫu khuôn mặt từ MongoDB lên RAM & lưu Redis Cache.`);
       }
-      return { healed: true, count: payload.length };
+      return { healed: true, count: payload.length, source: 'mongodb' };
     }
     return { healed: false, count: stats.total_vectors };
   } catch (err) {

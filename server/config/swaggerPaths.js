@@ -168,22 +168,22 @@ const swaggerComponents = {
       properties: {
         _id: { type: 'string', example: '6a9d57378cf3a6165de25df1' },
         userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
-        thang: { type: 'integer', example: 10 },
-        nam: { type: 'integer', example: 2026 },
-        luong_co_ban: { type: 'number', example: 18000000 },
-        so_tiet_chuan: { type: 'number', example: 45 },
-        so_tiet_thuc_te: { type: 'number', example: 52 },
-        so_tiet_vuot_chuan: { type: 'number', example: 7 },
-        don_gia_tiet_vuot: { type: 'number', example: 120000 },
-        tien_vuot_gio: { type: 'number', example: 840000 },
-        phu_cap_chuc_vu: { type: 'number', example: 1500000 },
-        khau_tru_bhxh: { type: 'number', example: 1890000 },
-        thu_nhap_chiu_thue: { type: 'number', example: 7450000 },
-        thue_tncn: { type: 'number', example: 372500 },
-        thuc_linh: { type: 'number', example: 18077500 },
-        trang_thai: { type: 'string', enum: ['CHUA_KHOA', 'DA_KHOA'], example: 'DA_KHOA' },
+        month: { type: 'integer', example: 10 },
+        year: { type: 'integer', example: 2026 },
+        baseSalary: { type: 'number', example: 18000000 },
+        standardTeachingHours: { type: 'number', example: 45 },
+        actualTeachingHours: { type: 'number', example: 52 },
+        overtimeTeachingHours: { type: 'number', example: 7 },
+        overtimeHourlyRate: { type: 'number', example: 120000 },
+        overtimePay: { type: 'number', example: 840000 },
+        positionAllowance: { type: 'number', example: 1500000 },
+        socialInsuranceDeduction: { type: 'number', example: 1890000 },
+        taxableIncome: { type: 'number', example: 7450000 },
+        personalIncomeTax: { type: 'number', example: 372500 },
+        netSalary: { type: 'number', example: 21327500 },
+        status: { type: 'string', enum: ['CHUA_KHOA', 'DA_KHOA'], example: 'DA_KHOA' },
         isLocked: { type: 'boolean', example: true },
-        snapshot_thoi_diem: { type: 'string', format: 'date-time' },
+        snapshotTime: { type: 'string', format: 'date-time' },
       },
     },
     FaceTemplate: {
@@ -211,11 +211,50 @@ const swaggerComponents = {
       type: 'object',
       properties: {
         _id: { type: 'string', example: '6a9d57378cf3a6165de25df3' },
-        khoa_cau_hinh: { type: 'string', example: 'CAMPUS_GPS_RADIUS_METERS' },
-        gia_tri: { type: 'object', example: 100 },
-        kieu_du_lieu: { type: 'string', enum: ['NUMBER', 'STRING', 'BOOLEAN', 'JSON'], example: 'NUMBER' },
-        mo_ta: { type: 'string', example: 'Bán kính GPS hợp lệ quanh khuôn viên cơ sở (mét)' },
-        nhom_cau_hinh: { type: 'string', example: 'CHAM_CONG' },
+        key: { type: 'string', example: 'CAMPUS_GPS_RADIUS_METERS' },
+        value: { type: 'object', example: 100 },
+        dataType: { type: 'string', enum: ['NUMBER', 'STRING', 'BOOLEAN', 'JSON'], example: 'NUMBER' },
+        description: { type: 'string', example: 'Bán kính GPS hợp lệ quanh khuôn viên cơ sở (mét)' },
+        group: { type: 'string', example: 'CHAM_CONG' },
+      },
+    },
+    Holiday: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25df5' },
+        name: { type: 'string', example: 'Tết Nguyên Đán 2026' },
+        startDate: { type: 'string', format: 'date', example: '2026-02-15' },
+        endDate: { type: 'string', format: 'date', example: '2026-02-22' },
+        year: { type: 'integer', example: 2026 },
+        isPaid: { type: 'boolean', example: true },
+        description: { type: 'string', example: 'Nghỉ Tết Âm lịch theo quy định Nhà nước' },
+        createdBy: { type: 'string', nullable: true },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' },
+      },
+    },
+    PunchLog: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25df6' },
+        attendanceLogId: { type: 'string', example: '6a9d57378cf3a6165de25deb' },
+        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        punchType: { type: 'string', enum: ['CHECK_IN', 'CHECK_OUT'], example: 'CHECK_IN' },
+        punchTime: { type: 'string', format: 'date-time' },
+        method: { type: 'string', enum: ['FACE_AI', 'QR_CODE', 'GPS_MOBILE', 'THU_CONG_ADMIN', 'SYSTEM_AUTO'], example: 'FACE_AI' },
+        aiConfidenceScore: { type: 'number', example: 0.95 },
+        isRealFace: { type: 'boolean', example: true },
+        gpsPoint: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', example: 'Point' },
+            coordinates: { type: 'array', items: { type: 'number' }, example: [105.854444, 21.028511] },
+          },
+        },
+        isMockLocation: { type: 'boolean', example: false },
+        isFraudulent: { type: 'boolean', example: false },
+        fraudReason: { type: 'string', nullable: true },
+        status: { type: 'string', enum: ['SUCCESS', 'FAILED'], example: 'SUCCESS' },
       },
     },
   },
@@ -243,21 +282,21 @@ const swaggerPaths = {
                 collectionsCount: 14,
                 collections: [
                   'nguoi_dung',
-                  'khuon_mat_nguoi_dung',
-                  'nhat_ky_diem_danh',
-                  'du_lieu_quet_raw',
-                  'don_tu',
-                  'thoi_khoa_bieu',
-                  'don_vi',
+                  'mau_khuon_mat',
+                  'phong_ban',
                   'ca_lam_viec',
-                  'hoc_phan',
-                  'nhat_ky_kiem_toan',
-                  'bang_luong',
+                  'mon_hoc',
+                  'lich_trinh',
                   'ngay_nghi_le',
+                  'luot_quet_cham_cong',
+                  'nhat_ky_cham_cong',
+                  'don_nghi_phep',
+                  'phieu_luong',
+                  'ma_lam_moi',
                   'cau_hinh_he_thong',
-                  'phien_dang_nhap',
+                  'nhat_ky_kiem_toan',
                 ],
-                timestamp: '2026-10-16T12:00:00.000Z',
+                timestamp: '2026-10-18T12:00:00.000Z',
               },
             },
           },
@@ -1998,9 +2037,8 @@ const swaggerPaths = {
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: 'thang', in: 'query', schema: { type: 'integer' } },
-        { name: 'nam', in: 'query', schema: { type: 'integer' } },
-        { name: 'phong_ban_id', in: 'query', schema: { type: 'string' } },
-        { name: 'trang_thai', in: 'query', schema: { type: 'string', enum: ['CHUA_KHOA', 'DA_KHOA'] } },
+        { name: 'departmentId', in: 'query', schema: { type: 'string' } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['CHUA_KHOA', 'DA_KHOA'] } },
         { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
         { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
       ],
@@ -2267,6 +2305,217 @@ const swaggerPaths = {
       },
     },
   },
+
+  // -------------------------------------------------------------
+  // 3.14 SUBJECTS (MÔN HỌC / HỌC PHẦN)
+  // -------------------------------------------------------------
+  '/api/subjects': {
+    get: {
+      tags: ['3.14 - Danh Mục Môn Học & Học Phần (Subjects)'],
+      summary: '[🔒 Xác thực] Lấy danh sách môn học/học phần đào tạo',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Tìm theo mã hoặc tên môn học' },
+        { name: 'departmentId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo khoa/bộ môn' },
+      ],
+      responses: {
+        200: {
+          description: 'Lấy danh sách môn học thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+    post: {
+      tags: ['3.14 - Danh Mục Môn Học & Học Phần (Subjects)'],
+      summary: '[🔒 Admin/Trưởng khoa] Tạo môn học/học phần mới',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['code', 'name'],
+              properties: {
+                code: { type: 'string', example: 'INT3105' },
+                name: { type: 'string', example: 'Lập trình Web nâng cao' },
+                credits: { type: 'number', example: 3 },
+                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+                description: { type: 'string', example: 'Học phần Lập trình Web chuyên ngành CNTT' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: {
+          description: 'Tạo môn học thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/subjects/{id}': {
+    get: {
+      tags: ['3.14 - Danh Mục Môn Học & Học Phần (Subjects)'],
+      summary: '[🔒 Xác thực] Lấy thông tin chi tiết một môn học',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: {
+          description: 'Lấy chi tiết môn học thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+    put: {
+      tags: ['3.14 - Danh Mục Môn Học & Học Phần (Subjects)'],
+      summary: '[🔒 Admin/Trưởng khoa] Cập nhật thông tin môn học',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                code: { type: 'string', example: 'INT3105' },
+                name: { type: 'string', example: 'Lập trình Web nâng cao (2026)' },
+                credits: { type: 'number', example: 3 },
+                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+                description: { type: 'string', example: 'Cập nhật đề cương học phần' },
+                isActive: { type: 'boolean', example: true },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Cập nhật môn học thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+    delete: {
+      tags: ['3.14 - Danh Mục Môn Học & Học Phần (Subjects)'],
+      summary: '[🔒 Admin] Xóa môn học khỏi hệ thống',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: {
+          description: 'Xóa môn học thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+
+  // -------------------------------------------------------------
+  // 3.15 HOLIDAYS (DANH MỤC NGÀY NGHỈ LỄ)
+  // -------------------------------------------------------------
+  '/api/holidays': {
+    get: {
+      tags: ['3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
+      summary: '[🔒 Admin] Lấy danh sách ngày nghỉ lễ toàn trường',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 }, description: 'Lọc theo năm dương lịch' },
+      ],
+      responses: {
+        200: {
+          description: 'Lấy danh sách ngày nghỉ lễ thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+    post: {
+      tags: ['3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
+      summary: '[🔒 Admin] Tạo ngày nghỉ lễ mới',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['name', 'startDate', 'endDate'],
+              properties: {
+                name: { type: 'string', example: 'Nghỉ lễ Giỗ Tổ Hùng Vương 2026' },
+                startDate: { type: 'string', format: 'date', example: '2026-04-26' },
+                endDate: { type: 'string', format: 'date', example: '2026-04-26' },
+                year: { type: 'integer', example: 2026 },
+                isPaid: { type: 'boolean', example: true },
+                description: { type: 'string', example: 'Nghỉ lễ theo quy định nhà nước' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: {
+          description: 'Tạo ngày nghỉ lễ thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/holidays/{id}': {
+    get: {
+      tags: ['3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
+      summary: '[🔒 Admin] Lấy chi tiết một ngày nghỉ lễ',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: {
+          description: 'Lấy chi tiết ngày nghỉ lễ thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+    put: {
+      tags: ['3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
+      summary: '[🔒 Admin] Cập nhật thông tin ngày nghỉ lễ',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', example: 'Nghỉ lễ Giỗ Tổ Hùng Vương (Điều chỉnh)' },
+                startDate: { type: 'string', format: 'date', example: '2026-04-26' },
+                endDate: { type: 'string', format: 'date', example: '2026-04-27' },
+                isPaid: { type: 'boolean', example: true },
+                description: { type: 'string', example: 'Hoán đổi ngày nghỉ theo thông báo' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Cập nhật ngày nghỉ lễ thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+    delete: {
+      tags: ['3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
+      summary: '[🔒 Admin] Xóa ngày nghỉ lễ khỏi hệ thống',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: {
+          description: 'Xóa ngày nghỉ lễ thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
 };
 
 const swaggerTags = [
@@ -2285,6 +2534,8 @@ const swaggerTags = [
   { name: '3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)', description: 'Bảng lương Snapshot năm 2026, khóa lương và thuế TNCN lũy tiến 5 bậc' },
   { name: '3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)', description: 'Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D, kiểm tra tư thế và FAISS Index' },
   { name: '3.13 - Cấu Hình Hệ Thống Tập Trung (System Configs)', description: 'Quản lý các tham số vận hành: ngưỡng AI, cooldown, bán kính GPS, hạn mức nghỉ phép' },
+  { name: '3.14 - Danh Mục Môn Học & Học Phần (Subjects)', description: 'Quản lý danh mục môn học, số tín chỉ, khoa/bộ môn quản lý' },
+  { name: '3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)', description: 'Quản lý danh mục các ngày nghỉ lễ toàn trường/quốc gia' },
 ];
 
 module.exports = {

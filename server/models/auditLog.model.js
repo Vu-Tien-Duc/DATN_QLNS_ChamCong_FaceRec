@@ -9,13 +9,15 @@ const GENESIS_HASH = '0'.repeat(64);
 const computeLogHash = (doc, previousHash) => {
   const prev = previousHash !== undefined ? previousHash : (doc.ma_bam_truoc || GENESIS_HASH);
   const timeStr = doc.thoi_diem ? new Date(doc.thoi_diem).toISOString() : new Date().toISOString();
-  const actorStr = doc.nguoi_thuc_hien ? String(doc.nguoi_thuc_hien) : '';
-  const actorTypeStr = doc.loai_chu_the || 'USER';
-  const actionStr = doc.hanh_dong || '';
-  const targetTypeStr = doc.loai_doi_tuong || '';
-  const targetIdStr = doc.ma_doi_tuong ? String(doc.ma_doi_tuong) : '';
-  const statusStr = doc.ket_qua || 'SUCCESS';
-  const detailsStr = doc.chi_tiet ? JSON.stringify(doc.chi_tiet) : '';
+  const actor = doc.nguoi_thuc_hien_id || doc.actor || doc.actorId || doc.userId;
+  const actorStr = actor ? String(actor) : '';
+  const actorTypeStr = doc.loai_chu_the || doc.actorType || 'USER';
+  const actionStr = doc.hanh_dong || doc.action || '';
+  const targetTypeStr = doc.loai_doi_tuong || doc.targetType || '';
+  const targetId = doc.doi_tuong_id || doc.targetId;
+  const targetIdStr = targetId ? String(targetId) : '';
+  const statusStr = doc.ket_qua || doc.status || 'SUCCESS';
+  const detailsStr = doc.chi_tiet || doc.details ? JSON.stringify(doc.chi_tiet || doc.details) : '';
 
   const rawString = [
     prev,
@@ -34,7 +36,7 @@ const computeLogHash = (doc, previousHash) => {
 
 const auditLogSchema = new mongoose.Schema(
   {
-    nguoi_thuc_hien: {
+    nguoi_thuc_hien_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'userId',
       ref: 'User',
@@ -52,10 +54,10 @@ const auditLogSchema = new mongoose.Schema(
       required: [true, 'Hành động thao tác (action / hanh_dong) là bắt buộc'],
       trim: true,
     },
-    ma_doi_tuong: {
+    doi_tuong_id: {
       type: String,
       alias: 'targetId',
-      required: [true, 'ID đối tượng bị tác động (targetId / ma_doi_tuong) là bắt buộc'],
+      required: [true, 'ID đối tượng bị tác động (targetId / doi_tuong_id) là bắt buộc'],
     },
     loai_doi_tuong: {
       type: String,
@@ -68,7 +70,7 @@ const auditLogSchema = new mongoose.Schema(
       alias: 'ipAddress',
       default: null,
     },
-    user_agent: {
+    thong_tin_trinh_duyet: {
       type: String,
       alias: 'userAgent',
       default: null,
@@ -116,33 +118,29 @@ const auditLogSchema = new mongoose.Schema(
 );
 
 auditLogSchema.virtual('actor')
-  .get(function () { return this.nguoi_thuc_hien; })
-  .set(function (v) { this.nguoi_thuc_hien = v; });
+  .get(function () { return this.nguoi_thuc_hien_id; })
+  .set(function (v) { this.nguoi_thuc_hien_id = v; });
 
 auditLogSchema.aliases = {
-  userId: 'nguoi_thuc_hien',
-  actor: 'nguoi_thuc_hien',
+  userId: 'nguoi_thuc_hien_id',
   actorType: 'loai_chu_the',
   action: 'hanh_dong',
-  targetId: 'ma_doi_tuong',
+  targetId: 'doi_tuong_id',
   targetType: 'loai_doi_tuong',
   ipAddress: 'dia_chi_ip',
-  userAgent: 'user_agent',
+  userAgent: 'thong_tin_trinh_duyet',
   status: 'ket_qua',
   timestamp: 'thoi_diem',
   details: 'chi_tiet',
   previousHash: 'ma_bam_truoc',
   currentHash: 'ma_bam_hien_tai',
-  createdAt: 'tao_luc',
 };
-
-auditLogSchema.virtual('createdAt').get(function () { return this.tao_luc; });
 
 const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 auditLogSchema.plugin(schemaAliasPlugin);
 
-auditLogSchema.index({ nguoi_thuc_hien: 1, thoi_diem: -1 });
-auditLogSchema.index({ loai_doi_tuong: 1, ma_doi_tuong: 1 });
+auditLogSchema.index({ nguoi_thuc_hien_id: 1, thoi_diem: -1 });
+auditLogSchema.index({ loai_doi_tuong: 1, doi_tuong_id: 1 });
 auditLogSchema.index({ hanh_dong: 1, thoi_diem: -1 });
 auditLogSchema.index({ loai_doi_tuong: 1, thoi_diem: -1 });
 auditLogSchema.index({ thoi_diem: -1 });
@@ -173,12 +171,20 @@ auditLogSchema.pre('save', async function () {
   if (!this.ma_bam_hien_tai) {
     let prevHash = this.ma_bam_truoc;
     if (!prevHash) {
-      const lastDoc = await this.constructor
-        .findOne({ ma_bam_hien_tai: { $ne: null } })
-        .sort({ thoi_diem: -1, _id: -1 })
-        .select('ma_bam_hien_tai')
-        .lean();
-      prevHash = lastDoc?.ma_bam_hien_tai || GENESIS_HASH;
+      if (mongoose.connection && mongoose.connection.readyState === 1) {
+        try {
+          const lastDoc = await this.constructor
+            .findOne({ ma_bam_hien_tai: { $ne: null } })
+            .sort({ thoi_diem: -1, _id: -1 })
+            .select('ma_bam_hien_tai')
+            .lean();
+          prevHash = lastDoc?.ma_bam_hien_tai || GENESIS_HASH;
+        } catch (_) {
+          prevHash = GENESIS_HASH;
+        }
+      } else {
+        prevHash = GENESIS_HASH;
+      }
       this.ma_bam_truoc = prevHash;
     }
     this.ma_bam_hien_tai = computeLogHash(this, prevHash);

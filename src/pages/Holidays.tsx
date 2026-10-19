@@ -63,14 +63,14 @@ export default function Holidays() {
   // Open Edit Modal
   const handleOpenEdit = (holiday: HolidayType) => {
     setEditingId(holiday._id);
-    const startStr = holiday.ngay_bat_dau || holiday.startDate || '';
-    const endStr = holiday.ngay_ket_thuc || holiday.endDate || '';
+    const startStr = holiday.startDate || '';
+    const endStr = holiday.endDate || '';
     setFormData({
-      name: holiday.ten_ngay_le || holiday.name || '',
+      name: holiday.name || '',
       startDate: startStr.substring(0, 10),
       endDate: endStr.substring(0, 10),
-      description: holiday.mo_ta || holiday.description || '',
-      year: holiday.nam || holiday.year || selectedYear,
+      description: holiday.description || '',
+      year: holiday.year || selectedYear,
     });
     setIsModalOpen(true);
   };
@@ -227,9 +227,9 @@ export default function Holidays() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {holidays.map((h, idx) => {
-                  const hName = h.ten_ngay_le || h.name || 'Ngày lễ';
-                  const hDesc = h.mo_ta || h.description || '--';
-                  const days = h.so_ngay_nghi || h.daysCount || 1;
+                  const hName = h.name || 'Ngày lễ';
+                  const hDesc = h.description || '--';
+                  const days = h.daysCount || 1;
 
                   return (
                     <tr key={h._id} className="hover:bg-slate-50/80 transition-colors">
@@ -238,10 +238,10 @@ export default function Holidays() {
                         <span className="font-bold text-slate-800">{hName}</span>
                       </td>
                       <td className="px-5 py-3.5 text-slate-600 font-medium">
-                        {formatDateVN(h.ngay_bat_dau || h.startDate)}
+                        {formatDateVN(h.startDate)}
                       </td>
                       <td className="px-5 py-3.5 text-slate-600 font-medium">
-                        {formatDateVN(h.ngay_ket_thuc || h.endDate)}
+                        {formatDateVN(h.endDate)}
                       </td>
                       <td className="px-5 py-3.5 text-center">
                         <span className="inline-block px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">

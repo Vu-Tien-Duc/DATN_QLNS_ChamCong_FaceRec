@@ -91,7 +91,7 @@ const getLoginRateKey = (req) => {
  * Định danh ưu tiên theo UserId đã xác thực, nếu là khách thì dùng IP
  */
 const getAiChatRateKey = (req) => {
-  const userId = req.user?._id || req.user?.id || req.user?.ma_can_bo;
+  const userId = req.user?._id || req.user?.id || req.user?.staffCode;
   if (userId) return `ai_chat_user_${userId}`;
   return `ai_chat_ip_${getRateLimitIp(req)}`;
 };

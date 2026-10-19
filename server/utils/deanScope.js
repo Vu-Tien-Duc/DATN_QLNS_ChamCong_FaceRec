@@ -16,17 +16,15 @@ const GLOBAL_ADMIN_ROLES = ['admin', 'ADMIN', 'BGH', 'TCCB', 'KE_TOAN', 'KIEM_TO
 const isUnitLeader = (actor) => {
   if (!actor) return false;
   if (actor.role && UNIT_LEADER_ROLES.includes(actor.role)) return true;
-  if (actor.vai_tro_chinh && UNIT_LEADER_ROLES.includes(actor.vai_tro_chinh)) return true;
-  const roles = actor.danh_sach_vai_tro || actor.roles || [];
-  return Array.isArray(roles) && roles.some((r) => UNIT_LEADER_ROLES.includes(r.ma_vai_tro));
+  const roles = actor.roles || [];
+  return Array.isArray(roles) && roles.some((r) => UNIT_LEADER_ROLES.includes(r.role));
 };
 
 const isGlobalAdmin = (actor) => {
   if (!actor) return false;
   if (actor.role && GLOBAL_ADMIN_ROLES.includes(actor.role)) return true;
-  if (actor.vai_tro_chinh && GLOBAL_ADMIN_ROLES.includes(actor.vai_tro_chinh)) return true;
-  const roles = actor.danh_sach_vai_tro || actor.roles || [];
-  return Array.isArray(roles) && roles.some((r) => GLOBAL_ADMIN_ROLES.includes(r.ma_vai_tro));
+  const roles = actor.roles || [];
+  return Array.isArray(roles) && roles.some((r) => GLOBAL_ADMIN_ROLES.includes(r.role));
 };
 
 /**

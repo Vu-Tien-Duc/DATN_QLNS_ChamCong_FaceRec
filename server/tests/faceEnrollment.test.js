@@ -69,7 +69,7 @@ async function runFaceEnrollmentTests() {
   ];
 
   const templateDoc = new FaceTemplate({
-    ma_nguoi_dung: dummyUserId,
+    nguoi_dung_id: dummyUserId,
     vector_dac_trung: vectors5Goc,
     cac_goc_chup: sampleAngles,
     so_luong_mau: 5,
@@ -87,7 +87,7 @@ async function runFaceEnrollmentTests() {
 
   // Test 3: Dual-standard Aliases của FaceTemplate
   const templateObj = templateDoc.toObject ? templateDoc.toObject({ virtuals: true }) : templateDoc;
-  assert.strictEqual(String(templateDoc.userId || templateDoc.ma_nguoi_dung), String(dummyUserId), 'userId alias đúng');
+  assert.strictEqual(String(templateDoc.userId || templateDoc.nguoi_dung_id), String(dummyUserId), 'userId alias đúng');
   assert.strictEqual(templateDoc.embeddingModel, 'buffalo_s', 'embeddingModel alias đúng');
   assert.strictEqual(templateDoc.samplesCount, 5, 'samplesCount virtual/alias đúng');
   assert.strictEqual(templateDoc.consentAgreed, true, 'consentAgreed alias đúng');
@@ -137,7 +137,7 @@ async function runFaceEnrollmentTests() {
   let threwValidationError = false;
   try {
     const invalidDoc = new FaceTemplate({
-      ma_nguoi_dung: new mongoose.Types.ObjectId(),
+      nguoi_dung_id: new mongoose.Types.ObjectId(),
       vector_dac_trung: [[0.1, 0.2]], // Sai kích thước (chỉ có 2 số thay vì 512)
     });
     await invalidDoc.validate();

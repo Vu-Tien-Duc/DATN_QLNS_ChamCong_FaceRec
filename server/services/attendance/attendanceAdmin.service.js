@@ -75,7 +75,6 @@ const updateAttendanceByAdmin = async ({
     const diffMs = log.checkOutTime.getTime() - log.checkInTime.getTime();
     const hours = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
     log.workHours = hours;
-    log.tong_gio_lam = hours;
   }
 
   await log.save();

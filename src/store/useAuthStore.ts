@@ -30,8 +30,6 @@ export interface AuthUser {
   faceRegisteredAt?: string | Date;
   isActive?: boolean;
   staffCode?: string;
-  ma_can_bo?: string;
-  ho_ten?: string;
 }
 
 interface AuthState {

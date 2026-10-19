@@ -17,6 +17,7 @@ const run = async () => {
   });
 
   const objNoGps = punchNoGps.toObject();
+  assert.equal(punchNoGps.phuong_thuc, 'FACE_AI', 'Phương thức "face" phải được setter tự động chuẩn hóa thành "FACE_AI"');
   assert.equal(
     objNoGps.toa_do_gps,
     undefined,
@@ -87,7 +88,7 @@ const run = async () => {
   const refreshToken = new RefreshToken({
     chuoi_token: 'refresh_token_sample_string_uuid',
     ma_ho: 'family-uuid-12345',
-    ma_nguoi_dung: new mongoose.Types.ObjectId(),
+    nguoi_dung_id: new mongoose.Types.ObjectId(),
     da_su_dung: true,
     thoi_diem_su_dung: new Date(),
     het_han_luc: new Date(Date.now() + 7 * 24 * 3600 * 1000),

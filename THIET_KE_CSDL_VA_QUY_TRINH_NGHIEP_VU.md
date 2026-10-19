@@ -34,7 +34,7 @@
 ### 1.1. Chuẩn Ánh Xạ Model (Dual-Standard)
 Để đảm bảo mã nguồn trong sáng, dễ đọc và tương thích tuyệt đối với các thư viện Mongoose ODM:
 - **Tên Model Code (Tiếng Anh PascalCase):** `User`, `FaceTemplate`, `Department`, `ShiftConfig`, `Subject`, `Schedule`, `Holiday`, `PunchLog`, `AttendanceLog`, `LeaveRequest`, `Payroll`, `RefreshToken`, `SystemConfig`, `AuditLog`.
-- **Tên Collection Vật Lý (Tiếng Việt snake_case):** `nguoi_dung`, `du_lieu_khuon_mat`, `don_vi`, `ca_lam_viec`, `mon_hoc`, `lich_giang_day`, `ngay_nghi_le`, `luot_quet_cham_cong`, `cong_tong_hop`, `don_tu`, `phieu_luong`, `ma_lam_moi`, `cau_hinh_he_thong`, `nhat_ky_kiem_toan`.
+- **Tên Collection Vật Lý (Tiếng Việt snake_case):** `nguoi_dung`, `du_lieu_khuon_mat`, `don_vi`, `ca_lam_viec`, `mon_hoc`, `lich_giang_day`, `ngay_nghi_le`, `luot_quet_cham_cong`, `nhat_ky_cham_cong`, `don_tu`, `phieu_luong`, `ma_lam_moi`, `cau_hinh_he_thong`, `nhat_ky_kiem_toan`.
 - **Tên Trường (Field Names):** Lưu trữ gốc bằng tiếng Việt snake_case (`khoa_cong`, `nguoi_dung_id`, `ngay_cham_cong_str`...). Tích hợp qua `schemaAliasPlugin` để hỗ trợ gọi alias tiếng Anh (`userId`, `workDate`...).
 
 ### 1.2. Các Ràng Buộc Kỹ Thuật Bắt Buộc
@@ -42,7 +42,7 @@
 - **MongoDB Transaction:** Yêu cầu CSDL chạy chế độ **Replica Set** để hỗ trợ `session.startTransaction()`.
 - **Tách biệt dữ liệu chấm công:**
   - `luot_quet_cham_cong`: Lưu vết điểm danh vật lý thô (raw punches) từ Camera Face Service, GPS, QR.
-  - `cong_tong_hop`: Dữ liệu ngày công nghiệp vụ đã tổng hợp, là nguồn sự thật cho tính lương.
+  - `nhat_ky_cham_cong`: Dữ liệu ngày công nghiệp vụ đã tổng hợp, là nguồn sự thật cho tính lương.
 
 ---
 
@@ -230,7 +230,7 @@ const luotQuetChamCongSchema = new mongoose.Schema({
   nguoi_dung_id: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', default: null },
   thoi_diem: { type: Date, default: Date.now, required: true },
   loai_quet: { type: String, enum: ['CHECK_IN', 'CHECK_OUT'], required: true },
-  anh_bang_chung_url: { type: String, default: null },
+  anh_minh_chung: { type: String, default: null },
   // Cú pháp chuẩn chống lỗi 2dsphere khi không có GPS:
   toa_do_gps: {
     type: {
@@ -240,7 +240,7 @@ const luotQuetChamCongSchema = new mongoose.Schema({
     default: undefined
   },
   do_chinh_xac_gps: { type: Number, default: null },
-  is_mock_location: { type: Boolean, default: false },
+  vi_tri_gia_lap: { type: Boolean, default: false },
   thiet_bi_id: { 
     type: String, 
     required: function() { return this.phuong_thuc === 'FACE_AI'; },
@@ -248,7 +248,7 @@ const luotQuetChamCongSchema = new mongoose.Schema({
   },
   phuong_thuc: { 
     type: String, 
-    enum: ['FACE_AI', 'QR_CODE', 'GPS_MOBILE', 'THU_CONG_ADMIN'], 
+    enum: ['FACE_AI', 'QR_CODE', 'GPS_MOBILE', 'THU_CONG_ADMIN', 'SYSTEM_AUTO'], 
     default: 'FACE_AI' 
   },
   do_tuong_dong: { type: Number, default: null },
@@ -265,35 +265,36 @@ luotQuetChamCongSchema.index({ nguoi_dung_id: 1, thoi_diem: -1 });
 
 ---
 
-### Collection 9: `cong_tong_hop` (Dữ Liệu Ngày Công Nghiệp Vụ)
+### Collection 9: `nhat_ky_cham_cong` (Dữ Liệu Ngày Công Nghiệp Vụ)
 ```javascript
-const congTongHopSchema = new mongoose.Schema({
+const nhatKyChamCongSchema = new mongoose.Schema({
   khoa_cong: { type: String, required: true, unique: true }, // Format: `${userId}_${dateStr}_${caId}_${lichId || 'HANH_CHINH'}`
   nguoi_dung_id: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', required: true },
-  ngay_cham_cong_str: { type: String, required: true }, // YYYY-MM-DD
-  ca_lam_viec_id: { type: mongoose.Schema.Types.ObjectId, ref: 'ca_lam_viec', required: true },
-  lich_giang_day_id: { type: mongoose.Schema.Types.ObjectId, ref: 'lich_giang_day', default: null },
+  ngay_cong: { type: String, required: true }, // YYYY-MM-DD
+  ca_id: { type: mongoose.Schema.Types.ObjectId, ref: 'ca_lam_viec', required: true },
+  lich_trinh_id: { type: mongoose.Schema.Types.ObjectId, ref: 'lich_giang_day', default: null },
   thoi_gian_vao: { type: Date, default: null },
   thoi_gian_ra: { type: Date, default: null },
-  phut_di_muon: { type: Number, default: 0 },
-  phut_ve_som: { type: Number, default: 0 },
+  di_muon_phut: { type: Number, default: 0 },
+  ve_som_phut: { type: Number, default: 0 },
   quen_quet_ra: { type: Boolean, default: false }, // Cờ độc lập, không làm mất trạng thái đi muộn ban đầu
   so_tiet_thuc_day: { type: Number, default: 0 },   // Chỉ được gán khi Check-Out hợp lệ
   so_gio_cong: { type: Number, default: 0 },
   trang_thai: { 
     type: String, 
-    enum: ['DUNG_GIO', 'DI_MUON', 'VE_SOM', 'VANG_MAT', 'NGHI_PHEP', 'NGHI_LE', 'NGHI_KHONG_LUONG'], 
+    enum: ['ON_TIME', 'LATE', 'EARLY_LEAVE', 'ABSENT', 'EXCUSED_ABSENCE'], 
     required: true 
   },
-  danh_sach_luot_quet_ids: [{ type: mongoose.Schema.Types.ObjectId, ref: 'luot_quet_cham_cong' }],
   don_tu_id: { type: mongoose.Schema.Types.ObjectId, ref: 'don_tu', default: null },
+  thiet_bi_id: { type: String, default: 'CAMERA_DEFAULT' },
+  anh_minh_chung: { type: String, default: null },
   da_chot: { type: Boolean, default: false },
   nguoi_sua_id: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', default: null },
   ly_do_sua: { type: String, default: null }
 }, { timestamps: { createdAt: 'tao_luc', updatedAt: 'cap_nhat_luc' } });
 
-congTongHopSchema.index({ nguoi_dung_id: 1, ngay_cham_cong_str: 1 });
-congTongHopSchema.index({ ngay_cham_cong_str: 1, da_chot: 1 });
+nhatKyChamCongSchema.index({ nguoi_dung_id: 1, ngay_cong: 1 });
+nhatKyChamCongSchema.index({ ngay_cong: 1, da_chot: 1 });
 ```
 
 ---
@@ -301,39 +302,44 @@ congTongHopSchema.index({ ngay_cham_cong_str: 1, da_chot: 1 });
 ### Collection 10: `don_tu` (Đơn Từ & Lịch Sử Duyệt)
 ```javascript
 const lichSuDuyetSchema = new mongoose.Schema({
+  cap: { type: Number, required: true },
   nguoi_duyet_id: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', required: true },
-  cap_bac: { type: Number, required: true },
-  thoi_gian: { type: Date, default: Date.now },
-  ket_qua: { type: String, enum: ['CHAP_THUAN', 'TU_CHOI'], required: true },
-  y_kien: { type: String, default: null }
+  vai_tro: { type: String, default: '' },
+  hanh_dong: { type: String, enum: ['APPROVED', 'REJECTED'], required: true },
+  ghi_chu: { type: String, default: '' },
+  thoi_gian: { type: Date, default: Date.now }
 }, { _id: false });
 
 const donTuSchema = new mongoose.Schema({
-  nguoi_tao_id: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', required: true },
+  nguoi_dung_id: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', required: true },
   loai_don: { 
     type: String, 
-    enum: ['PHEP_NAM', 'NGHI_OM', 'THAI_SAN', 'NGHI_KHONG_LUONG', 'DOI_GIO_DAY', 'GIAI_TRINH_CONG'], 
+    enum: ['nghi_phep', 'day_bu', 'doi_ca', 'ANNUAL', 'COMPENSATORY', 'SHIFT_CHANGE', 'SICK', 'UNPAID'], 
     required: true 
   },
-  tu_ngay: { type: Date, required: true },
-  den_ngay: { type: Date, required: true },
-  so_ngay_nghi: { type: Number, required: true }, // Do server tính toán trừ T7/CN/Lễ
-  lich_giang_day_id: { type: mongoose.Schema.Types.ObjectId, ref: 'lich_giang_day', default: null },
-  ngay_day_bu_du_kien: { type: Date, default: null },
-  ca_day_bu_id: { type: mongoose.Schema.Types.ObjectId, ref: 'ca_lam_viec', default: null },
-  phong_day_bu: { type: String, uppercase: true, trim: true, default: null },
+  ngay_bat_dau: { type: Date, required: true },
+  ngay_ket_thuc: { type: Date, required: true },
+  so_ngay: { type: Number, default: 1 }, // Do server tính toán trừ T7/CN/Lễ
+  lich_trinh_id: { type: mongoose.Schema.Types.ObjectId, ref: 'lich_giang_day', default: null },
+  ngay_day_bu: { type: Date, default: null },
   ly_do: { type: String, required: true },
-  tep_dinh_kem_url: { type: String, default: null },
+  tep_dinh_kem: { type: String, default: null },
   trang_thai: { 
     type: String, 
-    enum: ['CHO_DUYET', 'CHO_BGH_DUYET', 'CHAP_THUAN', 'TU_CHOI', 'DA_HUY'], 
-    default: 'CHO_DUYET' 
+    enum: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH', 'APPROVED', 'REJECTED', 'CANCELLED'], 
+    default: 'PENDING' 
   },
+  so_cap_duyet: { type: Number, default: 1 },
+  cap_duyet_hien_tai: { type: Number, default: 1 },
+  phien_ban: { type: Number, default: 1 }, // Khóa lạc quan chống race condition
+  nguoi_duyet_id: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', default: null },
+  ghi_chu_duyet: { type: String, default: '' },
+  ly_do_tu_choi: { type: String, default: null },
   lich_su_duyet: [lichSuDuyetSchema]
 }, { timestamps: { createdAt: 'tao_luc', updatedAt: 'cap_nhat_luc' } });
 
-donTuSchema.index({ nguoi_tao_id: 1, trang_thai: 1 });
-donTuSchema.index({ tu_ngay: 1, den_ngay: 1 });
+donTuSchema.index({ nguoi_dung_id: 1, trang_thai: 1 });
+donTuSchema.index({ ngay_bat_dau: 1, ngay_ket_thuc: 1 });
 ```
 
 ---
@@ -410,14 +416,14 @@ phieuLuongSchema.index({ nguoi_dung_id: 1, thang: 1, nam: 1 }, { unique: true })
 ```javascript
 const maLamMoiSchema = new mongoose.Schema({
   nguoi_dung_id: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', required: true },
-  token_hash: { type: String, required: true, unique: true },
+  chuoi_token: { type: String, required: true, unique: true },
   ma_ho: { type: String, required: true }, // Token Family UUID
   da_su_dung: { type: Boolean, default: false },
-  thoi_diem_su_dung: { type: Date, default: null }, // Hỗ trợ Grace Period
+  thoi_diem_su_dung: { type: Date, default: null }, // Hỗ trợ Grace Period 15s
   thiet_bi: { type: String, default: null },
   dia_chi_ip: { type: String, default: null },
   het_han_luc: { type: Date, required: true }
-}, { timestamps: { createdAt: 'tao_luc' } });
+}, { timestamps: { createdAt: 'tao_luc', updatedAt: 'cap_nhat_luc' } });
 
 maLamMoiSchema.index({ het_han_luc: 1 }, { expireAfterSeconds: 0 }); // TTL index tự hủy
 maLamMoiSchema.index({ ma_ho: 1 });
@@ -428,11 +434,16 @@ maLamMoiSchema.index({ ma_ho: 1 });
 ### Collection 13: `cau_hinh_he_thong` (Bảng Tham Số Động)
 ```javascript
 const cauHinhHeThongSchema = new mongoose.Schema({
-  khoa: { type: String, required: true, unique: true, trim: true },
-  mo_ta: { type: String, required: true },
+  khoa_cau_hinh: { type: String, required: true, unique: true, trim: true, uppercase: true },
   gia_tri: { type: mongoose.Schema.Types.Mixed, required: true },
-  cap_nhat_boi: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', default: null }
-}, { timestamps: { updatedAt: 'cap_nhat_luc' } });
+  nhom: { 
+    type: String, 
+    enum: ['AI', 'GPS', 'DEVICE', 'ATTENDANCE', 'SYSTEM', 'HE_THONG', 'DAO_TAO', 'TIEN_LUONG', 'THUE', 'CHUC_VU', 'CHAM_CONG', 'RETENTION'],
+    default: 'SYSTEM'
+  },
+  mo_ta: { type: String, default: null },
+  nguoi_cap_nhat_id: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', default: null }
+}, { timestamps: { createdAt: 'tao_luc', updatedAt: 'cap_nhat_luc' } });
 ```
 
 ---
@@ -441,14 +452,16 @@ const cauHinhHeThongSchema = new mongoose.Schema({
 ```javascript
 const nhatKyKiemToanSchema = new mongoose.Schema({
   nguoi_thuc_hien_id: { type: mongoose.Schema.Types.ObjectId, ref: 'nguoi_dung', default: null }, // Null khi login fail
+  loai_chu_the: { type: String, enum: ['USER', 'SYSTEM'], default: 'USER' },
   hanh_dong: { type: String, required: true },
-  doi_tuong_tac_dong: { type: String, required: true },
+  loai_doi_tuong: { type: String, required: true },
   doi_tuong_id: { type: String, default: null },
-  du_lieu_cu: { type: mongoose.Schema.Types.Mixed, default: null },
-  du_lieu_moi: { type: mongoose.Schema.Types.Mixed, default: null },
+  ket_qua: { type: String, enum: ['SUCCESS', 'FAILED'], default: 'SUCCESS' },
+  chi_tiet: { type: mongoose.Schema.Types.Mixed, default: {} },
   dia_chi_ip: { type: String, default: null },
-  user_agent: { type: String, default: null },
-  ket_qua: { type: String, enum: ['THANH_CONG', 'THAT_BAI'], required: true },
+  thong_tin_trinh_duyet: { type: String, default: null },
+  ma_bam_truoc: { type: String, default: null },
+  ma_bam_hien_tai: { type: String, default: null },
   thoi_diem: { type: Date, default: Date.now }
 });
 
@@ -513,7 +526,7 @@ nhatKyKiemToanSchema.index({ nguoi_thuc_hien_id: 1, thoi_diem: -1 });
 ### 4.2. Luồng Check-In Thời Gian Thực & Cron 02:05 Sáng qua `khoa_cong`
 - **Ban ngày (08:00 AM) - Check-In:**
   - Sinh khóa duy nhất: `khoa_cong = ${userId}_${todayStr}_${caId}_${schedId}`.
-  - Thực hiện Upsert vào `cong_tong_hop`: Ghi nhận `thoi_gian_vao`, tính `phut_di_muon`, gán `trang_thai = 'DUNG_GIO'` hoặc `'DI_MUON'`. **`so_tiet_thuc_day = 0`**.
+  - Thực hiện Upsert vào `nhat_ky_cham_cong`: Ghi nhận `thoi_gian_vao`, tính `phut_di_muon`, gán `trang_thai = 'DUNG_GIO'` hoặc `'DI_MUON'`. **`so_tiet_thuc_day = 0`**.
 - **Khi Check-Out (11:30 AM):**
   - Ghi nhận `thoi_gian_ra`, tính `phut_ve_som`.
   - **Tính tỷ lệ có mặt thực tế (Đọc từ cấu hình `QUY_TAC_DIEM_DANH`):**
@@ -578,7 +591,7 @@ nhatKyKiemToanSchema.index({ nguoi_thuc_hien_id: 1, thoi_diem: -1 });
   + Số ngày nghỉ rơi vào năm $N$ sẽ được đối soát với quota năm $N$; số ngày rơi vào năm $N+1$ đối soát với quota năm $N+1$. Giao diện tự động cảnh báo hoặc đề xuất tách thành 2 đơn nếu chính sách trường yêu cầu quyết toán phép dứt điểm theo năm tài chính.
 - **Quy trình chuyển trạng thái `DA_HUY` khi đơn đã duyệt:**
   + Người tạo đơn (hoặc Admin/Trưởng đơn vị) gửi yêu cầu hủy đơn với lý do cụ thể.
-  + Chạy qua MongoDB Transaction Session: Chuyển `trang_thai = 'DA_HUY'`, ghi nhận `lich_su_duyet`, kích hoạt `hoanTacCongKhiHuyDon`: Gỡ bản ghi trong `lich_giang_day.ngoai_le[]` và hoàn tác bản ghi `cong_tong_hop` về `VANG_MAT` hoặc `NGHI_LE`.
+  + Chạy qua MongoDB Transaction Session: Chuyển `trang_thai = 'DA_HUY'`, ghi nhận `lich_su_duyet`, kích hoạt `hoanTacCongKhiHuyDon`: Gỡ bản ghi trong `lich_giang_day.ngoai_le[]` và hoàn tác bản ghi `nhat_ky_cham_cong` về `VANG_MAT` hoặc `NGHI_LE`.
   + Vì `DA_HUY` không nằm trong danh sách `['CHO_DUYET', 'CHO_BGH_DUYET', 'CHAP_THUAN']`, pipeline Aggregation tự động giải phóng quota phép ngay lập tức mà không cần cộng tay.
 
 ### 4.7. Chống Xung Đột Lịch Giảng Dạy & Race Condition Xếp Lịch
@@ -701,8 +714,8 @@ Bản đặc tả v2.5+ này là **Bản Kiến Trúc CSDL Nâng Cấp Chuẩn (
 #### Bảng Ánh Xạ Chuyển Tiếp (Legacy to Canonical Migration Map)
 | Phân hệ / Module | Mã nguồn hiện có | Cấu trúc Cũ (Legacy) | Cấu trúc Mới v2.5+ (Canonical) | Cơ chế tương thích ngược (Backward Compatibility) |
 |:---|:---|:---|:---|:---|
-| **Trợ lý AI Gemini** | `server/services/aiAssistant.service.js` | Đọc `AttendanceLog` (fields: `userId`, `date`, `status`, `checkIn`, `checkOut`) | Đọc `cong_tong_hop` (fields: `nguoi_dung_id`, `ngay_cham_cong_str`, `trang_thai`, `thoi_gian_vao`, `thoi_gian_ra`) | Cung cấp Mongoose Virtuals & Schema Aliases (`date` $\leftrightarrow$ `ngay_cham_cong_str`, `status` $\leftrightarrow$ `trang_thai`) giúp Gemini query không lỗi. |
-| **Báo cáo Xuất Excel** | `server/services/report.service.js` | Xuất bảng công từ `attendance_logs`, phòng ban từ `department` | Kết xuất từ `cong_tong_hop`, liên kết `don_vi` và `ca_lam_viec` | Mapper hàm `formatAttendanceRow()` tự động bóc tách `so_tiet_thuc_day`, `phut_di_muon`, `quen_quet_ra` ra các cột báo cáo chuẩn. |
+| **Trợ lý AI Gemini** | `server/services/aiAssistant.service.js` | Đọc `AttendanceLog` (fields: `userId`, `date`, `status`, `checkIn`, `checkOut`) | Đọc `nhat_ky_cham_cong` (fields: `nguoi_dung_id`, `ngay_cham_cong_str`, `trang_thai`, `thoi_gian_vao`, `thoi_gian_ra`) | Cung cấp Mongoose Virtuals & Schema Aliases (`date` $\leftrightarrow$ `ngay_cham_cong_str`, `status` $\leftrightarrow$ `trang_thai`) giúp Gemini query không lỗi. |
+| **Báo cáo Xuất Excel** | `server/services/report.service.js` | Xuất bảng công từ `attendance_logs`, phòng ban từ `department` | Kết xuất từ `nhat_ky_cham_cong`, liên kết `don_vi` và `ca_lam_viec` | Mapper hàm `formatAttendanceRow()` tự động bóc tách `so_tiet_thuc_day`, `phut_di_muon`, `quen_quet_ra` ra các cột báo cáo chuẩn. |
 | **Quản lý Thông báo** | `server/services/notification.service.js` | Gửi email cảnh báo vắng khi cron ghi log vắng | Lắng nghe sự kiện Cron 02:05 hoặc duyệt đơn từ `don_tu` | Giữ nguyên EventEmitter và giao diện hàm `sendAttendanceAlert()`, nhận payload ánh xạ từ `congTongHop`. |
 | **Xác thực & Vai trò** | `server/models/user.model.js` | Role phẳng chuỗi string (`admin`, `teacher`, `truongkhoa`) | Mảng đối tượng `vai_tro[]` có nhiệm kỳ và phạm vi đơn vị | Thêm getter ảo `user.role`: Tự động trả về mã vai trò cao nhất đang còn hạn (`den_ngay === null`) cho các middleware cũ. |
 | **Camera Điểm Danh** | `src/components/FaceAttendanceScannerModal.tsx` | Gửi request điểm danh nhận diện khuôn mặt | Gọi API Face Service `/v1/face/recognize` qua Node.js Backend Proxy | Client nhận response ẩn `candidates`, chỉ hiển thị thông báo chào mừng nhân sự khớp duy nhất. |
@@ -714,7 +727,7 @@ Bản đặc tả v2.5+ này là **Bản Kiến Trúc CSDL Nâng Cấp Chuẩn (
 4. **Tham số Lương/Thuế:** Các con số (Lương cơ sở 2.530.000 đ, giảm trừ gia cảnh, biểu thuế 5 bậc) là các tham số giả định mô phỏng quy chế chi tiêu nội bộ của cơ sở giáo dục, dễ dàng cấu hình lại khi chính sách thay đổi.
 5. **Chính sách phân tầng lưu trữ (Data Retention Policy):**
    - **Tệp ảnh vật lý (`anh_bang_chung_url`):** Tự động gỡ bỏ sau **1 năm** (`RETENTION_ANH_NAM: 1`) để tiết kiệm không gian lưu trữ và giảm thiểu rủi ro lộ lọt hình ảnh.
-   - **Dữ liệu số (Metadata) lượt quét & Ngày công:** Được bảo lưu an toàn **5 năm** (`RETENTION_METADATA_NAM: 5`) trong `luot_quet_cham_cong` và `cong_tong_hop` phục vụ thanh tra giáo dục, kiểm toán tài chính và giải quyết khiếu nại lao động. Sau 5 năm, dữ liệu được chuyển vào kho lạnh (Cold Storage) hoặc ẩn danh hóa (Anonymization) thông tin định danh cá nhân chứ không xóa thô, đảm bảo tính toàn vẹn tham chiếu.
+   - **Dữ liệu số (Metadata) lượt quét & Ngày công:** Được bảo lưu an toàn **5 năm** (`RETENTION_METADATA_NAM: 5`) trong `luot_quet_cham_cong` và `nhat_ky_cham_cong` phục vụ thanh tra giáo dục, kiểm toán tài chính và giải quyết khiếu nại lao động. Sau 5 năm, dữ liệu được chuyển vào kho lạnh (Cold Storage) hoặc ẩn danh hóa (Anonymization) thông tin định danh cá nhân chứ không xóa thô, đảm bảo tính toàn vẹn tham chiếu.
    - **Dữ liệu thực nghiệm của Đồ án Tốt nghiệp:** Toàn bộ ảnh mẫu và vector 512D phục vụ bài đo FAR/FRR của sinh viên sẽ được tiêu hủy hoàn toàn trước ngày 31/12/2026.
 
 ### 5.3. Phụ Lục: Phiếu Đồng Ý Thu Thập Dữ Liệu Sinh Trắc Học Đầy Đủ

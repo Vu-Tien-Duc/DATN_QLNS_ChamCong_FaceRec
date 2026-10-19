@@ -9,12 +9,6 @@ const refreshTokenSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
-    token_hash: {
-      type: String,
-      alias: 'tokenHash',
-      unique: true,
-      sparse: true,
-    },
     ma_ho: {
       type: String,
       alias: 'familyId',
@@ -40,11 +34,11 @@ const refreshTokenSchema = new mongoose.Schema(
       alias: 'ipAddress',
       default: null,
     },
-    ma_nguoi_dung: {
+    nguoi_dung_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'userId',
       ref: 'User',
-      required: [true, 'Chủ sở hữu token (userId / ma_nguoi_dung) là bắt buộc'],
+      required: [true, 'Chủ sở hữu token (userId / nguoi_dung_id) là bắt buộc'],
     },
     het_han_luc: {
       type: Date,
@@ -62,28 +56,24 @@ const refreshTokenSchema = new mongoose.Schema(
 
 refreshTokenSchema.aliases = {
   token: 'chuoi_token',
-  tokenHash: 'token_hash',
   familyId: 'ma_ho',
   isUsed: 'da_su_dung',
   usedAt: 'thoi_diem_su_dung',
   device: 'thiet_bi',
   ipAddress: 'dia_chi_ip',
-  userId: 'ma_nguoi_dung',
-  nguoi_dung_id: 'ma_nguoi_dung',
+  userId: 'nguoi_dung_id',
   expiresAt: 'het_han_luc',
   createdAt: 'tao_luc',
   updatedAt: 'cap_nhat_luc',
 };
 
-refreshTokenSchema.virtual('createdAt').get(function () { return this.tao_luc; });
-refreshTokenSchema.virtual('updatedAt').get(function () { return this.cap_nhat_luc; });
-refreshTokenSchema.virtual('nguoi_dung_id').get(function () { return this.ma_nguoi_dung; });
+
 
 const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 refreshTokenSchema.plugin(schemaAliasPlugin);
 
 refreshTokenSchema.index({ het_han_luc: 1 }, { expireAfterSeconds: 0 }); // TTL index tự hủy khi hết hạn
-refreshTokenSchema.index({ ma_nguoi_dung: 1 });
+refreshTokenSchema.index({ nguoi_dung_id: 1 });
 refreshTokenSchema.index({ ma_ho: 1 }, { sparse: true });
 
 const RefreshToken = mongoose.models.RefreshToken || mongoose.model('RefreshToken', refreshTokenSchema, 'ma_lam_moi');

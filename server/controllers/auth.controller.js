@@ -190,6 +190,49 @@ const updateAvatar = async (req, res, next) => {
   }
 };
 
+/**
+ * 7. Yêu cầu gửi mã OTP đặt lại mật khẩu qua email
+ * @route POST /api/auth/forgot-password
+ */
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const ipAddress = req.ip || req.connection?.remoteAddress || null;
+
+    const result = await authService.forgotPassword({ email, ipAddress });
+
+    return sendSuccess(res, result.message, {
+      email: result.email,
+      expiresInMinutes: result.expiresInMinutes,
+      ...(result.devOtp ? { devOtp: result.devOtp } : {}),
+    });
+  } catch (error) {
+    handleServiceError(res, error, next);
+  }
+};
+
+/**
+ * 8. Đặt lại mật khẩu mới bằng mã OTP
+ * @route POST /api/auth/reset-password
+ */
+const resetPassword = async (req, res, next) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const ipAddress = req.ip || req.connection?.remoteAddress || null;
+
+    const result = await authService.resetPassword({
+      email,
+      otp,
+      newPassword,
+      ipAddress,
+    });
+
+    return sendSuccess(res, result.message);
+  } catch (error) {
+    handleServiceError(res, error, next);
+  }
+};
+
 module.exports = {
   login,
   refreshToken,
@@ -197,4 +240,6 @@ module.exports = {
   getMe,
   changePassword,
   updateAvatar,
+  forgotPassword,
+  resetPassword,
 };

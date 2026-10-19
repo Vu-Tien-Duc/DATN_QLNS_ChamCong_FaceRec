@@ -68,7 +68,53 @@ services:
       start_period: 40s
 
   # -------------------------------------------------------------
-  # 3. Web Application: Express API + Vite Frontend Static
+  # 3. Redis In-Memory & Distributed Cache (v7 Alpine)
+  # -------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: qlns_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # -------------------------------------------------------------
+  # 4. MinIO S3-Compatible Object Storage Service
+  # -------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: qlns_minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # -------------------------------------------------------------
+  # 5. Web Application: Express API + Vite Frontend Static
   # -------------------------------------------------------------
   web:
     build:
@@ -81,12 +127,24 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
       face-service:
         condition: service_healthy
     environment:
       - PORT=5000
       - NODE_ENV=production
       - MONGODB_URI=mongodb://mongo:27017/qlns_chamcong?replicaSet=rs0&directConnection=true
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_DRIVER=minio
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_USE_SSL=false
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=datn-qlns-storage
       - FACE_SERVICE_URL=http://face-service:8001
       - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_daihoc_2026_datn_qlns}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-super_secret_refresh_key_daihoc_2026_datn_qlns}
@@ -110,6 +168,10 @@ services:
 volumes:
   mongo_data:
     name: qlns_mongo_data
+  redis_data:
+    name: qlns_redis_data
+  minio_data:
+    name: qlns_minio_data
   insightface_models:
     name: qlns_insightface_models
 
@@ -120,3 +182,4 @@ networks:
   app_network:
     name: qlns_network
     driver: bridge
+

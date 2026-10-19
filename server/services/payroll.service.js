@@ -91,7 +91,7 @@ const calculatePersonalIncomeTax5Brackets = (taxableIncome) => {
  */
 const getPayrollConfigParams = async () => {
   const configs = await SystemConfig.find({
-    khoa_cau_hinh: {
+    key: {
       $in: [
         'LUONG_CO_SO',
         'GIAM_TRU',
@@ -106,7 +106,7 @@ const getPayrollConfigParams = async () => {
 
   const paramMap = {};
   for (const c of configs) {
-    paramMap[c.khoa_cau_hinh] = c.gia_tri;
+    paramMap[c.key] = c.value;
   }
 
   return {
@@ -159,13 +159,13 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
   const endDateStr = `${year}-${monthStr}-31`;
 
   const attendanceLogs = await AttendanceLog.find({
-    nguoi_dung_id: userId,
-    ngay_cong: { $gte: startDateStr, $lte: endDateStr },
+    userId,
+    workDate: { $gte: startDateStr, $lte: endDateStr },
   });
 
   let totalActualTeachingHours = 0;
   for (const log of attendanceLogs) {
-    totalActualTeachingHours += Number(log.so_tiet_thuc_day || log.actualTeachingPeriods || 0);
+    totalActualTeachingHours += Number(log.actualTeachingPeriods || 0);
   }
 
   const dinhMucGoc = configParams.dinh_muc_thang;
@@ -183,7 +183,7 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
   const tongBaoHiem = bhxh + bhyt + bhtn;
 
   // 6. Giảm trừ gia cảnh & Thuế TNCN lũy tiến 5 bậc
-  const dependentsCount = Number(user.dependentsCount || user.so_nguoi_phu_thuoc || 0);
+  const dependentsCount = Number(user.dependentsCount || 0);
   const giamTruBanThan = configParams.giam_tru_ban_than;
   const giamTruPhuThuoc = dependentsCount * configParams.giam_tru_phu_thuoc;
   const tongGiamTru = giamTruBanThan + giamTruPhuThuoc;
@@ -197,66 +197,66 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
 
   // 8. Snapshot tham số năm 2026
   const snapshotThamSo = {
-    luong_co_so: luongCoSo,
-    giam_tru_ban_than: giamTruBanThan,
-    giam_tru_phu_thuoc: configParams.giam_tru_phu_thuoc,
-    ty_le_bhxh: configParams.ty_le_bhxh,
-    ty_le_bhyt: configParams.ty_le_bhyt,
-    ty_le_bhtn: configParams.ty_le_bhtn,
-    bieu_thue_5_bac: [
-      { bac: 1, tu: 0, den: 10000000, thue_suat: 0.05 },
-      { bac: 2, tu: 10000000, den: 30000000, thue_suat: 0.1 },
-      { bac: 3, tu: 30000000, den: 60000000, thue_suat: 0.2 },
-      { bac: 4, tu: 60000000, den: 100000000, thue_suat: 0.28 },
-      { bac: 5, tu: 100000000, den: null, thue_suat: 0.35 },
+    baseSalarySnapshot: luongCoSo,
+    personalDeductionSnapshot: giamTruBanThan,
+    dependentDeductionSnapshot: configParams.giam_tru_phu_thuoc,
+    socialInsuranceRatioSnapshot: configParams.ty_le_bhxh,
+    healthInsuranceRatioSnapshot: configParams.ty_le_bhyt,
+    unemploymentInsuranceRatioSnapshot: configParams.ty_le_bhtn,
+    taxBracketsSnapshot: [
+      { level: 1, from: 0, to: 10000000, taxRate: 0.05 },
+      { level: 2, from: 10000000, to: 30000000, taxRate: 0.1 },
+      { level: 3, from: 30000000, to: 60000000, taxRate: 0.2 },
+      { level: 4, from: 60000000, to: 100000000, taxRate: 0.28 },
+      { level: 5, from: 100000000, to: null, taxRate: 0.35 },
     ],
   };
 
   return {
-    nguoi_dung_id: userId,
-    thang: Number(month),
-    nam: Number(year),
-    nguoi_lap_id: createdBy,
-    he_so_luong: heSoLuong,
-    luong_co_so: luongCoSo,
-    luong_chinh: luongChinh,
-    phu_cap_chuc_vu: phuCapChucVu,
-    phu_cap_tham_nien: phuCapThamNien,
-    phu_cap_uu_dai_nghe: phuCapUuDaiNghe,
-    phu_cap: [
-      { loai_phu_cap: 'CHUC_VU', he_so_hoac_ty_le: heSoChucVu, so_tien: phuCapChucVu },
-      { loai_phu_cap: 'THAM_NIEN', he_so_hoac_ty_le: seniorityYears, so_tien: phuCapThamNien },
-      { loai_phu_cap: 'UU_DAI_NGHE', he_so_hoac_ty_le: 0.3, so_tien: phuCapUuDaiNghe },
+    userId,
+    month: Number(month),
+    year: Number(year),
+    createdBy,
+    salaryCoefficient: heSoLuong,
+    baseSalary: luongCoSo,
+    primarySalary: luongChinh,
+    positionAllowance: phuCapChucVu,
+    seniorityAllowance: phuCapThamNien,
+    vocationalAllowance: phuCapUuDaiNghe,
+    allowances: [
+      { type: 'CHUC_VU', rate: heSoChucVu, amount: phuCapChucVu },
+      { type: 'THAM_NIEN', rate: seniorityYears, amount: phuCapThamNien },
+      { type: 'UU_DAI_NGHE', rate: 0.3, amount: phuCapUuDaiNghe },
     ],
-    khoan_thuong: [],
-    khau_tru: [],
-    gio_giang: {
-      dinh_muc_goc: dinhMucGoc,
-      ty_le_giam_dinh_muc: 0,
-      dinh_muc_sau_giam: dinhMucGoc,
-      gio_quy_doi_tich_luy: totalActualTeachingHours,
-      gio_vuot_dinh_muc: gioVuot,
-      don_gia_gio_chuan: configParams.don_gia_gio_chuan,
-      thu_lao_vuot_gio: thuLaoVuotGio,
-      da_tam_ung: 0,
+    bonusItems: [],
+    deductionItems: [],
+    teachingHours: {
+      baseQuota: dinhMucGoc,
+      reductionRatio: 0,
+      adjustedQuota: dinhMucGoc,
+      accumulatedStandardHours: totalActualTeachingHours,
+      overQuotaHours: gioVuot,
+      hourlyRate: configParams.don_gia_gio_chuan,
+      overQuotaRemuneration: thuLaoVuotGio,
+      advancedPayment: 0,
     },
-    tong_thu_nhap_gross: grossIncome,
-    bao_hiem: {
-      bhxh,
-      bhyt,
-      bhtn,
-      tong_bao_hiem: tongBaoHiem,
+    grossIncome,
+    insurance: {
+      socialInsurance: bhxh,
+      healthInsurance: bhyt,
+      unemploymentInsurance: bhtn,
+      totalInsurance: tongBaoHiem,
     },
-    thue_tncn: {
-      giam_tru_ban_than: giamTruBanThan,
-      giam_tru_phu_thuoc: giamTruPhuThuoc,
-      thu_nhap_tinh_thue: thuNhapTinhThue,
-      tien_thue: tienThue,
+    personalIncomeTax: {
+      personalDeduction: giamTruBanThan,
+      dependentDeduction: giamTruPhuThuoc,
+      taxableIncome: thuNhapTinhThue,
+      taxAmount: tienThue,
     },
-    thuc_linh_net: netSalary,
-    snapshot_tham_so: snapshotThamSo,
-    trang_thai: 'DU_THAO',
-    khoa_luc: null,
+    netSalary,
+    parameterSnapshot: snapshotThamSo,
+    status: 'DU_THAO',
+    lockedAt: null,
   };
 };
 
@@ -274,9 +274,9 @@ const generateMonthlyPayroll = async ({ month, year, departmentId, currentUser }
 
   // Kiểm tra xem bảng lương tháng này đã bị khóa chưa
   const lockedCount = await Payroll.countDocuments({
-    thang: Number(month),
-    nam: Number(year),
-    trang_thai: 'DA_KHOA',
+    month: Number(month),
+    year: Number(year),
+    status: 'DA_KHOA',
   });
 
   if (lockedCount > 0) {
@@ -314,7 +314,7 @@ const generateMonthlyPayroll = async ({ month, year, departmentId, currentUser }
     });
 
     const payroll = await Payroll.findOneAndUpdate(
-      { nguoi_dung_id: user._id, thang: Number(month), nam: Number(year) },
+      { userId: user._id, month: Number(month), year: Number(year) },
       { $set: payrollData },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
@@ -353,7 +353,7 @@ const lockMonthlyPayroll = async ({ month, year, currentUser, ip }) => {
   const m = Number(month);
   const y = Number(year);
 
-  const existingCount = await Payroll.countDocuments({ thang: m, nam: y });
+  const existingCount = await Payroll.countDocuments({ month: m, year: y });
   if (existingCount === 0) {
     throw new ServiceError(`Không tìm thấy bảng lương tháng ${m}/${y} để khóa.`, 404);
   }
@@ -362,12 +362,12 @@ const lockMonthlyPayroll = async ({ month, year, currentUser, ip }) => {
 
   // 1. Khóa toàn bộ phiếu lương
   const updatePayrollRes = await Payroll.updateMany(
-    { thang: m, nam: y },
+    { month: m, year: y },
     {
       $set: {
-        trang_thai: 'DA_KHOA',
-        khoa_luc: lockTime,
-        nguoi_duyet_id: currentUserId,
+        status: 'DA_KHOA',
+        lockedAt: lockTime,
+        approvedBy: currentUserId,
       },
     }
   );
@@ -378,8 +378,8 @@ const lockMonthlyPayroll = async ({ month, year, currentUser, ip }) => {
   const endDateStr = `${y}-${monthStr}-31`;
 
   const updateAttendanceRes = await AttendanceLog.updateMany(
-    { ngay_cong: { $gte: startDateStr, $lte: endDateStr } },
-    { $set: { da_chot: true } }
+    { workDate: { $gte: startDateStr, $lte: endDateStr } },
+    { $set: { isLocked: true } }
   );
 
   await AuditLog.create({
@@ -423,11 +423,11 @@ const unlockMonthlyPayroll = async ({ month, year, reason, currentUser, ip }) =>
   const y = Number(year);
 
   const updatePayrollRes = await Payroll.updateMany(
-    { thang: m, nam: y },
+    { month: m, year: y },
     {
       $set: {
-        trang_thai: 'DA_DUYET',
-        khoa_luc: null,
+        status: 'DA_DUYET',
+        lockedAt: null,
       },
     }
   );
@@ -459,36 +459,36 @@ const fetchPayrolls = async ({ month, year, departmentId, status, userId, curren
   const role = (currentUser.role || '').toUpperCase();
   const query = {};
 
-  if (month) query.thang = Number(month);
-  if (year) query.nam = Number(year);
-  if (status) query.trang_thai = status;
+  if (month) query.month = Number(month);
+  if (year) query.year = Number(year);
+  if (status) query.status = status;
 
   if (['GIANG_VIEN', 'GIANGVIEN', 'NHAN_VIEN', 'NHANVIEN', 'CHUYEN_VIEN'].includes(role)) {
-    query.nguoi_dung_id = currentUserId;
+    query.userId = currentUserId;
   } else if (['TRUONG_KHOA', 'TRUONGKHOA', 'PHO_TRUONG_KHOA', 'PHOKHOA'].includes(role)) {
     const deanUserIds = await getDeanScopedUserIds(currentUser);
     if (userId) {
       if (!deanUserIds.includes(userId.toString())) {
         throw new ServiceError('Bạn không có quyền xem bảng lương của nhân sự ngoài khoa.', 403);
       }
-      query.nguoi_dung_id = userId;
+      query.userId = userId;
     } else {
-      query.nguoi_dung_id = { $in: deanUserIds };
+      query.userId = { $in: deanUserIds };
     }
   } else if (['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG', 'HR'].includes(role)) {
     if (userId) {
-      query.nguoi_dung_id = userId;
+      query.userId = userId;
     } else if (departmentId) {
       const deptUsers = await User.find({ departmentId }).select('_id');
-      query.nguoi_dung_id = { $in: deptUsers.map((u) => u._id) };
+      query.userId = { $in: deptUsers.map((u) => u._id) };
     }
   }
 
   const payrolls = await Payroll.find(query)
-    .populate('nguoi_dung_id', 'fullName email role departmentId avatar code')
-    .populate('nguoi_lap_id', 'fullName email')
-    .populate('nguoi_duyet_id', 'fullName email')
-    .sort({ thang: -1, nam: -1, createdAt: -1 });
+    .populate('userId', 'fullName email role departmentId avatar staffCode')
+    .populate('createdBy', 'fullName email')
+    .populate('approvedBy', 'fullName email')
+    .sort({ month: -1, year: -1, createdAt: -1 });
 
   return payrolls;
 };
@@ -502,9 +502,9 @@ const fetchPayrollById = async (id, currentUser) => {
   }
 
   const payroll = await Payroll.findById(id)
-    .populate('nguoi_dung_id', 'fullName email role departmentId avatar code')
-    .populate('nguoi_lap_id', 'fullName email')
-    .populate('nguoi_duyet_id', 'fullName email');
+    .populate('userId', 'fullName email role departmentId avatar staffCode')
+    .populate('createdBy', 'fullName email')
+    .populate('approvedBy', 'fullName email');
 
   if (!payroll) {
     throw new ServiceError('Không tìm thấy phiếu lương.', 404);
@@ -512,7 +512,7 @@ const fetchPayrollById = async (id, currentUser) => {
 
   const currentUserId = (currentUser.id || currentUser._id).toString();
   const role = (currentUser.role || '').toUpperCase();
-  const ownerId = (payroll.nguoi_dung_id?._id || payroll.nguoi_dung_id).toString();
+  const ownerId = (payroll.userId?._id || payroll.userId).toString();
 
   if (['GIANG_VIEN', 'GIANGVIEN', 'NHAN_VIEN', 'NHANVIEN'].includes(role)) {
     if (ownerId !== currentUserId) {
@@ -554,25 +554,25 @@ const exportPayrollExcelData = async ({ month, year, departmentId, currentUser }
 
   const rows = payrolls.map((p, idx) => ({
     stt: idx + 1,
-    code: p.nguoi_dung_id?.code || '',
-    fullName: p.nguoi_dung_id?.fullName || '',
-    role: p.nguoi_dung_id?.role || '',
-    salaryCoefficient: p.he_so_luong,
-    baseSalary: p.luong_co_so,
-    primarySalary: p.luong_chinh,
-    positionAllowance: p.phu_cap_chuc_vu,
-    seniorityAllowance: p.phu_cap_tham_nien,
-    vocationalAllowance: p.phu_cap_uu_dai_nghe,
-    overtimeTeachingFee: p.gio_giang?.thu_lao_vuot_gio || 0,
-    grossIncome: p.tong_thu_nhap_gross,
-    bhxh: p.bao_hiem?.bhxh || 0,
-    bhyt: p.bao_hiem?.bhyt || 0,
-    bhtn: p.bao_hiem?.bhtn || 0,
-    totalInsurance: p.bao_hiem?.tong_bao_hiem || 0,
-    taxableIncome: p.thue_tncn?.thu_nhap_tinh_thue || 0,
-    pitTax: p.thue_tncn?.tien_thue || 0,
-    netSalary: p.thuc_linh_net,
-    status: p.trang_thai,
+    code: p.userId?.staffCode || p.userId?.code || '',
+    fullName: p.userId?.fullName || '',
+    role: p.userId?.role || '',
+    salaryCoefficient: p.salaryCoefficient,
+    baseSalary: p.baseSalary,
+    primarySalary: p.primarySalary,
+    positionAllowance: p.positionAllowance,
+    seniorityAllowance: p.seniorityAllowance,
+    vocationalAllowance: p.vocationalAllowance,
+    overtimeTeachingFee: p.teachingHours?.overQuotaRemuneration || 0,
+    grossIncome: p.grossIncome,
+    bhxh: p.insurance?.socialInsurance || 0,
+    bhyt: p.insurance?.healthInsurance || 0,
+    bhtn: p.insurance?.unemploymentInsurance || 0,
+    totalInsurance: p.insurance?.totalInsurance || 0,
+    taxableIncome: p.personalIncomeTax?.taxableIncome || 0,
+    pitTax: p.personalIncomeTax?.taxAmount || 0,
+    netSalary: p.netSalary,
+    status: p.status,
   }));
 
   return {
@@ -594,36 +594,36 @@ const exportPayrollPdfData = async (id, currentUser) => {
   return {
     template: 'PAYROLL_SLIP_2026',
     schoolName: 'TRƯỜNG ĐẠI HỌC CÔNG NGHỆ THÔNG TIN VÀ TRUYỀN THÔNG',
-    title: `PHIẾU LƯƠNG CÁ NHÂN THÁNG ${payroll.thang}/${payroll.nam}`,
+    title: `PHIẾU LƯƠNG CÁ NHÂN THÁNG ${payroll.month}/${payroll.year}`,
     employee: {
-      fullName: payroll.nguoi_dung_id?.fullName || '',
-      email: payroll.nguoi_dung_id?.email || '',
-      code: payroll.nguoi_dung_id?.code || '',
-      role: payroll.nguoi_dung_id?.role || '',
+      fullName: payroll.userId?.fullName || '',
+      email: payroll.userId?.email || '',
+      code: payroll.userId?.staffCode || payroll.userId?.code || '',
+      role: payroll.userId?.role || '',
     },
     salaryInfo: {
-      salaryCoefficient: payroll.he_so_luong,
-      baseSalary: payroll.luong_co_so,
-      primarySalary: payroll.luong_chinh,
-      positionAllowance: payroll.phu_cap_chuc_vu,
-      seniorityAllowance: payroll.phu_cap_tham_nien,
-      vocationalAllowance: payroll.phu_cap_uu_dai_nghe,
-      overtimeHours: payroll.gio_giang?.gio_vuot_dinh_muc || 0,
-      overtimePayment: payroll.gio_giang?.thu_lao_vuot_gio || 0,
-      grossIncome: payroll.tong_thu_nhap_gross,
+      salaryCoefficient: payroll.salaryCoefficient,
+      baseSalary: payroll.baseSalary,
+      primarySalary: payroll.primarySalary,
+      positionAllowance: payroll.positionAllowance,
+      seniorityAllowance: payroll.seniorityAllowance,
+      vocationalAllowance: payroll.vocationalAllowance,
+      overtimeHours: payroll.teachingHours?.overQuotaHours || 0,
+      overtimePayment: payroll.teachingHours?.overQuotaRemuneration || 0,
+      grossIncome: payroll.grossIncome,
     },
     deductions: {
-      bhxh: payroll.bao_hiem?.bhxh || 0,
-      bhyt: payroll.bao_hiem?.bhyt || 0,
-      bhtn: payroll.bao_hiem?.bhtn || 0,
-      totalInsurance: payroll.bao_hiem?.tong_bao_hiem || 0,
-      taxableIncome: payroll.thue_tncn?.thu_nhap_tinh_thue || 0,
-      incomeTax: payroll.thue_tncn?.tien_thue || 0,
+      bhxh: payroll.insurance?.socialInsurance || 0,
+      bhyt: payroll.insurance?.healthInsurance || 0,
+      bhtn: payroll.insurance?.unemploymentInsurance || 0,
+      totalInsurance: payroll.insurance?.totalInsurance || 0,
+      taxableIncome: payroll.personalIncomeTax?.taxableIncome || 0,
+      incomeTax: payroll.personalIncomeTax?.taxAmount || 0,
     },
-    netSalary: payroll.thuc_linh_net,
-    isLocked: payroll.trang_thai === 'DA_KHOA',
-    lockedAt: payroll.khoa_luc,
-    approvedBy: payroll.nguoi_duyet_id?.fullName || 'BAN GIÁM HIỆU',
+    netSalary: payroll.netSalary,
+    isLocked: payroll.status === 'DA_KHOA',
+    lockedAt: payroll.lockedAt,
+    approvedBy: payroll.approvedBy?.fullName || 'BAN GIÁM HIỆU',
     generatedAt: new Date(),
   };
 };

@@ -12,6 +12,7 @@
  */
 const mongoose = require('mongoose');
 const SystemConfig = require('../models/systemConfig.model');
+const { acquireRedisLock, releaseRedisLock, isRedisReady, redisGet } = require('../config/redis');
 
 // Sinh định danh Worker ngẫu nhiên duy nhất cho instance hiện tại
 const generateWorkerId = () =>
@@ -19,7 +20,7 @@ const generateWorkerId = () =>
 
 const DEFAULT_WORKER_ID = generateWorkerId();
 
-// Bộ lưu trữ In-Memory phục vụ fallback khi không có kết nối MongoDB
+// Bộ lưu trữ In-Memory phục vụ fallback khi không có kết nối MongoDB & Redis
 const memoryLocks = new Map();
 
 /**
@@ -31,6 +32,7 @@ const resetMemoryLocks = () => {
 
 /**
  * Thử giành khóa phân tán (Acquire Lock)
+ * Thứ tự ưu tiên: 1. Redis (Redlock SET NX PX) -> 2. MongoDB Atomic CAS -> 3. In-Memory Fallback
  * 
  * @param {string} lockKey Tên định danh của khóa (ví dụ: 'CRON_PERIODIC_ABSENT_SCAN')
  * @param {number} [ttlSeconds=60] Thời gian sống tối đa của khóa (giây) trước khi tự hết hạn
@@ -42,11 +44,19 @@ const acquireLock = async (lockKey, ttlSeconds = 60, workerId = DEFAULT_WORKER_I
     throw new Error('[DistributedLock] lockKey phải là chuỗi ký tự hợp lệ.');
   }
 
+  // 1. Tầng ưu tiên số 1: Redis Distributed Lock (Hiệu năng cao, chia sẻ đa container)
+  if (isRedisReady()) {
+    const redisAcquired = await acquireRedisLock(lockKey, ttlSeconds, workerId);
+    if (redisAcquired !== null) {
+      return redisAcquired;
+    }
+  }
+
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
   const normalizedKey = `LOCK_${lockKey.toUpperCase().trim()}`;
 
-  // 1. Chế độ Fallback In-Memory khi MongoDB chưa kết nối (Standalone / Unit Tests)
+  // 2. Chế độ Fallback In-Memory khi MongoDB chưa kết nối (Standalone / Unit Tests)
   if (!mongoose.connection || mongoose.connection.readyState !== 1) {
     const existing = memoryLocks.get(normalizedKey);
     if (existing && existing.isLocked && existing.expiresAt > now && existing.lockedBy !== workerId) {
@@ -61,7 +71,7 @@ const acquireLock = async (lockKey, ttlSeconds = 60, workerId = DEFAULT_WORKER_I
     return true;
   }
 
-  // 2. Chế độ MongoDB Atomic Compare-and-Swap
+  // 3. Tầng ưu tiên số 2: MongoDB Atomic Compare-and-Swap
   try {
     // Thử cập nhật bản ghi khóa hiện có nếu:
     // - Khóa đã hết hạn (expiresAt <= now)
@@ -69,21 +79,21 @@ const acquireLock = async (lockKey, ttlSeconds = 60, workerId = DEFAULT_WORKER_I
     // - Khóa đang do chính worker này nắm giữ (re-entrant / renew)
     const updated = await SystemConfig.findOneAndUpdate(
       {
-        khoa_cau_hinh: normalizedKey,
+        key: normalizedKey,
         $or: [
-          { 'gia_tri.expiresAt': { $lte: now } },
-          { 'gia_tri.isLocked': false },
-          { 'gia_tri.lockedBy': workerId },
+          { 'value.expiresAt': { $lte: now } },
+          { 'value.isLocked': false },
+          { 'value.lockedBy': workerId },
         ],
       },
       {
         $set: {
-          'gia_tri.isLocked': true,
-          'gia_tri.lockedBy': workerId,
-          'gia_tri.acquiredAt': now,
-          'gia_tri.expiresAt': expiresAt,
-          nhom: 'SYSTEM',
-          cap_nhat_luc: now,
+          'value.isLocked': true,
+          'value.lockedBy': workerId,
+          'value.acquiredAt': now,
+          'value.expiresAt': expiresAt,
+          group: 'SYSTEM',
+          updatedAt: now,
         },
       },
       { new: true }
@@ -94,7 +104,7 @@ const acquireLock = async (lockKey, ttlSeconds = 60, workerId = DEFAULT_WORKER_I
     }
 
     // Nếu không cập nhật được, kiểm tra xem bản ghi đã tồn tại trong CSDL chưa
-    const existingDoc = await SystemConfig.findOne({ khoa_cau_hinh: normalizedKey }).select('_id gia_tri').lean();
+    const existingDoc = await SystemConfig.findOne({ key: normalizedKey }).select('_id value').lean();
     if (existingDoc) {
       // Bản ghi tồn tại và đang bị worker khác nắm giữ hợp lệ (chưa hết hạn)
       return false;
@@ -103,15 +113,15 @@ const acquireLock = async (lockKey, ttlSeconds = 60, workerId = DEFAULT_WORKER_I
     // Nếu bản ghi chưa từng tồn tại, tạo mới khóa lần đầu tiên
     try {
       await SystemConfig.create({
-        khoa_cau_hinh: normalizedKey,
-        gia_tri: {
+        key: normalizedKey,
+        value: {
           isLocked: true,
           lockedBy: workerId,
           acquiredAt: now,
           expiresAt: expiresAt,
         },
-        nhom: 'SYSTEM',
-        mo_ta: `Khóa phân tán cho tiến trình nền (${lockKey})`,
+        group: 'SYSTEM',
+        description: `Khóa phân tán cho tiến trình nền (${lockKey})`,
       });
       return true;
     } catch (insertError) {
@@ -137,10 +147,19 @@ const acquireLock = async (lockKey, ttlSeconds = 60, workerId = DEFAULT_WORKER_I
  */
 const releaseLock = async (lockKey, workerId = DEFAULT_WORKER_ID) => {
   if (!lockKey || typeof lockKey !== 'string') return false;
+
+  // 1. Tầng ưu tiên số 1: Redis Distributed Lock
+  if (isRedisReady()) {
+    const redisReleased = await releaseRedisLock(lockKey, workerId);
+    if (redisReleased !== null) {
+      return redisReleased;
+    }
+  }
+
   const normalizedKey = `LOCK_${lockKey.toUpperCase().trim()}`;
   const now = new Date();
 
-  // 1. Chế độ Fallback In-Memory
+  // 2. Chế độ Fallback In-Memory
   if (!mongoose.connection || mongoose.connection.readyState !== 1) {
     const existing = memoryLocks.get(normalizedKey);
     if (existing && existing.lockedBy === workerId) {
@@ -159,14 +178,14 @@ const releaseLock = async (lockKey, workerId = DEFAULT_WORKER_ID) => {
   try {
     const res = await SystemConfig.updateOne(
       {
-        khoa_cau_hinh: normalizedKey,
-        'gia_tri.lockedBy': workerId,
+        key: normalizedKey,
+        'value.lockedBy': workerId,
       },
       {
         $set: {
-          'gia_tri.isLocked': false,
-          'gia_tri.releasedAt': now,
-          cap_nhat_luc: now,
+          'value.isLocked': false,
+          'value.releasedAt': now,
+          updatedAt: now,
         },
       }
     );
@@ -223,6 +242,19 @@ const getLockStatus = async (lockKey) => {
   const normalizedKey = `LOCK_${lockKey.toUpperCase().trim()}`;
   const now = new Date();
 
+  // 1. Kiểm tra trên Redis nếu đang kết nối
+  if (isRedisReady()) {
+    const redisWorkerId = await redisGet(`DIST_LOCK:${lockKey.toUpperCase().trim()}`);
+    if (redisWorkerId) {
+      return {
+        isLocked: true,
+        lockedBy: redisWorkerId,
+        storage: 'redis',
+      };
+    }
+  }
+
+  // 2. Chế độ Fallback In-Memory
   if (!mongoose.connection || mongoose.connection.readyState !== 1) {
     const mem = memoryLocks.get(normalizedKey);
     if (!mem) return { isLocked: false, exists: false, storage: 'memory' };
@@ -236,12 +268,12 @@ const getLockStatus = async (lockKey) => {
     };
   }
 
-  const doc = await SystemConfig.findOne({ khoa_cau_hinh: normalizedKey }).lean();
-  if (!doc || !doc.gia_tri) {
+  const doc = await SystemConfig.findOne({ key: normalizedKey }).lean();
+  if (!doc || (!doc.value && !doc.gia_tri)) {
     return { isLocked: false, exists: false, storage: 'mongodb' };
   }
 
-  const val = doc.gia_tri;
+  const val = doc.value || doc.gia_tri;
   const expiresAt = val.expiresAt ? new Date(val.expiresAt) : null;
   const isExpired = expiresAt && expiresAt <= now;
 

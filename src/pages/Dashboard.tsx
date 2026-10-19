@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { apiClient, extractArray } from '../api/apiClient';
 import { useAuth } from '../context/AuthContext';
+import { useSocketEvent, useSocketStatus } from '../api/socket';
 import toast from 'react-hot-toast';
 
 interface DashboardStats {
@@ -240,6 +241,56 @@ export default function Dashboard() {
     fetchWeeklyTrend();
   }, [fetchStats, fetchRecent, fetchWeeklyTrend]);
 
+  const isSocketConnected = useSocketStatus();
+
+  // Lắng nghe sự kiện Realtime điểm danh mới qua Socket.IO (< 100ms)
+  useSocketEvent('attendance:new-punch', (punchData: any) => {
+    // 1. Cập nhật thống kê tức thì không cần gọi lại API
+    setStats((prev) => {
+      if (!prev) return prev;
+      const isLate = punchData.status === 'LATE';
+      const isCheckIn = punchData.punchType === 'CHECK_IN';
+      const newPresent = isCheckIn ? prev.presentToday + 1 : prev.presentToday;
+      const newLate = isLate ? prev.lateToday + 1 : prev.lateToday;
+      return {
+        ...prev,
+        presentToday: newPresent,
+        lateToday: newLate,
+        attendanceRate: prev.totalUsers > 0 ? Math.round(((newPresent + newLate) / prev.totalUsers) * 100) : 0,
+      };
+    });
+
+    // 2. Chèn ngay lượt quẹt mới lên đầu danh sách Recent
+    const newRecord: RecentAttendance = {
+      _id: punchData.punchId || String(Date.now()),
+      userId: {
+        fullName: punchData.userName || 'Cán bộ',
+        email: '',
+        avatar: punchData.avatar,
+      },
+      checkInTime: punchData.punchType === 'CHECK_IN' ? punchData.scanTime : undefined,
+      checkOutTime: punchData.punchType === 'CHECK_OUT' ? punchData.scanTime : undefined,
+      status: punchData.status || 'PRESENT',
+      method: (punchData.method || 'face').toLowerCase(),
+      createdAt: punchData.scanTime || new Date().toISOString(),
+    };
+
+    setRecentAttendance((prev) => [newRecord, ...prev.slice(0, 7)]);
+
+    // 3. Thông báo Toast thời gian thực
+    toast.success(
+      `⚡ [Realtime] ${punchData.userName} vừa ${punchData.punchType === 'CHECK_IN' ? 'Check-in' : 'Check-out'}!`,
+      { duration: 3500 }
+    );
+  });
+
+  // Lắng nghe cảnh báo gian lận bảo mật Realtime
+  useSocketEvent('security:fraud-alert', (alertData: any) => {
+    toast.error(`🚨 [CẢNH BÁO AN NINH]: ${alertData.message}`, {
+      duration: 6000,
+    });
+  });
+
   const handleRefresh = async () => {
     setRefreshing(true);
     setLoadingStats(true);
@@ -285,9 +336,22 @@ export default function Dashboard() {
         />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-xs font-semibold backdrop-blur-md">
-              <Sparkles size={13} className="text-amber-300" />
-              <span>Hệ Thống Quản Lý Nhân Sự & Chấm Công Trường Đại Học</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-xs font-semibold backdrop-blur-md">
+                <Sparkles size={13} className="text-amber-300" />
+                <span>Hệ Thống Quản Lý Nhân Sự & Chấm Công Trường Đại Học</span>
+              </div>
+              {isSocketConnected ? (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/25 border border-emerald-400/40 text-emerald-100 text-xs font-bold backdrop-blur-md shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>Realtime Live (&lt; 100ms)</span>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/25 border border-amber-400/40 text-amber-100 text-xs font-bold backdrop-blur-md">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                  <span>Polling Fallback</span>
+                </div>
+              )}
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
               Xin chào, {user?.fullName || 'Cán bộ'} 👋

@@ -40,7 +40,7 @@ const updateSystemConfig = async (req, res, next) => {
 
     if (key !== undefined && value !== undefined) {
       const result = await systemConfigService.updateConfig(key, value, req.user, req);
-      return sendSuccess(res, `Cập nhật cấu hình "${result.khoa_cau_hinh}" thành công.`, result);
+      return sendSuccess(res, `Cập nhật cấu hình "${result.key}" thành công.`, result);
     }
 
     // Nếu truyền object map { KEY1: val1, KEY2: val2 }

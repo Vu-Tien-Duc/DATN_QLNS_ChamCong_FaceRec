@@ -51,7 +51,7 @@ const updateHoliday = async (req, res, next) => {
 const deleteHoliday = async (req, res, next) => {
   try {
     const holiday = await holidayService.deleteHoliday(req.params.id);
-    return sendSuccess(res, `Đã xóa ngày nghỉ lễ "${holiday.ten_ngay_le}" thành công.`, holiday);
+    return sendSuccess(res, `Đã xóa ngày nghỉ lễ "${holiday.name}" thành công.`, holiday);
   } catch (error) {
     return handleError(res, error, next);
   }

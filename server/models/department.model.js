@@ -18,13 +18,13 @@ const departmentSchema = new mongoose.Schema(
       },
       required: [true, 'Loại đơn vị (khoa, bomon, phongban) là bắt buộc'],
     },
-    don_vi_cha: {
+    don_vi_cha_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'parentId',
       ref: 'Department',
       default: null,
     },
-    truong_don_vi: {
+    truong_don_vi_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'managerId',
       ref: 'User',
@@ -83,8 +83,8 @@ departmentSchema.virtual('location')
 departmentSchema.aliases = {
   name: 'ten_phong_ban',
   type: 'loai_don_vi',
-  parentId: 'don_vi_cha',
-  managerId: 'truong_don_vi',
+  parentId: 'don_vi_cha_id',
+  managerId: 'truong_don_vi_id',
   location: 'toa_do',
   latitude: 'toa_do.vi_do',
   longitude: 'toa_do.kinh_do',
@@ -93,17 +93,16 @@ departmentSchema.aliases = {
   updatedAt: 'cap_nhat_luc',
 };
 
-departmentSchema.virtual('createdAt').get(function () { return this.tao_luc; });
-departmentSchema.virtual('updatedAt').get(function () { return this.cap_nhat_luc; });
+
 
 const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 departmentSchema.plugin(schemaAliasPlugin);
 
 departmentSchema.index(
-  { don_vi_cha: 1, ten_phong_ban: 1 },
+  { don_vi_cha_id: 1, ten_phong_ban: 1 },
   { unique: true, collation: { locale: 'vi', strength: 2 } }
 );
-departmentSchema.index({ truong_don_vi: 1 });
+departmentSchema.index({ truong_don_vi_id: 1 });
 departmentSchema.index({ loai_don_vi: 1 });
 
 const Department = mongoose.models.Department || mongoose.model('Department', departmentSchema, 'phong_ban');

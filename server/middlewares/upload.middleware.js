@@ -1,15 +1,9 @@
 /**
  * Cấu hình kiểm tra giới hạn và lưu trữ tệp tải lên của người dùng.
+ * Sử dụng lưu trữ RAM MemoryStorage để truyền trực tiếp dữ liệu nhị phân lên MinIO Object Storage.
  */
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
-
-const uploadDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
 
 const EXTENSIONS_BY_MIME_TYPE = {
   'image/jpeg': ['.jpg', '.jpeg'],
@@ -20,16 +14,6 @@ const EXTENSIONS_BY_MIME_TYPE = {
   'application/msword': ['.doc'],
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
 };
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const extension = EXTENSIONS_BY_MIME_TYPE[file.mimetype][0];
-    cb(null, `attachment-${crypto.randomUUID()}${extension}`);
-  },
-});
 
 // Danh sách các định dạng file minh chứng được chấp nhận
 const ALLOWED_MIME_TYPES = [
@@ -57,6 +41,9 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// Sử dụng memoryStorage để đưa trực tiếp Buffer lên MinIO Object Storage
+const storage = multer.memoryStorage();
+
 const upload = multer({
   storage,
   limits: {
@@ -71,5 +58,6 @@ const upload = multer({
 
 module.exports = {
   upload,
-  uploadDir,
+  ALLOWED_MIME_TYPES,
+  EXTENSIONS_BY_MIME_TYPE,
 };

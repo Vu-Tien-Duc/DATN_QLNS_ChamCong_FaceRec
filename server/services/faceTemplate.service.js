@@ -94,12 +94,12 @@ const registerFaceDescriptorForUser = async ({
   if (dupCheck.isDuplicate && dupCheck.duplicateUser && !isForce) {
     const dup = dupCheck.duplicateUser;
     throw new ServiceError(
-      `Khuôn mặt này đã được đăng ký cho tài khoản "${dup.fullName || dup.ho_ten}" (${dup.email}). Mỗi nhân sự chỉ được sở hữu một khuôn mặt duy nhất!`,
+      `Khuôn mặt này đã được đăng ký cho tài khoản "${dup.fullName}" (${dup.email}). Mỗi nhân sự chỉ được sở hữu một khuôn mặt duy nhất!`,
       409,
       'USER_FACE_ALREADY_REGISTERED',
       {
         duplicateUserId: dup._id,
-        duplicateFullName: dup.fullName || dup.ho_ten,
+        duplicateFullName: dup.fullName,
         duplicateEmail: dup.email,
         distance: dupCheck.distance,
         threshold: dupCheck.threshold,
@@ -112,37 +112,18 @@ const registerFaceDescriptorForUser = async ({
 
   // 4. Lưu vào Collection 2 FaceTemplate (mau_khuon_mat)
   const templateDoc = await FaceTemplate.findOneAndUpdate(
-    {
-      $or: [{ ma_nguoi_dung: targetUser._id }, { userId: targetUser._id }],
-    },
+    { userId: targetUser._id },
     {
       $set: {
-        ma_nguoi_dung: targetUser._id,
         userId: targetUser._id,
-        vector_dac_trung: vectorList,
         descriptors: vectorList,
-        vector_trung_binh: vectorTrungBinh,
         averageDescriptor: vectorTrungBinh,
-        cac_goc_chup: effectivePoses,
         poses: effectivePoses,
-        so_luong_mau: vectorList.length,
         samplesCount: vectorList.length,
-        so_chieu_vector: 512,
         embeddingDimensions: 512,
-        mo_hinh_ai: 'buffalo_s',
         embeddingModel: 'buffalo_s',
-        nguoi_dang_ky: currentUser?._id || currentUser?.id || targetUser._id,
         registeredBy: currentUser?._id || currentUser?.id || targetUser._id,
-        ngay_dang_ky: new Date(),
         registeredAt: new Date(),
-        du_lieu_ma_hoa: encryptBiometricVector(vectorList),
-        vector_trung_binh_ma_hoa: encryptBiometricVector(vectorTrungBinh),
-        trang_thai_ma_hoa: 'AES_256_GCM',
-        dong_y_thu_thap: true,
-        thoi_diem_dong_y: new Date(),
-        phien_ban_chinh_sach: 'ND13-2023-V1.0',
-        ip_dong_y: ip || null,
-        dieu_khoan_dong_y: true,
         consentAgreed: true,
       },
     },
@@ -160,7 +141,7 @@ const registerFaceDescriptorForUser = async ({
   addFaissTemplate({
     userId: targetUser._id.toString(),
     embeddings: vectorList,
-    fullName: targetUser.fullName || targetUser.ho_ten,
+    fullName: targetUser.fullName,
     employeeId: targetUser.email || targetUser._id.toString(),
   }).catch((err) => console.warn('[FAISS Sync Warning]:', err.message));
 
@@ -187,7 +168,7 @@ const registerFaceDescriptorForUser = async ({
 
   return {
     userId: targetUser._id,
-    fullName: targetUser.fullName || targetUser.ho_ten,
+    fullName: targetUser.fullName,
     email: targetUser.email,
     faceRegistered: true,
     samplesCount: vectorList.length,
@@ -251,9 +232,7 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
   }
 
   // 1. Xóa khỏi Collection mau_khuon_mat
-  const deleteResult = await FaceTemplate.deleteMany({
-    $or: [{ ma_nguoi_dung: targetUser._id }, { userId: targetUser._id }],
-  });
+  const deleteResult = await FaceTemplate.deleteMany({ userId: targetUser._id });
 
   // 2. Reset các trường sinh trắc học trên User
   await User.findByIdAndUpdate(targetUser._id, {
@@ -291,7 +270,7 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
 
   return {
     userId: targetUser._id,
-    fullName: targetUser.fullName || targetUser.ho_ten,
+    fullName: targetUser.fullName,
     faceRegistered: false,
     deletedCount: deleteResult.deletedCount,
   };
@@ -301,9 +280,7 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
  * 4. Lấy dữ liệu mẫu khuôn mặt của người dùng
  */
 const getFaceTemplateByUserId = async (userId) => {
-  return FaceTemplate.findOne({
-    $or: [{ ma_nguoi_dung: userId }, { userId }],
-  }).select('cac_goc_chup so_luong_mau mo_hinh_ai ngay_dang_ky so_chieu_vector');
+  return FaceTemplate.findOne({ userId }).select('poses samplesCount embeddingModel registeredAt embeddingDimensions');
 };
 
 module.exports = {

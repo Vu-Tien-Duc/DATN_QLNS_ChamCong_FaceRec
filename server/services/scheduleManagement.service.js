@@ -5,7 +5,7 @@
  * - Thuật toán chống xung đột 2 chiều: Xung đột Giảng viên & Xung đột Phòng học.
  * - Công thức chồng lấn khoảng tiết: max(Start_1, Start_2) <= min(End_1, End_2).
  * - So khớp tuần học chung (weekNumbers) và chuẩn hóa tên phòng học (isSameRoom).
- * - Hỗ trợ xếp lịch dạy bù (DAY_BU) và quản lý ngoại lệ buổi học (ngoai_le[]).
+ * - Hỗ trợ xếp lịch dạy bù (DAY_BU) và quản lý ngoại lệ buổi học (exceptions[]).
  * - Phân quyền quản trị: Giảng viên chỉ xem lịch bản thân; Trưởng khoa xem/quản lý trong khoa; Admin toàn quyền.
  */
 const mongoose = require('mongoose');
@@ -63,10 +63,10 @@ const isSameRoom = (room1, room2) => {
  */
 const checkPeriodOrTimeOverlap = (schedA, schedB) => {
   // Ưu tiên so sánh khoảng tiết nếu có
-  const startA = schedA.startPeriod || schedA.tiet_bat_dau;
-  const countA = schedA.periodCount || schedA.so_tiet;
-  const startB = schedB.startPeriod || schedB.tiet_bat_dau;
-  const countB = schedB.periodCount || schedB.so_tiet;
+  const startA = schedA.startPeriod;
+  const countA = schedA.periodCount;
+  const startB = schedB.startPeriod;
+  const countB = schedB.periodCount;
 
   if (startA && countA && startB && countB) {
     const endA = startA + countA - 1;
@@ -75,10 +75,10 @@ const checkPeriodOrTimeOverlap = (schedA, schedB) => {
   }
 
   // Fallback so sánh khung giờ HH:mm
-  const aStartMin = timeStringToMinutes(schedA.startTime || schedA.gio_bat_dau);
-  const aEndMin = timeStringToMinutes(schedA.endTime || schedA.gio_ket_thuc);
-  const bStartMin = timeStringToMinutes(schedB.startTime || schedB.gio_bat_dau);
-  const bEndMin = timeStringToMinutes(schedB.endTime || schedB.gio_ket_thuc);
+  const aStartMin = timeStringToMinutes(schedA.startTime);
+  const aEndMin = timeStringToMinutes(schedA.endTime);
+  const bStartMin = timeStringToMinutes(schedB.startTime);
+  const bEndMin = timeStringToMinutes(schedB.endTime);
 
   return Math.max(aStartMin, bStartMin) < Math.min(aEndMin, bEndMin);
 };
@@ -127,7 +127,6 @@ const detectScheduleConflicts = async ({
 
     query.$or = [
       { makeupDate: { $gte: startOfTarget, $lte: endOfTarget } },
-      { ngay_day_bu: { $gte: startOfTarget, $lte: endOfTarget } },
       { weekday: targetDate.getDay() },
     ];
   } else {
@@ -146,11 +145,11 @@ const detectScheduleConflicts = async ({
 
   for (const exist of existingSchedules) {
     // Bỏ qua các buổi đã hủy
-    const isCancelled = Array.isArray(exist.exceptions) && exist.exceptions.some((ex) => ex.trang_thai === 'HUY');
+    const isCancelled = Array.isArray(exist.exceptions) && exist.exceptions.some((ex) => ex.status === 'HUY');
     if (isCancelled) continue;
 
     // Kiểm tra tuần học chung
-    const existWeeks = exist.weekNumbers || exist.danh_sach_tuan || [];
+    const existWeeks = exist.weekNumbers || [];
     if (!hasCommonWeek(weekNumbers, existWeeks)) continue;
 
     // Kiểm tra chồng lấn tiết học
@@ -172,7 +171,7 @@ const detectScheduleConflicts = async ({
     }
 
     // 2. Kiểm tra xung đột Phòng học
-    const existRoom = exist.roomId || exist.phong_hoc;
+    const existRoom = exist.roomId;
     if (roomId && existRoom && isSameRoom(roomId, existRoom)) {
       throw new ServiceError(
         `Xung đột Phòng học: ${roomId} đã được bố trí cho lớp học khác vào ${
@@ -205,14 +204,14 @@ const fetchSchedules = async ({
   currentUser,
 }) => {
   const query = {};
-  const userRole = (currentUser.role || currentUser.vai_tro || '').toLowerCase();
+  const userRole = (currentUser.role || '').toLowerCase();
 
   if (userRole === 'giangvien' || userRole === 'nhanvien') {
     query.userId = currentUser.id || currentUser._id;
   } else if (userRole === 'truongkhoa') {
     const departmentIds = await getDeanDepartmentIds(currentUser);
     const scopedUserIds = await User.find({
-      $or: [{ departmentId: { $in: departmentIds } }, { ma_don_vi: { $in: departmentIds } }],
+      departmentId: { $in: departmentIds },
     }).distinct('_id');
 
     if (userId) {
@@ -248,9 +247,9 @@ const fetchSchedules = async ({
   const [total, schedules] = await Promise.all([
     Schedule.countDocuments(query),
     Schedule.find(query)
-      .populate('userId', 'fullName ho_ten email staffCode ma_can_bo role departmentId')
+      .populate('userId', 'fullName email staffCode role departmentId')
       .populate('shiftId', 'name startTime endTime')
-      .populate('subjectId', 'name ten_mon code ma_mon credits so_tin_chi departmentId')
+      .populate('subjectId', 'name code credits departmentId')
       .sort({ weekday: 1, startPeriod: 1, startTime: 1 })
       .skip(skip)
       .limit(limitNum)
@@ -277,15 +276,15 @@ const fetchScheduleById = async (scheduleId, currentUser) => {
   }
 
   const schedule = await Schedule.findById(scheduleId)
-    .populate('userId', 'fullName ho_ten email staffCode role departmentId')
+    .populate('userId', 'fullName email staffCode role departmentId')
     .populate('shiftId', 'name startTime endTime')
-    .populate('subjectId', 'name ten_mon code ma_mon credits');
+    .populate('subjectId', 'name code credits');
 
   if (!schedule) {
     throw new ServiceError('Không tìm thấy lịch giảng dạy/công tác.', 404);
   }
 
-  const userRole = (currentUser.role || currentUser.vai_tro || '').toLowerCase();
+  const userRole = (currentUser.role || '').toLowerCase();
   if (userRole === 'giangvien' && String(schedule.userId?._id || schedule.userId) !== String(currentUser.id)) {
     throw new ServiceError('Bạn không có quyền truy cập lịch của người khác.', 403);
   }
@@ -340,38 +339,23 @@ const createNewSchedule = async (data, currentUser) => {
   // 2. Khởi tạo bản ghi Schedule
   const newSchedule = await Schedule.create({
     userId,
-    ma_nguoi_dung: userId,
     shiftId: shiftId || null,
-    ma_ca: shiftId || null,
     startTime: startTime || '07:00',
-    gio_bat_dau: startTime || '07:00',
     endTime: endTime || '09:30',
-    gio_ket_thuc: endTime || '09:30',
     startPeriod: Number(startPeriod) || 1,
-    tiet_bat_dau: Number(startPeriod) || 1,
     periodCount: Number(periodCount) || 3,
-    so_tiet: Number(periodCount) || 3,
     roomId,
-    phong_hoc: roomId,
     subjectId: subjectId || null,
-    ma_mon: subjectId || null,
     weekday: Number(weekday),
-    thu_trong_tuan: Number(weekday),
     isRecurring: Boolean(isRecurring),
     startDate: startDate ? new Date(startDate) : new Date('2026-09-01'),
     endDate: endDate ? new Date(endDate) : new Date('2026-12-31'),
     scheduleType,
-    loai_lich: scheduleType,
     makeupDate: makeupDate ? new Date(makeupDate) : null,
-    ngay_day_bu: makeupDate ? new Date(makeupDate) : null,
     weekNumbers,
-    danh_sach_tuan: weekNumbers,
     academicYear,
-    nam_hoc: academicYear,
     semester: Number(semester),
-    hoc_ky: Number(semester),
     exceptions: [],
-    ngoai_le: [],
   });
 
   // 3. Ghi Audit Log
@@ -427,14 +411,6 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
   });
 
   Object.assign(schedule, data);
-  if (data.startPeriod) schedule.tiet_bat_dau = data.startPeriod;
-  if (data.periodCount) schedule.so_tiet = data.periodCount;
-  if (data.roomId) schedule.phong_hoc = data.roomId;
-  if (data.weekday !== undefined) schedule.thu_trong_tuan = data.weekday;
-  if (data.academicYear) schedule.nam_hoc = data.academicYear;
-  if (data.semester) schedule.hoc_ky = data.semester;
-  if (data.weekNumbers) schedule.danh_sach_tuan = data.weekNumbers;
-
   await schedule.save();
 
   AuditLog.create({
@@ -482,16 +458,14 @@ const addScheduleException = async ({ scheduleId, date, reason, status = 'NGHI',
   }
 
   const exceptionItem = {
-    ngay: new Date(date),
-    ly_do: reason || 'Giảng viên có lý do công tác',
-    trang_thai: status,
-    ngay_day_bu: makeupDate ? new Date(makeupDate) : null,
+    date: new Date(date),
+    reason: reason || 'Giảng viên có lý do công tác',
+    status,
+    makeupDate: makeupDate ? new Date(makeupDate) : null,
   };
 
   if (!Array.isArray(schedule.exceptions)) schedule.exceptions = [];
   schedule.exceptions.push(exceptionItem);
-  if (!Array.isArray(schedule.ngoai_le)) schedule.ngoai_le = [];
-  schedule.ngoai_le.push(exceptionItem);
 
   await schedule.save();
 

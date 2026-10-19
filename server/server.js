@@ -26,6 +26,10 @@ const startServer = async () => {
     // Khởi tạo các tiến trình chạy nền (node-cron)
     initCronJobs();
 
+    // Khởi chạy Worker BullMQ xử lý hàng đợi điểm danh giờ cao điểm (5 luồng đồng thời)
+    const { startPunchWorker, closePunchQueue } = require('./queues/punchQueue');
+    startPunchWorker(5);
+
     // Tự động đồng bộ các vector khuôn mặt InsightFace vào FAISS RAM
     setTimeout(async () => {
       try {
@@ -48,12 +52,32 @@ const startServer = async () => {
       }
     }, 3000);
 
-    app.listen(PORT, '0.0.0.0', () => {
+    const http = require('http');
+    const server = http.createServer(app);
+
+    // Khởi tạo Realtime Socket.IO Server
+    const { initSocketServer, closeSocketServer } = require('./config/socket');
+    initSocketServer(server);
+
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(`===================================================`);
       console.log(`[Server] Máy chủ đang chạy tại: http://localhost:${PORT}`);
+      console.log(`[Realtime] WebSocket Socket.IO Server: SẴN SÀNG`);
       console.log(`[Swagger] Tài liệu API (Swagger UI): http://localhost:${PORT}/api-docs`);
       console.log(`===================================================`);
     });
+
+    const shutdown = async () => {
+      console.log('[Server] Đang đóng kết nối an toàn...');
+      await closePunchQueue();
+      await closeSocketServer();
+      server.close(() => {
+        process.exit(0);
+      });
+    };
+
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
   } catch (error) {
     console.error('[Server Error] Không thể khởi chạy Server:', error);
     process.exit(1);

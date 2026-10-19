@@ -3,7 +3,7 @@
  * Mã nguồn sạch 100% chuẩn CSDL v2.5 cho môi trường Đại Học:
  * - Quản lý danh sách cán bộ, giảng viên, nhân viên nhà trường.
  * - Phân quyền quản lý theo Khoa/Phòng ban (Trưởng khoa chỉ xem/sửa nhân sự khoa mình).
- * - Tạo mới, cập nhật, khóa/vô hiệu hóa tài khoản (Soft delete + tăng phien_ban_token).
+ * - Tạo mới, cập nhật, khóa/vô hiệu hóa tài khoản (Soft delete + tăng tokenVersion).
  * - Tích hợp quản lý dữ liệu Face ID thông qua faceTemplate.service.
  * - Ghi Audit Log toàn diện cho các thao tác quản trị.
  */
@@ -40,25 +40,22 @@ const fetchUsers = async ({ role, departmentId, isActive, search, page = 1, limi
   const query = {};
 
   // Giới hạn phạm vi quyền Trưởng khoa
-  const userRole = (currentUser.role || currentUser.vai_tro || '').toLowerCase();
+  const userRole = (currentUser.role || '').toLowerCase();
   if (userRole === 'truongkhoa') {
-    if (!currentUser.departmentId && !currentUser.ma_don_vi) {
+    if (!currentUser.departmentId) {
       throw new ServiceError('Tài khoản Trưởng khoa chưa được gán mã khoa trực thuộc.', 403);
     }
     const departmentIds = await getDeanDepartmentIds(currentUser);
-    query.$or = [
-      { departmentId: { $in: departmentIds } },
-      { ma_don_vi: { $in: departmentIds } },
-    ];
+    query.departmentId = { $in: departmentIds };
   } else if (departmentId) {
     const validId = typeof departmentId === 'string' && mongoose.isValidObjectId(departmentId)
       ? new mongoose.Types.ObjectId(departmentId)
       : departmentId;
-    query.$or = [{ departmentId: validId }, { ma_don_vi: validId }];
+    query.departmentId = validId;
   }
 
   if (role) {
-    query.$or = [{ role }, { vai_tro: role }];
+    query.role = role;
   }
 
   if (isActive !== undefined) {
@@ -69,10 +66,8 @@ const fetchUsers = async ({ role, departmentId, isActive, search, page = 1, limi
     const safeSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     query.$or = [
       { fullName: { $regex: safeSearch, $options: 'i' } },
-      { ho_ten: { $regex: safeSearch, $options: 'i' } },
       { email: { $regex: safeSearch, $options: 'i' } },
       { staffCode: { $regex: safeSearch, $options: 'i' } },
-      { ma_can_bo: { $regex: safeSearch, $options: 'i' } },
     ];
   }
 
@@ -82,8 +77,8 @@ const fetchUsers = async ({ role, departmentId, isActive, search, page = 1, limi
 
   const [users, total] = await Promise.all([
     User.find(query)
-      .populate('departmentId', 'name code type location ten_don_vi ma_khoa')
-      .select('-mat_khau_ma_hoa -passwordHash')
+      .populate('departmentId', 'name code type location')
+      .select('-passwordHash')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
@@ -111,18 +106,18 @@ const fetchUserById = async (userId, currentUser) => {
   }
 
   const user = await User.findById(userId)
-    .populate('departmentId', 'name code type location ten_don_vi ma_khoa')
-    .select('-mat_khau_ma_hoa -passwordHash');
+    .populate('departmentId', 'name code type location')
+    .select('-passwordHash');
 
   if (!user) {
     throw new ServiceError('Không tìm thấy thông tin người dùng.', 404);
   }
 
   // Kiểm tra quyền hạn nếu là Trưởng khoa
-  const viewerRole = (currentUser.role || currentUser.vai_tro || '').toLowerCase();
+  const viewerRole = (currentUser.role || '').toLowerCase();
   if (viewerRole === 'truongkhoa') {
     const allowedDeptIds = (await getDeanDepartmentIds(currentUser)).map((id) => String(id));
-    const userDeptId = String(user.departmentId?._id || user.departmentId || user.ma_don_vi || '');
+    const userDeptId = String(user.departmentId?._id || user.departmentId || '');
     if (!allowedDeptIds.includes(userDeptId)) {
       throw new ServiceError('Bạn không có quyền xem thông tin nhân sự ngoài phạm vi quản lý của khoa.', 403);
     }
@@ -137,29 +132,21 @@ const fetchUserById = async (userId, currentUser) => {
 const createNewUser = async (data, currentUser, ipAddress = null) => {
   const {
     fullName,
-    ho_ten,
     email,
     password,
     role,
-    vai_tro,
     departmentId,
-    ma_don_vi,
     staffCode,
-    ma_can_bo,
     phoneNumber,
-    so_dien_thoai,
     position,
-    chuc_vu,
-    he_so_luong,
-    phu_cap_chuc_vu,
-    danh_sach_vai_tro,
+    roles,
   } = data;
 
-  const finalName = (fullName || ho_ten || '').trim();
+  const finalName = (fullName || '').trim();
   const finalEmail = (email || '').trim().toLowerCase();
-  const finalStaffCode = (staffCode || ma_can_bo || '').trim();
-  const finalRole = (role || vai_tro || 'giangvien').toLowerCase();
-  const finalDeptId = departmentId || ma_don_vi;
+  const finalStaffCode = (staffCode || '').trim();
+  const finalRole = (role || 'giangvien').toLowerCase();
+  const finalDeptId = departmentId;
 
   if (!finalName) throw new ServiceError('Họ tên không được để trống.', 400);
   if (!finalEmail || !EMAIL_REGEX.test(finalEmail)) throw new ServiceError('Địa chỉ email không hợp lệ.', 400);
@@ -173,9 +160,7 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
   }
 
   // Kiểm tra trùng mã cán bộ
-  const existingStaffCode = await User.findOne({
-    $or: [{ staffCode: finalStaffCode }, { ma_can_bo: finalStaffCode }],
-  });
+  const existingStaffCode = await User.findOne({ staffCode: finalStaffCode });
   if (existingStaffCode) {
     throw new ServiceError('Mã cán bộ này đã tồn tại trên hệ thống.', 409);
   }
@@ -191,26 +176,16 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
 
   const newUser = await User.create({
     fullName: finalName,
-    ho_ten: finalName,
     email: finalEmail,
-    mat_khau_ma_hoa: hashedPassword,
     passwordHash: hashedPassword,
     staffCode: finalStaffCode,
-    ma_can_bo: finalStaffCode,
     role: finalRole,
-    vai_tro: finalRole,
     departmentId: finalDeptId || null,
-    ma_don_vi: finalDeptId || null,
-    phoneNumber: phoneNumber || so_dien_thoai || null,
-    so_dien_thoai: so_dien_thoai || phoneNumber || null,
-    position: position || chuc_vu || null,
-    chuc_vu: chuc_vu || position || null,
-    he_so_luong: he_so_luong || 2.34,
-    phu_cap_chuc_vu: phu_cap_chuc_vu || 0,
-    danh_sach_vai_tro: danh_sach_vai_tro || [{ vai_tro: finalRole, don_vi_id: finalDeptId || null }],
+    phoneNumber: phoneNumber || null,
+    position: position || null,
+    roles: roles || [{ role: finalRole, departmentId: finalDeptId || null }],
     isActive: true,
-    trang_thai: 'HOAT_DONG',
-    phien_ban_token: 0,
+    tokenVersion: 0,
   });
 
   AuditLog.create({
@@ -224,7 +199,6 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   const result = newUser.toObject();
-  delete result.mat_khau_ma_hoa;
   delete result.passwordHash;
   return result;
 };
@@ -237,51 +211,39 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     throw new ServiceError('Mã người dùng không hợp lệ.', 400);
   }
 
-  const user = await User.findById(userId).select('+mat_khau_ma_hoa +passwordHash');
+  const user = await User.findById(userId).select('+passwordHash');
   if (!user) {
     throw new ServiceError('Không tìm thấy người dùng.', 404);
   }
 
   // Kiểm tra quyền hạn Trưởng khoa
-  const editorRole = (currentUser.role || currentUser.vai_tro || '').toLowerCase();
+  const editorRole = (currentUser.role || '').toLowerCase();
   if (editorRole === 'truongkhoa') {
     const allowedDeptIds = (await getDeanDepartmentIds(currentUser)).map((id) => String(id));
-    const userDeptId = String(user.departmentId?._id || user.departmentId || user.ma_don_vi || '');
+    const userDeptId = String(user.departmentId?._id || user.departmentId || '');
     if (!allowedDeptIds.includes(userDeptId)) {
       throw new ServiceError('Bạn không có quyền sửa thông tin nhân sự ngoài khoa của mình.', 403);
     }
     // Trưởng khoa không được đổi vai trò hay chuyển khoa của nhân sự
     delete data.role;
-    delete data.vai_tro;
     delete data.departmentId;
-    delete data.ma_don_vi;
   }
 
   const {
     fullName,
-    ho_ten,
     email,
     password,
     role,
-    vai_tro,
     departmentId,
-    ma_don_vi,
     staffCode,
-    ma_can_bo,
     phoneNumber,
-    so_dien_thoai,
     position,
-    chuc_vu,
-    he_so_luong,
-    phu_cap_chuc_vu,
     isActive,
-    trang_thai,
-    danh_sach_vai_tro,
+    roles,
   } = data;
 
-  if (fullName || ho_ten) {
-    user.fullName = (fullName || ho_ten).trim();
-    user.ho_ten = user.fullName;
+  if (fullName) {
+    user.fullName = fullName.trim();
   }
 
   if (email && email !== user.email) {
@@ -291,54 +253,38 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     user.email = normalizedEmail;
   }
 
-  if (staffCode || ma_can_bo) {
-    const code = (staffCode || ma_can_bo).trim();
+  if (staffCode) {
+    const code = staffCode.trim();
     const existing = await User.findOne({
-      $or: [{ staffCode: code }, { ma_can_bo: code }],
+      staffCode: code,
       _id: { $ne: userId },
     });
     if (existing) throw new ServiceError('Mã cán bộ này đã được tài khoản khác sử dụng.', 409);
     user.staffCode = code;
-    user.ma_can_bo = code;
   }
 
-  if (role || vai_tro) {
-    user.role = (role || vai_tro).toLowerCase();
-    user.vai_tro = user.role;
+  if (role) {
+    user.role = role.toLowerCase();
   }
 
-  if (departmentId !== undefined || ma_don_vi !== undefined) {
-    user.departmentId = departmentId || ma_don_vi || null;
-    user.ma_don_vi = user.departmentId;
+  if (departmentId !== undefined) {
+    user.departmentId = departmentId || null;
   }
 
-  if (phoneNumber !== undefined || so_dien_thoai !== undefined) {
-    user.phoneNumber = phoneNumber || so_dien_thoai || null;
-    user.so_dien_thoai = user.phoneNumber;
+  if (phoneNumber !== undefined) {
+    user.phoneNumber = phoneNumber || null;
   }
 
-  if (position !== undefined || chuc_vu !== undefined) {
-    user.position = position || chuc_vu || null;
-    user.chuc_vu = user.position;
+  if (position !== undefined) {
+    user.position = position || null;
   }
 
-  if (he_so_luong !== undefined) user.he_so_luong = he_so_luong;
-  if (phu_cap_chuc_vu !== undefined) user.phu_cap_chuc_vu = phu_cap_chuc_vu;
-  if (danh_sach_vai_tro !== undefined) user.danh_sach_vai_tro = danh_sach_vai_tro;
+  if (roles !== undefined) user.roles = roles;
 
   if (isActive !== undefined) {
     user.isActive = Boolean(isActive);
-    user.trang_thai = user.isActive ? 'HOAT_DONG' : 'KHOA';
     if (!user.isActive) {
-      user.phien_ban_token = (user.phien_ban_token || 0) + 1;
-    }
-  }
-
-  if (trang_thai !== undefined) {
-    user.trang_thai = trang_thai;
-    user.isActive = trang_thai !== 'KHOA';
-    if (trang_thai === 'KHOA') {
-      user.phien_ban_token = (user.phien_ban_token || 0) + 1;
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
     }
   }
 
@@ -347,10 +293,9 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     if (password.length < 6) throw new ServiceError('Mật khẩu phải có ít nhất 6 ký tự.', 400);
     const salt = await bcrypt.genSalt(10);
     const hashed = await bcrypt.hash(password, salt);
-    user.mat_khau_ma_hoa = hashed;
     user.passwordHash = hashed;
     user.passwordChangedAt = new Date();
-    user.phien_ban_token = (user.phien_ban_token || 0) + 1;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
   }
 
   await user.save();
@@ -366,7 +311,6 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   const result = user.toObject();
-  delete result.mat_khau_ma_hoa;
   delete result.passwordHash;
   return result;
 };
@@ -389,14 +333,13 @@ const softDeleteUser = async (userId, currentUser, ipAddress = null) => {
   }
 
   user.isActive = false;
-  user.trang_thai = 'KHOA';
-  user.phien_ban_token = (user.phien_ban_token || 0) + 1; // Thu hồi toàn bộ token của user
+  user.tokenVersion = (user.tokenVersion || 0) + 1; // Thu hồi toàn bộ token của user
   await user.save();
 
   // Hủy toàn bộ refresh token trong DB
   await RefreshToken.updateMany(
-    { $or: [{ ma_nguoi_dung: user._id }, { userId: user._id }] },
-    { $set: { da_su_dung: true, isUsed: true, trang_thai: 'DA_THU_HOI' } }
+    { userId: user._id },
+    { $set: { isUsed: true, da_su_dung: true } }
   );
 
   AuditLog.create({

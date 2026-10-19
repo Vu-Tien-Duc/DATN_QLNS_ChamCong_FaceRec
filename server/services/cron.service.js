@@ -219,11 +219,11 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
 
     // 0.2. Kiểm tra ngày nghỉ lễ (Holiday) - Nếu là ngày lễ thì tự động bỏ qua toàn bộ đánh vắng
     const holiday = await Holiday.findOne({
-      ngay_bat_dau: { $lte: dayRange.dateStr },
-      ngay_ket_thuc: { $gte: dayRange.dateStr },
+      startDate: { $lte: dayRange.dateStr },
+      endDate: { $gte: dayRange.dateStr },
     });
     if (holiday) {
-      console.log(`[Cron Service] 🏖️ Ngày ${dayRange.dateStr} là ngày nghỉ lễ: "${holiday.ten_ngay_le}". Tự động bỏ qua quét vắng mặt.`);
+      console.log(`[Cron Service] 🏖️ Ngày ${dayRange.dateStr} là ngày nghỉ lễ: "${holiday.name}". Tự động bỏ qua quét vắng mặt.`);
       try {
         const adminUser = await User.findOne({ role: 'admin' });
         await AuditLog.create({
@@ -236,9 +236,9 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
           timestamp: new Date(),
           details: {
             scannedDate: dayRange.dateStr,
-            holidayName: holiday.ten_ngay_le,
-            startDate: holiday.ngay_bat_dau,
-            endDate: holiday.ngay_ket_thuc,
+            holidayName: holiday.name,
+            startDate: holiday.startDate,
+            endDate: holiday.endDate,
             reason: 'Ngày nghỉ lễ theo quy định - bỏ qua toàn bộ đánh vắng tự động',
           },
         });
@@ -248,9 +248,9 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
       return {
         checkedDate: dayRange.dateStr,
         isHoliday: true,
-        holidayName: holiday.ten_ngay_le,
+        holidayName: holiday.name,
         action: 'HOLIDAY_SKIPPED',
-        message: `Ngày ${dayRange.dateStr} là ngày nghỉ lễ (${holiday.ten_ngay_le}). Đã tự động bỏ qua đánh vắng.`,
+        message: `Ngày ${dayRange.dateStr} là ngày nghỉ lễ (${holiday.name}). Đã tự động bỏ qua đánh vắng.`,
       };
     }
 
@@ -282,24 +282,24 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
       }
     }
 
-    // Tự động kiểm tra và cập nhật cờ quên quẹt ra (quen_quet_ra / isMissingCheckOut)
+    // Tự động kiểm tra và cập nhật cờ quên quẹt ra (isMissingCheckOut)
     try {
       const missingCheckoutUpdate = await AttendanceLog.updateMany(
         {
           workDate: dayRange.dateStr,
-          thoi_gian_vao: { $ne: null },
-          thoi_gian_ra: null,
-          quen_quet_ra: false,
+          checkInTime: { $ne: null },
+          checkOutTime: null,
+          isMissingCheckOut: false,
         },
         {
-          $set: { quen_quet_ra: true },
+          $set: { isMissingCheckOut: true },
         }
       );
       if (missingCheckoutUpdate.modifiedCount > 0) {
-        console.log(`[Cron Service] [QUÊN QUẸT RA] Đã cập nhật cờ quen_quet_ra cho ${missingCheckoutUpdate.modifiedCount} bản ghi chưa check-out trong ngày ${dayRange.dateStr}.`);
+        console.log(`[Cron Service] [QUÊN QUẸT RA] Đã cập nhật cờ isMissingCheckOut cho ${missingCheckoutUpdate.modifiedCount} bản ghi chưa check-out trong ngày ${dayRange.dateStr}.`);
       }
     } catch (missingErr) {
-      console.error('[Cron Service] Lỗi cập nhật cờ quen_quet_ra:', missingErr.message);
+      console.error('[Cron Service] Lỗi cập nhật cờ isMissingCheckOut:', missingErr.message);
     }
 
     const summary = {

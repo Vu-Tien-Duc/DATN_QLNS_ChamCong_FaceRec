@@ -102,42 +102,23 @@ const performCheckOut = async ({
 
   // 2. Tạo bản ghi PunchLog (Collection 4 - nhat_ky_quet_the)
   const punchPayload = {
-    ma_nguoi_dung: userId,
     userId,
-    thoi_diem_quet: nowVN,
     punchTime: nowVN,
-    loai_quet: 'RA',
-    punchType: 'RA',
-    phuong_thuc: method.toUpperCase(),
+    punchType: 'CHECK_OUT',
     method: method.toUpperCase(),
-    thiet_bi_id: finalDeviceId,
     deviceId: finalDeviceId,
-    dia_chi_ip: ip || null,
     clientIp: ip || null,
-    ipAddress: ip || null,
-    mang_noi_bo_truong: geofenceMeta ? geofenceMeta.isCampusNetwork : null,
     isCampusNetwork: geofenceMeta ? geofenceMeta.isCampusNetwork : null,
-    nghi_van_gia_mao: Boolean(geofenceMeta?.isSuspicious),
     isSuspicious: Boolean(geofenceMeta?.isSuspicious),
-    ly_do_nghi_van: geofenceMeta?.suspiciousReason || null,
     suspiciousReason: geofenceMeta?.suspiciousReason || null,
-    phuong_thuc_xac_thuc_vi_tri: geofenceMeta?.verificationMethod || null,
     verificationMethod: geofenceMeta?.verificationMethod || null,
-    dia_diem: validatedLocationName,
     locationName: validatedLocationName,
-    co_gian_lan: isFraud,
-    isFraud,
-    ly_do_gian_lan: fraudReason,
+    isFraudulent: isFraud,
     fraudReason,
-    ma_ca: openLog.shiftId?._id || null,
     shiftId: openLog.shiftId?._id || null,
   };
 
   if (hasCoordinates) {
-    punchPayload.toa_do_gps = {
-      type: 'Point',
-      coordinates: [lng, lat],
-    };
     punchPayload.gpsCoordinates = {
       latitude: lat,
       longitude: lng,
@@ -149,7 +130,6 @@ const performCheckOut = async ({
 
   // 3. Cập nhật AttendanceLog (Collection 3 - bang_cham_cong_tong_hop)
   openLog.checkOutTime = nowVN;
-  openLog.phuong_thuc_ra = method.toUpperCase();
 
   // Tính số phút về sớm và cập nhật trạng thái
   const { finalStatus, isEarlyLeave, earlyMinutes } = calculateCheckOutStatus(
@@ -159,7 +139,6 @@ const performCheckOut = async ({
   );
 
   openLog.status = finalStatus;
-  openLog.ve_som_phut = earlyMinutes || 0;
   openLog.earlyMinutes = earlyMinutes || 0;
 
   // Tính tổng giờ làm việc thực tế
@@ -167,7 +146,6 @@ const performCheckOut = async ({
     const diffMs = nowVN.getTime() - new Date(openLog.checkInTime).getTime();
     const hours = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
     openLog.workHours = hours;
-    openLog.tong_gio_lam = hours;
   }
 
   if (isFraud) {
@@ -184,10 +162,10 @@ const performCheckOut = async ({
 
   // Gửi email thông báo
   User.findById(userId)
-    .select('email fullName ho_ten')
+    .select('email fullName')
     .then((user) => {
       if (user && user.email) {
-        sendCheckOutNotificationEmail(user.email, user.fullName || user.ho_ten, nowVN, finalStatus).catch(() => {});
+        sendCheckOutNotificationEmail(user.email, user.fullName, nowVN, finalStatus).catch(() => {});
       }
     })
     .catch(() => {});

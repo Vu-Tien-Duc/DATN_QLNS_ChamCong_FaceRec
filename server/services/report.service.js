@@ -393,7 +393,7 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
 
   const totalUsers = await User.countDocuments(userFilter);
 
-  let userQuery = User.find(userFilter).select('_id fullName email role vai_tro_chinh vai_tro danh_sach_vai_tro departmentId avatar');
+  let userQuery = User.find(userFilter).select('_id fullName email role departmentId avatar');
 
   const { page, limit } = options;
   if (page && limit) {
@@ -413,18 +413,18 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
     userId: { $in: userIds },
     ...dateFilter,
   })
-    .select('userId ma_nguoi_dung status trang_thai checkInTime thoi_gian_vao createdAt workDate ngay_cong');
+    .select('userId status checkInTime createdAt workDate');
 
   const reportData = users.map((user) => {
     const userIdStr = user._id ? user._id.toString() : '';
     const userAttendances = attendances.filter((a) => {
-      const aUid = a.userId || a.ma_nguoi_dung;
+      const aUid = a.userId;
       return aUid && aUid.toString() === userIdStr;
     });
-    const uFullName = user.fullName || user.ho_ten || '';
-    const uRole = user.vai_tro_chinh || user.role || user.vai_tro || (user.danh_sach_vai_tro && user.danh_sach_vai_tro[0]?.ma_vai_tro) || '';
-    const uDeptId = user.departmentId || user.ma_phong_ban || null;
-    const uAvatar = user.avatar || user.anh_dai_dien || null;
+    const uFullName = user.fullName || '';
+    const uRole = user.role || '';
+    const uDeptId = user.departmentId || null;
+    const uAvatar = user.avatar || null;
     return {
       user: {
         id: user._id,
@@ -435,11 +435,11 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
         avatar: uAvatar,
       },
       totalWorkingDays: userAttendances.length,
-      onTimeCount: userAttendances.filter((a) => (a.status || a.trang_thai) === 'ON_TIME').length,
-      lateCount: userAttendances.filter((a) => (a.status || a.trang_thai) === 'LATE').length,
-      earlyLeaveCount: userAttendances.filter((a) => (a.status || a.trang_thai) === 'EARLY_LEAVE').length,
-      absentCount: userAttendances.filter((a) => (a.status || a.trang_thai) === 'ABSENT').length,
-      excusedCount: userAttendances.filter((a) => (a.status || a.trang_thai) === 'EXCUSED_ABSENCE').length,
+      onTimeCount: userAttendances.filter((a) => a.status === 'ON_TIME').length,
+      lateCount: userAttendances.filter((a) => a.status === 'LATE').length,
+      earlyLeaveCount: userAttendances.filter((a) => a.status === 'EARLY_LEAVE').length,
+      absentCount: userAttendances.filter((a) => a.status === 'ABSENT').length,
+      excusedCount: userAttendances.filter((a) => a.status === 'EXCUSED_ABSENCE').length,
     };
   });
 
@@ -569,7 +569,7 @@ const generateExportReportData = async ({
     }
   }
 
-  const users = await User.find(userFilter).select('_id fullName email role vai_tro_chinh vai_tro danh_sach_vai_tro departmentId').lean();
+  const users = await User.find(userFilter).select('_id fullName email role departmentId').lean();
   const effectiveUserIds = users.map((u) => u._id);
 
   // 3. Lấy tất cả lịch sử chấm công trong khoảng thời gian
@@ -760,7 +760,7 @@ const generateExportReportData = async ({
       fullName: user.fullName,
       email: user.email,
       departmentName: deptName,
-      role: getRoleLabel(user.vai_tro_chinh || user.role || user.vai_tro || (user.danh_sach_vai_tro && user.danh_sach_vai_tro[0]?.ma_vai_tro)),
+      role: getRoleLabel(user.role),
       totalShifts,
       onTime,
       late,

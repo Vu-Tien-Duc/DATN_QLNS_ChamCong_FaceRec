@@ -1,7 +1,7 @@
 /**
  * Auth & RBAC Middleware (server/middlewares/auth.middleware.js)
  * Mã nguồn sạch 100% chuẩn CSDL v2.5 cho môi trường Đại Học:
- * - Xác thực JWT Access Token, thu hồi token in-memory, kiểm tra phien_ban_token.
+ * - Xác thực JWT Access Token, thu hồi token in-memory, kiểm tra tokenVersion.
  * - Phân quyền theo 10 chức danh đại học chuẩn (Admin, BGH, Trưởng khoa, GV, CV,...).
  * - Hỗ trợ nhiệm kỳ công tác (tự động tước quyền khi vai trò hết hạn).
  * - Hạt nhân phân quyền chi tiết (requirePermission, requireAnyPermission, requireAllPermissions).
@@ -49,19 +49,19 @@ const verifyToken = async (req, res, next) => {
     }
 
     const user = await User.findById(decoded.id || decoded.userId).select(
-      'role vai_tro departmentId ma_don_vi isActive trang_thai passwordChangedAt phien_ban_token danh_sach_vai_tro vai_tro_chinh don_vi_chinh_id fullName ho_ten email'
+      'role departmentId isActive passwordChangedAt tokenVersion fullName email roles'
     );
 
     if (!user) {
       return sendError(res, 'Người dùng không tồn tại trên hệ thống.', null, 401);
     }
 
-    if (user.isActive === false || user.trang_thai === 'KHOA') {
+    if (user.isActive === false) {
       return sendError(res, 'Tài khoản của bạn đã bị vô hiệu hóa hoặc tạm khóa.', null, 403);
     }
 
-    // Kiểm tra thu hồi phiên đăng nhập hàng loạt qua phien_ban_token
-    const userTokenVersion = user.phien_ban_token || 0;
+    // Kiểm tra thu hồi phiên đăng nhập hàng loạt qua tokenVersion
+    const userTokenVersion = user.tokenVersion || 0;
     if (decoded.tokenVersion !== undefined && decoded.tokenVersion < userTokenVersion) {
       return sendError(
         res,
@@ -101,16 +101,16 @@ const getActiveRoles = (user) => {
   const now = new Date();
   const roles = new Set();
 
-  const primaryRole = user.role || user.vai_tro || user.vai_tro_chinh;
+  const primaryRole = user.role;
   if (primaryRole) roles.add(primaryRole.toLowerCase());
 
-  if (Array.isArray(user.danh_sach_vai_tro)) {
-    for (const v of user.danh_sach_vai_tro) {
+  if (Array.isArray(user.roles)) {
+    for (const v of user.roles) {
       if (!v) continue;
-      const roleName = (typeof v === 'string' ? v : v.vai_tro || v.role || '').toLowerCase();
+      const roleName = (typeof v === 'string' ? v : v.role || '').toLowerCase();
       if (!roleName) continue;
 
-      if (v.nhiem_ky_den && new Date(v.nhiem_ky_den) < now) {
+      if (v.expiresAt && new Date(v.expiresAt) < now) {
         continue; // Bỏ qua vai trò đã hết nhiệm kỳ công tác
       }
       roles.add(roleName);

@@ -101,10 +101,10 @@ const getLeaveStatsByYear = async (userId, year, { session } = {}) => {
     },
     {
       $project: {
-        type: { $ifNull: ['$loai_don', '$type'] },
-        status: { $ifNull: ['$trang_thai', '$status'] },
-        effectiveStart: { $max: [{ $ifNull: ['$ngay_bat_dau', '$startDate'] }, yearStart] },
-        effectiveEnd: { $min: [{ $ifNull: ['$ngay_ket_thuc', '$endDate'] }, yearEnd] },
+        type: '$type',
+        status: '$status',
+        effectiveStart: { $max: [{ $ifNull: ['$startDate', '$ngay_bat_dau'] }, yearStart] },
+        effectiveEnd: { $min: [{ $ifNull: ['$endDate', '$ngay_ket_thuc'] }, yearEnd] },
       },
     },
     {
@@ -616,8 +616,8 @@ const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
   }
 
   const role = (currentUser.role || '').toUpperCase();
-  const currentLevel = leaveRequest.cap_duyet_hien_tai || leaveRequest.currentLevel || 1;
-  const status = leaveRequest.trang_thai || leaveRequest.status;
+  const currentLevel = leaveRequest.currentLevel || 1;
+  const status = leaveRequest.status;
 
   // Ban Giám Hiệu & Admin có quyền duyệt toàn quyền mọi cấp
   const isBGH = ['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG', 'HIEU_PHO', 'HIEUPHO'].includes(role);
@@ -692,7 +692,7 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
     throw new ServiceError('Không tìm thấy đơn xin.', 404);
   }
 
-  const currentStatus = request.trang_thai || request.status;
+  const currentStatus = request.status;
   if (!['PENDING', 'PENDING_DEAN', 'PENDING_BGH'].includes(currentStatus)) {
     throw new ServiceError(`Đơn đã được xử lý với trạng thái ${currentStatus}.`, 400, 'LEAVE_ALREADY_PROCESSED');
   }
@@ -757,12 +757,12 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
   }
 
   const approvalStep = {
-    cap: currentLevel,
-    nguoi_duyet: currentUserId,
-    vai_tro: currentUser.role || '',
-    hanh_dong: 'APPROVED',
-    ghi_chu: cleanNote,
-    thoi_gian: new Date(),
+    step: currentLevel,
+    approverId: currentUserId,
+    role: currentUser.role || '',
+    action: 'APPROVED',
+    note: cleanNote,
+    timestamp: new Date(),
   };
 
   const updatedRequest = await runLeaveRequestTransaction(async (session) => {
@@ -773,19 +773,19 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
     const updated = await LeaveRequest.findOneAndUpdate(
       {
         _id: id,
-        trang_thai: { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH'] },
-        phien_ban: targetVersion,
+        status: { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH'] },
+        version: targetVersion,
       },
       {
         $set: {
-          trang_thai: nextStatus,
-          cap_duyet_hien_tai: nextLevel,
-          nguoi_duyet: currentUserId,
-          ghi_chu_duyet: cleanNote,
-          ly_do_tu_choi: null,
+          status: nextStatus,
+          currentLevel: nextLevel,
+          approverId: currentUserId,
+          approvalNote: cleanNote,
+          rejectReason: null,
         },
-        $inc: { phien_ban: 1 },
-        $push: { lich_su_duyet: approvalStep },
+        $inc: { version: 1 },
+        $push: { approvalHistory: approvalStep },
       },
       updateOptions
     );
@@ -806,10 +806,10 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
           { _id: updated.scheduleId },
           {
             $push: {
-              ngoai_le: {
-                ngay: updated.makeupDate,
-                ly_do: `Dạy bù theo đơn nghỉ phép #${updated._id}`,
-                trang_thai: 'DAY_BU',
+              exceptions: {
+                date: updated.makeupDate,
+                reason: `Dạy bù theo đơn nghỉ phép #${updated._id}`,
+                status: 'DAY_BU',
               },
             },
           },
@@ -817,42 +817,41 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
         );
       }
 
-      // 2. Hồi tố điểm danh: Cập nhật hoặc tạo AttendanceLog với trạng thái có phép (EXCUSED_ABSENCE / NGHI_PHEP)
+      // 2. Hồi tố điểm danh: Cập nhật hoặc tạo AttendanceLog với trạng thái có phép (EXCUSED_ABSENCE)
       const schedules = await Schedule.find({
-        ma_nguoi_dung: updated.userId,
-        ngay_bat_dau: { $lte: updated.endDate },
-        ngay_ket_thuc: { $gte: updated.startDate },
+        userId: updated.userId,
+        startDate: { $lte: updated.endDate },
+        endDate: { $gte: updated.startDate },
       });
 
       const bulkOps = [];
       for (const sch of schedules) {
-        const occurrenceStart = new Date(Math.max(updated.startDate.getTime(), sch.ngay_bat_dau.getTime()));
-        const occurrenceEnd = new Date(Math.min(updated.endDate.getTime(), sch.ngay_ket_thuc.getTime()));
-        const occurrenceDates = getLeaveOccurrenceDates(occurrenceStart, occurrenceEnd, sch.thu_trong_tuan);
+        const occurrenceStart = new Date(Math.max(updated.startDate.getTime(), sch.startDate.getTime()));
+        const occurrenceEnd = new Date(Math.min(updated.endDate.getTime(), sch.endDate.getTime()));
+        const occurrenceDates = getLeaveOccurrenceDates(occurrenceStart, occurrenceEnd, sch.weekday);
 
         for (const occurrenceDate of occurrenceDates) {
           const workDateStr = getVietnamDateKey(occurrenceDate);
           bulkOps.push({
             updateOne: {
               filter: {
-                nguoi_dung_id: updated.userId,
-                lich_trinh_id: sch._id,
-                ngay_cong: workDateStr,
+                userId: updated.userId,
+                scheduleId: sch._id,
+                workDate: workDateStr,
               },
               update: {
                 $set: {
-                  trang_thai: 'EXCUSED_ABSENCE',
-                  don_nghi_id: updated._id,
-                  don_tu_id: updated._id,
-                  co_phep: true,
-                  ghi_chu: 'Nghỉ phép có đơn được duyệt (Hồi tố)',
-                  thoi_gian_vao: null,
-                  thoi_gian_ra: null,
+                  status: 'EXCUSED_ABSENCE',
+                  leaveRequestId: updated._id,
+                  isExcused: true,
+                  note: 'Nghỉ phép có đơn được duyệt (Hồi tố)',
+                  checkInTime: null,
+                  checkOutTime: null,
                 },
                 $setOnInsert: {
-                  ca_id: sch.ca_id || sch.shiftId,
-                  phuong_thuc: 'system',
-                  ma_thiet_bi: 'SYSTEM_LEAVE_RETROACTIVE',
+                  shiftId: sch.shiftId,
+                  method: 'SYSTEM_AUTO',
+                  deviceId: 'SYSTEM_LEAVE_RETROACTIVE',
                 },
               },
               upsert: true,
@@ -913,7 +912,7 @@ const rejectLeaveRequestDomain = async ({ id, rejectionReason, expectedVersion, 
     throw new ServiceError('Không tìm thấy đơn xin.', 404);
   }
 
-  const currentStatus = request.trang_thai || request.status;
+  const currentStatus = request.status;
   if (!['PENDING', 'PENDING_DEAN', 'PENDING_BGH'].includes(currentStatus)) {
     throw new ServiceError(`Đơn đã được xử lý với trạng thái ${currentStatus}.`, 400, 'LEAVE_ALREADY_PROCESSED');
   }
@@ -923,7 +922,7 @@ const rejectLeaveRequestDomain = async ({ id, rejectionReason, expectedVersion, 
     throw new ServiceError(permCheck.message, permCheck.status || 403, permCheck.errorCode || null);
   }
 
-  const currentVersion = Number(request.phien_ban || request.version || 1);
+  const currentVersion = Number(request.version || 1);
   const targetVersion = expectedVersion !== undefined ? Number(expectedVersion) : currentVersion;
 
   if (expectedVersion !== undefined && targetVersion !== currentVersion) {
@@ -935,14 +934,14 @@ const rejectLeaveRequestDomain = async ({ id, rejectionReason, expectedVersion, 
   }
 
   const currentUserId = currentUser.id || currentUser._id;
-  const currentLevel = Number(request.cap_duyet_hien_tai || request.currentLevel || 1);
+  const currentLevel = Number(request.currentLevel || 1);
   const rejectionStep = {
-    cap: currentLevel,
-    nguoi_duyet: currentUserId,
-    vai_tro: currentUser.role || '',
-    hanh_dong: 'REJECTED',
-    ghi_chu: rejectionReason.trim(),
-    thoi_gian: new Date(),
+    step: currentLevel,
+    approverId: currentUserId,
+    role: currentUser.role || '',
+    action: 'REJECTED',
+    note: rejectionReason.trim(),
+    timestamp: new Date(),
   };
 
   const updatedRequest = await runLeaveRequestTransaction(async (session) => {
@@ -952,17 +951,17 @@ const rejectLeaveRequestDomain = async ({ id, rejectionReason, expectedVersion, 
     const updated = await LeaveRequest.findOneAndUpdate(
       {
         _id: id,
-        trang_thai: { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH'] },
-        phien_ban: targetVersion,
+        status: { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH'] },
+        version: targetVersion,
       },
       {
         $set: {
-          trang_thai: 'REJECTED',
-          nguoi_duyet: currentUserId,
-          ly_do_tu_choi: rejectionReason.trim(),
+          status: 'REJECTED',
+          approverId: currentUserId,
+          rejectReason: rejectionReason.trim(),
         },
-        $inc: { phien_ban: 1 },
-        $push: { lich_su_duyet: rejectionStep },
+        $inc: { version: 1 },
+        $push: { approvalHistory: rejectionStep },
       },
       updateOptions
     );
@@ -1028,7 +1027,7 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
     throw new ServiceError('Bạn chỉ có quyền hủy đơn của chính mình.', 403, 'CANCEL_UNAUTHORIZED');
   }
 
-  const currentStatus = request.trang_thai || request.status;
+  const currentStatus = request.status;
   if (['CANCELLED', 'REJECTED'].includes(currentStatus)) {
     throw new ServiceError(`Đơn đã ở trạng thái ${currentStatus}, không thể hủy.`, 400);
   }
@@ -1048,7 +1047,7 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
     }
   }
 
-  const currentVersion = Number(request.phien_ban || request.version || 1);
+  const currentVersion = Number(request.version || 1);
   const targetVersion = expectedVersion !== undefined ? Number(expectedVersion) : currentVersion;
 
   if (expectedVersion !== undefined && targetVersion !== currentVersion) {
@@ -1066,12 +1065,12 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
     const updated = await LeaveRequest.findOneAndUpdate(
       {
         _id: id,
-        trang_thai: { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH', 'APPROVED'] },
-        phien_ban: targetVersion,
+        status: { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH', 'APPROVED'] },
+        version: targetVersion,
       },
       {
-        $set: { trang_thai: 'CANCELLED' },
-        $inc: { phien_ban: 1 },
+        $set: { status: 'CANCELLED' },
+        $inc: { version: 1 },
       },
       updateOptions
     );
@@ -1086,34 +1085,31 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
 
     // HOÀN TÁC CÔNG (ROLLBACK ATTENDANCE):
     // Đối soát các bản ghi điểm danh đã được cập nhật từ đơn này
-    const affectedLogs = await AttendanceLog.find({
-      $or: [{ don_nghi_id: request._id }, { don_tu_id: request._id }, { leaveRequestId: request._id }],
-    });
+    const affectedLogs = await AttendanceLog.find({ leaveRequestId: request._id });
 
     for (const log of affectedLogs) {
       // Kiểm tra xem nhân viên có lượt quẹt PunchLog thực tế nào trong ngày này không
       const punches = await PunchLog.find({
-        nguoi_dung_id: log.nguoi_dung_id || log.userId,
-        thoi_gian_quet: {
-          $gte: new Date(`${log.ngay_cong}T00:00:00.000+07:00`),
-          $lte: new Date(`${log.ngay_cong}T23:59:59.999+07:00`),
+        userId: log.userId,
+        punchTime: {
+          $gte: new Date(`${log.workDate}T00:00:00.000+07:00`),
+          $lte: new Date(`${log.workDate}T23:59:59.999+07:00`),
         },
       });
 
       if (punches.length === 0) {
         // Không có quẹt thực tế: Đưa về trạng thái Vắng mặt (hoặc xóa nếu là bản ghi tạo tự động)
-        if (log.ma_thiet_bi === 'SYSTEM_LEAVE_RETROACTIVE' || log.deviceId === 'SYSTEM_LEAVE') {
+        if (log.deviceId === 'SYSTEM_LEAVE' || log.deviceId === 'SYSTEM_LEAVE_RETROACTIVE') {
           await AttendanceLog.deleteOne({ _id: log._id }, session ? { session } : undefined);
         } else {
           await AttendanceLog.updateOne(
             { _id: log._id },
             {
               $set: {
-                trang_thai: 'VANG_MAT',
-                co_phep: false,
-                don_nghi_id: null,
-                don_tu_id: null,
-                ghi_chu: 'Đơn nghỉ phép đã bị hủy (Hoàn tác công)',
+                status: 'ABSENT',
+                isExcused: false,
+                leaveRequestId: null,
+                note: 'Đơn nghỉ phép đã bị hủy (Hoàn tác công)',
               },
             },
             session ? { session } : undefined
@@ -1125,11 +1121,10 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
           { _id: log._id },
           {
             $set: {
-              trang_thai: log.di_muon_phut > 0 ? 'DI_MUON' : 'DUNG_GIO',
-              co_phep: false,
-              don_nghi_id: null,
-              don_tu_id: null,
-              ghi_chu: 'Phục hồi tính công từ lượt quẹt thực tế sau khi hủy đơn',
+              status: log.lateMinutes > 0 ? 'LATE' : 'ON_TIME',
+              isExcused: false,
+              leaveRequestId: null,
+              note: 'Phục hồi tính công từ lượt quẹt thực tế sau khi hủy đơn',
             },
           },
           session ? { session } : undefined
@@ -1143,7 +1138,7 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
         { _id: request.scheduleId },
         {
           $pull: {
-            ngoai_le: { ngay: request.makeupDate },
+            exceptions: { date: request.makeupDate },
           },
         },
         session ? { session } : undefined

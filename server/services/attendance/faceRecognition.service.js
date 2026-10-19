@@ -19,8 +19,14 @@ const {
   calculateAttendanceStatus,
   calculateCheckOutStatus,
 } = require('../../utils/attendanceTime.utils');
+const {
+  checkAndSetCooldown,
+  getCooldownRemaining,
+  resetCooldown,
+} = require('../../config/redis');
+const { addPunchJob } = require('../../queues/punchQueue');
 
-// In-memory Map quản lý Cooldown chống quét lặp 60 giây (COOLDOWN_QUET_GIAY = 60)
+// In-memory Map quản lý Cooldown chống quét lặp 60 giây (Fallback song song cùng Redis)
 const scanCooldownMap = new Map();
 const COOLDOWN_MS = 60 * 1000;
 
@@ -33,6 +39,7 @@ const processFaceAttendance = async ({
   deviceId = 'MAY_CHAM_CONG_CAMERA',
   reqIp = '127.0.0.1',
   verifyOnly = false,
+  useQueue = false,
 }) => {
   if (!imageBuffer) {
     throw new ServiceError('Vui lòng cung cấp hình ảnh khuôn mặt từ camera.', 400);
@@ -71,7 +78,7 @@ const processFaceAttendance = async ({
 
   const userId = aiResult.userId;
   const user = await User.findById(userId);
-  if (!user || user.isActive === false || user.trang_thai_hoat_dong === false) {
+  if (!user || user.isActive === false) {
     throw new ServiceError('Tài khoản người dùng không tồn tại hoặc đã bị khóa.', 403);
   }
 
@@ -83,24 +90,29 @@ const processFaceAttendance = async ({
       userId: user._id,
       user: {
         _id: user._id,
-        fullName: user.fullName || user.ho_ten,
+        fullName: user.fullName,
         email: user.email,
-        role: user.role || user.vai_tro,
-        avatar: user.avatar || user.facePhoto,
+        role: user.role,
+        avatar: user.avatar,
         department: user.departmentId,
       },
       similarity: aiResult.similarity,
       confidence: aiResult.confidence,
-      message: `Đã nhận diện: ${user.fullName || user.ho_ten}`,
+      message: `Đã nhận diện: ${user.fullName}`,
     };
   }
 
-  // 3. Kiểm tra Cooldown 60 giây chống quét lặp liên tiếp
+  // 3. Kiểm tra Cooldown 60 giây chống quét lặp liên tiếp (Đồng bộ đa container qua Redis + Memory Fallback)
   const userKey = userId.toString();
+  const redisRemaining = await getCooldownRemaining(userKey);
   const lastScanTime = scanCooldownMap.get(userKey);
   const nowMs = Date.now();
-  if (lastScanTime && (nowMs - lastScanTime) < COOLDOWN_MS) {
-    const remainingSeconds = Math.ceil((COOLDOWN_MS - (nowMs - lastScanTime)) / 1000);
+  const memoryRemaining = lastScanTime && (nowMs - lastScanTime) < COOLDOWN_MS
+    ? Math.ceil((COOLDOWN_MS - (nowMs - lastScanTime)) / 1000)
+    : 0;
+
+  const remainingSeconds = Math.max(redisRemaining, memoryRemaining);
+  if (remainingSeconds > 0) {
     throw new ServiceError(
       `Bạn vừa quét chấm công thành công cách đây chưa đầy 60 giây. Vui lòng chờ ${remainingSeconds}s để tránh trùng lặp.`,
       409,
@@ -112,6 +124,47 @@ const processFaceAttendance = async ({
   // 4. Xác thực Geofence GPS & Mạng trường (Đối soát chéo chống Fake GPS)
   const geoCheck = validateGeofence(location, null, null, reqIp);
 
+  // Nếu người dùng yêu cầu xử lý qua Hàng đợi (Giờ cao điểm Fast Ingestion < 50ms)
+  if (useQueue) {
+    const storedEvidencePath = await storeAttendanceEvidence(imageBuffer);
+    scanCooldownMap.set(userKey, Date.now());
+    await checkAndSetCooldown(userKey, 60).catch(() => {});
+
+    const queueResponse = await addPunchJob({
+      type: 'FACE_AI',
+      userId,
+      punchTime: new Date(),
+      location,
+      reqIp,
+      deviceId,
+      aiResult: {
+        similarity: aiResult.similarity,
+        liveness_score: aiResult.liveness_score,
+      },
+      evidenceRef: storedEvidencePath,
+    });
+
+    return {
+      success: true,
+      action: 'QUEUED',
+      queued: queueResponse.queued,
+      jobId: queueResponse.jobId,
+      message: queueResponse.message,
+      user: {
+        _id: user._id,
+        fullName: user.fullName,
+        staffCode: user.staffCode,
+        role: user.role,
+        avatar: user.avatar,
+      },
+      similarity: aiResult.similarity,
+      livenessScore: aiResult.liveness_score,
+      isFraud: geoCheck.isFraud,
+      fraudReason: geoCheck.fraudReason,
+      result: queueResponse.result,
+    };
+  }
+
   const nowVN = getVietnamTime();
   const { startOfDay, endOfDay } = getVietnamDayRange();
   const workDateStr = nowVN.toISOString().slice(0, 10);
@@ -121,7 +174,6 @@ const processFaceAttendance = async ({
   const activeSchedules = await Schedule.find({
     userId,
     weekday: todayWeekday,
-    trang_thai: 'HOAT_DONG',
   }).populate('shiftId').populate('subjectId');
 
   // Tìm bản ghi chấm công đang mở (chưa Check-out) hôm nay
@@ -143,8 +195,7 @@ const processFaceAttendance = async ({
     actionType = 'CHECK_OUT';
     const checkOutTime = new Date();
     openLog.checkOutTime = checkOutTime;
-    openLog.gio_ra = checkOutTime;
-    if (storedEvidencePath) openLog.anh_minh_chung = storedEvidencePath;
+    if (storedEvidencePath) openLog.capturedImage = storedEvidencePath;
 
     const { finalStatus, isEarlyLeave, earlyMinutes } = calculateCheckOutStatus(
       checkOutTime,
@@ -153,10 +204,9 @@ const processFaceAttendance = async ({
     );
 
     openLog.status = finalStatus;
-    openLog.trang_thai = finalStatus;
-    openLog.ve_som_phut = earlyMinutes || 0;
-    openLog.co_ve_som = isEarlyLeave;
-    openLog.quen_quet_ra = false;
+    openLog.earlyExitMinutes = earlyMinutes || 0;
+    openLog.isEarlyLeave = isEarlyLeave;
+    openLog.isMissingCheckOut = false;
     await openLog.save();
     attendanceRecord = openLog;
 
@@ -165,34 +215,20 @@ const processFaceAttendance = async ({
       attendanceLogId: openLog._id,
       userId,
       punchType: 'CHECK_OUT',
-      loai_quet: 'CHECK_OUT',
-      scanTime: checkOutTime,
-      thoi_gian_quet: checkOutTime,
-      method: 'face',
-      phuong_thuc: 'face',
+      punchTime: checkOutTime,
+      method: 'FACE_AI',
       confidenceScore: aiResult.similarity,
-      do_tin_cay_ai: aiResult.similarity,
       livenessScore: aiResult.liveness_score,
-      diem_mat_that: aiResult.liveness_score,
-      anh_minh_chung: storedEvidencePath,
+      evidenceImage: storedEvidencePath,
       location: location || { lat: null, lng: null },
-      toa_do_gps: location?.lat ? { type: 'Point', coordinates: [location.lng, location.lat] } : undefined,
       deviceId,
-      ma_thiet_bi: deviceId,
-      isFraud: geoCheck.isFraud,
-      co_gian_lan: geoCheck.isFraud,
+      isFraudulent: geoCheck.isFraud,
       fraudReason: geoCheck.fraudReason,
-      ly_do_gian_lan: geoCheck.fraudReason,
       clientIp: reqIp,
-      dia_chi_ip: reqIp,
       isCampusNetwork: geoCheck.isCampusNetwork,
-      mang_noi_bo_truong: geoCheck.isCampusNetwork,
       isSuspicious: Boolean(geoCheck.isSuspicious),
-      nghi_van_gia_mao: Boolean(geoCheck.isSuspicious),
       suspiciousReason: geoCheck.suspiciousReason,
-      ly_do_nghi_van: geoCheck.suspiciousReason,
       verificationMethod: geoCheck.verificationMethod,
-      phuong_thuc_xac_thuc_vi_tri: geoCheck.verificationMethod,
     });
   } else {
     // 7. Thực hiện CHECK-IN
@@ -211,26 +247,17 @@ const processFaceAttendance = async ({
 
     attendanceRecord = await AttendanceLog.create({
       userId,
-      nguoi_dung_id: userId,
       shiftId: selectedShift?._id || null,
-      ca_id: selectedShift?._id || null,
       scheduleId: selectedScheduleId,
-      lich_trinh_id: selectedScheduleId,
       workDate: workDateStr,
-      ngay_cong: workDateStr,
       checkInTime,
-      gio_vao: checkInTime,
-      method: 'face',
-      phuong_thuc: 'face',
+      method: 'FACE_AI',
       status: calculatedStatus,
-      trang_thai: calculatedStatus,
       confidenceScore: aiResult.similarity,
-      do_tin_cay_ai: aiResult.similarity,
       capturedImage: storedEvidencePath,
-      anh_minh_chung: storedEvidencePath,
       location: location || { lat: null, lng: null },
-      co_gian_lan: geoCheck.isFraud,
-      ly_do_gian_lan: geoCheck.fraudReason,
+      isFraudulent: geoCheck.isFraud,
+      fraudReason: geoCheck.fraudReason,
     });
 
     // Ghi PunchLog lượt vào
@@ -238,39 +265,26 @@ const processFaceAttendance = async ({
       attendanceLogId: attendanceRecord._id,
       userId,
       punchType: 'CHECK_IN',
-      loai_quet: 'CHECK_IN',
-      scanTime: checkInTime,
-      thoi_gian_quet: checkInTime,
-      method: 'face',
-      phuong_thuc: 'face',
+      punchTime: checkInTime,
+      method: 'FACE_AI',
       confidenceScore: aiResult.similarity,
-      do_tin_cay_ai: aiResult.similarity,
       livenessScore: aiResult.liveness_score,
-      diem_mat_that: aiResult.liveness_score,
-      anh_minh_chung: storedEvidencePath,
+      evidenceImage: storedEvidencePath,
       location: location || { lat: null, lng: null },
-      toa_do_gps: location?.lat ? { type: 'Point', coordinates: [location.lng, location.lat] } : undefined,
       deviceId,
-      ma_thiet_bi: deviceId,
-      isFraud: geoCheck.isFraud,
-      co_gian_lan: geoCheck.isFraud,
+      isFraudulent: geoCheck.isFraud,
       fraudReason: geoCheck.fraudReason,
-      ly_do_gian_lan: geoCheck.fraudReason,
       clientIp: reqIp,
-      dia_chi_ip: reqIp,
       isCampusNetwork: geoCheck.isCampusNetwork,
-      mang_noi_bo_truong: geoCheck.isCampusNetwork,
       isSuspicious: Boolean(geoCheck.isSuspicious),
-      nghi_van_gia_mao: Boolean(geoCheck.isSuspicious),
       suspiciousReason: geoCheck.suspiciousReason,
-      ly_do_nghi_van: geoCheck.suspiciousReason,
       verificationMethod: geoCheck.verificationMethod,
-      phuong_thuc_xac_thuc_vi_tri: geoCheck.verificationMethod,
     });
   }
 
-  // 8. Cập nhật mốc thời gian Cooldown 60s
+  // 8. Cập nhật mốc thời gian Cooldown 60s đồng bộ đa container qua Redis và Memory
   scanCooldownMap.set(userKey, Date.now());
+  await checkAndSetCooldown(userKey, 60).catch(() => {});
 
   // Ghi AuditLog
   AuditLog.create({
@@ -288,14 +302,35 @@ const processFaceAttendance = async ({
     },
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
+  // Phát sự kiện Realtime Socket.IO tới Admin Dashboard & Trưởng khoa
+  try {
+    const { emitNewPunch } = require('../../config/socket');
+    emitNewPunch({
+      _id: attendanceRecord._id,
+      userId,
+      userName: user.fullName || 'Cán bộ',
+      staffCode: user.staffCode,
+      avatar: user.avatar,
+      departmentId: user.departmentId,
+      punchType: actionType,
+      method: 'FACE_AI',
+      scanTime: new Date(),
+      status: attendanceRecord.status,
+      confidenceScore: aiResult.similarity,
+      isFraud: geoCheck.isFraud,
+      fraudReason: geoCheck.fraudReason,
+      evidenceUrl: storedEvidencePath,
+    });
+  } catch (_) {}
+
   return {
     success: true,
     action: actionType,
-    message: `${actionType === 'CHECK_IN' ? 'Check-in (Điểm danh vào)' : 'Check-out (Ra về)'} thành công: ${user.fullName || user.ho_ten}`,
+    message: `${actionType === 'CHECK_IN' ? 'Check-in (Điểm danh vào)' : 'Check-out (Ra về)'} thành công: ${user.fullName}`,
     user: {
       _id: user._id,
-      fullName: user.fullName || user.ho_ten,
-      staffCode: user.staffCode || user.ma_can_bo,
+      fullName: user.fullName,
+      staffCode: user.staffCode,
       role: user.role,
       avatar: user.avatar,
     },
@@ -310,4 +345,5 @@ const processFaceAttendance = async ({
 module.exports = {
   processFaceAttendance,
   scanCooldownMap,
+  resetCooldown,
 };

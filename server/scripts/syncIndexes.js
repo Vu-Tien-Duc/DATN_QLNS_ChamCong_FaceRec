@@ -31,7 +31,7 @@ async function syncAllIndexes() {
       { name: 'Schedule', model: models.Schedule, col: 'lich_giang_day' },
       { name: 'Holiday', model: models.Holiday, col: 'ngay_nghi_le' },
       { name: 'PunchLog', model: models.PunchLog, col: 'luot_quet_cham_cong' },
-      { name: 'AttendanceLog', model: models.AttendanceLog, col: 'cong_tong_hop' },
+      { name: 'AttendanceLog', model: models.AttendanceLog, col: 'nhat_ky_cham_cong' },
       { name: 'LeaveRequest', model: models.LeaveRequest, col: 'don_tu' },
       { name: 'Payroll', model: models.Payroll, col: 'phieu_luong' },
       { name: 'RefreshToken', model: models.RefreshToken, col: 'ma_lam_moi' },

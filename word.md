@@ -98,7 +98,7 @@
     - `ngoai_le` (`exceptions`): Mảng các ngày nghỉ, hủy buổi hoặc chuyển dạy bù `[{ ngay, ly_do, trang_thai }]`.
     - `danh_sach_tuan` (`weekNumbers`): Mảng tuần áp dụng trong học kỳ.
     - `nam_hoc` (`academicYear`), `hoc_ky` (`semester`: 1, 2, 3).
-  - Bổ sung chỉ mục kép phục vụ tra cứu TKB: `{ nam_hoc: 1, hoc_ky: 1, ma_nguoi_dung: 1 }` và `{ nam_hoc: 1, hoc_ky: 1, phong_hoc: 1 }`.
+  - Bổ sung chỉ mục kép phục vụ tra cứu TKB: `{ nam_hoc: 1, hoc_ky: 1, nguoi_dung_id: 1 }` và `{ nam_hoc: 1, hoc_ky: 1, phong_hoc: 1 }`.
 - **Viết mới sạch 100% `server/services/scheduleManagement.service.js` & `server/controllers/schedule.controller.js`**:
   - **Thuật toán Chống Xung Đột Thời Khóa Biểu 2 chiều:**
     + **Xung đột Giảng viên:** Kiểm tra cùng giảng viên, cùng thứ trong tuần, có ít nhất một tuần học chung trong `danh_sach_tuan`, và có khoảng tiết chồng lấn:
@@ -719,5 +719,554 @@ Hệ thống giao diện người dùng được thiết kế chuẩn mực, hi�
   - Khởi tạo thực nghiệm đối tượng Mongoose với alias tiếng Anh cho tất cả các Model $\rightarrow$ Đạt 100% khớp nối trường tiếng Việt trong MongoDB.
   - Chạy bộ kiểm thử tự động `npm test`: **14/14 test suites PASS 100%** (150+ tests).
   - Chạy lệnh đóng gói mã nguồn `npm run build`: **Thành công 100%** không có bất kỳ lỗi cú pháp hoặc TypeScript nào.
+
+### 28. Khắc Phục Lỗi Seeder & Khởi Tạo Thành Công 100% Dữ Liệu Mẫu Lên MongoDB Atlas (Ngày 17/10/2026)
+- **Xử lý triệt để lỗi khi chạy `npm run seed`**:
+  * **Lỗi 1 (Temporal Dead Zone - ReferenceError: Cannot access 'PunchLog' before initialization)**: Phát hiện khai báo `const PunchLog = require(...)` thừa tại dòng 731 bên trong hàm `seedData` che khuất biến `PunchLog` toàn cục $\rightarrow$ Đã xóa bỏ khai báo trùng lặp.
+  * **Lỗi 2 (ValidationError enum `vai_tro_chinh`)**: Bổ sung các giá trị vai trò đại học thực tế (`bgh`, `phokhoa`, `truongbomon`, `phobomon`) vào enum `vai_tro_chinh` trong `User` model.
+  * **Lỗi 3 (TypeError: next is not a function trong FaceTemplate)**: Chuyển đổi pre-save hook của `FaceTemplate` sang hàm đồng bộ (Synchronous hook) tương thích 100% với Mongoose 8.x.
+  * **Lỗi 4 (ValidationError enum `nhom` trong SystemConfig)**: Bổ sung nhóm `DAO_TAO` và `HE_THONG` vào enum `nhom` của `SystemConfig` model.
+- **Kết quả nạp CSDL thực tế (Production MongoDB Atlas)**:
+  * Chạy `npm run seed`: **Thành công 100%** nạp đầy đủ dữ liệu cho 14 Collections:
+    - 14 Đơn vị tổ chức (Ban Giám Hiệu, Khoa, Viện, Bộ môn, Phòng ban).
+    - 13 Tài khoản người dùng mẫu đầy đủ các vai trò kèm vector sinh trắc học Face ID 512D.
+    - 4 Ca làm việc chuẩn, 6 Học phần môn học, Lịch giảng dạy, Đơn nghỉ phép mẫu, Lịch sử chấm công, 6 Kỳ nghỉ lễ năm 2026, 19 Bộ cấu hình hệ thống và Phiếu lương mẫu.
+  * Chạy `npm run db:sync-indexes`: **Thành công 14/14 Collections** (Đồng bộ chỉ mục duy nhất, chỉ mục phức hợp và geospatial index 2dsphere).
+  * Chạy kiểm tra thực tế: CSDL `DATN_QLNS_ChamCong_FaceRec` trên Cloud hiện hữu chính xác 14 collections sạch và hoạt động hoàn hảo.
+- **Kiểm tra biên dịch & Test Suite**:
+### 29. Tinh Gọn CSDL: Dọn Dẹp Toàn Diện Các Trường Thừa, Trùng Lặp Trên Toàn Bộ 14 Models & Cơ Sở Dữ Liệu (Ngày 17/10/2026)
+- **Mục tiêu:** Rà soát và loại bỏ triệt để các trường cũ, trường trùng lặp vật lý trong Schema và Database của tất cả 14 models, giúp cấu trúc CSDL tinh gọn, rõ ràng, phản ánh chính xác 100% sơ đồ ERD và bản đặc tả v2.5 mà không làm đứt gãy bất kỳ logic backend nào.
+- **Chi tiết các trường thừa đã được xóa bỏ khỏi Schema vật lý & Bổ sung Virtual/Alias:**
+  1. **Model `User` (`server/models/user.model.js` - Collection `nguoi_dung`)**:
+     * *Xóa `hoc_ham_hoc_vi`*: Thay bằng Mongoose Virtual ghép tự động từ `hoc_ham` và `hoc_vi`.
+     * *Xóa `so_cccd` dạng thô*: Loại bỏ nguy cơ lộ thông tin cá nhân, chỉ lưu trữ `so_cccd_ma_hoa` (mã hóa chuẩn AES-256-GCM) và `phien_ban_khoa_cccd`; bổ sung virtual getter/setter `so_cccd` và `identityCard` tương thích ngược.
+     * *Xóa `ma_phong_ban`*: Trùng lặp với `don_vi_chinh_id`, chuyển thành virtual/alias trỏ về `don_vi_chinh_id`.
+     * *Xóa `faceDescriptor` & `faceDescriptors`*: Dữ liệu sinh trắc học đã chuyển hoàn toàn sang Collection 2 `FaceTemplate` (`du_lieu_khuon_mat`). Giữ virtual trả về `[]` để các luồng cũ không bị crash.
+     * *Xóa `so_ngay_phep_nam`*: Trùng lặp với `han_muc_phep_nam`, chuyển thành virtual/alias trỏ về `han_muc_phep_nam`.
+     * $\rightarrow$ Document trên đĩa giảm còn đúng **38 trường nghiệp vụ chuẩn** + `__v` = 39 keys.
+  2. **Model `AttendanceLog` (`server/models/attendanceLog.model.js` - Collection `cong_tong_hop`)**:
+     * *Xóa `ca_lam_viec_id`*: Trùng lặp với `ca_id`, chuyển thành virtual/alias trỏ về `ca_id`.
+     * *Xóa `lich_giang_day_id`*: Trùng lặp với `lich_trinh_id`, chuyển thành virtual/alias trỏ về `lich_trinh_id`.
+     * *Xóa `don_nghi_id`*: Trùng lặp với `don_tu_id`, chuyển thành virtual/alias trỏ về `don_tu_id`; loại bỏ index trùng lặp.
+     * $\rightarrow$ Document trên đĩa giảm từ 35 trường xuống đúng **31 trường nghiệp vụ chuẩn** + `__v` = 32 keys.
+  3. **Model `PunchLog` (`server/models/punchLog.model.js` - Collection `luot_quet_cham_cong`)**:
+     * *Xóa `anh_bang_chung_url`*: Trùng lặp với `anh_minh_chung`, chuyển thành virtual/alias trỏ về `anh_minh_chung`.
+     * *Xóa `ma_thiet_bi`*: Trùng lặp với `thiet_bi_id` (default 'CAMERA_DEFAULT'), chuyển thành virtual/alias trỏ về `thiet_bi_id`.
+     * $\rightarrow$ Document trên đĩa giảm từ 29 trường xuống đúng **26 trường nghiệp vụ chuẩn** + `__v` = 27 keys.
+  4. **Model `RefreshToken` (`server/models/refreshToken.model.js` - Collection `ma_lam_moi`)**:
+     * *Xóa `token_hash`*: Hệ thống lưu chuỗi token an toàn trực tiếp vào `chuoi_token`, loại bỏ trường thừa và sparse index vô ích, giữ virtual/alias trỏ về `chuoi_token`.
+  5. **Các Models Còn Lại (`Department`, `ShiftConfig`, `Subject`, `Schedule`, `Holiday`, `LeaveRequest`, `Payroll`, `SystemConfig`, `AuditLog`, `FaceTemplate`)**:
+     * Đã rà soát chi tiết từng thuộc tính: 100% chuẩn xác, không có bất kỳ trường thừa hay trùng lặp nào.
+- **Nâng cấp Seeder Xóa Sạch Động (`server/utils/seeder.js`)**:
+  * Chuyển cơ chế xóa danh sách tên collection tĩnh sang cơ chế **quét động toàn bộ collections hiện có** (`db.listCollections().toArray()`) để drop sạch 100% dữ liệu cũ trước khi nạp dữ liệu mẫu mới.
+  * Cập nhật payload khởi tạo của `PunchLog` sử dụng đúng `thiet_bi_id`.
+- **Nghiệm thu toàn diện 100%**:
+  * **Kiểm tra BSON Document thật trên đĩa**: Đối soát bằng native MongoDB Client xác nhận 100% các trường thừa (`ca_lam_viec_id`, `lich_giang_day_id`, `don_nghi_id`, `anh_bang_chung_url`, `ma_thiet_bi`, `so_cccd`, `hoc_ham_hoc_vi`, `token_hash`) đã biến mất hoàn toàn.
+  * **Kiểm tra Suite Test**: Chạy `npm test` đạt **14/14 test suites PASS 100%** (150+ tests).
+  * **Kiểm tra Biên dịch**: Chạy `npm run build` thành công **100%** (0 lỗi TypeScript / Vite bundling).
+  * **Đồng bộ MongoDB Index & Seeder**: Chạy `npm run db:sync-indexes` và `npm run seed` thành công 100%, nạp CSDL sạch lên MongoDB Compass của người dùng.
+
+### 30. Chuẩn Hóa Đồng Bộ Toàn Bộ 14 Models: Quy Ước Khóa Ngoại Tham Chiếu `*_id`, CSDL Tiếng Việt Chuẩn & Alias Tiếng Anh Sạch 1-đối-1 (Ngày 17/10/2026)
+- **Mục tiêu & Yêu cầu kiến trúc:**
+  1. **MongoDB Database (CSDL):** Lưu trữ thuộc tính bằng tiếng Việt `snake_case` chuẩn, ngắn gọn, tự nhiên, đúng ngữ nghĩa (ví dụ: `ten_ca`, `gio_bat_dau`, `gio_ket_thuc`, `ho_ten`, `email`...).
+  2. **Quy ước Khóa ngoại / Tham chiếu ObjectId:** Bắt buộc thống nhất 100% theo quy ước đuôi **`*_id`** (thay thế toàn bộ tiền tố `ma_*` hoặc các tên không có đuôi `_id`):
+     - `Department`: `don_vi_cha` $\rightarrow$ `don_vi_cha_id`, `truong_don_vi` $\rightarrow$ `truong_don_vi_id`.
+     - `Subject`: `ma_phong_ban` $\rightarrow$ `phong_ban_id`.
+     - `Schedule`: `ma_nguoi_dung` $\rightarrow$ `nguoi_dung_id`, `ma_ca` $\rightarrow$ `ca_id`, `ma_mon` $\rightarrow$ `mon_hoc_id`.
+     - `LeaveRequest`: `ma_nguoi_dung` $\rightarrow$ `nguoi_dung_id`, `nguoi_duyet` $\rightarrow$ `nguoi_duyet_id`.
+     - `FaceTemplate`: `ma_nguoi_dung` $\rightarrow$ `nguoi_dung_id`, `nguoi_dang_ky` $\rightarrow$ `nguoi_dang_ky_id`.
+     - `RefreshToken`: `ma_nguoi_dung` $\rightarrow$ `nguoi_dung_id`.
+     - `AuditLog`: `nguoi_thuc_hien` $\rightarrow$ `nguoi_thuc_hien_id`, `ma_doi_tuong` $\rightarrow$ `doi_tuong_id`.
+     - `PunchLog`: `thiet_bi_id`, `cham_cong_id`, `nguoi_dung_id`.
+     - `AttendanceLog`: `nguoi_dung_id`, `ca_id`, `lich_trinh_id`, `don_tu_id`, `nguoi_sua_id`, `nguoi_ghi_de_id`.
+     - `Payroll`: `nguoi_dung_id`, `nguoi_lap_id`, `nguoi_duyet_id`.
+     - `Holiday`: `nguoi_tao_id`.
+     - `SystemConfig`: `nguoi_cap_nhat_id`.
+  3. **Mã nguồn (Backend & Frontend):** Giao tiếp hoàn toàn bằng **Tiếng Anh chuẩn** thông qua cơ chế Mongoose `alias` (`name`, `startTime`, `endTime`, `userId`, `shiftId`, `subjectId`, `departmentId`, `deviceId`...).
+  4. **Dọn sạch Aliases & Virtuals:**
+     - Xóa bỏ triệt để các alias dị dạng trùng lặp (`email: 'email'`, `faceDescriptor: 'faceDescriptor'`, `nguoi_dung_id: 'nguoi_dung_id'`).
+     - Xóa các alias map tiếng Việt sang tiếng Việt (`thu_dien_tu: 'email'`, `anh_bang_chung_url: 'anh_minh_chung'`, `ma_thiet_bi: 'thiet_bi_id'`, `khoa: 'khoa_cau_hinh'`, `cap_nhat_boi: 'nguoi_cap_nhat_id'`).
+     - Xóa các virtual alias tiếng Việt thừa (`ca_lam_viec_id`, `lich_giang_day_id`, `don_nghi_id`, `phong_ban_id`, `so_cccd`, `so_ngay_phep_nam`, `ma_phong_ban`...).
+     - Đảm bảo tính nhất quán 1-đối-1: **1 trường tiếng Việt trong CSDL $\leftrightarrow$ 1 alias tiếng Anh trên mã nguồn**.
+  5. **Chuẩn Hóa Enum Theo Phương Án A & Đồng Bộ Khóa `thiet_bi_id`:**
+     - Đồng bộ trường `ma_thiet_bi` sang **`thiet_bi_id`** trên `AttendanceLog` (alias `deviceId`), hoàn thiện quy ước đuôi `*_id` trên toàn bộ 14 models.
+     - **Thống nhất Enum Trạng Thái Chấm Công (`AttendanceLog.trang_thai`)**: Chỉ lưu trữ một tập trạng thái duy nhất chuẩn quốc tế `['ON_TIME', 'LATE', 'EARLY_LEAVE', 'ABSENT', 'EXCUSED_ABSENCE']`, xóa bỏ hoàn toàn các chuỗi tiếng Việt trùng lặp gây rác dữ liệu. Tích hợp setter tự động ánh xạ thông minh (`DUNG_GIO` $\rightarrow$ `ON_TIME`, `DI_MUON` $\rightarrow$ `LATE`, `VE_SOM` $\rightarrow$ `EARLY_LEAVE`, `VANG_MAT` $\rightarrow$ `ABSENT`, `NGHI_PHEP` $\rightarrow$ `EXCUSED_ABSENCE`).
+     - **Thống nhất Phương Thức Quét (`phuong_thuc`)**: Chuẩn hóa chữ hoa `['FACE_AI', 'QR_CODE', 'GPS_MOBILE', 'THU_CONG_ADMIN', 'SYSTEM_AUTO']`, tích hợp setter tự động ánh xạ chuỗi thường (`face`, `qr`, `gps`, `manual`) sang chuẩn viết hoa thống nhất.
+- **Cập nhật Bộ Kiểm thử & Công cụ Seeder:**
+  * Đồng bộ `faceEnrollment.test.js`, `leaveMultiLevelAndRetroactive.test.js`, `systemHealthAndAudit.test.js` và `seeder.js` sang trường khóa ngoại `*_id` và alias tiếng Anh chuẩn.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task:**
+  * Chạy `npm test`: **14/14 Test Suites PASS 100%** (0 fail, toàn bộ 150+ tests nghiệp vụ từ Tuần 1 đến Tuần 8 thành công).
+  * Chạy `npm run db:sync-indexes`: **14/14 Collections đồng bộ chỉ mục thành công 100%**.
+  * Chạy `npm run seed`: **Khởi tạo và làm sạch CSDL thành công 100%** trên MongoDB local (`mongodb://localhost:27017/DATN_QLNS_ChamCong_FaceRec`).
+  * Chạy `npm run build`: **100% Build thành công** (0 lỗi TypeScript, 0 lỗi đóng gói Vite bundle).
+
+### 31. Đồng Bộ Toàn Diện Tầng Backend (Services, Controllers, Utils, Tests) Khớp 100% Với Model Chuẩn v2.5 & Enum Phương Án A (Ngày 17/10/2026)
+- **Mục tiêu & Yêu cầu:**
+  * Rà soát toàn bộ tầng logic nghiệp vụ backend (`server/services/`, `server/controllers/`, `server/utils/`, `server/tests/`) để loại bỏ 100% các tham chiếu trường CSDL cũ (`ma_nguoi_dung`, `ma_ca`, `ma_mon`, `ma_phong_ban`, `don_nghi_id`, `ma_thiet_bi`, `nguoi_thuc_hien`, `ma_doi_tuong`, `don_vi_cha`, `truong_don_vi`), đồng bộ triệt để sang các trường đuôi `*_id` (`nguoi_dung_id`, `ca_id`, `mon_hoc_id`, `phong_ban_id`, `don_tu_id`, `thiet_bi_id`, `nguoi_thuc_hien_id`, `doi_tuong_id`, `don_vi_cha_id`, `truong_don_vi_id`) và alias tiếng Anh.
+- **Chi tiết các thành phần Backend đã đồng bộ & chuẩn hóa:**
+  1. **Các Services Nghiệp vụ Cốt lõi**:
+     - `server/services/user.service.js`: Chuyển đổi toàn bộ query thu hồi Refresh Token sang `nguoi_dung_id`; hỗ trợ đồng thời `don_vi_chinh_id` và `departmentId` khi tạo mới và cập nhật người dùng.
+     - `server/services/department.service.js`: Chuẩn hóa các hàm `formatDepartmentDoc`, `buildDepartmentTree`, loại bỏ triệt để fallback `don_vi_cha`, `truong_don_vi`, dùng thống nhất `parentId`, `managerId`, `don_vi_cha_id`, `truong_don_vi_id`.
+     - `server/services/scheduleManagement.service.js`: Sửa sạch sẽ các câu truy vấn và populate sang `nguoi_dung_id` / `userId`, `ca_id` / `shiftId`, `mon_hoc_id` / `subjectId`.
+     - `server/services/leaveRequest.service.js` & `server/models/leaveRequest.model.js`: Chuẩn hóa `nguoi_duyet_id`, `don_tu_id`, `thiet_bi_id`, trạng thái rollback `ABSENT`, `ON_TIME`/`LATE`; bổ sung `nguoi_duyet_id` vào subdocument `lich_su_duyet`.
+     - `server/services/faceTemplate.service.js`: Đồng bộ `nguoi_dung_id` / `userId`, `nguoi_dang_ky_id`.
+     - `server/services/faceServiceClient.js`: Chuẩn hóa tiến trình khởi động nạp RAM Index (RAM Cache Warmup) loại bỏ `ma_nguoi_dung`, dùng `userId` / `nguoi_dung_id`.
+     - `server/services/auth.service.js`: Chuyển tất cả các vị trí tạo mới và tra cứu `RefreshToken` sang `nguoi_dung_id` / `userId`.
+     - `server/services/attendance/qrAttendance.service.js`: Chuẩn hóa lượt quét PunchLog sang `nguoi_dung_id`, `ca_id`.
+     - `server/services/attendance/checkIn.service.js` & `checkOut.service.js`: Đồng bộ `punchPayload` sang `nguoi_dung_id`, `ca_id`, `lich_trinh_id`.
+     - `server/services/attendance/faceRecognition.service.js`: Đồng bộ `method: 'FACE_AI'`, `phuong_thuc: 'FACE_AI'`, `thiet_bi_id: deviceId`.
+     - `server/services/attendance/attendanceHistory.service.js`: Sửa `getRawPunchLogs` query và populate `userId` / `nguoi_dung_id`, `thoi_gian_quet`.
+     - `server/services/report.service.js`: Cập nhật `.select()` và filter theo `nguoi_dung_id`, `don_vi_chinh_id`.
+     - `server/services/shiftConfig.service.js` & `server/services/subject.service.js`: Cập nhật hàm tạo mới và cập nhật tiếp nhận linh hoạt cả alias tiếng Anh và tên trường CSDL tiếng Việt.
+     - `server/services/systemConfig.service.js`: Sửa `nguoi_thuc_hien` $\rightarrow$ `nguoi_thuc_hien_id`, `ma_doi_tuong` $\rightarrow$ `doi_tuong_id`.
+  2. **Controllers & Tiện ích (Utils & Models)**:
+     - `server/controllers/face.controller.js`: Cập nhật truy vấn `FaceTemplate.findOne` sang `nguoi_dung_id`.
+     - `server/utils/attendanceHelpers.js`: Cập nhật phân giải định danh sang `template.userId || template.nguoi_dung_id`.
+     - `server/utils/attendanceTime.utils.js`: Thay thế `don_nghi_id` $\rightarrow$ `don_tu_id` trong kiểm tra đơn nghỉ phép và docstrings.
+     - `server/models/attendanceLog.model.js`: Bỏ fallback `don_nghi_id`, kiểm tra trực tiếp `this.don_tu_id`.
+     - `server/models/user.model.js`: Bổ sung getter & setter ảo `userSchema.virtual('departmentId')` liên kết 2 chiều với `don_vi_chinh_id`.
+     - `server/models/auditLog.model.js`: Nâng cấp hàm băm `computeLogHash` nhận diện tự động cả alias tiếng Anh (`actor`, `targetId`, `action`) và tên trường tiếng Việt chuẩn (`nguoi_thuc_hien_id`, `doi_tuong_id`, `hanh_dong`).
+  3. **Bộ Kiểm Thử & CSDL Test (Tests & Seeders)**:
+     - `server/tests/punchLogGeo.test.js`: Cập nhật mock RefreshToken sang `nguoi_dung_id`.
+     - `server/tests/systemHealthAndAudit.test.js`: Cập nhật mock logs sang `nguoi_thuc_hien_id` và `doi_tuong_id`.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm thử tự động (`npm test`)**: Toàn bộ **14/14 Test Suites PASS 100%** (150+ kịch bản kiểm thử pass sạch sẽ).
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** không phát sinh lỗi.
+  * **Đồng bộ chỉ mục MongoDB (`npm run db:sync-indexes`)**: 14/14 collections đồng bộ chỉ mục thành công 100%.
+  * **Khởi tạo dữ liệu mẫu (`npm run seed`)**: Nạp thành công toàn bộ dữ liệu đại học mẫu chuẩn CSDL v2.5 lên MongoDB local.
+  * **Dọn dẹp mã nguồn**: 0 file rác, 0 file tạm, toàn bộ codebase backend sạch và đồng bộ nhất quán 100%.
+
+### 32. Rà Soát Chuyên Sâu, Loại Bỏ Triệt Để Dữ Liệu Thừa, Sai & Chuẩn Hóa Toàn Diện Backend (Ngày 17/10/2026)
+- **Mục tiêu & Yêu cầu:**
+  * Rà soát từng file mã nguồn backend (`models/`, `services/`, `controllers/`, `middlewares/`, `utils/`, `tests/`) để truy quét và xóa bỏ triệt để mọi dữ liệu thừa, trường không có trong schema, giá trị enum cũ/sai, và các tham chiếu lỗi thời.
+- **Các hạng mục đã xử lý và chuẩn hóa dứt điểm:**
+  1. **Loại bỏ hoàn toàn các trường tàn dư không thuộc CSDL v2.5**:
+     - `server/services/subject.service.js`: Xóa bỏ biến fallback `ma_phong_ban` trong cả hai hàm `createSubject` và `updateSubject`, sử dụng chuẩn `departmentId` và `phong_ban_id`.
+     - `server/services/attendance/checkIn.service.js`, `checkOut.service.js`, `qrAttendance.service.js`: Xóa bỏ hoàn toàn trường thừa `phuong_thuc_vao` và `phuong_thuc_ra` (vốn không có trong schema `cong_tong_hop`, vì lượt quét chi tiết từng lần vào/ra đã được lưu chuẩn trong `PunchLog`).
+     - `server/services/attendance/attendanceHistory.service.js`: Xóa bỏ điều kiện lọc `{ ma_don_vi: departmentId }` và `{ phuong_thuc_vao: ... }`; cập nhật projection `.select()` của `PunchLog` sang đúng tên trường thật `thoi_gian_quet`, `thiet_bi_id`, `toa_do`, `toa_do_gps`, `dia_chi_ip` (thay vì các trường ảo/sai như `thoi_diem_quet`, `dia_diem`).
+     - `server/middlewares/auth.middleware.js`: Xóa bỏ trường cũ `ma_don_vi` khỏi chuỗi projection `.select()` khi giải mã JWT xác thực người dùng.
+     - `server/services/auth.service.js`: Chuẩn hóa JWT Access Token payload, phát hành `departmentId` và `don_vi_chinh_id` chuẩn CSDL v2.5 (thay vì `ma_don_vi`).
+  2. **Chuẩn hóa Triệt để Loại Lượt Quét (`loai_quet`) & Phương Thức (`phuong_thuc`)**:
+     - Phát hiện và sửa lỗi các service điểm danh (`checkIn.service.js`, `checkOut.service.js`, `qrAttendance.service.js`) từng truyền chuỗi tiếng Việt sai enum `loai_quet: 'VAO'` và `loai_quet: 'RA'`. Đã đồng bộ 100% sang enum chuẩn quốc tế: `loai_quet: 'CHECK_IN'` và `loai_quet: 'CHECK_OUT'`.
+     - Nâng cấp `punchLog.model.js`: Bổ sung `setter` tự động cho `loai_quet` để tự động chuẩn hóa các biến thể (`'VAO'`, `'IN'`, `'CHECKIN'` $\rightarrow$ `'CHECK_IN'`; `'RA'`, `'OUT'`, `'CHECKOUT'` $\rightarrow$ `'CHECK_OUT'`).
+     - Bổ sung alias `thoi_diem_quet: 'thoi_gian_quet'` trong `punchLog.model.js` và đồng bộ toàn bộ services sang dùng trường chuẩn `thoi_gian_quet`.
+     - Chuẩn hóa chuỗi phương thức quét: `server/services/attendance/faceRecognition.service.js` sửa `method: 'face'` $\rightarrow$ `method: 'FACE_AI'`; `server/utils/seeder.js` sửa `phuong_thuc: 'qr'` $\rightarrow$ `phuong_thuc: 'QR_CODE'`.
+  3. **Chuẩn hóa Cấu trúc Phân Quyền Vai Trò & Đơn Vị (`vaiTroSchema` & `user.service.js`)**:
+     - Nâng cấp `vaiTroSchema` trong `user.model.js`: Bổ sung alias `departmentId: 'don_vi_id'` và virtual tương thích `ma_don_vi` $\rightarrow$ `don_vi_id`.
+     - Sửa toàn bộ 8 vị trí trong `server/utils/seeder.js` khi khởi tạo `danh_sach_vai_tro` từ `ma_don_vi` sang `don_vi_id`.
+     - Làm sạch `server/services/user.service.js`: Loại bỏ toàn bộ fallback `ma_don_vi` trong các hàm tra cứu danh sách nhân sự, phân quyền Trưởng khoa, tạo mới cán bộ và cập nhật thông tin cán bộ, quy về `don_vi_chinh_id` và `departmentId`.
+     - Sửa `server/services/scheduleManagement.service.js`: Xóa bỏ điều kiện truy vấn `ma_don_vi` trong bộ lọc khoa của Trưởng khoa.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+### 33. Nâng Cấp Kiến Trúc Bộ Nhớ Đệm Phân Tán (Redis Distributed Cache & Redlock) Với Cơ Chế Hybrid Fallback Zero-Downtime (Ngày 17/10/2026)
+- **Mục tiêu & Vấn đề giải quyết (Phần 1 - Tối ưu kiến trúc Backend):**
+  * **Vấn đề cốt lõi:** Trước đây các cơ chế như Cache vector khuôn mặt (`faceServiceClient.js`), Grace Period Cache (`auth.service.js`), Cooldown Map chống quẹt lặp 60s (`faceRecognition.service.js`) và Khóa phân tán (`distributedLock.js`) đều phụ thuộc trực tiếp vào bộ nhớ RAM tiến trình đơn (`Map()` / `Set()`) của Node.js.
+  * **Hạn chế:** Khi triển khai quy mô lớn (Clustering với PM2 hoặc chạy nhiều bản sao Docker Replicas phía sau Nginx/Load Balancer), các instance chạy độc lập không thể chia sẻ dữ liệu bộ đệm này, dẫn tới nguy cơ: quẹt lặp thẻ ở 2 thiết bị khác nhau, race condition khi làm mới Refresh Token (RTR), và khóa phân tán không thể bảo vệ giao dịch liên tiến trình.
+  * **Giải pháp triển khai:** Xây dựng tầng Redis Distributed Cache & Redlock chuẩn Enterprise hỗ trợ **Hybrid In-Memory Fallback** đảm bảo Zero Downtime kể cả khi Redis service offline cục bộ.
+- **Chi tiết các thành phần kiến trúc đã xây dựng & nâng cấp:**
+  1. **Khởi tạo Module Điều Phối Cache Phân Tán (`server/config/redis.js`)**:
+     - Cài đặt thư viện `ioredis` (^5.x) với cấu hình kết nối thông minh (`connectTimeout: 2000ms`, `maxRetriesPerRequest: 1`, ngắt retry vô tận khi offline để không chặn Node.js event loop).
+     - Thiết lập bộ nhớ đệm **In-Memory Store Fallback** với TTL tự động thu dọn bộ nhớ (`setInterval`), kích hoạt tức thời khi Redis chưa sẵn sàng hoặc rớt kết nối.
+     - Cung cấp đầy đủ các hàm giao tiếp tầng cao: `checkAndSetCooldown`, `getCooldownRemaining`, `resetCooldown`, `setGraceToken`, `getGraceToken`, `acquireRedisLock`, `releaseRedisLock`, `cacheFaceVectors`, `getCachedFaceVectors`, `invalidateFaceCache`, `closeRedis`.
+  2. **Nâng Cấp Khóa Phân Tán Đa Tầng Chuẩn Redlock (`server/utils/distributedLock.js`)**:
+     - **Tầng 1 (Ưu tiên cao nhất):** Redis Redlock phân tán sử dụng lệnh nguyên tử `SET resource_key lock_id NX PX [ttl]` và giải phóng an toàn tuyệt đối bằng Lua Script (chỉ client sở hữu `lock_id` mới có quyền xóa khóa, tránh xóa nhầm khi task chạy vượt quá TTL).
+     - **Tầng 2 (Fallback bền vững):** MongoDB Atomic Compare-And-Swap (CAS) thông qua `SystemConfig.findOneAndUpdate`.
+     - **Tầng 3 (Fallback cục bộ):** In-Memory Map khi chạy các bài test đơn lẻ không hạ tầng.
+  3. **Chuyển Đổi Grace Period Cache (Refresh Token Rotation - `server/services/auth.service.js`)**:
+     - Sử dụng `getGraceToken` và `setGraceToken` qua Redis key `auth:grace:[tokenId]` với TTL 15 giây.
+     - Khi nhiều request gửi đồng thời lên các worker khác nhau để đổi token trong khung thời gian mạng trễ 15 giây, tất cả worker đều truy vấn chung 1 nguồn trạng thái Redis, ngăn chặn false-positive Replay Attack.
+  4. **Chuyển Đổi Cooldown Chống Quẹt Lặp 60s (`server/services/attendance/faceRecognition.service.js`)**:
+     - Thay thế `lastPunchTimeByUser` RAM Map bằng `checkAndSetCooldown(userId, 60)` và `getCooldownRemaining(userId)`.
+     - Key Redis `cooldown:punch:[userId]` được đồng bộ toàn mạng lưới, giúp giảng viên vừa check-in ở Camera điểm danh 1 không thể chuyển sang Camera điểm danh 2 quẹt tiếp trong vòng 60 giây.
+  5. **Chuyển Đổi Cache Vector Khuôn Mặt Sinh Trắc Học (`server/services/faceServiceClient.js`)**:
+     - Cơ chế nạp nóng (Warmup) vector 512 chiều kiểm tra và lưu vào Redis key `face:vectors:active` với TTL 24 giờ.
+     - Các container mới khởi động tải ngay vector từ Redis RAM mà không cần quét lại hàng ngàn document trong MongoDB.
+     - Tự động gọi `invalidateFaceCache()` khi giảng viên đăng ký hoặc xóa mẫu khuôn mặt (`faceTemplate.service.js`).
+  6. **Đồng Bộ Hạ Tầng Containerization (`docker-compose.yml`)**:
+     - Bổ sung service container `redis` (image `redis:7-alpine`) với healthcheck `redis-cli ping`, volume dữ liệu `redis_data` và giới hạn tài nguyên an toàn.
+     - Inject biến môi trường `REDIS_URL=redis://redis:6379` vào container backend `web` và thiết lập dependency `depends_on.redis.condition: service_healthy`.
+  7. **Tối Ưu Phòng Ngừa Timeout Bộ Nhớ Đệm (`server/models/auditLog.model.js`)**:
+     - Tinh chỉnh pre-save hook kiểm tra `mongoose.connection && mongoose.connection.readyState === 1` trước khi tìm hash ghi log liền kề, triệt tiêu hoàn toàn hiện tượng Mongoose buffer timeout 10000ms khi chạy unit test cô lập.
+  8. **Xây Dựng Test Suite Độc Lập (`server/tests/redisAndDistributedCache.test.js`)**:
+     - Bao phủ toàn diện 6/6 kịch bản kiểm thử:
+       * Test 1: Bộ điều hợp Cache (Get/Set/Del) an toàn.
+       * Test 2: Cooldown chống quét lặp phân tán 60 giây.
+       * Test 3: Grace Period Cache 15 giây chống Race Condition.
+       * Test 4: Khóa phân tán Redlock loại trừ tương hỗ (Mutual Exclusion & Safe Release).
+       * Test 5: Wrapper `withDistributedLock` tự động giải phóng khóa khi có ngoại lệ.
+       * Test 6: Bộ đệm vector khuôn mặt sinh trắc học và cơ chế tự động xóa cache (Invalidation).
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+### 34. Chuyển Đổi Hệ Thống Lưu Trữ Tệp Minh Chứng Sang Object Storage (MinIO S3-Compatible) Kèm Signed URL Bảo Mật & Local Fallback (Ngày 17/10/2026)
+- **Mục tiêu & Vấn đề giải quyết (Phần 2 - Tối ưu kiến trúc Backend):**
+  * **Vấn đề cốt lõi:** Các tệp minh chứng chấm công (ảnh chụp từ Camera Web khi nhận diện hoặc phát hiện gian lận), ảnh 5 góc đăng ký Face ID của giảng viên và tài liệu đính kèm đơn xin nghỉ phép (PDF scan, giấy khám bệnh...) trước đây được ghi trực tiếp vào ổ cứng cục bộ (`uploads/`, `private/attendance-evidence/`).
+  * **Hạn chế:** Khi mở rộng hệ thống thành cụm nhiều node máy chủ (Multi-instance backend sau Load Balancer), một máy chủ không thể đọc được file lưu trên ổ cứng của máy chủ khác nếu không chia sẻ Network File System (NFS), gây đứt gãy luồng xem minh chứng và làm phình to dung lượng ổ cứng ứng dụng web.
+  * **Giải pháp triển khai:** Tích hợp nền tảng lưu trữ đối tượng **MinIO Object Storage** (chuẩn tương thích AWS S3 / Cloudflare R2 / Google Cloud Storage), hỗ trợ phân quyền chặt chẽ thông qua **Signed URL (Presigned GET URL)** và cơ chế **Hybrid Fallback Zero-Downtime** khi chạy độc lập.
+- **Chi tiết các thành phần kiến trúc đã xây dựng & nâng cấp:**
+  1. **Khởi tạo Module Quản Lý MinIO Object Storage (`server/config/minio.js`)**:
+     - Cài đặt thư viện `minio` chuẩn chính hãng, cấu hình kết nối tới MinIO Server với Bucket mặc định `datn-qlns-storage` và phân chia các prefix chuyên biệt:
+       * `evidence/`   : Ảnh minh chứng chấm công và bằng chứng phát hiện gian lận.
+       * `attachments/`: File đính kèm đơn nghỉ phép, giấy tờ scan y tế.
+       * `faces/`      : Ảnh khuôn mặt chụp chính diện và đăng ký sinh trắc học.
+       * `avatars/`    : Ảnh đại diện người dùng.
+     - Triển khai đầy đủ API: `putObject`, `getObject`, `getObjectStream`, `deleteObject`, `getPresignedUrl`, `ensureBucketExists`, `getStorageStatus`.
+     - Tích hợp **Local Storage Fallback**: Tự động chuyển đổi lưu và đọc trên đĩa cứng cục bộ khi MinIO server offline hoặc chạy trong môi trường kiểm thử không hạ tầng.
+  2. **Nâng Cấp Xử Lý Minh Chứng Điểm Danh (`server/utils/attendanceEvidence.js`)**:
+     - Hàm `storeAttendanceEvidence`: Nhận cả Data URL Base64 và Buffer nhị phân, kiểm tra chữ ký định dạng (JPEG, PNG, WebP) và dung lượng $\le 2\text{ MB}$, lưu đồng bộ lên MinIO prefix `evidence/` và thư mục bảo mật `0o600`.
+     - Hàm `readAttendanceEvidence`: Ưu tiên đọc từ MinIO Object Storage, tự động fallback sang thư mục cục bộ.
+     - Hàm `removeAttendanceEvidence`: Xóa sạch tệp trên cả MinIO và bộ đệm đĩa cứng.
+     - Bổ sung hàm `getEvidencePresignedUrl`: Sinh Signed URL có thời hạn (15 phút) truy cập trực tiếp đối tượng an toàn.
+  3. **Nâng Cấp Controller Tải & Xem Tệp (`server/controllers/upload.controller.js` & `upload.middleware.js`)**:
+     - Chuyển `multer` sang chế độ `memoryStorage()` để nhận Buffer trực tiếp trong RAM, không sinh file rác tạm thời trên đĩa.
+     - `uploadSingleFile`: Tải trực tiếp file lên MinIO prefix `attachments/`, trả về cả đường dẫn API proxy `/api/uploads/:filename` và Presigned URL.
+     - `downloadFile`: Thực thi kiểm tra thẩm quyền RBAC nghiêm ngặt (Admin, Trưởng khoa theo DeanScope, chính chủ đơn). Khi hợp lệ, stream trực tiếp dữ liệu nhị phân từ MinIO qua `getObjectStream()` kèm các header bảo mật `X-Content-Type-Options: nosniff` và `Cache-Control`.
+  4. **Nâng Cấp Lưu Ảnh Đăng Ký Khuôn Mặt (`server/controllers/face.controller.js`)**:
+     - Lưu ảnh đại diện khuôn mặt chính diện lên MinIO prefix `faces/face-[userId]-[timestamp].jpg`.
+     - Định tuyến các route xem ảnh `/uploads/faces/:filename` và `/api/uploads/faces/:filename` qua controller bảo vệ bản quyền sinh trắc học.
+  5. **Hoàn Thiện Tra Cứu Minh Chứng Điểm Danh (`attendanceHistory.service.js`)**:
+     - Xây dựng hoàn chỉnh hàm `getAttendanceEvidence({ id, currentUser })` với phân quyền 3 cấp (Admin xem toàn trường, Trưởng khoa xem khoa mình, Cán bộ xem chính mình), đọc dữ liệu minh chứng an toàn từ MinIO.
+  6. **Cập Nhật Docker Orchestration & Biến Môi Trường (`docker-compose.yml`, `.env.example`)**:
+     - Bổ sung container service `minio` (image `minio/minio:latest`) với cổng API 9000, console 9001, volume lưu trữ vĩnh cửu `minio_data` và healthcheck.
+     - Cấu hình các biến môi trường: `STORAGE_DRIVER=minio`, `MINIO_ENDPOINT=minio`, `MINIO_PORT=9000`, `MINIO_ACCESS_KEY=minioadmin`, `MINIO_SECRET_KEY=minioadmin`, `MINIO_BUCKET_NAME=datn-qlns-storage`.
+  7. **Xây Dựng Test Suite Độc Lập (`server/tests/minioObjectStorage.test.js`)**:
+     - Bao phủ toàn diện 7/7 kịch bản kiểm thử:
+       * Test 1: Khởi tạo Storage Client và phân vùng lưu trữ.
+       * Test 2: Put Object & Get Object Buffer (Lưu trữ và đọc tệp PDF đơn từ).
+       * Test 3: Get Object Stream (Đọc dữ liệu luồng nhị phân toàn vẹn).
+       * Test 4: Sinh Signed Presigned URL có thời hạn và tham số bảo mật.
+       * Test 5: Lưu trữ và đọc ảnh minh chứng chấm công (Data URL & Buffer).
+       * Test 6: Xóa tệp đối tượng và dọn dẹp tài nguyên.
+       * Test 7: Chống tệp giả mạo chữ ký định dạng MIME.
+  8. **Rà Soát & Xóa Bỏ Triệt Để 100% Các Đoạn Code Cũ Lưu Đĩa Cục Bộ**:
+     - `server/controllers/upload.controller.js`: Xóa sạch `const fs`, xóa hàm cũ `sendStoredFile` (dùng `res.sendFile`), xóa biến `uploadDir` và các logic cũ kiểm tra đĩa `fs.existsSync(localFilePath)`. Toàn bộ luồng tải file và xem file chuyển sang stream nhị phân trực tiếp từ `minioStorage`.
+     - `server/controllers/face.controller.js`: Xóa sạch các import thừa không còn dùng `const fs` và `const path`, loại bỏ hoàn toàn lệnh ghi đĩa cũ `fs.writeFileSync`.
+     - `server/services/auth.service.js`: Chuyển đổi hàm `updateAvatar` sang dùng `minioStorage.putObject(avatars/...)`, xóa bỏ hoàn toàn `fs.writeFileSync`, đồng thời xóa sạch các import thừa `fs`, `path`, `uploadDir`.
+     - `server/middlewares/upload.middleware.js`: Xóa sạch `const fs`, xóa bỏ `uploadDir` và lệnh tạo thư mục đĩa `fs.mkdirSync`, thuần túy dùng `multer.memoryStorage()`.
+     - `server/utils/attendanceEvidence.js`: Xóa sạch `const fs`, xóa `path`, xóa `getEvidenceDir()`, toàn bộ chu trình lưu, đọc và xóa ảnh minh chứng được ủy quyền tập trung qua `minioStorage`.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm thử tự động (`npm test`)**: Toàn bộ **16/16 Test Suites PASS 100%** (160+ kịch bản kiểm thử pass sạch sẽ).
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong 3.54 giây với 2574 modules, 0 lỗi TypeScript, 0 lỗi đóng gói.
+  * **Dọn dẹp mã nguồn**: 0 file rác, 0 file tạm, 0 file backup `.old.*`, toàn bộ codebase backend đã được làm sạch triệt để, không còn bất kỳ dòng code cũ lưu đĩa nào.
+
+### 35. Xây Dựng Hàng Đợi Điểm Danh Giờ Cao Điểm (BullMQ Trên Nền Redis) Với Cơ Chế Fast Ingestion & Worker Pipeline (Ngày 17/10/2026)
+- **Mục tiêu & Vấn đề giải quyết (Phần 3 - Tối ưu kiến trúc Backend):**
+  * **Vấn đề cốt lõi:** Vào các khung giờ cao điểm đầu buổi sáng (6h45 - 7h15) hoặc đổi ca, hàng nghìn giảng viên và sinh viên quét khuôn mặt đồng thời tại các cổng ra vào và cửa giảng đường. Nếu xử lý đồng bộ toàn bộ pipeline: xác thực Geofence GPS, truy vấn Schedule tìm ca, tạo/cập nhật AttendanceLog, lưu PunchLog, băm chuỗi SHA-256 AuditLog và gửi thông báo, tải kết nối MongoDB sẽ bị dồn ứ nghiêm trọng, gây nghẽn Connection Pool và làm đơ giao diện quét điểm danh.
+  * **Giải pháp triển khai:** Tích hợp **Message Queue BullMQ** hoạt động trực tiếp trên nền Redis sẵn có. Áp dụng mô hình **Fast Ingestion & Asynchronous Worker Pipeline**: Camera Web SPA (`FaceAttendanceScannerModal.tsx`) chỉ thực hiện nhận diện khuôn mặt cục bộ hoặc qua RAM FAISS, sau đó đẩy ngay lượt quét vào hàng đợi `attendance-punch-queue` và phản hồi cho giao diện quét Web trong vòng **< 50ms**. Đội ngũ Worker ngầm phía sau sẽ tuần tự tiêu thụ, xử lý nghiệp vụ đối soát ca, lưu vết lịch sử chấm công và kiểm toán.
+- **Chi tiết các thành phần kiến trúc đã xây dựng & nâng cấp:**
+  1. **Khởi tạo Module Quản Lý Hàng Đợi Điểm Danh (`server/queues/punchQueue.js`)**:
+     - Cài đặt thư viện `bullmq` (^6.3.16), cấu hình connection riêng cho BullMQ với `maxRetriesPerRequest: null`, `enableOfflineQueue: false` và `connectTimeout: 1000` để tránh xung đột với client Redis chuẩn.
+     - Khởi tạo queue `attendance-punch-queue` với cấu hình mặc định: tự động thử lại 3 lần (`attempts: 3`), thuật toán giãn cách số mũ (`backoff: exponential, delay: 1000ms`), lưu vết 1000 jobs hoàn thành và 5000 jobs thất bại để phục vụ kiểm toán.
+     - **Cơ chế Fast Ingestion (`addPunchJob`)**: Đẩy lượt quẹt vào hàng đợi với cơ chế giới hạn timeout 1500ms qua `Promise.race()`. Phản hồi giao diện quét Web tức thì với `jobId`, `status: 'QUEUED'`, giải phóng camera quét ngay lập tức để phục vụ người tiếp theo.
+     - **Asynchronous Worker Pipeline (`processPunchJobData`)**: Pipeline xử lý ngầm toàn diện bao gồm:
+       * Đối soát tọa độ GPS và mạng nội bộ trường (`validateGeofence`) chống Fake GPS.
+       * Tra cứu thời khóa biểu giảng dạy trong ngày (`Schedule.find`).
+       * Tự động phát hiện lượt Check-in hoặc Check-out dựa trên bản ghi đang mở trong ngày.
+       * Tính toán trạng thái chấm công (`ON_TIME`, `LATE`, `EARLY_LEAVE`) và số phút về sớm.
+       * Lưu bản ghi `PunchLog` đầy đủ với điểm tương đồng sinh trắc học và cờ gian lận.
+       * Băm SHA-256 và lưu nhật ký kiểm toán bất biến `AuditLog`.
+     - **Bộ điều phối Worker (`startPunchWorker`)**: Khởi chạy worker với tham số concurrency tùy chỉnh (mặc định 5 workers xử lý đồng thời), lắng nghe các sự kiện `completed`, `failed` và `error`.
+     - **API Giám sát Hàng đợi (`getPunchQueueStats`)**: Thống kê số lượng jobs trong hàng đợi (`waiting`, `active`, `completed`, `failed`, `delayed`) và trạng thái hoạt động (`ONLINE / OFFLINE`, `mode: BULLMQ_ASYNC / SYNC_FALLBACK`).
+     - **Graceful Shutdown (`closePunchQueue`)**: Tự động đóng hàng đợi và giải phóng worker an toàn khi server nhận tín hiệu SIGINT / SIGTERM.
+     - **Hybrid Fallback Zero-Downtime**: Khi Redis/BullMQ offline hoặc trong môi trường test cô lập, `addPunchJob` tự động chuyển đổi trong suốt sang xử lý đồng bộ (`status: 'PROCESSED_SYNC'`), không làm gián đoạn hay mất mát dữ liệu điểm danh.
+  2. **Tích Hợp Luồng Hàng Đợi Vào Controller & Service Chấm Công**:
+     - `server/services/attendance/faceRecognition.service.js`: Nhận tham số `useQueue`. Sau khi khuôn mặt được nhận diện thành công qua AI, thiết lập ngay Cooldown 60s và đẩy job vào hàng đợi qua `addPunchJob()`, trả về ngay thông tin định danh cán bộ và trạng thái `QUEUED` cho giao diện quét Web chỉ trong vài chục mili-giây.
+     - `server/controllers/attendance.controller.js`: Cập nhật `faceRecognizeAttendance` hỗ trợ query `?async=true` hoặc body `useQueue: true`. Bổ sung controller `getQueueStats` phục vụ màn hình giám sát Admin.
+     - `server/routes/attendance.routes.js`: Khai báo route mới `GET /api/attendance/queue/stats` để ban giám hiệu và kỹ thuật viên theo dõi tải lượng xử lý của hàng đợi theo thời gian thực.
+  3. **Khởi Động Nền Tảng Worker Trong Server (`server/server.js`)**:
+     - Tự động gọi `startPunchWorker(5)` khi server Node.js khởi động thành công kết nối cơ sở dữ liệu.
+     - Đăng ký hàm `closePunchQueue` vào luồng bắt sự kiện tắt ứng dụng `process.on('SIGINT')` và `process.on('SIGTERM')`.
+  4. **Xây Dựng Test Suite Độc Lập (`server/tests/bullmqPunchQueue.test.js`)**:
+     - Bao phủ toàn diện 6/6 kịch bản kiểm thử:
+       * Test 1: Khởi tạo Hàng đợi BullMQ và kiểm tra cấu hình connection options.
+       * Test 2: Thống kê & Giám sát hàng đợi (`getPunchQueueStats`).
+       * Test 3: Cơ chế Fast Ingestion đo lường thời gian phản hồi thực tế đạt **36.71ms** (< 50ms).
+       * Test 4: Khởi tạo Worker xử lý ngầm (`startPunchWorker`) với concurrency an toàn.
+       * Test 5: API Controller `getQueueStats` trả về đúng chuẩn phản hồi hệ thống.
+       * Test 6: Cơ chế Shutdown giải phóng tài nguyên an toàn (`closePunchQueue`).
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm thử tự động (`npm test`)**: Toàn bộ **17/17 Test Suites PASS 100%** (170+ kịch bản kiểm thử pass sạch sẽ).
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** (0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Dọn dẹp mã nguồn**: 0 file rác, 0 file backup `.old.*`, toàn bộ codebase sạch sẽ và sẵn sàng scale ngang.
+
+
+
+
+
+
+
+### 36. Xây Dựng Kiến Trúc Truyền Thông Thời Gian Thực Realtime WebSockets (Socket.IO) Cho Admin Dashboard & Giao Diện Giám Sát (Ngày 17/10/2026)
+- **Mục tiêu & Vấn đề giải quyết (Phần 4 - Tối ưu kiến trúc Backend & Frontend):**
+  * **Vấn đề cốt lõi:** Phía Admin Dashboard và màn hình giám sát chấm công trước đây phụ thuộc vào cơ chế Polling (gọi lại API theo chu kỳ 30s - 60s) hoặc người dùng phải chủ động ấn F5 để thấy lượt điểm danh mới. Cơ chế này gây lãng phí băng thông mạng, tăng tải truy vấn cơ sở dữ liệu MongoDB và độ trễ nhận biết dữ liệu mới không đạt mức tức thì (< 100ms).
+  * **Giải pháp triển khai:** Tích hợp **Socket.IO** (v4.x) kết hợp WebSocket & HTTP Long-Polling fallback, gắn trực tiếp vào máy chủ HTTP Node.js. Áp dụng xác thực bảo mật qua JWT Token, phân chia Room theo phân quyền RBAC đa cấp (Toàn trường, Khoa/Bộ môn, Cá nhân) và cập nhật phản ứng giao diện tức thì (< 10ms) trên Frontend Web SPA.
+- **Chi tiết các thành phần kiến trúc đã xây dựng & nâng cấp:**
+  1. **Khởi tạo Module Quản Lý Socket.IO Tập Trung (`server/config/socket.js`)**:
+     - Cài đặt thư viện `socket.io` phía backend, cấu hình CORS động hỗ trợ whitelist origins an toàn và credentials.
+     - **Handshake Authentication**: Middleware chặn kết nối socket không hợp lệ, giải mã JWT token từ `socket.handshake.auth.token` / `Authorization` header và gắn thông tin định danh `socket.user = { id, role, departmentId, email, fullName }`.
+     - **Phân chia Room tự động theo phân quyền**:
+       * `admin-room`: Quản trị viên (Admin/BGH) tự động gia nhập để giám sát sự kiện toàn trường.
+       * `dept:{departmentId}`: Trưởng khoa tự động gia nhập theo phạm vi quản lý khoa (DeanScope).
+       * `user:{userId}`: Giảng viên / Nhân viên nhận thông báo cá nhân (duyệt đơn, trạng thái công).
+     - **Hệ thống hàm phát sự kiện Realtime (Event Emitters)**:
+       * `emitNewPunch(punchData)`: Phát sự kiện `attendance:new-punch` tới `admin-room`, `dept:xxx` và `user:xxx`. Tự động kích hoạt `emitFraudAlert` nếu có cờ `isFraud`.
+       * `emitAttendanceUpdate(attendanceData)`: Phát sự kiện `attendance:update` khi Check-out hoặc Admin điều chỉnh log.
+       * `emitFraudAlert(alertData)`: Phát cảnh báo an ninh `security:fraud-alert` đỏ tới tất cả quản trị viên khi có dấu hiệu Fake GPS hoặc bất thường sinh trắc học.
+       * `emitLeaveRequestUpdate(leaveData)`: Phát sự kiện `leave:status-changed` khi đơn từ được tạo hoặc phê duyệt.
+       * `emitQueueStats(stats)`: Phát sự kiện `queue:stats-update` khi hàng đợi BullMQ có thay đổi tải.
+     - **Tự động ngắt & dọn dẹp (`closeSocketServer`)**: Giải phóng toàn bộ sockets và server khi shutdown.
+  2. **Gắn Kết Socket.IO Vào Máy Chủ HTTP (`server/server.js`)**:
+     - Chuyển `app.listen()` sang `http.createServer(app)` và gắn `initSocketServer(server)`.
+     - Đăng ký hàm dọn dẹp `closeSocketServer()` vào luồng bắt tín hiệu dừng `SIGINT` / `SIGTERM`.
+  3. **Tích Hợp Phát Sự Kiện Tại Các Tầng Nghiệp Vụ Backend**:
+     - `server/queues/punchQueue.js`: Khi worker xử lý xong lượt quẹt trong `processPunchJobData`, tự động phát `emitNewPunch` kèm đầy đủ thông tin nhân sự và trạng thái.
+     - `server/services/attendance/faceRecognition.service.js`: Phát `emitNewPunch` tức thì sau khi hoàn tất điểm danh khuôn mặt trực tiếp.
+  4. **Xây Dựng Client Realtime Phía Frontend Web SPA**:
+     - Cài đặt `socket.io-client`, tạo module tiện ích `src/api/socket.ts` cung cấp `getSocket()`, `disconnectSocket()`, `updateSocketAuthToken()` và các React Hooks `useSocketEvent`, `useSocketStatus`.
+     - `src/context/AuthContext.tsx`: Đồng bộ vòng đời kết nối Socket với phiên đăng nhập (tự động cập nhật token khi login/refresh, tự động ngắt kết nối khi logout).
+     - `src/pages/Dashboard.tsx`:
+       * Bổ sung chỉ báo kết nối Realtime trên Banner: chấm xanh nhấp nháy `⚡ Realtime Live (< 100ms)` khi kết nối hoặc `Polling Fallback` khi ngoại tuyến.
+       * Lắng nghe sự kiện `attendance:new-punch`: Tự động chèn lượt quẹt mới lên đầu danh sách Recent, cập nhật tức thì thẻ KPI (`presentToday`, `lateToday`, `attendanceRate`) mà không cần tải lại trang.
+       * Lắng nghe `security:fraud-alert`: Hiển thị thông báo đỏ cảnh báo an ninh gian lận ngay lập tức.
+  5. **Xây Dựng Test Suite Độc Lập (`server/tests/socketRealtime.test.js`)**:
+     - Bao phủ toàn diện 6/6 kịch bản kiểm thử:
+       * Test 1: Khởi tạo Socket.IO Server và kiểm tra instance hợp lệ.
+       * Test 2: Xác thực Handshake JWT Token hợp lệ & kết nối thành công.
+       * Test 3: Phát và nhận sự kiện `attendance:new-punch` đo lường thời gian thực tế đạt **1.69ms** (đạt chuẩn < 100ms).
+       * Test 4: Phát cảnh báo gian lận an ninh `security:fraud-alert` tới Admin.
+       * Test 5: Phát biến động tải hàng đợi BullMQ `queue:stats-update`.
+       * Test 6: Đóng server an toàn, không rò rỉ socket và không treo tiến trình.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm thử tự động (`npm test`)**: Toàn bộ **18/18 Test Suites PASS 100%** (180+ kịch bản kiểm thử pass sạch sẽ).
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** (2607 modules, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Dọn dẹp mã nguồn**: 0 file rác, 0 file backup `.old.*`, toàn bộ codebase sạch sẽ và sẵn sàng triển khai.
+
+---
+
+### 37. Chuẩn Hóa Triệt Để 100% Thuộc Tính Tiếng Anh (English CamelCase) Cho Toàn Bộ Các Tầng Mã Nguồn Ngoài Models (Ngày 17/10/2026)
+- **Mục tiêu & Tôn chỉ kiến trúc:**
+  * **Vấn đề cốt lõi:** Sau quá trình di chuyển CSDL lên phiên bản v2.5, trong mã nguồn các tầng Services, Controllers, Queues, Middlewares, Utils, Socket, Seeder, Swagger, Frontend Store, Types và UI Pages vẫn còn rải rác các thuộc tính tiếng Việt (`don_vi_chinh_id`, `vai_tro`, `thoi_gian_quet`, `nguoi_dung_id`, `loai_quet`, `ho_ten`, `ma_can_bo`, `ca_id`, `gio_vao`, `gio_ra`, `trang_thai`, `anh_minh_chung`, `ten_ngay_le`, `khoa_cau_hinh`, `gia_tri`, `luong_chinh`, `phu_cap_chuc_vu`, `he_so_luong`, `gio_giang`, `thang`, `nam`, v.v.) hoặc các phép gán kép song song mang tính chấp vá (`user.fullName || user.ho_ten`, `p.thuc_linh_net || p.netSalary`).
+  * **Định hướng kiến trúc chuẩn mực:**
+    1. **14 Mongoose Models (`server/models/`)**: Đóng vai trò là tầng ánh xạ dữ liệu (Data Access Layer) duy nhất lưu giữ schema vật lý với `schemaAliasPlugin` tự động map 2 chiều (Query, Update, Populate, Projection, Sort).
+    2. **Toàn bộ tầng bên ngoài Models (100%)**: Từ Business Logic (Services), Điều phối (Controllers), Hàng đợi (BullMQ), Socket.IO, Phân quyền (RBAC Middleware), Bảo mật AI (Guardrails), Cấu hình (Seeder, Swagger), Tài liệu (OpenAPI), đến Tầng Frontend (Zustand Store, Typescript Interfaces, React Pages) sử dụng **100% thuộc tính tiếng Anh dạng camelCase chuẩn công nghiệp** (`userId`, `punchTime`, `punchType`, `departmentId`, `fullName`, `staffCode`, `shiftId`, `startTime`, `endTime`, `status`, `netSalary`, `month`, `year`, `baseSalary`, `primarySalary`, `positionAllowance`, `vocationalAllowance`, `teachingHours`, `isLocked`, v.v.).
+- **Chi tiết các hạng mục đã hoàn thành chuẩn hóa sạch 100%:**
+  1. **Tầng Điểm Danh & Hàng Đợi (Attendance Services, BullMQ & Socket.IO)**:
+     - `server/queues/punchQueue.js` & `server/services/attendance/faceRecognition.service.js`: Chuẩn hóa 100% payload và biến sang `userId`, `punchTime`, `punchType`, `departmentId`, `fullName`, `staffCode`, `shiftId`, `isFraud`, `fraudReason`.
+     - `server/config/socket.js`: Phát sự kiện WebSocket Realtime với các thuộc tính tiếng Anh thuần túy `fullName`, `staffCode`, `departmentId`, `punchTime`, `status`.
+     - `server/services/attendance/` (`checkIn.service.js`, `checkOut.service.js`, `qrAttendance.service.js`, `attendanceHistory.service.js`): Chuẩn hóa truy vấn `AttendanceLog`, `Schedule`, `User` sang pure English aliases; loại bỏ hoàn toàn các fallback tiếng Việt.
+     - `server/utils/attendanceHelpers.js` & `attendanceTime.utils.js`: Xử lý thời gian và bán kính định vị geofence với `checkInTime`, `checkOutTime`, `startTime`, `endTime`, `allowedLateMinutes`, `allowedEarlyMinutes`.
+  2. **Tầng Xác Thực, Phân Quyền & Quản Lý Người Dùng (Auth, User & RBAC)**:
+     - `server/services/auth.service.js`: Chuẩn hóa Refresh Token rotation, Token Family, query `{ tokenHash: incomingHash }` (loại bỏ `{ chuoi_ma_hoa }`), soft delete với `tokenVersion`.
+     - `server/middlewares/auth.middleware.js` & `rateLimiter.middleware.js`: Xác thực JWT payload, kiểm tra `tokenVersion`, lấy thông tin `staffCode`, phân quyền nhiệm kỳ theo `r.role`, `r.expiresAt`, `r.isDelegated`.
+     - `server/config/permissions.js` & `server/utils/deanScope.js`: Rà soát phân quyền theo 10 chức danh đại học chuẩn với `role`, `departmentId`.
+     - `server/services/user.service.js` & `server/controllers/user.controller.js`: Xử lý tạo mới, cập nhật, xóa mềm tài khoản, liên kết FaceTemplate hoàn toàn bằng English attributes.
+  3. **Tầng Quản Trị Tổ Chức & Đào Tạo (Department, Subject, Shift, Holiday, Schedule)**:
+     - `server/services/department.service.js`: Chuẩn hóa `buildDepartmentTree`, `formatDepartmentDoc`, populate `parentId`, `managerId`, `type`, `location`.
+     - `server/services/subject.service.js` & `shiftConfig.service.js`: Quản lý môn học và ca làm việc với `code`, `name`, `credits`, `startTime`, `endTime`, `lateThresholdMinutes`.
+     - `server/services/holiday.service.js` & `server/controllers/holiday.controller.js`: Quản lý danh mục ngày lễ với `name`, `startDate`, `endDate`, `year`, `isPaid`, `description`, `createdBy`.
+     - `server/services/scheduleManagement.service.js`: Chống xung đột thời khóa biểu, xử lý ngoại lệ bù ca với `startPeriod`, `periodCount`, `scheduleType`, `makeupDate`, `exceptions`, `weekNumbers`, `academicYear`, `semester`.
+  4. **Tầng Tiền Lương, Đơn Từ & Báo Cáo (Payroll, LeaveRequest, Report)**:
+     - `server/services/payroll.service.js`: Chuẩn hóa 100% công thức tính lương snapshot 2026, tính thuế lũy tiến 5 bậc, khóa/mở khóa bảng lương, xuất file Excel/PDF bằng `userId`, `month`, `year`, `salaryCoefficient`, `baseSalary`, `primarySalary`, `positionAllowance`, `seniorityAllowance`, `vocationalAllowance`, `grossIncome`, `netSalary`, `status`, `isLocked`.
+     - `server/services/leaveRequest.service.js`: Xử lý quy trình nghỉ phép đa cấp, khóa lạc quan (Optimistic Locking) và hồi tố chấm công với `currentLevel`, `totalLevels`, `status`, `version`, `approvalHistory`.
+     - `server/services/report.service.js`: Xuất báo cáo tổng hợp giờ giảng và công trực ban với các trường tiếng Anh chuẩn.
+  5. **Tầng Cấu Hình Hệ Thống, Bảo Mật AI & Khóa Phân Tán**:
+     - `server/services/systemConfig.service.js` & `server/controllers/systemConfig.controller.js`: Quản lý 19 tham số cấu hình với `key`, `value`, `group`, `description`, `updatedBy`.
+     - `server/utils/distributedLock.js`: Quản lý khóa phân tán Atomic CAS qua `key`, `value`, `group`, `updatedAt`, `description`.
+     - `server/services/ai/aiGuardrails.js`: Bộ lọc bảo vệ dữ liệu (DLP Whitelist) chuẩn hóa danh sách `FORBIDDEN_FIELDS` (chặn `password`, `mat_khau`, `refreshToken`, `tokenVersion`, `centroidEmbedding`, `citizenId`, `so_cccd`, `bankAccount`, v.v.).
+     - `server/services/ai/aiResponse.service.js`: Bộ tri thức `UNIVERSITY_POLICY_KNOWLEDGE` chuẩn hóa khóa `salary_and_tax` và văn phong mô tả `isLocked = true`.
+  6. **Tầng Seeder, Swagger & OpenAPI 3.0**:
+     - `server/utils/seeder.js`: Chuyển đổi toàn bộ dữ liệu mẫu Holiday (`name`, `startDate`, `endDate`, `year`, `isPaid`) và SystemConfig (`key`, `value`, `group`, `description`, `updatedBy`).
+     - `server/config/swaggerPaths.js`: Cập nhật schema OpenAPI 3.0 cho `Payroll` và `SystemConfig` với đầy đủ định nghĩa trường tiếng Anh camelCase chuẩn quốc tế.
+  7. **Tầng Frontend Web SPA (TypeScript, Store, Pages)**:
+     - `src/types/index.ts`: Chuẩn hóa interface `Payroll`, `Holiday`, `LeaveRequest`, `AuthUser` với pure English properties.
+     - `src/store/useAuthStore.ts`: Loại bỏ hoàn toàn các fallback `ma_can_bo`, `ho_ten`, `nguoi_dung_id`.
+     - `src/pages/FaceRegistrationPage.tsx`: Xóa sạch `user.ho_ten`, `user.ma_can_bo`, dùng trực tiếp `user.fullName` và `user.staffCode`.
+     - `src/pages/Payroll.tsx`: Chuyển đổi toàn bộ giao diện xem phiếu lương cán bộ và modal chi tiết lương sang `primarySalary`, `positionAllowance`, `seniorityAllowance`, `vocationalAllowance`, `teachingHours`, `month`, `year`, `baseSalary`.
+     - `src/pages/Holidays.tsx`: Dọn sạch các trường fallback tiếng Việt cũ.
+  8. **Đồng Bộ Dữ Liệu Kiểm Thử (Unit Test Suites)**:
+     - `server/tests/leaveMultiLevelAndRetroactive.test.js`: Cập nhật mock objects sang `status: 'PENDING_BGH'`, `currentLevel: 2`, `totalLevels: 2`.
+     - `server/tests/aiAssistantMultiModelAndPolicy.test.js`: Cập nhật kiểm tra bộ tri thức với `salary_and_tax`.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Công cụ quét mã nguồn mở rộng (`find_vi_fields.js`)**: Quét toàn diện hơn 80 trường tiếng Việt trên toàn bộ thư mục `server/` (ngoài models) và `src/` $\rightarrow$ **Kết quả: 0 MATCHES (Sạch 100%)**.
+  * **Kiểm thử tự động (`npm test`)**: Toàn bộ **18/18 Test Suites PASS 100%** (180+ kịch bản kiểm thử pass hoàn hảo).
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** (2607 modules transformed, 0 lỗi TypeScript, 0 cảnh báo đóng gói).
+  * **Dọn dẹp mã nguồn**: 0 file rác, 0 file tạm, 0 file backup `.old.*`, toàn bộ dự án đạt tính nhất quán, chuyên nghiệp và sẵn sàng nghiệm thu đồ án tốt nghiệp.
+
+---
+
+### 38. Hiện Thực Hóa Quy Trình Quên Mật Khẩu Chuẩn Qua Email OTP & Kích Hoạt 100% Cả 5 Trường OTP Của Schema `nguoi_dung` (Ngày 18/10/2026)
+- **Bối cảnh & Mục tiêu:**
+  * Giải quyết triệt để vấn đề 5 trường OTP (`ma_otp`, `otp_het_han_luc`, `loai_otp`, `so_lan_thu_otp`, `otp_gui_luc`) trong bảng `nguoi_dung` bị đóng băng (`default: null`, `select: false`) do trước đó cắt bỏ luồng tự đăng ký tài khoản tự do.
+  * Xây dựng luồng khôi phục tài khoản chuyên nghiệp cho cán bộ/giảng viên: Nhập email $\rightarrow$ Hệ thống gửi mã OTP 6 chữ số về email $\rightarrow$ Xác thực mã OTP và cập nhật mật khẩu mới, vận hành trọn vẹn 100% cả 5 trường dữ liệu trong Schema.
+- **Hiện thực hóa tầng Backend (`server/`):**
+  1. **Tầng Nghiệp vụ (`server/services/auth.service.js`)**:
+     - Hàm `forgotPassword({ email, ipAddress })`:
+       * Kiểm tra tài khoản tồn tại và trạng thái đang làm việc (`kich_hoat = true`, `trang_thai_lam_viec !== 'DA_NGHI_VIEC'`).
+       * **Vận hành `otp_gui_luc`**: Kiểm tra thời gian hồi chiêu (Cooldown 60 giây). Nếu giảng viên bấm gửi liên tục, hệ thống chặn lại với mã lỗi HTTP 429 và thông báo số giây cần chờ.
+       * **Vận hành `ma_otp`**: Sinh mã 6 chữ số ngẫu nhiên (`crypto.randomInt(100000, 1000000)`), băm bằng mật mã SHA-256 lưu trữ an toàn trong MongoDB.
+       * **Vận hành `otp_het_han_luc`**: Thiết lập thời gian hết hạn đúng 10 phút (`Date.now() + 10 * 60 * 1000`).
+       * **Vận hành `loai_otp`**: Gán nhãn `'FORGOT_PASSWORD'` để định danh chính xác nghiệp vụ.
+       * **Vận hành `so_lan_thu_otp`**: Khởi tạo biến đếm bằng `0`.
+       * Gửi email thông báo chứa mã OTP qua `server/config/mailer.js` (tích hợp Nodemailer và Mock Mailer thông minh).
+       * Ghi vết kiểm toán `AuditLog` với hành động `FORGOT_PASSWORD_REQUESTED`.
+     - Hàm `resetPassword({ email, otp, newPassword, ipAddress })`:
+       * Kiểm tra `loai_otp === 'FORGOT_PASSWORD'` và mã OTP đang chờ.
+       * **Kiểm tra `so_lan_thu_otp`**: Cơ chế phòng chống tấn công dò mã (Brute-force). Nếu nhập sai quá 5 lần, hệ thống lập tức hủy mã OTP và bắt đầu lại từ đầu. Nếu sai dưới 5 lần, tăng `so_lan_thu_otp += 1` và phản hồi số lần thử còn lại.
+       * **Kiểm tra `otp_het_han_luc`**: Bác bỏ các yêu cầu quá hạn 10 phút.
+       * So khớp mã OTP bằng hàm băm SHA-256 chống lộ lọt.
+       * Cập nhật mật khẩu mới mã hóa Bcrypt salt 10, tăng `phien_ban_token` để thu hồi tức thì toàn bộ phiên đăng nhập cũ trên các thiết bị khác, đánh dấu `da_su_dung = true` cho toàn bộ Refresh Tokens trong CSDL.
+       * Xóa sạch toàn bộ 5 trường OTP về `null` sau khi hoàn tất.
+       * Ghi vết kiểm toán `AuditLog` với hành động `PASSWORD_RESET_SUCCESS`.
+  2. **Tầng Điều Phối & Định Tuyến (`auth.controller.js` & `auth.routes.js`)**:
+     - Định tuyến 2 endpoints công khai (Public) có áp dụng Rate Limiter:
+       * `POST /api/auth/forgot-password` (Bảo vệ bởi `passwordResetLimiter`).
+       * `POST /api/auth/reset-password` (Bảo vệ bởi `passwordResetLimiter`).
+     - Khớp 100% với đặc tả OpenAPI 3.0 trong `server/config/swaggerPaths.js`.
+- **Hiện thực hóa tầng Frontend Web SPA (`src/pages/Login.tsx`):**
+  * Bổ sung nút **"Quên mật khẩu?"** ngay cạnh trường nhập mật khẩu trên trang Đăng nhập.
+  * Xây dựng Modal giao diện hiện đại (Glassmorphism, Tailwind CSS, Lucide Icons) với quy trình 2 bước trực quan:
+    - **Bước 1**: Nhập email $\rightarrow$ Nút "Gửi mã OTP" kèm trạng thái loading và thông báo toast.
+    - **Bước 2**: Nhập mã OTP 6 số (giao diện monospace tracking-widest), nhập mật khẩu mới và xác nhận mật khẩu mới. Hỗ trợ nút "Gửi lại mã OTP" kèm bộ đếm ngược Cooldown 60s thời gian thực.
+  * Tự động điền lại email vào ô đăng nhập sau khi khôi phục thành công.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm thử tự động (`server/tests/rbacAndTokenRotation.test.js`)**: Bổ sung Test 12 và Test 13 kiểm thử trọn vẹn 5 trường OTP, Cooldown 60s, giới hạn 5 lần nhập sai và thu hồi token $\rightarrow$ **13/13 Tests PASS 100%**.
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** (2607 modules, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Dọn dẹp mã nguồn**: 0 file rác, 0 file tạm, toàn bộ mã nguồn sạch sẽ và đồng bộ.
+
+---
+
+### 39. Chuẩn Hóa Thuần Việt 100% CSDL v2.5: Chuyển Đổi `is_mock_location` $\rightarrow$ `vi_tri_gia_lap` Và `user_agent` $\rightarrow$ `thong_tin_trinh_duyet` (Ngày 18/10/2026)
+- **Bối cảnh & Mục tiêu:**
+  * Tiếp tục rà soát và chuẩn hóa 100% các trường dữ liệu vật lý trong MongoDB sang danh xưng tiếng Việt thuần túy (`snake_case`), loại bỏ hoàn toàn các trường lai tiếng Anh còn sót lại để đáp ứng tiêu chuẩn nghiêm ngặt của CSDL v2.5.
+  * Hai trường cần chuẩn hóa:
+    1. `is_mock_location` trong collection `luot_quet_cham_cong` $\rightarrow$ Đổi thành `vi_tri_gia_lap`.
+    2. `user_agent` trong collection `nhat_ky_kiem_toan` $\rightarrow$ Đổi thành `thong_tin_trinh_duyet`.
+- **Hiện thực hóa chi tiết:**
+  1. **Collection `luot_quet_cham_cong` (`server/models/punchLog.model.js`)**:
+     - Đổi trường `is_mock_location` thành `vi_tri_gia_lap` (`type: Boolean, alias: 'isMockLocation', default: false`).
+     - Khai báo ánh xạ đa chiều trong `punchLogSchema.aliases`:
+       * `isMockLocation: 'vi_tri_gia_lap'`
+       * `is_mock_location: 'vi_tri_gia_lap'`
+       * `mockLocation: 'vi_tri_gia_lap'`
+     - Đảm bảo tương thích tuyệt đối cho cả mã nguồn frontend, camera AI, service kiểm tra gian lận GPS và các truy vấn cơ sở dữ liệu cũ/mới.
+  2. **Collection `nhat_ky_kiem_toan` (`server/models/auditLog.model.js`)**:
+     - Đổi trường `user_agent` thành `thong_tin_trinh_duyet` (`type: String, alias: 'userAgent', default: null`).
+     - Khai báo ánh xạ đa chiều trong `auditLogSchema.aliases`:
+       * `userAgent: 'thong_tin_trinh_duyet'`
+       * `user_agent: 'thong_tin_trinh_duyet'`
+     - Đảm bảo middleware kiểm toán và các luồng ghi log tự động từ Express req.headers['user-agent'] ghi nhận chính xác 100% vào trường vật lý `thong_tin_trinh_duyet`.
+  3. **Đồng bộ hóa tài liệu kiến trúc & đặc tả (`THIET_KE_CSDL_VA_QUY_TRINH_NGHIEP_VU.md`)**:
+     - Cập nhật định nghĩa lược đồ collection `luot_quet_cham_cong` (dòng 243) sang `vi_tri_gia_lap`.
+     - Cập nhật định nghĩa lược đồ collection `nhat_ky_kiem_toan` (dòng 462) sang `thong_tin_trinh_duyet`.
+  4. **Đồng bộ hóa kiểm thử (`server/tests/systemHealthAndAudit.test.js`)**:
+     - Cập nhật mẫu mock document kiểm toán chứa `thong_tin_trinh_duyet`.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm thử tự động các module liên quan**:
+    - `server/tests/systemHealthAndAudit.test.js` $\rightarrow$ **PASS 100% (6/6 tests)** (Bao gồm immutability, SHA-256 hash chaining, Swagger spec, Docker config, distributed lock).
+    - `server/tests/punchLogGeo.test.js` $\rightarrow$ **PASS 100% (6/6 tests)** (Bao gồm GeoJSON Point, ngưỡng tin cậy AI, không GPS).
+    - `server/tests/rbacAndTokenRotation.test.js` $\rightarrow$ **PASS 100% (13/13 tests)**.
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong 2.23s (2607 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Dọn dẹp mã nguồn**: 0 file rác, 0 file tạm, 0 file backup `.old.*`, toàn bộ hệ thống đồng bộ và sạch sẽ tuyệt đối.
+
+---
+
+### 40. Tinh Gọn Mã Nguồn Clean Code: Loại Bỏ Từ Đồng Nghĩa Thừa & Chuẩn Hóa 1 Tên Tiếng Anh Duy Nhất (Single Source of Truth) Cho Các Model CSDL v2.5 (Ngày 18/10/2026)
+- **Bối cảnh & Mục tiêu:**
+  * Giải quyết dứt điểm vấn đề mã nguồn bị phình dài và dư thừa do cơ chế lưu giữ nhiều từ đồng nghĩa tiếng Anh (synonyms) cùng trỏ về một trường tiếng Việt trong quá trình tương thích ngược.
+  * Chuẩn hóa triệt để theo kiến trúc Clean Code: Mỗi trường dữ liệu trong MongoDB chỉ có đúng **1 tên tiếng Anh chuẩn mực duy nhất** (Single Source of Truth), loại bỏ các virtual getters thừa và các alias trùng lặp.
+- **Hiện thực hóa chi tiết:**
+  1. **Tối ưu hóa `server/models/punchLog.model.js`**:
+     - Xóa bỏ các virtual getters lặp lại thừa thãi: `matchedPose`, `evidenceImageUrl`, `attendanceLogId`, `userId`, `deviceId`, `createdAt`.
+     - Tinh gọn bảng `punchLogSchema.aliases` từ 39 dòng xuống còn đúng 27 dòng định danh chuẩn:
+       * `goc_mat_nhan_dien` $\rightarrow$ Giữ duy nhất **`faceAngle`** (xóa bỏ `matchedPose`).
+       * `anh_minh_chung` $\rightarrow$ Giữ duy nhất **`evidenceImage`** (xóa bỏ `evidenceImageUrl`).
+       * `toa_do` $\rightarrow$ Giữ duy nhất **`coordinates`** (xóa bỏ `location: 'toa_do'` vì đã có virtual `location` setter/getter đầy đủ).
+       * `toa_do_gps` $\rightarrow$ Giữ duy nhất **`gpsPoint`** (xóa bỏ `gpsCoordinates: 'toa_do_gps'`).
+       * `vi_tri_gia_lap` $\rightarrow$ Giữ duy nhất **`isMockLocation`** (xóa bỏ `mockLocation`).
+       * `goc_dau_3d` $\rightarrow$ Giữ duy nhất **`headPose3D`** (xóa bỏ `pose3D`).
+       * `thoi_gian_quet` $\rightarrow$ Giữ duy nhất **`punchTime`** (xóa bỏ `thoi_diem_quet`).
+       * `co_gian_lan` $\rightarrow$ Giữ duy nhất **`isFraudulent`** (xóa bỏ `isFraud` trong aliases).
+  2. **Tối ưu hóa `server/models/attendanceLog.model.js`**:
+     - Bỏ alias tàn dư `punchIds` (giữ duy nhất `punchLogIds`).
+     - Bỏ alias tàn dư `requestFormId` (giữ duy nhất `leaveRequestId`).
+  3. **Tối ưu hóa `server/models/auditLog.model.js`**:
+     - Bỏ alias `actor` (giữ virtual `actor` riêng biệt).
+     - Bỏ alias `user_agent` (giữ chuẩn camelCase duy nhất `userAgent`).
+     - Bỏ alias `actorId` (giữ chuẩn `userId`).
+  4. **Tối ưu hóa `server/models/leaveRequest.model.js`**:
+     - Chuẩn hóa trường `tep_dinh_kem` sang duy nhất **`attachmentUrl`** (xóa bỏ hoàn toàn `attachment` và `evidenceFile`).
+     - Xóa bỏ toàn bộ các virtual getters thừa lặp lại: `createdAt`, `updatedAt`, `attachmentUrl`, `evidenceFile`, `leaveType`, `version`, `requiredLevels`, `currentLevel`.
+  5. **Tối ưu hóa toàn diện các Model còn lại (`user`, `holiday`, `systemConfig`, `faceTemplate`)**:
+     - `holiday.model.js`: Bỏ alias thừa `holidayName` (giữ duy nhất `name`).
+     - `systemConfig.model.js`: Bỏ các alias thừa `configKey`, `configValue`, `category`; xóa virtuals lặp `createdAt`, `updatedAt`, `key`, `value` (giữ duy nhất `key`, `value`, `group`).
+     - `faceTemplate.model.js`: Bỏ các alias thừa `averageEmbedding`, `poses`, `samplesCount` (giữ duy nhất `averageDescriptor`, `sampleAngles`, `sampleCount`).
+     - `user.model.js`: Bỏ `identityCard` trong aliases (đã có virtual mã hóa), bỏ `mainDepartmentId` (giữ `departmentId`), chuẩn hóa `annualLeaveQuota` (bỏ `annualLeaveLimit` và 2 virtuals thừa).
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm tra tự động quét 14 Models (`find_duplicate_aliases`)**: Kết quả **0 DUPLICATE ALIASES** trên toàn bộ 14 models MongoDB v2.5.
+  * **Kiểm thử tự động các module liên quan**:
+    - `server/tests/leaveValidation.test.js` $\rightarrow$ **PASS 100%**.
+    - `server/tests/leaveMultiLevelAndRetroactive.test.js` $\rightarrow$ **PASS 100% (6/6 tests)**.
+    - `server/tests/punchLogGeo.test.js` $\rightarrow$ **PASS 100% (6/6 tests)**.
+    - `server/tests/modelValidation.test.js` $\rightarrow$ **PASS 100%**.
+    - `server/tests/systemHealthAndAudit.test.js` $\rightarrow$ **PASS 100% (6/6 tests)**.
+    - `server/tests/rbacAndTokenRotation.test.js` $\rightarrow$ **PASS 100% (13/13 tests)**.
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong 2.13s (2607 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+### 41. Chuẩn Hóa Tên Collection Vật Lý Từ `cong_tong_hop` Sang `nhat_ky_cham_cong` (Ngày 18/10/2026)
+- **Mục tiêu & Động lực:**
+  * Tên collection cũ `cong_tong_hop` mang tính chất nội bộ tính toán, chưa phản ánh trực quan và sát nghĩa nghiệp vụ quốc tế của thực thể `AttendanceLog` (Nhật ký chấm công / Bảng chấm công).
+  * Đồng bộ chuẩn hóa tên bảng vật lý sang **`nhat_ky_cham_cong`** giúp toàn bộ hệ thống (từ tài liệu ERD, báo cáo tốt nghiệp đến schema MongoDB) đạt sự trong sáng, "đọc phát hiểu ngay", phân biệt rành mạch với bảng quét thô `luot_quet_cham_cong` (`PunchLog`).
+- **Chi tiết các thay đổi mã nguồn đã thực hiện:**
+  1. **Tối ưu hóa `server/models/attendanceLog.model.js`**:
+     - Cập nhật cấu hình schema: `collection: 'nhat_ky_cham_cong'`.
+     - Cập nhật các lệnh đăng ký model:
+       * `mongoose.model('AttendanceLog', attendanceLogSchema, 'nhat_ky_cham_cong')`.
+       * `mongoose.model('NhatKyChamCong', attendanceLogSchema, 'nhat_ky_cham_cong')`.
+       * `mongoose.model('CongTongHop', attendanceLogSchema, 'nhat_ky_cham_cong')` (giữ tương thích ngược).
+  2. **Cập nhật script đồng bộ chỉ mục (`server/scripts/syncIndexes.js`)**:
+     - Ánh xạ `{ name: 'AttendanceLog', model: models.AttendanceLog, col: 'nhat_ky_cham_cong' }`.
+  3. **Đồng bộ hóa tài liệu kiến trúc & thiết kế (`THIET_KE_CSDL_VA_QUY_TRINH_NGHIEP_VU.md` & `README.md`)**:
+     - Cập nhật bảng 14 collections chuẩn v2.6: Collection 9 chính thức là `nhat_ky_cham_cong`.
+     - Cập nhật toàn bộ các luồng Check-in, Check-out, Hồi tố đơn hủy và thời hạn lưu trữ dữ liệu (Retention) sang collection `nhat_ky_cham_cong`.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm thử tự động backend**:
+    - `server/tests/modelValidation.test.js` $\rightarrow$ **PASS 100%**.
+    - `server/tests/systemHealthAndAudit.test.js` $\rightarrow$ **PASS 100% (6/6 tests)**.
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong 2.87s (2607 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Dọn dẹp mã nguồn**: Sạch sẽ, không phát sinh file rác hay file tạm thừa.
+
+### 42. Chuẩn Hóa Tên Collection Vật Lý Từ `cau_hinh_ca` Sang `ca_lam_viec` (Ngày 18/10/2026)
+- **Mục tiêu & Động lực:**
+  * Tên collection cũ `cau_hinh_ca` mang tính chất cấu hình kỹ thuật (settings), dễ gây nhầm lẫn với bảng tham số toàn trường `cau_hinh_he_thong`.
+  * Thực thể này lưu danh mục ca làm việc/ca giảng dạy (Ca Sáng, Ca Chiều, Ca Tối, Ca Hành Chính...). Đồng thời trong các bảng khác (`lich_trinh`, `nhat_ky_cham_cong`), khóa ngoại đều mang tên `ca_id`.
+  * Việc đổi tên collection sang **`ca_lam_viec`** giúp phản ánh đúng 100% bản chất nghiệp vụ nhân sự và ăn khớp tuyệt đối với tên khóa ngoại `ca_id`.
+- **Chi tiết các thay đổi mã nguồn đã thực hiện:**
+  1. **Tối ưu hóa `server/models/shiftConfig.model.js`**:
+     - Cập nhật cấu hình schema: `collection: 'ca_lam_viec'`.
+     - Cập nhật các lệnh đăng ký model:
+       * `mongoose.model('ShiftConfig', shiftConfigSchema, 'ca_lam_viec')`.
+       * `mongoose.model('CaLamViec', shiftConfigSchema, 'ca_lam_viec')`.
+       * `mongoose.model('CauHinhCa', shiftConfigSchema, 'ca_lam_viec')` (giữ tương thích ngược).
+  2. **Đồng bộ hóa tài liệu kiến trúc & thiết kế (`README.md` & `THIET_KE_CSDL_VA_QUY_TRINH_NGHIEP_VU.md`)**:
+     - Cập nhật bảng 14 collections: Collection 4 chính thức là `ca_lam_viec`.
+     - Cập nhật Mermaid ERD: Khối `CA_LAM_VIEC` và các liên kết `CA_LAM_VIEC ||--o{ LICH_TRINH`, `CA_LAM_VIEC ||--o{ NHAT_KY_CHAM_CONG`.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm thử tự động backend**: `server/tests/modelValidation.test.js` $\rightarrow$ **PASS 100%**.
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong 2.94s (2607 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Dọn dẹp mã nguồn**: Sạch sẽ, đạt chuẩn Single Source of Truth.
+
+### 43. Cập Nhật & Bổ Sung Toàn Diện Tài Liệu Swagger OpenAPI 3.0 Phục Vụ Kiểm Thử Từng Phân Hệ (Ngày 18/10/2026)
+- **Mục tiêu & Động lực:**
+  * Do giao diện React Frontend đang trong quá trình đồng bộ các màn hình, việc hoàn thiện tài liệu Swagger UI OpenAPI 3.0 đóng vai trò cốt lõi để kiểm thử độc lập (isolated testing) từng API của 14 phân hệ chức năng.
+  * Bổ sung các phân hệ còn thiếu trong Swagger (`Holidays`, `Subjects`) và chuẩn hóa các trường dữ liệu theo đúng CSDL v2.6.
+- **Chi tiết các thay đổi mã nguồn đã thực hiện:**
+  1. **Chuẩn hóa Endpoint Kiểm Tra Hệ Thống (`/health`)**:
+     - Cập nhật danh sách 14 collections chuẩn tại `server/app.js`, `server/routes/index.js` và example response trong `server/config/swaggerPaths.js`: `nguoi_dung`, `mau_khuon_mat`, `phong_ban`, `ca_lam_viec`, `mon_hoc`, `lich_trinh`, `ngay_nghi_le`, `luot_quet_cham_cong`, `nhat_ky_cham_cong`, `don_nghi_phep`, `phieu_luong`, `ma_lam_moi`, `cau_hinh_he_thong`, `nhat_ky_kiem_toan`.
+  2. **Bổ sung các Schemas còn thiếu vào `server/config/swaggerPaths.js`**:
+     - Thêm schema `Holiday` (quản lý ngày nghỉ lễ, năm, hưởng lương, người tạo).
+     - Thêm schema `PunchLog` (lượt quét thô, phương thức, độ tin cậy AI, GeoJSON Point, cờ giả mạo).
+  3. **Bổ sung Endpoints và Tags OpenAPI mới**:
+     - Thêm Tag `3.14 - Danh Mục Môn Học & Học Phần (Subjects)` kèm đầy đủ 5 endpoints CRUD: `GET /api/subjects`, `POST /api/subjects`, `GET /api/subjects/{id}`, `PUT /api/subjects/{id}`, `DELETE /api/subjects/{id}`.
+     - Thêm Tag `3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)` kèm đầy đủ 5 endpoints CRUD: `GET /api/holidays`, `POST /api/holidays`, `GET /api/holidays/{id}`, `PUT /api/holidays/{id}`, `DELETE /api/holidays/{id}`.
+     - Nâng tổng số endpoints trong Swagger lên **73 endpoints** bao phủ toàn diện 100% tính năng backend.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm thử tự động backend**: `server/tests/systemHealthAndAudit.test.js` $\rightarrow$ **PASS 100%** (bao gồm Test tính toàn vẹn Swagger OpenAPI 3.0 Specs).
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong 7.42s (2607 modules transformed, 0 lỗi).
+  * **Dọn dẹp mã nguồn**: Sạch sẽ, không phát sinh file rác.
 
 

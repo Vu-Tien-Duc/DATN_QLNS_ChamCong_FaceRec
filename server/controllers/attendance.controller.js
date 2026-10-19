@@ -53,7 +53,8 @@ const faceRecognizeAttendance = async (req, res, next) => {
     const deviceId = req.body?.deviceId || 'MAY_CHAM_CONG_CAMERA';
     const reqIp = req.ip || req.connection?.remoteAddress || '127.0.0.1';
 
-    const verifyOnly = req.query?.verify_only === 'true' || req.body?.verify_only === true;
+    const useQueue = req.query?.async === 'true' || req.body?.useQueue === true;
+    const verifyOnly = req.body?.verifyOnly === true || req.body?.verifyOnly === 'true';
 
     const result = await processFaceAttendance({
       imageBuffer,
@@ -61,6 +62,7 @@ const faceRecognizeAttendance = async (req, res, next) => {
       deviceId,
       reqIp,
       verifyOnly,
+      useQueue,
     });
 
     return sendSuccess(res, result.message, result, 200);
@@ -68,6 +70,21 @@ const faceRecognizeAttendance = async (req, res, next) => {
     handleServiceError(res, error, next);
   }
 };
+
+/**
+ * @desc Thống kê số lượng tác vụ trong Hàng đợi Điểm danh BullMQ (Giờ cao điểm)
+ * @route GET /api/v1/attendance/queue/stats
+ */
+const getQueueStats = async (req, res, next) => {
+  try {
+    const { getPunchQueueStats } = require('../queues/punchQueue');
+    const stats = await getPunchQueueStats();
+    return sendSuccess(res, 'Thống kê hàng đợi điểm danh BullMQ giờ cao điểm.', stats, 200);
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 /**
  * @desc Check-in theo ca hoặc lịch làm việc
@@ -295,4 +312,6 @@ module.exports = {
   triggerDailyAbsentCheck: (req, res) => sendSuccess(res, 'Kích hoạt kiểm tra vắng mặt thành công.'),
   detectPose,
   getRamIndexStats,
+  getQueueStats,
 };
+

@@ -177,52 +177,43 @@ const formatDepartmentDoc = (d) => {
   if (!d) return null;
   const raw = d.toObject ? d.toObject({ virtuals: true }) : { ...d };
 
-  const rawParent = raw.parentId || raw.don_vi_cha;
+  const rawParent = raw.parentId;
   let parentObj = null;
   if (rawParent && typeof rawParent === 'object') {
     parentObj = {
       _id: rawParent._id,
-      name: rawParent.name || rawParent.ten_phong_ban || '',
-      ten_phong_ban: rawParent.ten_phong_ban || rawParent.name || '',
-      type: rawParent.type || rawParent.loai_don_vi || 'khoa',
-      loai_don_vi: rawParent.loai_don_vi || rawParent.type || 'khoa',
+      name: rawParent.name || '',
+      type: rawParent.type || 'khoa',
     };
   } else if (rawParent) {
     parentObj = rawParent;
   }
 
-  const rawManager = raw.managerId || raw.truong_don_vi;
+  const rawManager = raw.managerId;
   let managerObj = null;
   if (rawManager && typeof rawManager === 'object') {
     managerObj = {
       _id: rawManager._id,
-      fullName: rawManager.fullName || rawManager.ho_ten || '',
-      ho_ten: rawManager.ho_ten || rawManager.fullName || '',
+      fullName: rawManager.fullName || '',
       email: rawManager.email || '',
-      role: rawManager.role || rawManager.vai_tro || 'giangvien',
-      vai_tro: rawManager.vai_tro || rawManager.role || 'giangvien',
+      role: rawManager.role || 'giangvien',
       avatar: rawManager.avatar || null,
-      isActive: rawManager.isActive !== undefined ? rawManager.isActive : (rawManager.kich_hoat !== undefined ? rawManager.kich_hoat : true),
+      isActive: rawManager.isActive !== undefined ? rawManager.isActive : true,
     };
   } else if (rawManager) {
     managerObj = rawManager;
   }
 
-  const lat = raw.location?.lat ?? raw.toa_do?.vi_do ?? null;
-  const lng = raw.location?.lng ?? raw.toa_do?.kinh_do ?? null;
+  const lat = raw.location?.lat ?? null;
+  const lng = raw.location?.lng ?? null;
 
   return {
     ...raw,
-    name: raw.name || raw.ten_phong_ban || '',
-    ten_phong_ban: raw.ten_phong_ban || raw.name || '',
-    type: raw.type || raw.loai_don_vi || 'khoa',
-    loai_don_vi: raw.loai_don_vi || raw.type || 'khoa',
+    name: raw.name || '',
+    type: raw.type || 'khoa',
     parentId: parentObj,
-    don_vi_cha: parentObj,
     managerId: managerObj,
-    truong_don_vi: managerObj,
     location: { lat, lng },
-    toa_do: { vi_do: lat, kinh_do: lng },
   };
 };
 
@@ -241,7 +232,7 @@ const buildDepartmentTree = (departments, parentId = null, visited = new Set(), 
     const deptIdStr = dept._id ? dept._id.toString() : null;
     if (!deptIdStr || visited.has(deptIdStr)) continue;
 
-    const rawParent = dept.parentId || dept.don_vi_cha;
+    const rawParent = dept.parentId;
     const currentParentId = rawParent
       ? (rawParent._id ? rawParent._id.toString() : rawParent.toString())
       : null;
@@ -272,11 +263,9 @@ const getAllDepartments = async ({ type, parentId, tree = 'true', page, limit })
   // Cấu trúc cây phân cấp
   if (tree === 'true' && !type && parentId === undefined) {
     const departments = await Department.find(query)
-      .populate('don_vi_cha', 'ten_phong_ban loai_don_vi name type')
-      .populate('parentId', 'ten_phong_ban loai_don_vi name type')
-      .populate('truong_don_vi', 'ho_ten email vai_tro fullName role avatar kich_hoat isActive')
-      .populate('managerId', 'ho_ten email vai_tro fullName role avatar kich_hoat isActive')
-      .sort({ ten_phong_ban: 1, name: 1 });
+      .populate('parentId', 'name type')
+      .populate('managerId', 'fullName email role avatar isActive')
+      .sort({ name: 1 });
 
     const formattedDepts = departments.map(formatDepartmentDoc);
     const treeData = buildDepartmentTree(formattedDepts);
@@ -291,11 +280,9 @@ const getAllDepartments = async ({ type, parentId, tree = 'true', page, limit })
 
     const [departments, total] = await Promise.all([
       Department.find(query)
-        .populate('don_vi_cha', 'ten_phong_ban loai_don_vi name type')
-        .populate('parentId', 'ten_phong_ban loai_don_vi name type')
-        .populate('truong_don_vi', 'ho_ten email vai_tro fullName role avatar kich_hoat isActive')
-        .populate('managerId', 'ho_ten email vai_tro fullName role avatar kich_hoat isActive')
-        .sort({ ten_phong_ban: 1, name: 1 })
+        .populate('parentId', 'name type')
+        .populate('managerId', 'fullName email role avatar isActive')
+        .sort({ name: 1 })
         .skip(skip)
         .limit(limitNum),
       Department.countDocuments(query),
@@ -318,11 +305,9 @@ const getAllDepartments = async ({ type, parentId, tree = 'true', page, limit })
 
   // Danh sách phẳng không phân trang
   const departments = await Department.find(query)
-    .populate('don_vi_cha', 'ten_phong_ban loai_don_vi name type')
-    .populate('parentId', 'ten_phong_ban loai_don_vi name type')
-    .populate('truong_don_vi', 'ho_ten email vai_tro fullName role avatar kich_hoat isActive')
-    .populate('managerId', 'ho_ten email vai_tro fullName role avatar kich_hoat isActive')
-    .sort({ ten_phong_ban: 1, name: 1 });
+    .populate('parentId', 'name type')
+    .populate('managerId', 'fullName email role avatar isActive')
+    .sort({ name: 1 });
 
   const formattedDepts = departments.map(formatDepartmentDoc);
   return { isFlat: true, data: formattedDepts };
@@ -333,10 +318,8 @@ const getAllDepartments = async ({ type, parentId, tree = 'true', page, limit })
  */
 const getDepartmentById = async (id) => {
   const department = await Department.findById(id)
-    .populate('don_vi_cha', 'ten_phong_ban loai_don_vi name type')
-    .populate('parentId', 'ten_phong_ban loai_don_vi name type')
-    .populate('truong_don_vi', 'ho_ten email vai_tro fullName role avatar kich_hoat isActive')
-    .populate('managerId', 'ho_ten email vai_tro fullName role avatar kich_hoat isActive');
+    .populate('parentId', 'name type')
+    .populate('managerId', 'fullName email role avatar isActive');
 
   if (!department) {
     throw new ServiceError('Không tìm thấy Khoa / Phòng ban.', 404);

@@ -92,36 +92,20 @@ const processScanQRCode = async ({
 
     // Tạo PunchLog (Collection 4 - nhat_ky_quet_the)
     const punchLog = await PunchLog.create({
-      ma_nguoi_dung: userId,
       userId,
-      thoi_diem_quet: nowVN,
       punchTime: nowVN,
-      loai_quet: 'VAO',
-      punchType: 'VAO',
-      phuong_thuc: 'QR',
-      method: 'QR',
-      thiet_bi_id: finalDeviceId,
+      punchType: 'CHECK_IN',
+      method: 'QR_CODE',
       deviceId: finalDeviceId,
-      dia_chi_ip: ip || null,
       clientIp: ip || null,
-      ipAddress: ip || null,
-      mang_noi_bo_truong: geofenceResult ? geofenceResult.isCampusNetwork : null,
       isCampusNetwork: geofenceResult ? geofenceResult.isCampusNetwork : null,
-      nghi_van_gia_mao: Boolean(geofenceResult?.isSuspicious),
       isSuspicious: Boolean(geofenceResult?.isSuspicious),
-      ly_do_nghi_van: geofenceResult?.suspiciousReason || null,
       suspiciousReason: geofenceResult?.suspiciousReason || null,
-      phuong_thuc_xac_thuc_vi_tri: geofenceResult?.verificationMethod || null,
       verificationMethod: geofenceResult?.verificationMethod || null,
-      dia_diem: locationName,
       locationName,
-      toa_do_gps: { type: 'Point', coordinates: [lng, lat] },
       gpsCoordinates: { latitude: lat, longitude: lng },
-      co_gian_lan: isFraud,
-      isFraud,
-      ly_do_gian_lan: fraudReason,
+      isFraudulent: isFraud,
       fraudReason,
-      ma_ca: effectiveShift?._id || null,
       shiftId: effectiveShift?._id || null,
     });
 
@@ -131,11 +115,9 @@ const processScanQRCode = async ({
         date: startOfDay,
         checkInTime: nowVN,
         status: calculatedStatus,
-        method: 'QR',
-        phuong_thuc_vao: 'QR',
+        method: 'QR_CODE',
         deviceId: finalDeviceId,
         shiftId: effectiveShift?._id || null,
-        di_muon_phut: lateMinutes,
         lateMinutes,
         isFraud,
         fraudReason,
@@ -145,10 +127,8 @@ const processScanQRCode = async ({
     } else {
       attendance.checkInTime = nowVN;
       attendance.status = calculatedStatus;
-      attendance.method = 'QR';
-      attendance.phuong_thuc_vao = 'QR';
+      attendance.method = 'QR_CODE';
       attendance.deviceId = finalDeviceId;
-      attendance.di_muon_phut = lateMinutes;
       attendance.lateMinutes = lateMinutes;
       if (isFraud) {
         attendance.isFraud = true;
@@ -178,41 +158,24 @@ const processScanQRCode = async ({
   // TRƯỜNG HỢP 2: ĐÃ CHECK-IN NHƯNG CHƯA CHECK-OUT -> THỰC HIỆN CHECK-OUT BẰNG QR
   if (attendance.checkInTime && !attendance.checkOutTime) {
     const punchLog = await PunchLog.create({
-      ma_nguoi_dung: userId,
       userId,
-      thoi_diem_quet: nowVN,
       punchTime: nowVN,
-      loai_quet: 'RA',
-      punchType: 'RA',
-      phuong_thuc: 'QR',
-      method: 'QR',
-      thiet_bi_id: finalDeviceId,
+      punchType: 'CHECK_OUT',
+      method: 'QR_CODE',
       deviceId: finalDeviceId,
-      dia_chi_ip: ip || null,
       clientIp: ip || null,
-      ipAddress: ip || null,
-      mang_noi_bo_truong: geofenceResult ? geofenceResult.isCampusNetwork : null,
       isCampusNetwork: geofenceResult ? geofenceResult.isCampusNetwork : null,
-      nghi_van_gia_mao: Boolean(geofenceResult?.isSuspicious),
       isSuspicious: Boolean(geofenceResult?.isSuspicious),
-      ly_do_nghi_van: geofenceResult?.suspiciousReason || null,
       suspiciousReason: geofenceResult?.suspiciousReason || null,
-      phuong_thuc_xac_thuc_vi_tri: geofenceResult?.verificationMethod || null,
       verificationMethod: geofenceResult?.verificationMethod || null,
-      dia_diem: locationName,
       locationName,
-      toa_do_gps: { type: 'Point', coordinates: [lng, lat] },
       gpsCoordinates: { latitude: lat, longitude: lng },
-      co_gian_lan: isFraud,
-      isFraud,
-      ly_do_gian_lan: fraudReason,
+      isFraudulent: isFraud,
       fraudReason,
-      ma_ca: attendance.shiftId?._id || null,
       shiftId: attendance.shiftId?._id || null,
     });
 
     attendance.checkOutTime = nowVN;
-    attendance.phuong_thuc_ra = 'QR';
 
     const { finalStatus, earlyMinutes } = calculateCheckOutStatus(
       nowVN,
@@ -221,13 +184,11 @@ const processScanQRCode = async ({
     );
 
     attendance.status = finalStatus;
-    attendance.ve_som_phut = earlyMinutes || 0;
     attendance.earlyMinutes = earlyMinutes || 0;
 
     const diffMs = nowVN.getTime() - new Date(attendance.checkInTime).getTime();
     const hours = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
     attendance.workHours = hours;
-    attendance.tong_gio_lam = hours;
 
     if (isFraud) {
       attendance.isFraud = true;

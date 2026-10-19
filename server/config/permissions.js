@@ -215,8 +215,8 @@ const ROLE_PERMISSIONS = {
 
 /**
  * Tính toán tập quyền thực tế (Effective Permissions) của người dùng:
- * 1. Lọc qua mảng vai_tro[] còn hiệu lực (nhiệm kỳ hợp lệ: den_ngay === null hoặc den_ngay >= now).
- * 2. Tính cả cờ duoc_uy_quyen cho các chức danh phó trưởng.
+ * 1. Lọc qua mảng roles[] còn hiệu lực (nhiệm kỳ hợp lệ: expiresAt === null hoặc expiresAt >= now).
+ * 2. Tính cả cờ isDelegated cho các chức danh phó trưởng.
  * 3. Hợp nhất (Union) toàn bộ quyền và khử trùng lặp.
  */
 function getEffectivePermissions(user) {
@@ -226,29 +226,32 @@ function getEffectivePermissions(user) {
   const now = new Date();
 
   // Kiểm tra mảng vai trò RBAC v2.5
-  const rolesList = user.danh_sach_vai_tro || user.roles || [];
+  const rolesList = user.roles || [];
 
   if (Array.isArray(rolesList) && rolesList.length > 0) {
     for (const r of rolesList) {
       // Bỏ qua vai trò đã hết nhiệm kỳ
-      if (r.den_ngay && new Date(r.den_ngay) < now) {
+      const expiry = r.expiresAt;
+      if (expiry && new Date(expiry) < now) {
         continue;
       }
 
-      const rolePerms = ROLE_PERMISSIONS[r.ma_vai_tro] || [];
+      const roleCode = (r.role || '').toUpperCase();
+      const rolePerms = ROLE_PERMISSIONS[roleCode] || [];
       for (const p of rolePerms) {
         permissions.add(p);
       }
 
       // Xử lý ủy quyền cho phó trưởng
-      if (r.duoc_uy_quyen && ['PHO_TRUONG_KHOA', 'PHO_TRUONG_BO_MON', 'PHO_TRUONG_PHONG'].includes(r.ma_vai_tro)) {
+      const isDelegated = r.isDelegated;
+      if (isDelegated && ['PHO_TRUONG_KHOA', 'PHO_TRUONG_BO_MON', 'PHO_TRUONG_PHONG'].includes(roleCode)) {
         permissions.add(PERMISSIONS.DON_TU_DUYET_CAP_1);
       }
     }
   }
 
-  // Tương thích ngược với vai trò phẳng cũ
-  const fallbackRole = user.vai_tro_chinh || user.role;
+  // Tương thích ngược với vai trò phẳng
+  const fallbackRole = user.role;
   if (fallbackRole && permissions.size === 0) {
     const roleMapping = {
       admin: 'ADMIN',

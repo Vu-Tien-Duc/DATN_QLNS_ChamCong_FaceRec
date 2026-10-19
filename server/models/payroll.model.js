@@ -167,8 +167,7 @@ const phieuLuongSchema = new mongoose.Schema(
   }
 );
 
-phieuLuongSchema.virtual('createdAt').get(function () { return this.tao_luc; });
-phieuLuongSchema.virtual('updatedAt').get(function () { return this.cap_nhat_luc; });
+
 phieuLuongSchema.virtual('isLocked').get(function () {
   return this.trang_thai === 'DA_KHOA' || Boolean(this.khoa_luc);
 });
@@ -244,7 +243,6 @@ phieuLuongSchema.virtual('parameterSnapshot')
 
 phieuLuongSchema.aliases = {
   userId: 'nguoi_dung_id',
-  nguoi_dung_id: 'nguoi_dung_id',
   month: 'thang',
   year: 'nam',
   createdBy: 'nguoi_lap_id',

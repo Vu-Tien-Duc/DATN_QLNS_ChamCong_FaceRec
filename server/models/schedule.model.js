@@ -5,17 +5,17 @@ require('./subject.model');
 
 const scheduleSchema = new mongoose.Schema(
   {
-    ma_nguoi_dung: {
+    nguoi_dung_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'userId',
       ref: 'User',
-      required: [true, 'Người được phân lịch (userId / ma_nguoi_dung) là bắt buộc'],
+      required: [true, 'Người được phân lịch (userId / nguoi_dung_id) là bắt buộc'],
     },
-    ma_ca: {
+    ca_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'shiftId',
       ref: 'ShiftConfig',
-      required: [true, 'Ca áp dụng (shiftId / ma_ca) là bắt buộc'],
+      required: [true, 'Ca áp dụng (shiftId / ca_id) là bắt buộc'],
     },
     gio_bat_dau: {
       type: String,
@@ -39,7 +39,7 @@ const scheduleSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
-    ma_mon: {
+    mon_hoc_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'subjectId',
       ref: 'Subject',
@@ -171,15 +171,12 @@ scheduleSchema.virtual('location')
   });
 
 scheduleSchema.aliases = {
-  userId: 'ma_nguoi_dung',
-  nguoi_dung_id: 'ma_nguoi_dung',
-  shiftId: 'ma_ca',
-  ca_id: 'ma_ca',
+  userId: 'nguoi_dung_id',
+  shiftId: 'ca_id',
   startTime: 'gio_bat_dau',
   endTime: 'gio_ket_thuc',
   roomId: 'phong_hoc',
-  subjectId: 'ma_mon',
-  mon_hoc_id: 'ma_mon',
+  subjectId: 'mon_hoc_id',
   latitude: 'vi_do',
   longitude: 'kinh_do',
   radiusMeters: 'ban_kinh_met',
@@ -199,22 +196,19 @@ scheduleSchema.aliases = {
   updatedAt: 'cap_nhat_luc',
 };
 
-scheduleSchema.virtual('createdAt').get(function () { return this.tao_luc; });
-scheduleSchema.virtual('updatedAt').get(function () { return this.cap_nhat_luc; });
-scheduleSchema.virtual('nguoi_dung_id').get(function () { return this.ma_nguoi_dung; });
-scheduleSchema.virtual('ca_id').get(function () { return this.ma_ca; });
-scheduleSchema.virtual('mon_hoc_id').get(function () { return this.ma_mon; });
+
 
 const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 scheduleSchema.plugin(schemaAliasPlugin);
 
 scheduleSchema.pre('validate', async function () {
   const ShiftConfig = mongoose.models.ShiftConfig || mongoose.models.CaLamViec || require('./shiftConfig.model');
-  if ((!this.gio_bat_dau || !this.gio_ket_thuc) && this.ma_ca) {
-    const shift = await ShiftConfig.findById(this.ma_ca);
+  const targetShiftId = this.ca_id;
+  if ((!this.gio_bat_dau || !this.gio_ket_thuc) && targetShiftId) {
+    const shift = await ShiftConfig.findById(targetShiftId);
     if (!shift) {
       this.invalidate('shiftId', 'Không tìm thấy ca làm việc được gán cho lịch');
-      this.invalidate('ma_ca', 'Không tìm thấy ca làm việc được gán cho lịch');
+      this.invalidate('ca_id', 'Không tìm thấy ca làm việc được gán cho lịch');
     } else {
       if (!this.gio_bat_dau) this.gio_bat_dau = shift.gio_bat_dau || shift.startTime;
       if (!this.gio_ket_thuc) this.gio_ket_thuc = shift.gio_ket_thuc || shift.endTime;
@@ -232,11 +226,11 @@ scheduleSchema.pre('validate', async function () {
   }
 });
 
-scheduleSchema.index({ ma_nguoi_dung: 1, thu_trong_tuan: 1 });
-scheduleSchema.index({ ma_ca: 1 });
-scheduleSchema.index({ ma_mon: 1 }, { sparse: true });
+scheduleSchema.index({ nguoi_dung_id: 1, thu_trong_tuan: 1 });
+scheduleSchema.index({ ca_id: 1 });
+scheduleSchema.index({ mon_hoc_id: 1 }, { sparse: true });
 scheduleSchema.index({ ngay_bat_dau: 1, ngay_ket_thuc: 1 });
-scheduleSchema.index({ nam_hoc: 1, hoc_ky: 1, ma_nguoi_dung: 1 });
+scheduleSchema.index({ nam_hoc: 1, hoc_ky: 1, nguoi_dung_id: 1 });
 scheduleSchema.index({ nam_hoc: 1, hoc_ky: 1, phong_hoc: 1 });
 
 const Schedule = mongoose.models.Schedule || mongoose.model('Schedule', scheduleSchema, 'lich_trinh');

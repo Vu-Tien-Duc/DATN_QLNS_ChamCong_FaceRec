@@ -29,7 +29,12 @@ const getShiftConfigById = async (id) => {
   return shift;
 };
 
-const createShiftConfig = async ({ name, startTime, endTime, lateThresholdMinutes }) => {
+const createShiftConfig = async (payload = {}) => {
+  const name = payload.name;
+  const startTime = payload.startTime;
+  const endTime = payload.endTime;
+  const lateThresholdMinutes = payload.lateThresholdMinutes;
+
   if (typeof name !== 'string' || !name.trim() || !startTime || !endTime) {
     throw new ServiceError(
       'Vui lòng cung cấp đầy đủ tên ca (name), giờ bắt đầu (startTime) và giờ kết thúc (endTime).',
@@ -57,11 +62,15 @@ const createShiftConfig = async ({ name, startTime, endTime, lateThresholdMinute
   });
 };
 
-const updateShiftConfig = async (id, data) => {
+const updateShiftConfig = async (id, data = {}) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new ServiceError('Định dạng ID ca làm việc không hợp lệ.', 400, 'SHIFT_003');
   }
-  const { name, startTime, endTime, lateThresholdMinutes } = data;
+  const name = data.name;
+  const startTime = data.startTime;
+  const endTime = data.endTime;
+  const lateThresholdMinutes = data.lateThresholdMinutes;
+
   if (startTime !== undefined) validateTime(startTime, 'giờ bắt đầu');
   if (endTime !== undefined) validateTime(endTime, 'giờ kết thúc');
   if (

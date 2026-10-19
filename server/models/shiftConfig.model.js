@@ -41,7 +41,7 @@ const shiftConfigSchema = new mongoose.Schema(
   },
   {
     timestamps: { createdAt: 'tao_luc', updatedAt: 'cap_nhat_luc' },
-    collection: 'cau_hinh_ca',
+    collection: 'ca_lam_viec',
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
@@ -57,8 +57,7 @@ shiftConfigSchema.aliases = {
   updatedAt: 'cap_nhat_luc',
 };
 
-shiftConfigSchema.virtual('createdAt').get(function () { return this.tao_luc; });
-shiftConfigSchema.virtual('updatedAt').get(function () { return this.cap_nhat_luc; });
+
 
 const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 shiftConfigSchema.plugin(schemaAliasPlugin);
@@ -80,10 +79,14 @@ shiftConfigSchema.pre('validate', function () {
 shiftConfigSchema.index({ ten_ca: 1 });
 shiftConfigSchema.index({ gio_bat_dau: 1, gio_ket_thuc: 1 });
 
-const ShiftConfig = mongoose.models.ShiftConfig || mongoose.model('ShiftConfig', shiftConfigSchema, 'cau_hinh_ca');
+const ShiftConfig = mongoose.models.ShiftConfig || mongoose.model('ShiftConfig', shiftConfigSchema, 'ca_lam_viec');
 
 if (!mongoose.models.CaLamViec) {
-  mongoose.model('CaLamViec', shiftConfigSchema, 'cau_hinh_ca');
+  mongoose.model('CaLamViec', shiftConfigSchema, 'ca_lam_viec');
+}
+
+if (!mongoose.models.CauHinhCa) {
+  mongoose.model('CauHinhCa', shiftConfigSchema, 'ca_lam_viec');
 }
 
 module.exports = ShiftConfig;

@@ -60,7 +60,7 @@ export default function FaceRegistrationPage() {
           <div className="relative">
             <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-primary-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold shadow-md shadow-primary-500/20 overflow-hidden">
               {user?.avatar ? (
-                <img src={user.avatar} alt={user.fullName || user.ho_ten} className="w-full h-full object-cover" />
+                <img src={user.avatar} alt={user.fullName} className="w-full h-full object-cover" />
               ) : (
                 <User size={36} />
               )}
@@ -74,8 +74,8 @@ export default function FaceRegistrationPage() {
 
           <div className="flex-1 text-center sm:text-left">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-              <h2 className="text-lg font-semibold text-slate-800">{user?.fullName || user?.ho_ten || 'Cán bộ / Giảng viên'}</h2>
-              <span className="badge badge-info text-xs">{user?.staffCode || user?.ma_can_bo || 'CB-GV'}</span>
+              <h2 className="text-lg font-semibold text-slate-800">{user?.fullName || 'Cán bộ / Giảng viên'}</h2>
+              <span className="badge badge-info text-xs">{user?.staffCode || 'CB-GV'}</span>
               <span className={`badge ${user?.isFaceRegistered ? 'badge-success' : 'badge-warning'} text-xs`}>
                 {user?.isFaceRegistered ? 'Đã kích hoạt Face ID' : 'Chưa có mẫu khuôn mặt'}
               </span>

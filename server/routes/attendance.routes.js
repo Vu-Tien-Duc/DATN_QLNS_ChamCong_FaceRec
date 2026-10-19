@@ -19,6 +19,7 @@ const {
   verifyLivenessChallengeController,
   getFaissStatsController,
   syncFaissIndexController,
+  getQueueStats,
 } = require('../controllers/attendance.controller');
 const { verifyToken, authorizeRoles, verifyTerminalKey } = require('../middlewares/auth.middleware');
 const { faceCheckInRateLimit } = require('../middlewares/rateLimiter.middleware');
@@ -222,6 +223,7 @@ router.get('/liveness/challenge', getLivenessChallengeController);
 router.post('/liveness/verify-challenge', uploadFaceImage, verifyLivenessChallengeController);
 router.get('/faiss/stats', getFaissStatsController);
 router.post('/faiss/sync', verifyToken, authorizeRoles('admin'), syncFaissIndexController);
+router.get('/queue/stats', getQueueStats);
 
 /**
  * @swagger

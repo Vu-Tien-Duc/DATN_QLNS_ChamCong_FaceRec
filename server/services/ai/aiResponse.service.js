@@ -43,7 +43,7 @@ const UNIVERSITY_POLICY_KNOWLEDGE = {
       '- **Giảm trừ định mức chức vụ:** Trưởng khoa giảm 30%, Phó trưởng khoa giảm 25%, Trưởng bộ môn giảm 20% định mức giờ giảng.',
     ],
   },
-  tien_luong_thue: {
+  salary_and_tax: {
     title: 'Quy Định Tiền Lương & Thuế TNCN Năm 2026',
     noi_dung: [
       '- **Lương cơ sở năm 2026:** 2.530.000 VNĐ (`LUONG_CO_SO`). Lương chính = Hệ số lương $\\times$ 2.530.000đ.',
@@ -52,7 +52,7 @@ const UNIVERSITY_POLICY_KNOWLEDGE = {
       '- **Bảo hiểm bắt buộc (10.5%):** BHXH 8%, BHYT 1.5%, BHTN 1%.',
       '- **Giảm trừ gia cảnh:** Bản thân 15.500.000 VNĐ/tháng, người phụ thuộc 6.200.000 VNĐ/tháng/người.',
       '- **Biểu thuế TNCN lũy tiến 5 bậc:** Bậc 1 (đến 10tr: 5%), Bậc 2 (10-30tr: 10% - 500k), Bậc 3 (30-60tr: 20% - 3.5tr), Bậc 4 (60-100tr: 28% - 8.3tr), Bậc 5 (trên 100tr: 35% - 15.3tr).',
-      '- **Khóa lương:** Khi bảng lương được khóa sổ (`DA_KHOA`), hệ thống tự động khóa bảng chấm công (`da_chot = true`), cấm mọi hành vi sửa đổi lương hay giờ công.',
+      '- **Khóa lương:** Khi bảng lương được khóa sổ (`DA_KHOA`), hệ thống tự động khóa bảng chấm công (`isLocked = true`), cấm mọi hành vi sửa đổi lương hay giờ công.',
     ],
   },
   face_ai: {
@@ -84,7 +84,7 @@ const lookupUniversityRegulation = (question) => {
     matched.push(UNIVERSITY_POLICY_KNOWLEDGE.gio_giang);
   }
   if (q.includes('lương') || q.includes('thuế') || q.includes('thu nhập') || q.includes('bảo hiểm') || q.includes('phụ cấp') || q.includes('bhxh') || q.includes('giảm trừ')) {
-    matched.push(UNIVERSITY_POLICY_KNOWLEDGE.tien_luong_thue);
+    matched.push(UNIVERSITY_POLICY_KNOWLEDGE.salary_and_tax);
   }
   if (q.includes('khuôn mặt') || q.includes('nhận diện') || q.includes('face') || q.includes('camera') || q.includes('cooldown') || q.includes('5 góc') || q.includes('margin')) {
     matched.push(UNIVERSITY_POLICY_KNOWLEDGE.face_ai);

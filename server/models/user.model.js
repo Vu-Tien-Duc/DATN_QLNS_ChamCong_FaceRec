@@ -43,6 +43,7 @@ const vaiTroSchema = new mongoose.Schema(
     },
     don_vi_id: {
       type: mongoose.Schema.Types.ObjectId,
+      alias: 'departmentId',
       ref: 'Department',
       default: null,
     },
@@ -59,8 +60,12 @@ const vaiTroSchema = new mongoose.Schema(
       default: null, // null: Đang trong nhiệm kỳ; có giá trị: Đã đóng nhiệm kỳ
     },
   },
-  { _id: false }
+  { _id: false, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+vaiTroSchema.virtual('ma_don_vi')
+  .get(function () { return this.don_vi_id; })
+  .set(function (v) { this.don_vi_id = v; });
 
 const userSchema = new mongoose.Schema(
   {
@@ -100,12 +105,6 @@ const userSchema = new mongoose.Schema(
       minlength: [7, 'Số điện thoại phải có ít nhất 7 ký tự'],
       maxlength: [20, 'Số điện thoại không được vượt quá 20 ký tự'],
     },
-    hoc_ham_hoc_vi: {
-      type: String,
-      alias: 'academicTitle',
-      trim: true,
-      maxlength: [100, 'Học hàm/học vị không được vượt quá 100 ký tự'],
-    },
     hoc_ham: {
       type: String,
       alias: 'academicRank',
@@ -138,20 +137,6 @@ const userSchema = new mongoose.Schema(
       type: Date,
       alias: 'teachingStartDate',
       default: null,
-    },
-    so_cccd: {
-      type: String,
-      alias: 'identityCard',
-      trim: true,
-      default: null,
-      select: false,
-      validate: {
-        validator: function (v) {
-          if (!v) return true;
-          return /^(\d{9}|\d{12})$/.test(v);
-        },
-        message: 'Số CCCD/CMND phải gồm 9 hoặc 12 chữ số',
-      },
     },
     so_cccd_ma_hoa: {
       type: String,
@@ -217,7 +202,10 @@ const userSchema = new mongoose.Schema(
     vai_tro_chinh: {
       type: String,
       alias: 'primaryRole',
-      enum: ['admin', 'truongkhoa', 'giangvien', 'nhanvien', 'BGH', 'TCCB', 'DAO_TAO', 'KE_TOAN', 'KIEM_TOAN'],
+      enum: [
+        'admin', 'truongkhoa', 'phokhoa', 'truongbomon', 'phobomon', 'giangvien', 'nhanvien',
+        'ADMIN', 'BGH', 'bgh', 'TCCB', 'tccb', 'DAO_TAO', 'dao_tao', 'KE_TOAN', 'ke_toan', 'KIEM_TOAN', 'kiem_toan'
+      ],
       default: 'giangvien',
     },
     // Mảng vai trò RBAC chuẩn v2.5 có nhiệm kỳ
@@ -232,27 +220,11 @@ const userSchema = new mongoose.Schema(
       ref: 'Department',
       default: null,
     },
-    ma_phong_ban: {
-      type: mongoose.Schema.Types.ObjectId,
-      alias: 'departmentId',
-      ref: 'Department',
-      default: null,
-    },
     anh_dai_dien: {
       type: String,
       alias: 'avatar',
       default: null,
       trim: true,
-    },
-    faceDescriptor: {
-      type: [Number],
-      default: undefined,
-      select: false,
-    },
-    faceDescriptors: {
-      type: [[Number]],
-      default: undefined,
-      select: false,
     },
     kich_hoat: {
       type: Boolean,
@@ -266,20 +238,9 @@ const userSchema = new mongoose.Schema(
       enum: ['DANG_LAM_VIEC', 'DA_NGHI_VIEC', 'TAM_HOAN', 'ACTIVE', 'RESIGNED', 'SUSPENDED', 'PROBATION', 'ON_LEAVE'],
       default: 'DANG_LAM_VIEC',
     },
-    so_ngay_phep_nam: {
-      type: Number,
-      alias: 'annualLeaveQuota',
-      default: 12,
-      min: [0, 'Hạn mức ngày phép không thể nhỏ hơn 0'],
-      max: [60, 'Hạn mức ngày phép không vượt quá 60 ngày'],
-      validate: {
-        validator: Number.isInteger,
-        message: 'Hạn mức ngày phép phải là số nguyên',
-      },
-    },
     han_muc_phep_nam: {
       type: Number,
-      alias: 'annualLeaveLimit',
+      alias: 'annualLeaveQuota',
       default: 12,
     },
     phien_ban_don_nghi: {
@@ -418,48 +379,37 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.aliases = {
-  email: 'email',
-  thu_dien_tu: 'email',
-  faceDescriptor: 'faceDescriptor',
-  faceDescriptors: 'faceDescriptors',
-  dac_trung_khuon_mat: 'faceDescriptor',
-  danh_sach_dac_trung_khuon_mat: 'faceDescriptors',
   fullName: 'ho_ten',
   staffCode: 'ma_can_bo',
   phoneNumber: 'so_dien_thoai',
-  academicTitle: 'hoc_ham_hoc_vi',
-  identityCard: 'so_cccd',
-  gender: 'gioi_tinh',
-  position: 'chuc_vu',
-  contractType: 'loai_hop_dong',
-  dateOfBirth: 'ngay_sinh',
-  address: 'dia_chi',
-  passwordHash: 'mat_khau_ma_hoa',
-  departmentId: 'ma_phong_ban',
-  mainDepartmentId: 'don_vi_chinh_id',
-  avatar: 'anh_dai_dien',
-  isActive: 'kich_hoat',
-  employmentStatus: 'trang_thai_lam_viec',
-  annualLeaveQuota: 'so_ngay_phep_nam',
-  annualLeaveLimit: 'han_muc_phep_nam',
-  startDate: 'ngay_vao_lam',
-  teachingStartDate: 'ngay_bat_dau_giang_day',
   academicRank: 'hoc_ham',
   degree: 'hoc_vi',
   salaryScale: 'ngach_luong',
   salaryCoefficient: 'he_so_luong',
+  dependentsCount: 'so_nguoi_phu_thuoc',
+  teachingStartDate: 'ngay_bat_dau_giang_day',
+  encryptedCccd: 'so_cccd_ma_hoa',
+  cccdKeyVersion: 'phien_ban_khoa_cccd',
+  gender: 'gioi_tinh',
+  position: 'chuc_vu',
   staffType: 'loai_nhan_su',
+  contractType: 'loai_hop_dong',
+  dateOfBirth: 'ngay_sinh',
+  startDate: 'ngay_vao_lam',
+  address: 'dia_chi',
+  passwordHash: 'mat_khau_ma_hoa',
   primaryRole: 'vai_tro_chinh',
+  roles: 'danh_sach_vai_tro',
+  departmentId: 'don_vi_chinh_id',
+  avatar: 'anh_dai_dien',
+  isActive: 'kich_hoat',
+  employmentStatus: 'trang_thai_lam_viec',
+  annualLeaveQuota: 'han_muc_phep_nam',
   leaveVersion: 'phien_ban_don_nghi',
-  phong_ban_id: 'ma_phong_ban',
-  isVerified: 'da_xac_thuc',
-  passwordChangedAt: 'doi_mat_khau_luc',
   tokenVersion: 'phien_ban_token',
   biometricConsentDate: 'ngay_dong_y_sinh_trac',
-  dependentsCount: 'so_nguoi_phu_thuoc',
-  cccdKeyVersion: 'phien_ban_khoa_cccd',
-  encryptedCccd: 'so_cccd_ma_hoa',
-  roles: 'danh_sach_vai_tro',
+  isVerified: 'da_xac_thuc',
+  passwordChangedAt: 'doi_mat_khau_luc',
   otpCode: 'ma_otp',
   otpExpiresAt: 'otp_het_han_luc',
   otpType: 'loai_otp',
@@ -468,6 +418,22 @@ userSchema.aliases = {
   createdAt: 'tao_luc',
   updatedAt: 'cap_nhat_luc',
 };
+
+userSchema.virtual('academicTitle').get(function () {
+  const parts = [];
+  if (this.hoc_ham && this.hoc_ham !== 'KHONG') parts.push(this.hoc_ham);
+  if (this.hoc_vi) parts.push(this.hoc_vi);
+  return parts.join(' ');
+});
+
+userSchema.virtual('identityCard')
+  .get(function () {
+    return this._raw_so_cccd || this.so_cccd_ma_hoa;
+  })
+  .set(function (v) {
+    this._raw_so_cccd = v;
+    this.so_cccd_ma_hoa = v;
+  });
 
 // Getter/Setter ảo cho `role` / `vai_tro` tương thích ngược 100% với middleware và UI cũ:
 userSchema.virtual('role')
@@ -506,10 +472,10 @@ userSchema.virtual('vai_tro')
     this.role = val;
   });
 
-userSchema.virtual('createdAt').get(function () { return this.tao_luc; });
-userSchema.virtual('updatedAt').get(function () { return this.cap_nhat_luc; });
-userSchema.virtual('startDate').get(function () { return this.ngay_vao_lam; });
-userSchema.virtual('phong_ban_id').get(function () { return this.don_vi_chinh_id || this.ma_phong_ban; });
+
+userSchema.virtual('departmentId')
+  .get(function () { return this.don_vi_chinh_id; })
+  .set(function (v) { this.don_vi_chinh_id = v; });
 
 const { hasPermission, getEffectivePermissions } = require('../config/permissions');
 
@@ -530,13 +496,12 @@ const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 userSchema.plugin(schemaAliasPlugin);
 
 userSchema.pre('validate', function () {
-  if (this.so_ngay_phep_nam !== undefined && this.so_ngay_phep_nam !== null && !Number.isInteger(this.so_ngay_phep_nam)) {
+  if (this.han_muc_phep_nam !== undefined && this.han_muc_phep_nam !== null && !Number.isInteger(this.han_muc_phep_nam)) {
     this.invalidate('annualLeaveQuota', 'Hạn mức ngày phép phải là số nguyên');
-    this.invalidate('so_ngay_phep_nam', 'Hạn mức ngày phép phải là số nguyên');
   }
-  if (this.so_cccd && !/^(\d{9}|\d{12})$/.test(this.so_cccd)) {
+  const cccd = this._raw_so_cccd || this.identityCard || this.so_cccd_ma_hoa;
+  if (cccd && !/^(\d{9}|\d{12})$/.test(cccd)) {
     this.invalidate('identityCard', 'Số CCCD/CMND phải gồm 9 hoặc 12 chữ số');
-    this.invalidate('so_cccd', 'Số CCCD/CMND phải gồm 9 hoặc 12 chữ số');
   }
   if (this.ma_can_bo && !/^[A-Z0-9][A-Z0-9_-]*$/.test(this.ma_can_bo)) {
     this.invalidate('staffCode', 'Mã cán bộ chỉ được chứa chữ in hoa, số, dấu gạch ngang hoặc gạch dưới');
@@ -549,11 +514,11 @@ userSchema.index(
   { unique: true, partialFilterExpression: { ma_can_bo: { $type: 'string' } } }
 );
 userSchema.index(
-  { so_cccd: 1 },
-  { unique: true, partialFilterExpression: { so_cccd: { $type: 'string' } } }
+  { so_cccd_ma_hoa: 1 },
+  { unique: true, partialFilterExpression: { so_cccd_ma_hoa: { $type: 'string' } } }
 );
 userSchema.index({ trang_thai_lam_viec: 1 });
-userSchema.index({ ma_phong_ban: 1 });
+userSchema.index({ don_vi_chinh_id: 1 });
 
 const User = mongoose.models.User || mongoose.model('User', userSchema, 'nguoi_dung');
 

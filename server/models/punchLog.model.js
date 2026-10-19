@@ -39,6 +39,13 @@ const punchLogSchema = new mongoose.Schema(
       enum: ['CHECK_IN', 'CHECK_OUT'],
       required: [true, 'Loại lượt quét (punchType / loai_quet) là bắt buộc'],
       index: true,
+      set: function (val) {
+        if (!val) return val;
+        const v = String(val).toUpperCase();
+        if (v === 'VAO' || v === 'IN' || v === 'CHECKIN') return 'CHECK_IN';
+        if (v === 'RA' || v === 'OUT' || v === 'CHECKOUT') return 'CHECK_OUT';
+        return v;
+      },
     },
     thoi_gian_quet: {
       type: Date,
@@ -49,9 +56,21 @@ const punchLogSchema = new mongoose.Schema(
     phuong_thuc: {
       type: String,
       alias: 'method',
-      enum: ['face', 'qr', 'gps', 'fingerprint', 'manual', 'admin_override', 'system', 'FACE_AI', 'QR_CODE', 'GPS_MOBILE', 'THU_CONG_ADMIN'],
+      enum: ['FACE_AI', 'QR_CODE', 'GPS_MOBILE', 'THU_CONG_ADMIN', 'SYSTEM_AUTO', 'FACE', 'QR', 'GPS', 'MANUAL', 'SYSTEM', 'ADMIN_OVERRIDE'],
       required: [true, 'Phương thức quét (method / phuong_thuc) là bắt buộc'],
-      default: 'face',
+      default: 'FACE_AI',
+      set: function (val) {
+        if (!val) return val;
+        const v = String(val).toUpperCase();
+        const map = {
+          FACE: 'FACE_AI',
+          QR: 'QR_CODE',
+          GPS: 'GPS_MOBILE',
+          MANUAL: 'THU_CONG_ADMIN',
+          SYSTEM: 'SYSTEM_AUTO',
+        };
+        return map[v] || v;
+      },
     },
     do_tin_cay_ai: {
       type: Number,
@@ -83,11 +102,6 @@ const punchLogSchema = new mongoose.Schema(
       alias: 'evidenceImage',
       default: null,
     },
-    anh_bang_chung_url: {
-      type: String,
-      alias: 'evidenceImageUrl',
-      default: null,
-    },
     // GeoJSON Point chuẩn với default: undefined chống lỗi 2dsphere:
     toa_do_gps: {
       type: pointSchema,
@@ -99,7 +113,7 @@ const punchLogSchema = new mongoose.Schema(
       alias: 'gpsAccuracy',
       default: null,
     },
-    is_mock_location: {
+    vi_tri_gia_lap: {
       type: Boolean,
       alias: 'isMockLocation',
       default: false,
@@ -126,10 +140,6 @@ const punchLogSchema = new mongoose.Schema(
       type: String,
       alias: 'deviceId',
       default: 'CAMERA_DEFAULT',
-    },
-    ma_thiet_bi: {
-      type: String,
-      default: null,
     },
     co_gian_lan: {
       type: Boolean,
@@ -224,44 +234,36 @@ punchLogSchema.virtual('location')
     }
   });
 
-punchLogSchema.virtual('createdAt')
-  .get(function () { return this.tao_luc; });
 punchLogSchema.virtual('scanTime').get(function () { return this.thoi_gian_quet; });
-punchLogSchema.virtual('matchedPose').get(function () { return this.goc_mat_nhan_dien; });
-punchLogSchema.virtual('capturedImage').get(function () { return this.anh_minh_chung; });
 punchLogSchema.virtual('isFraud').get(function () { return this.co_gian_lan; });
-punchLogSchema.virtual('attendanceLogId').get(function () { return this.cham_cong_id; });
-punchLogSchema.virtual('userId').get(function () { return this.nguoi_dung_id; });
 
+// Bảng ánh xạ định danh tiếng Anh chuẩn duy nhất (Canonical English Aliases)
 punchLogSchema.aliases = {
   attendanceLogId: 'cham_cong_id',
   userId: 'nguoi_dung_id',
   punchType: 'loai_quet',
   punchTime: 'thoi_gian_quet',
-  scanTime: 'thoi_gian_quet',
   method: 'phuong_thuc',
   confidenceScore: 'do_tin_cay_ai',
   livenessScore: 'diem_mat_that',
   faceAngle: 'goc_mat_nhan_dien',
-  matchedPose: 'goc_mat_nhan_dien',
   evidenceImage: 'anh_minh_chung',
-  capturedImage: 'anh_minh_chung',
-  evidenceImageUrl: 'anh_bang_chung_url',
   coordinates: 'toa_do',
-  location: 'toa_do',
   latitude: 'toa_do.vi_do',
   longitude: 'toa_do.kinh_do',
   gpsPoint: 'toa_do_gps',
-  gpsCoordinates: 'toa_do_gps',
   gpsAccuracy: 'do_chinh_xac_gps',
-  isMockLocation: 'is_mock_location',
+  isMockLocation: 'vi_tri_gia_lap',
   distanceMeters: 'khoang_cach_met',
-  deviceId: 'ma_thiet_bi',
+  deviceId: 'thiet_bi_id',
   isFraudulent: 'co_gian_lan',
-  isFraud: 'co_gian_lan',
   fraudReason: 'ly_do_gian_lan',
+  clientIp: 'dia_chi_ip',
+  isCampusNetwork: 'mang_noi_bo_truong',
+  isSuspicious: 'nghi_van_gia_mao',
+  suspiciousReason: 'ly_do_nghi_van',
+  verificationMethod: 'phuong_thuc_xac_thuc_vi_tri',
   headPose3D: 'goc_dau_3d',
-  pose3D: 'goc_dau_3d',
   status: 'trang_thai',
   failureReason: 'ly_do_that_bai',
   createdAt: 'tao_luc',

@@ -30,7 +30,6 @@ const handleServiceError = (res, error, next) => {
     const messages = {
       email: 'Email đã tồn tại trên hệ thống.',
       staffCode: 'Mã cán bộ / giảng viên đã tồn tại trên hệ thống.',
-      ma_can_bo: 'Mã cán bộ / giảng viên đã tồn tại trên hệ thống.',
     };
     return sendError(
       res,

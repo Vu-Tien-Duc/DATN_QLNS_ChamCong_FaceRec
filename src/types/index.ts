@@ -117,38 +117,40 @@ export interface KhoanDieuChinh {
 export interface Payroll {
   _id: string;
   userId?: UserBasic | any;
-  nguoi_dung_id?: UserBasic | any;
   month: number;
-  thang: number;
   year: number;
-  nam: number;
   salaryCoefficient?: number;
-  he_so_luong?: number;
   baseSalary?: number;
-  luong_co_so?: number;
   primarySalary?: number;
-  luong_chinh?: number;
   positionAllowance?: number;
-  phu_cap_chuc_vu?: number;
   seniorityAllowance?: number;
-  phu_cap_tham_nien?: number;
   vocationalAllowance?: number;
-  phu_cap_uu_dai_nghe?: number;
-  phu_cap?: PhuCapItem[];
-  khoan_thuong?: KhoanDieuChinh[];
-  khau_tru?: KhoanDieuChinh[];
-  gio_giang?: {
-    dinh_muc_goc?: number;
-    ty_le_giam_dinh_muc?: number;
-    dinh_muc_sau_giam?: number;
-    gio_quy_doi_tich_luy?: number;
-    gio_vuot_dinh_muc?: number;
-    don_gia_gio_chuan?: number;
-    thu_lao_vuot_gio?: number;
-    da_tam_ung?: number;
+  allowances?: PhuCapItem[];
+  bonusItems?: KhoanDieuChinh[];
+  deductionItems?: KhoanDieuChinh[];
+  teachingHours?: {
+    baseQuota?: number;
+    reductionRatio?: number;
+    adjustedQuota?: number;
+    accumulatedStandardHours?: number;
+    overQuotaHours?: number;
+    hourlyRate?: number;
+    overQuotaRemuneration?: number;
+    advancedPayment?: number;
   };
   grossIncome?: number;
-  tong_thu_nhap_gross?: number;
+  insurance?: {
+    socialInsurance?: number;
+    healthInsurance?: number;
+    unemploymentInsurance?: number;
+    totalInsurance?: number;
+  };
+  personalIncomeTax?: {
+    personalDeduction?: number;
+    dependentDeduction?: number;
+    taxableIncome?: number;
+    taxAmount?: number;
+  };
   bao_hiem?: {
     bhxh?: number;
     bhyt?: number;
@@ -162,32 +164,24 @@ export interface Payroll {
     tien_thue?: number;
   };
   netSalary?: number;
-  thuc_linh_net?: number;
   status?: 'DU_THAO' | 'CHO_DUYET' | 'DA_DUYET' | 'DA_KHOA' | 'DA_THANH_TOAN';
-  trang_thai?: string;
   isLocked?: boolean;
   lockedAt?: string;
-  khoa_luc?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
 export interface Holiday {
   _id: string;
-  ten_ngay_le?: string;
-  name?: string;
-  ngay_bat_dau: string;
-  startDate?: string;
-  ngay_ket_thuc: string;
-  endDate?: string;
-  so_ngay_nghi?: number;
+  name: string;
+  startDate: string;
+  endDate: string;
   daysCount?: number;
-  mo_ta?: string;
   description?: string;
-  nam?: number;
   year?: number;
-  ap_dung_toan_truong?: boolean;
+  isPaid?: boolean;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AiChatMessage {

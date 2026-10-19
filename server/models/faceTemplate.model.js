@@ -5,7 +5,7 @@ const VALID_FACE_DIMENSIONS = new Set([512]);
 
 const faceTemplateSchema = new mongoose.Schema(
   {
-    ma_nguoi_dung: {
+    nguoi_dung_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'userId',
       ref: 'User',
@@ -68,7 +68,7 @@ const faceTemplateSchema = new mongoose.Schema(
       alias: 'sampleCount',
       default: 1,
     },
-    nguoi_dang_ky: {
+    nguoi_dang_ky_id: {
       type: mongoose.Schema.Types.ObjectId,
       alias: 'registeredBy',
       ref: 'User',
@@ -128,19 +128,14 @@ const faceTemplateSchema = new mongoose.Schema(
 );
 
 faceTemplateSchema.aliases = {
-  userId: 'ma_nguoi_dung',
-  nguoi_dung_id: 'ma_nguoi_dung',
+  userId: 'nguoi_dung_id',
   descriptors: 'vector_dac_trung',
-  vectors_5_goc: 'vector_dac_trung',
   averageDescriptor: 'vector_trung_binh',
-  averageEmbedding: 'vector_trung_binh',
   embeddingDimensions: 'so_chieu_vector',
   embeddingModel: 'mo_hinh_ai',
   sampleAngles: 'cac_goc_chup',
-  poses: 'cac_goc_chup',
   sampleCount: 'so_luong_mau',
-  samplesCount: 'so_luong_mau',
-  registeredBy: 'nguoi_dang_ky',
+  registeredBy: 'nguoi_dang_ky_id',
   registeredAt: 'ngay_dang_ky',
   consentAgreed: 'dieu_khoan_dong_y',
   consentAgreedAt: 'thoi_diem_dong_y',
@@ -153,19 +148,14 @@ faceTemplateSchema.aliases = {
   updatedAt: 'cap_nhat_luc',
 };
 
-faceTemplateSchema.virtual('createdAt').get(function () { return this.tao_luc; });
-faceTemplateSchema.virtual('updatedAt').get(function () { return this.cap_nhat_luc; });
-faceTemplateSchema.virtual('nguoi_dung_id').get(function () { return this.ma_nguoi_dung; });
-faceTemplateSchema.virtual('poses').get(function () { return this.cac_goc_chup; });
-faceTemplateSchema.virtual('samplesCount').get(function () { return this.so_luong_mau; });
-faceTemplateSchema.virtual('averageEmbedding').get(function () { return this.vector_trung_binh; });
+
 
 const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 const { encryptBiometricVector, decryptBiometricVector } = require('../utils/biometricEncryption');
 faceTemplateSchema.plugin(schemaAliasPlugin);
 
 // Tự động mã hóa vector sinh trắc học khi lưu vào cơ sở dữ liệu
-faceTemplateSchema.pre('save', function (next) {
+faceTemplateSchema.pre('save', function () {
   if (this.vector_dac_trung && Array.isArray(this.vector_dac_trung)) {
     this.du_lieu_ma_hoa = encryptBiometricVector(this.vector_dac_trung);
   }
@@ -173,7 +163,6 @@ faceTemplateSchema.pre('save', function (next) {
     this.vector_trung_binh_ma_hoa = encryptBiometricVector(this.vector_trung_binh);
   }
   this.trang_thai_ma_hoa = 'AES_256_GCM';
-  next();
 });
 
 faceTemplateSchema.methods.getDecryptedDescriptors = function () {

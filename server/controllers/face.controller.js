@@ -7,8 +7,6 @@
  * - deleteFaceData: Xóa sạch dữ liệu sinh trắc học khỏi MongoDB và RAM FAISS.
  * - getFaceHealth: Kiểm tra trạng thái hoạt động của Python FastAPI Microservice.
  */
-const fs = require('fs');
-const path = require('path');
 const User = require('../models/user.model');
 const FaceTemplate = require('../models/faceTemplate.model');
 const {
@@ -20,6 +18,7 @@ const {
   registerFaceDescriptorForUser,
   removeFaceDescriptorForUser,
 } = require('../services/faceTemplate.service');
+const minioStorage = require('../config/minio');
 const { sendSuccess, sendError } = require('../utils/responseHandler');
 
 /**
@@ -99,7 +98,7 @@ const enrollMultiAngleFace = async (req, res) => {
     }
     if (!targetUser) {
       targetUser = await User.findOne({
-        $or: [{ email: employeeId }, { staffCode: employeeId }, { ma_can_bo: employeeId }],
+        $or: [{ email: employeeId }, { staffCode: employeeId }],
       });
     }
 
@@ -110,9 +109,7 @@ const enrollMultiAngleFace = async (req, res) => {
     // 1.1. Kiểm tra sự đồng thuận thu thập dữ liệu sinh trắc học theo Nghị định 13/2023/NĐ-CP
     const consentAgreed =
       req.body.consentAgreed === true ||
-      req.body.consentAgreed === 'true' ||
-      req.body.dong_y_thu_thap === 'true' ||
-      req.body.dong_y_thu_thap === true;
+      req.body.consentAgreed === 'true';
 
     if (!consentAgreed) {
       return res.status(400).json({
@@ -129,7 +126,7 @@ const enrollMultiAngleFace = async (req, res) => {
       aiResult = await enrollMultiAngle({
         files: req.files,
         employeeId: targetUser._id.toString(),
-        fullName: fullName || targetUser.fullName || targetUser.ho_ten,
+        fullName: fullName || targetUser.fullName,
       });
 
     } catch (aiErr) {
@@ -168,18 +165,16 @@ const enrollMultiAngleFace = async (req, res) => {
       });
     }
 
-    // 4. Lưu ảnh khuôn mặt đại diện (chính diện)
+    // 4. Lưu ảnh khuôn mặt đại diện (chính diện) lên MinIO Object Storage
     let facePhotoUrl = targetUser.facePhoto;
     if (req.files) {
       const primaryFile = req.files['image_straight']?.[0] || req.files['straight']?.[0] || req.files['image']?.[0];
       if (primaryFile && primaryFile.buffer) {
-        const uploadDir = path.join(__dirname, '../../uploads/faces');
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true });
-        }
         const fileName = `face-${targetUser._id}-${Date.now()}.jpg`;
-        const filePath = path.join(uploadDir, fileName);
-        fs.writeFileSync(filePath, primaryFile.buffer);
+        await minioStorage.putObject(`faces/${fileName}`, primaryFile.buffer, 'image/jpeg', {
+          userId: targetUser._id.toString(),
+          category: 'face-registration',
+        });
         facePhotoUrl = `/uploads/faces/${fileName}`;
       }
     }
@@ -200,10 +195,10 @@ const enrollMultiAngleFace = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Đăng ký thành công ${allVectors.length} góc khuôn mặt cho ${targetUser.fullName || targetUser.ho_ten}!`,
+      message: `Đăng ký thành công ${allVectors.length} góc khuôn mặt cho ${targetUser.fullName}!`,
       data: {
         userId: targetUser._id,
-        fullName: targetUser.fullName || targetUser.ho_ten,
+        fullName: targetUser.fullName,
         anglesRegistered: recordedPoses,
         sampleCount: allVectors.length,
         facePhoto: facePhotoUrl,
@@ -231,15 +226,13 @@ const getRegistrationStatus = async (req, res) => {
     }
 
     const user = await User.findById(targetId).select(
-      'fullName ho_ten email isFaceRegistered faceRegisteredAt facePhoto'
+      'fullName email isFaceRegistered faceRegisteredAt facePhoto'
     );
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng.' });
     }
 
-    const template = await FaceTemplate.findOne({
-      $or: [{ ma_nguoi_dung: user._id }, { userId: user._id }],
-    }).select('cac_goc_chup so_luong_mau mo_hinh_ai ngay_dang_ky');
+    const template = await FaceTemplate.findOne({ userId: user._id }).select('poses samplesCount embeddingModel registeredAt');
 
     const isRegistered =
       Boolean(template) ||
@@ -250,15 +243,15 @@ const getRegistrationStatus = async (req, res) => {
       success: true,
       data: {
         userId: user._id,
-        fullName: user.fullName || user.ho_ten,
+        fullName: user.fullName,
         email: user.email,
         isRegistered,
         isFaceRegistered: isRegistered,
-        faceRegisteredAt: template?.ngay_dang_ky || user.faceRegisteredAt,
+        faceRegisteredAt: template?.registeredAt || user.faceRegisteredAt,
         facePhoto: user.facePhoto,
-        sampleCount: template?.so_luong_mau || 0,
-        sampleAngles: template?.cac_goc_chup || [],
-        aiModel: template?.mo_hinh_ai || 'buffalo_s',
+        sampleCount: template?.samplesCount || 0,
+        sampleAngles: template?.poses || [],
+        aiModel: template?.embeddingModel || 'buffalo_s',
       },
     });
   } catch (err) {

@@ -182,10 +182,10 @@ export default function Payroll() {
   const isMonthLocked = payrollList.some((p) => p.isLocked || p.status === 'DA_KHOA');
 
   // Compute Total Metrics
-  const totalGross = payrollList.reduce((sum, p) => sum + (p.tong_thu_nhap_gross || p.grossIncome || 0), 0);
-  const totalNet = payrollList.reduce((sum, p) => sum + (p.thuc_linh_net || p.netSalary || 0), 0);
-  const totalTax = payrollList.reduce((sum, p) => sum + (p.thue_tncn?.tien_thue || 0), 0);
-  const totalInsurance = payrollList.reduce((sum, p) => sum + (p.bao_hiem?.tong_bao_hiem || 0), 0);
+  const totalGross = payrollList.reduce((sum, p) => sum + (p.grossIncome || 0), 0);
+  const totalNet = payrollList.reduce((sum, p) => sum + (p.netSalary || 0), 0);
+  const totalTax = payrollList.reduce((sum, p) => sum + (p.personalIncomeTax?.taxAmount || p.thue_tncn?.tien_thue || 0), 0);
+  const totalInsurance = payrollList.reduce((sum, p) => sum + (p.insurance?.totalInsurance || p.bao_hiem?.tong_bao_hiem || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -257,7 +257,7 @@ export default function Payroll() {
                       {myPayroll.isLocked || myPayroll.status === 'DA_KHOA' ? 'Đã Khóa Sổ & Quyết Toán' : 'Bản Dự Thảo'}
                     </span>
                     <h2 className="text-2xl font-black">
-                      PHIẾU LƯƠNG THÁNG {myPayroll.thang || myPayroll.month}/{myPayroll.nam || myPayroll.year}
+                      PHIẾU LƯƠNG THÁNG {myPayroll.month}/{myPayroll.year}
                     </h2>
                     <p className="text-emerald-100 text-sm mt-1">
                       Cán bộ: <span className="font-semibold text-white">{user?.fullName}</span> | Mã định danh: <span className="font-semibold text-white">{(user?.staffCode || user?._id?.slice(-6) || '').toUpperCase()}</span>
@@ -266,7 +266,7 @@ export default function Payroll() {
                   <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 text-right">
                     <p className="text-xs uppercase tracking-wider text-emerald-100 font-medium">Thực Lĩnh Net</p>
                     <p className="text-3xl font-extrabold text-white mt-1">
-                      {formatVND(myPayroll.thuc_linh_net || myPayroll.netSalary)}
+                      {formatVND(myPayroll.netSalary)}
                     </p>
                   </div>
                 </div>
@@ -279,24 +279,24 @@ export default function Payroll() {
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
                     <p className="text-xs font-bold text-slate-500 uppercase">1. Lương Chính & Phụ Cấp</p>
                     <p className="text-xl font-bold text-slate-800 mt-2">
-                      {formatVND((myPayroll.luong_chinh || myPayroll.primarySalary || 0) + (myPayroll.phu_cap_chuc_vu || 0) + (myPayroll.phu_cap_tham_nien || 0) + (myPayroll.phu_cap_uu_dai_nghe || 0))}
+                      {formatVND((myPayroll.primarySalary || 0) + (myPayroll.positionAllowance || 0) + (myPayroll.seniorityAllowance || 0) + (myPayroll.vocationalAllowance || 0))}
                     </p>
                     <div className="text-xs text-slate-500 space-y-1 mt-3">
                       <div className="flex justify-between">
                         <span>Hệ số lương:</span>
-                        <span className="font-medium text-slate-700">{myPayroll.he_so_luong || myPayroll.salaryCoefficient}</span>
+                        <span className="font-medium text-slate-700">{myPayroll.salaryCoefficient}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Lương cơ sở:</span>
-                        <span className="font-medium text-slate-700">{formatVND(myPayroll.luong_co_so || myPayroll.baseSalary)}</span>
+                        <span className="font-medium text-slate-700">{formatVND(myPayroll.baseSalary)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Phụ cấp chức vụ:</span>
-                        <span className="font-medium text-slate-700">{formatVND(myPayroll.phu_cap_chuc_vu)}</span>
+                        <span className="font-medium text-slate-700">{formatVND(myPayroll.positionAllowance)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Ưu đãi nghề:</span>
-                        <span className="font-medium text-slate-700">{formatVND(myPayroll.phu_cap_uu_dai_nghe)}</span>
+                        <span className="font-medium text-slate-700">{formatVND(myPayroll.vocationalAllowance)}</span>
                       </div>
                     </div>
                   </div>
@@ -304,24 +304,24 @@ export default function Payroll() {
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
                     <p className="text-xs font-bold text-slate-500 uppercase">2. Thù Lao Giờ Giảng Dạy</p>
                     <p className="text-xl font-bold text-emerald-700 mt-2">
-                      {formatVND(myPayroll.gio_giang?.thu_lao_vuot_gio || 0)}
+                      {formatVND(myPayroll.teachingHours?.overQuotaRemuneration || 0)}
                     </p>
                     <div className="text-xs text-slate-500 space-y-1 mt-3">
                       <div className="flex justify-between">
                         <span>Định mức giờ:</span>
-                        <span className="font-medium text-slate-700">{myPayroll.gio_giang?.dinh_muc_sau_giam || 135} tiết</span>
+                        <span className="font-medium text-slate-700">{myPayroll.teachingHours?.adjustedQuota || 135} tiết</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Giờ giảng quy đổi:</span>
-                        <span className="font-medium text-slate-700">{myPayroll.gio_giang?.gio_quy_doi_tich_luy || 0} tiết</span>
+                        <span className="font-medium text-slate-700">{myPayroll.teachingHours?.accumulatedStandardHours || 0} tiết</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Giờ vượt định mức:</span>
-                        <span className="font-semibold text-emerald-600">+{myPayroll.gio_giang?.gio_vuot_dinh_muc || 0} tiết</span>
+                        <span className="font-semibold text-emerald-600">+{myPayroll.teachingHours?.overQuotaHours || 0} tiết</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Đơn giá giờ chuẩn:</span>
-                        <span className="font-medium text-slate-700">{formatVND(myPayroll.gio_giang?.don_gia_gio_chuan || 120000)}/tiết</span>
+                        <span className="font-medium text-slate-700">{formatVND(myPayroll.teachingHours?.hourlyRate || 120000)}/tiết</span>
                       </div>
                     </div>
                   </div>
@@ -533,8 +533,8 @@ export default function Payroll() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {payrollList.map((item, idx) => {
-                      const userObj = item.userId || item.nguoi_dung_id || {};
-                      const uName = userObj.fullName || userObj.ho_ten || 'Cán bộ';
+                      const userObj = item.userId || {};
+                      const uName = userObj.fullName || 'Cán bộ';
                       const uEmail = userObj.email || '';
                       const uDept = userObj.department?.name || userObj.departmentId?.name || 'Chưa phân bổ';
 
@@ -546,28 +546,28 @@ export default function Payroll() {
                             <p className="text-xs text-slate-400">{uDept} • {uEmail}</p>
                           </td>
                           <td className="px-4 py-3 text-right font-medium text-slate-700">
-                            {item.he_so_luong || item.salaryCoefficient}
+                            {item.salaryCoefficient}
                           </td>
                           <td className="px-4 py-3 text-right text-slate-700">
-                            {formatVND(item.luong_chinh || item.primarySalary)}
+                            {formatVND(item.primarySalary)}
                           </td>
                           <td className="px-4 py-3 text-right text-slate-700">
-                            {formatVND((item.phu_cap_chuc_vu || 0) + (item.phu_cap_tham_nien || 0) + (item.phu_cap_uu_dai_nghe || 0))}
+                            {formatVND((item.positionAllowance || 0) + (item.seniorityAllowance || 0) + (item.vocationalAllowance || 0))}
                           </td>
                           <td className="px-4 py-3 text-right font-semibold text-emerald-600">
-                            +{item.gio_giang?.gio_vuot_dinh_muc || 0}h
+                            +{item.teachingHours?.overQuotaHours || 0}h
                           </td>
                           <td className="px-4 py-3 text-right font-semibold text-slate-800">
-                            {formatVND(item.tong_thu_nhap_gross || item.grossIncome)}
+                            {formatVND(item.grossIncome)}
                           </td>
                           <td className="px-4 py-3 text-right text-blue-600">
-                            {formatVND(item.bao_hiem?.tong_bao_hiem)}
+                            {formatVND(item.insurance?.totalInsurance || item.bao_hiem?.tong_bao_hiem)}
                           </td>
                           <td className="px-4 py-3 text-right text-rose-600">
-                            {formatVND(item.thue_tncn?.tien_thue)}
+                            {formatVND(item.personalIncomeTax?.taxAmount || item.thue_tncn?.tien_thue)}
                           </td>
                           <td className="px-4 py-3 text-right font-extrabold text-emerald-700">
-                            {formatVND(item.thuc_linh_net || item.netSalary)}
+                            {formatVND(item.netSalary)}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -700,7 +700,7 @@ export default function Payroll() {
               <div>
                 <h3 className="font-bold text-slate-800 text-lg">Chi Tiết Phiếu Lương</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Tháng {selectedPayroll.thang || selectedPayroll.month}/{selectedPayroll.nam || selectedPayroll.year} • {selectedPayroll.userId?.fullName || 'Cán bộ'}
+                  Tháng {selectedPayroll.month}/{selectedPayroll.year} • {selectedPayroll.userId?.fullName || 'Cán bộ'}
                 </p>
               </div>
               <button onClick={() => setSelectedPayroll(null)} className="text-slate-400 hover:text-slate-600">
@@ -714,11 +714,11 @@ export default function Payroll() {
                 <div>
                   <p className="text-xs font-semibold text-emerald-800 uppercase">Thực Lĩnh Net</p>
                   <p className="text-3xl font-black text-emerald-700 mt-1">
-                    {formatVND(selectedPayroll.thuc_linh_net || selectedPayroll.netSalary)}
+                    {formatVND(selectedPayroll.netSalary)}
                   </p>
                 </div>
                 <div className="text-right text-xs text-slate-600 space-y-1">
-                  <p>Tổng Gross: <span className="font-bold text-slate-800">{formatVND(selectedPayroll.tong_thu_nhap_gross || selectedPayroll.grossIncome)}</span></p>
+                  <p>Tổng Gross: <span className="font-bold text-slate-800">{formatVND(selectedPayroll.grossIncome)}</span></p>
                   <p>Trạng thái: <span className="font-bold text-emerald-700">{selectedPayroll.isLocked ? 'Đã Khóa' : 'Dự Thảo'}</span></p>
                 </div>
               </div>
@@ -729,23 +729,23 @@ export default function Payroll() {
                   <p className="font-bold text-slate-700 uppercase border-b pb-1">I. Lương Cơ Bản & Phụ Cấp</p>
                   <div className="flex justify-between">
                     <span>Hệ số lương:</span>
-                    <span className="font-semibold text-slate-800">{selectedPayroll.he_so_luong || selectedPayroll.salaryCoefficient}</span>
+                    <span className="font-semibold text-slate-800">{selectedPayroll.salaryCoefficient}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Lương cơ sở:</span>
-                    <span className="font-semibold text-slate-800">{formatVND(selectedPayroll.luong_co_so || selectedPayroll.baseSalary)}</span>
+                    <span className="font-semibold text-slate-800">{formatVND(selectedPayroll.baseSalary)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Lương chính:</span>
-                    <span className="font-semibold text-slate-800">{formatVND(selectedPayroll.luong_chinh || selectedPayroll.primarySalary)}</span>
+                    <span className="font-semibold text-slate-800">{formatVND(selectedPayroll.primarySalary)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Phụ cấp chức vụ:</span>
-                    <span className="font-semibold text-slate-800">{formatVND(selectedPayroll.phu_cap_chuc_vu)}</span>
+                    <span className="font-semibold text-slate-800">{formatVND(selectedPayroll.positionAllowance)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Phụ cấp ưu đãi nghề:</span>
-                    <span className="font-semibold text-slate-800">{formatVND(selectedPayroll.phu_cap_uu_dai_nghe)}</span>
+                    <span className="font-semibold text-slate-800">{formatVND(selectedPayroll.vocationalAllowance)}</span>
                   </div>
                 </div>
 
@@ -753,23 +753,23 @@ export default function Payroll() {
                   <p className="font-bold text-slate-700 uppercase border-b pb-1">II. Giờ Giảng Dạy & Vượt Giờ</p>
                   <div className="flex justify-between">
                     <span>Định mức giờ quy định:</span>
-                    <span className="font-semibold text-slate-800">{selectedPayroll.gio_giang?.dinh_muc_sau_giam || 135} tiết</span>
+                    <span className="font-semibold text-slate-800">{selectedPayroll.teachingHours?.adjustedQuota || 135} tiết</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Số giờ giảng quy đổi:</span>
-                    <span className="font-semibold text-slate-800">{selectedPayroll.gio_giang?.gio_quy_doi_tich_luy || 0} tiết</span>
+                    <span className="font-semibold text-slate-800">{selectedPayroll.teachingHours?.accumulatedStandardHours || 0} tiết</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Số giờ vượt định mức:</span>
-                    <span className="font-bold text-emerald-600">+{selectedPayroll.gio_giang?.gio_vuot_dinh_muc || 0} tiết</span>
+                    <span className="font-bold text-emerald-600">+{selectedPayroll.teachingHours?.overQuotaHours || 0} tiết</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Đơn giá giờ chuẩn:</span>
-                    <span className="font-semibold text-slate-800">{formatVND(selectedPayroll.gio_giang?.don_gia_gio_chuan || 120000)}</span>
+                    <span className="font-semibold text-slate-800">{formatVND(selectedPayroll.teachingHours?.hourlyRate || 120000)}</span>
                   </div>
                   <div className="flex justify-between border-t pt-1 font-bold text-emerald-700">
                     <span>Thù lao vượt giờ:</span>
-                    <span>{formatVND(selectedPayroll.gio_giang?.thu_lao_vuot_gio)}</span>
+                    <span>{formatVND(selectedPayroll.teachingHours?.overQuotaRemuneration)}</span>
                   </div>
                 </div>
 

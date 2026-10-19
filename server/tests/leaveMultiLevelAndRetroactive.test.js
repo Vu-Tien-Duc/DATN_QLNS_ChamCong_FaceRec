@@ -40,8 +40,8 @@ const run = async () => {
   const lecturerId = objectId();
   const reqLecturer = {
     userId: lecturerId,
-    trang_thai: 'PENDING',
-    cap_duyet_hien_tai: 1,
+    status: 'PENDING',
+    currentLevel: 1,
   };
   const sameUserAsApprover = {
     id: lecturerId.toString(),
@@ -57,9 +57,9 @@ const run = async () => {
   const deptLecturerId = objectId();
   const reqPendingBGH = {
     userId: deptLecturerId,
-    trang_thai: 'PENDING_BGH',
-    cap_duyet_hien_tai: 2,
-    so_cap_duyet: 2,
+    status: 'PENDING_BGH',
+    currentLevel: 2,
+    totalLevels: 2,
   };
   const deanUser = {
     id: objectId().toString(),
@@ -128,7 +128,7 @@ const run = async () => {
     leaveRequestId: req1._id,
   });
   assert.equal(attDoc.trang_thai, 'EXCUSED_ABSENCE');
-  assert.equal(attDoc.don_nghi_id.toString(), req1._id.toString());
+  assert.equal((attDoc.leaveRequestId || attDoc.don_tu_id).toString(), req1._id.toString());
   console.log('✓ Test 6 ĐẠT: Cấu trúc liên kết hồi tố và hoàn tác công AttendanceLog đồng bộ chuẩn xác với LeaveRequest.');
 
   console.log('\n===> TẤT CẢ 6 TEST TRONG LEAVEMULTILEVELANDRETROACTIVE.TEST.JS ĐÃ PASS 100% <===\n');

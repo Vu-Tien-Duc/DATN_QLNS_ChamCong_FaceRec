@@ -20,7 +20,10 @@ const systemConfigSchema = new mongoose.Schema(
     nhom: {
       type: String,
       alias: 'group',
-      enum: ['AI', 'GPS', 'DEVICE', 'ATTENDANCE', 'SYSTEM'],
+      enum: [
+        'AI', 'GPS', 'DEVICE', 'ATTENDANCE', 'SYSTEM', 'HE_THONG',
+        'DAO_TAO', 'TIEN_LUONG', 'THUE', 'CHUC_VU', 'CHAM_CONG', 'RETENTION'
+      ],
       default: 'SYSTEM',
       index: true,
     },
@@ -47,23 +50,13 @@ const systemConfigSchema = new mongoose.Schema(
 
 systemConfigSchema.aliases = {
   key: 'khoa_cau_hinh',
-  configKey: 'khoa_cau_hinh',
-  khoa: 'khoa_cau_hinh',
   value: 'gia_tri',
-  configValue: 'gia_tri',
   group: 'nhom',
-  category: 'nhom',
   description: 'mo_ta',
   updatedBy: 'nguoi_cap_nhat_id',
-  cap_nhat_boi: 'nguoi_cap_nhat_id',
   createdAt: 'tao_luc',
   updatedAt: 'cap_nhat_luc',
 };
-
-systemConfigSchema.virtual('createdAt').get(function () { return this.tao_luc; });
-systemConfigSchema.virtual('updatedAt').get(function () { return this.cap_nhat_luc; });
-systemConfigSchema.virtual('key').get(function () { return this.khoa_cau_hinh; });
-systemConfigSchema.virtual('value').get(function () { return this.gia_tri; });
 
 // Bảng giá trị cấu hình mặc định tham chiếu chuẩn từ Mục 3 Đặc tả:
 const CAU_HINH_MAC_DINH = {

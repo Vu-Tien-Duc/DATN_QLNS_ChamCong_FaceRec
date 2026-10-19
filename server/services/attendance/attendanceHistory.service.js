@@ -60,7 +60,7 @@ const getAttendanceHistory = async ({
   currentUser,
 }) => {
   const query = {};
-  const userRole = (role || currentUser?.role || currentUser?.vai_tro || '').toLowerCase();
+  const userRole = (role || currentUser?.role || '').toLowerCase();
 
   // 1. Phân quyền truy cập
   if (userRole === 'giangvien' || userRole === 'nhanvien') {
@@ -83,7 +83,7 @@ const getAttendanceHistory = async ({
     if (userId) query.userId = userId;
     if (departmentId) {
       const usersInDept = await User.find({
-        $or: [{ departmentId }, { ma_don_vi: departmentId }],
+        departmentId,
       }).distinct('_id');
       query.userId = { $in: usersInDept };
     }
@@ -92,7 +92,7 @@ const getAttendanceHistory = async ({
   // 2. Bộ lọc trạng thái & điều kiện
   if (status) query.status = status;
   if (method) {
-    query.$or = [{ method: method.toUpperCase() }, { phuong_thuc_vao: method.toUpperCase() }];
+    query.method = method.toUpperCase();
   }
   if (isFraud !== undefined) {
     query.isFraud = isFraud === 'true' || isFraud === true;
@@ -108,12 +108,12 @@ const getAttendanceHistory = async ({
 
   const [records, total] = await Promise.all([
     AttendanceLog.find(query)
-      .populate('userId', 'fullName ho_ten email staffCode ma_can_bo role vai_tro departmentId')
+      .populate('userId', 'fullName email staffCode role departmentId')
       .populate('shiftId', 'name startTime endTime')
       .populate('scheduleId', 'roomId subjectId')
       .populate({
         path: 'punchLogIds',
-        select: 'thoi_diem_quet loai_quet phuong_thuc do_tin_cay_ai diem_mat_that co_gian_lan ly_do_gian_lan dia_diem toa_do_gps',
+        select: 'punchTime punchType method confidenceScore livenessScore isFraudulent fraudReason deviceId location clientIp',
       })
       .sort({ date: -1, checkInTime: -1 })
       .skip(skip)
@@ -138,11 +138,11 @@ const getAttendanceHistory = async ({
  */
 const getRawPunchLogs = async ({ userId, from, to, page = 1, limit = 50 }) => {
   const query = {};
-  if (userId) query.ma_nguoi_dung = userId;
+  if (userId) query.userId = userId;
   if (from || to) {
-    query.thoi_diem_quet = {};
-    if (from) query.thoi_diem_quet.$gte = new Date(from);
-    if (to) query.thoi_diem_quet.$lte = new Date(to);
+    query.punchTime = {};
+    if (from) query.punchTime.$gte = new Date(from);
+    if (to) query.punchTime.$lte = new Date(to);
   }
 
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -151,8 +151,8 @@ const getRawPunchLogs = async ({ userId, from, to, page = 1, limit = 50 }) => {
 
   const [punches, total] = await Promise.all([
     PunchLog.find(query)
-      .populate('ma_nguoi_dung', 'fullName ho_ten email staffCode')
-      .sort({ thoi_diem_quet: -1 })
+      .populate('userId', 'fullName email staffCode')
+      .sort({ punchTime: -1 })
       .skip(skip)
       .limit(limitNum)
       .lean(),
@@ -170,8 +170,54 @@ const getRawPunchLogs = async ({ userId, from, to, page = 1, limit = 50 }) => {
   };
 };
 
+/**
+ * 4. Lấy dữ liệu ảnh minh chứng điểm danh theo ID bản ghi (có kiểm tra RBAC)
+ */
+const getAttendanceEvidence = async ({ id, currentUser }) => {
+  const { readAttendanceEvidence } = require('../../utils/attendanceEvidence');
+  const { isUserInDeanScope } = require('../../utils/deanScope');
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ServiceError('Mã bản ghi chấm công không hợp lệ.', 400);
+  }
+
+  const log = await AttendanceLog.findById(id).select('userId capturedImage');
+  if (!log) {
+    throw new ServiceError('Không tìm thấy bản ghi chấm công.', 404);
+  }
+
+  // Phân quyền: Admin xem mọi bản ghi, Trưởng khoa xem trong khoa, Cán bộ xem chính mình
+  const ownerId = log.userId?.toString() || log.userId;
+  if (currentUser) {
+    if (currentUser.role !== 'admin') {
+      if (currentUser.role === 'truongkhoa') {
+        const inScope = await isUserInDeanScope(currentUser, ownerId);
+        if (!inScope) {
+          throw new ServiceError('Bạn không có quyền xem ảnh minh chứng điểm danh của cán bộ ngoài khoa.', 403);
+        }
+      } else if (ownerId !== currentUser.id) {
+        throw new ServiceError('Bạn không có quyền xem ảnh minh chứng điểm danh của người khác.', 403);
+      }
+    }
+  }
+
+  const reference = log.capturedImage;
+  if (!reference) {
+    throw new ServiceError('Bản ghi điểm danh này không có ảnh minh chứng.', 404);
+  }
+
+  const evidence = await readAttendanceEvidence(reference);
+  if (!evidence) {
+    throw new ServiceError('Không tìm thấy tệp ảnh minh chứng trên hệ thống lưu trữ.', 404);
+  }
+
+  return evidence;
+};
+
 module.exports = {
   getAttendanceSummaryByUser,
   getAttendanceHistory,
   getRawPunchLogs,
+  getAttendanceEvidence,
 };
+

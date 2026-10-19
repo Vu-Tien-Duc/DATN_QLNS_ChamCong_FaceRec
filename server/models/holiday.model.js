@@ -56,7 +56,6 @@ const holidaySchema = new mongoose.Schema(
 
 holidaySchema.aliases = {
   name: 'ten_ngay_le',
-  holidayName: 'ten_ngay_le',
   startDate: 'ngay_bat_dau',
   endDate: 'ngay_ket_thuc',
   year: 'nam',
@@ -67,11 +66,7 @@ holidaySchema.aliases = {
   updatedAt: 'cap_nhat_luc',
 };
 
-holidaySchema.virtual('createdAt').get(function () { return this.tao_luc; });
-holidaySchema.virtual('updatedAt').get(function () { return this.cap_nhat_luc; });
-holidaySchema.virtual('name').get(function () { return this.ten_ngay_le; });
-holidaySchema.virtual('startDate').get(function () { return this.ngay_bat_dau; });
-holidaySchema.virtual('endDate').get(function () { return this.ngay_ket_thuc; });
+
 
 const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 holidaySchema.plugin(schemaAliasPlugin);

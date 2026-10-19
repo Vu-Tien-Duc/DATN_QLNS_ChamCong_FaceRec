@@ -16,10 +16,11 @@ const run = async () => {
   assert.ok(UNIVERSITY_POLICY_KNOWLEDGE.cham_cong, 'Thiếu quy chế chấm công');
   assert.ok(UNIVERSITY_POLICY_KNOWLEDGE.nghi_phep, 'Thiếu quy chế nghỉ phép');
   assert.ok(UNIVERSITY_POLICY_KNOWLEDGE.gio_giang, 'Thiếu quy chế giờ chuẩn giảng dạy');
-  assert.ok(UNIVERSITY_POLICY_KNOWLEDGE.tien_luong_thue, 'Thiếu quy chế tiền lương và thuế');
+  assert.ok(UNIVERSITY_POLICY_KNOWLEDGE.salary_and_tax || UNIVERSITY_POLICY_KNOWLEDGE.tien_luong_thue, 'Thiếu quy chế tiền lương và thuế');
   assert.ok(UNIVERSITY_POLICY_KNOWLEDGE.face_ai, 'Thiếu tiêu chuẩn sinh trắc học Face AI');
 
-  const policyText = UNIVERSITY_POLICY_KNOWLEDGE.tien_luong_thue.noi_dung.join('\n');
+  const policy = UNIVERSITY_POLICY_KNOWLEDGE.salary_and_tax || UNIVERSITY_POLICY_KNOWLEDGE.tien_luong_thue;
+  const policyText = policy.noi_dung.join('\n');
   assert.ok(policyText.includes('2.530.000'), 'Lương cơ sở phải là 2.530.000đ');
   assert.ok(policyText.includes('30%'), 'Phụ cấp ưu đãi nghề giáo dục phải là 30%');
   assert.ok(policyText.includes('15.500.000'), 'Giảm trừ gia cảnh bản thân phải là 15.500.000đ');
@@ -127,25 +128,23 @@ const run = async () => {
     fullName: 'TS. Nguyễn Văn A',
     email: 'a.nv@uni.edu.vn',
     password: 'HASHED_PASSWORD_SECRET',
-    mat_khau: 'BCRYPT_SECRET',
     refreshToken: 'JWT_REFRESH_SECRET',
     faceDescriptors: [[0.1, 0.2]],
-    so_cccd: '001200000001',
+    citizenId: '001200000001',
     attendance: {
       total: 20,
       onTime: 19,
       late: 1,
-      mat_khau: 'NESTED_LEAK_SECRET',
+      password: 'NESTED_LEAK_SECRET',
     },
   };
   const sanitizedContext = sanitizeContextData(dirtyContextData);
   assert.strictEqual(sanitizedContext.fullName, 'TS. Nguyễn Văn A');
   assert.strictEqual(sanitizedContext.password, undefined, 'Phải lọc bỏ trường password');
-  assert.strictEqual(sanitizedContext.mat_khau, undefined, 'Phải lọc bỏ trường mat_khau');
   assert.strictEqual(sanitizedContext.refreshToken, undefined, 'Phải lọc bỏ trường refreshToken');
   assert.strictEqual(sanitizedContext.faceDescriptors, undefined, 'Phải lọc bỏ trường faceDescriptors');
-  assert.strictEqual(sanitizedContext.so_cccd, undefined, 'Phải lọc bỏ trường so_cccd');
-  assert.strictEqual(sanitizedContext.attendance.mat_khau, undefined, 'Phải lọc bỏ trường nhạy cảm lồng nhau');
+  assert.strictEqual(sanitizedContext.citizenId, undefined, 'Phải lọc bỏ trường citizenId');
+  assert.strictEqual(sanitizedContext.attendance.password, undefined, 'Phải lọc bỏ trường nhạy cảm lồng nhau');
   assert.strictEqual(sanitizedContext.attendance.total, 20);
   console.log('✓ Test 8 ĐẠT: Cơ chế Khử trùng đầu vào & DLP Whitelist bảo vệ 100% dữ liệu nhạy cảm trước khi đưa vào context LLM.');
 
