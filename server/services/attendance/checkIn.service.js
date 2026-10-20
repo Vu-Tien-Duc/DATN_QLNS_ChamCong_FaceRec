@@ -11,6 +11,7 @@ const mongoose = require('mongoose');
 const AttendanceLog = require('../../models/attendanceLog.model');
 const PunchLog = require('../../models/punchLog.model');
 const Schedule = require('../../models/schedule.model');
+const ShiftConfig = require('../../models/shiftConfig.model');
 const User = require('../../models/user.model');
 const { sendCheckInNotificationEmail } = require('../email.service');
 const { calculateDistanceMeters, validateGeofence } = require('../../utils/attendanceHelpers');
@@ -90,18 +91,24 @@ const performCheckIn = async ({
   const nowVN = getVietnamTime();
   const { startOfDay, endOfDay } = getVietnamDayRange();
 
+  const workDateStr = `${nowVN.getFullYear()}-${String(nowVN.getMonth() + 1).padStart(2, '0')}-${String(nowVN.getDate()).padStart(2, '0')}`;
+
   // 2. Kiểm tra xem hôm nay đã có lượt check-in chưa
   let attendance = await AttendanceLog.findOne({
     userId,
-    date: { $gte: startOfDay, $lte: endOfDay },
+    $or: [
+      { workDate: workDateStr },
+      { ngay_cong: workDateStr },
+      { date: { $gte: startOfDay, $lte: endOfDay } },
+    ],
   });
 
-  if (attendance && attendance.checkInTime) {
+  if (attendance && (attendance.checkInTime || attendance.thoi_gian_vao)) {
     throw new ServiceError(
       'Bạn đã thực hiện check-in cho ngày hôm nay rồi.',
       400,
       'ATTENDANCE_ALREADY_CHECKED_IN',
-      { checkInTime: attendance.checkInTime }
+      { checkInTime: attendance.checkInTime || attendance.thoi_gian_vao }
     );
   }
 
@@ -110,15 +117,34 @@ const performCheckIn = async ({
   let calculatedStatus = 'ON_TIME';
   let lateMinutes = 0;
 
-  try {
-    const evalResult = await evaluateUserScheduleForCheckIn(userId, nowVN);
-    if (evalResult && evalResult.shift) {
-      effectiveShift = evalResult.shift;
-      const statusInfo = calculateAttendanceStatus(nowVN, effectiveShift);
-      calculatedStatus = statusInfo.status;
-      lateMinutes = statusInfo.lateMinutes || 0;
-    }
-  } catch (_) {
+  if (shiftId) {
+    effectiveShift = await ShiftConfig.findById(shiftId);
+  }
+
+  if (!effectiveShift) {
+    try {
+      const evalResult = await evaluateUserScheduleForCheckIn(userId, nowVN);
+      if (evalResult && evalResult.shift) {
+        effectiveShift = evalResult.shift;
+        const statusInfo = calculateAttendanceStatus(nowVN, effectiveShift);
+        calculatedStatus = statusInfo.status;
+        lateMinutes = statusInfo.lateMinutes || 0;
+      }
+    } catch (_) {}
+  }
+
+  if (!effectiveShift) {
+    effectiveShift =
+      (await ShiftConfig.findOne({ isDefault: true })) ||
+      (await ShiftConfig.findOne({ loai_ca: { $in: ['HANH_CHINH', 'hanhchinh', 'standard'] } })) ||
+      (await ShiftConfig.findOne());
+  }
+
+  if (effectiveShift) {
+    const statusInfo = calculateAttendanceStatus(nowVN, effectiveShift);
+    calculatedStatus = statusInfo.status;
+    lateMinutes = statusInfo.lateMinutes || 0;
+  } else {
     // Fallback: Nếu không gán ca, tính theo giờ hành chính chuẩn 08:00
     const currentHour = nowVN.getHours();
     const currentMin = nowVN.getMinutes();
@@ -129,8 +155,13 @@ const performCheckIn = async ({
     }
   }
 
-  // 4. Tạo bản ghi PunchLog (Collection 4 - nhat_ky_quet_the)
+  // 4. Khởi tạo ID AttendanceLog và tạo bản ghi PunchLog (Collection 4 - nhat_ky_quet_the)
+  const attendanceId = attendance?._id || new mongoose.Types.ObjectId();
+  const finalShiftId = shiftId || effectiveShift?._id || null;
+
   const punchPayload = {
+    cham_cong_id: attendanceId,
+    attendanceLogId: attendanceId,
     userId,
     punchTime: nowVN,
     punchType: 'CHECK_IN',
@@ -144,7 +175,7 @@ const performCheckIn = async ({
     locationName: validatedLocationName,
     isFraudulent: isFraud,
     fraudReason,
-    shiftId: shiftId || effectiveShift?._id || null,
+    shiftId: finalShiftId,
     scheduleId: scheduleId || null,
   };
 
@@ -161,13 +192,18 @@ const performCheckIn = async ({
   // 5. Khởi tạo / Cập nhật AttendanceLog (Collection 3 - bang_cham_cong_tong_hop)
   if (!attendance) {
     attendance = new AttendanceLog({
+      _id: attendanceId,
       userId,
-      date: startOfDay,
+      workDate: workDateStr,
+      date: workDateStr,
+      ngay_cong: workDateStr,
       checkInTime: nowVN,
+      thoi_gian_vao: nowVN,
       status: calculatedStatus,
       method: method.toUpperCase(),
       deviceId: finalDeviceId,
-      shiftId: shiftId || effectiveShift?._id || null,
+      shiftId: finalShiftId,
+      ca_id: finalShiftId,
       scheduleId: scheduleId || null,
       lateMinutes,
       isFraud,

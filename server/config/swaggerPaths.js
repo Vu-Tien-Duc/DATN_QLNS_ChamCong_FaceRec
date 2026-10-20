@@ -257,17 +257,29 @@ const swaggerComponents = {
         status: { type: 'string', enum: ['SUCCESS', 'FAILED'], example: 'SUCCESS' },
       },
     },
+    Notification: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string', example: '6a9d57378cf3a6165de25df9' },
+        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        title: { type: 'string', example: 'Nhắc nhở chấm công' },
+        message: { type: 'string', example: 'Bạn có tiết giảng dạy lúc 07:00 tại phòng A1-402.' },
+        type: { type: 'string', enum: ['INFO', 'WARNING', 'SUCCESS', 'ERROR'], example: 'INFO' },
+        isRead: { type: 'boolean', example: false },
+        createdAt: { type: 'string', format: 'date-time' },
+      },
+    },
   },
 };
 
 const swaggerPaths = {
   // -------------------------------------------------------------
-  // SYSTEM & HEALTH CHECK
+  // 17. SYSTEM & HEALTH CHECK
   // -------------------------------------------------------------
   '/api/health': {
     get: {
-      tags: ['3.8 - Hạ Tầng & Kiểm Tra Hệ Thống'],
-      summary: '[🔓 Public] Kiểm tra trạng thái máy chủ và 14 Collections MongoDB CSDL v2.5',
+      tags: ['17 - Hạ Tầng & Kiểm Tra Hệ Thống (Health Check)'],
+      summary: '[🔓 Public] Kiểm tra trạng thái máy chủ và 14 Collections MongoDB CSDL v2.6',
       responses: {
         200: {
           description: 'Hệ thống hoạt động bình thường',
@@ -306,33 +318,13 @@ const swaggerPaths = {
   },
 
   // -------------------------------------------------------------
-  // 3.1 AUTHENTICATION
+  // 01. AUTHENTICATION & SESSIONS
   // -------------------------------------------------------------
   '/api/auth/login': {
-    get: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
-      summary: '[🔓 Public] Hướng dẫn phương thức đăng nhập (Trả về 405 Method Not Allowed)',
-      description: 'Nhắc nhở người dùng và nhà phát triển gửi yêu cầu POST /api/auth/login kèm theo body JSON { email, password } thay vì gọi GET.',
-      security: [],
-      responses: {
-        405: {
-          description: 'Phương thức GET không được hỗ trợ',
-          content: {
-            'application/json': {
-              example: {
-                success: false,
-                message: 'Phương thức GET không được hỗ trợ cho route này. Vui lòng gửi HTTP POST với Body JSON { email, password } để đăng nhập.',
-                hint: 'Sử dụng POST /api/auth/login',
-              },
-            },
-          },
-        },
-      },
-    },
     post: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Đăng nhập người dùng (Rate Limit 5 lần/15p, JWT Access & Refresh Token)',
-      description: 'Đăng nhập vào hệ thống bằng Email và Mật khẩu. Áp dụng giới hạn tối đa 5 lần thử/15 phút. Mặc định mật khẩu các tài khoản demo: password123',
+      description: 'Đăng nhập vào hệ thống bằng Email hoặc Mã cán bộ và Mật khẩu.\n\n**Danh sách tài khoản Demo (Mật khẩu chung: `password123`):**\n- Quản trị viên (Admin): `admin@university.edu.vn` hoặc `daihocdtd@gmail.com`\n- Hiệu trưởng (BGH): `hieutruong@university.edu.vn`\n- Trưởng khoa CNTT: `truongkhoa.cntt@university.edu.vn`\n- Giảng viên: `giangvien.bich@university.edu.vn`\n- Nhân viên: `nhanvien.ha@university.edu.vn`',
       security: [],
       requestBody: {
         required: true,
@@ -342,7 +334,7 @@ const swaggerPaths = {
               type: 'object',
               required: ['email', 'password'],
               properties: {
-                email: { type: 'string', example: 'daihocdtd@gmail.com' },
+                email: { type: 'string', example: 'admin@university.edu.vn' },
                 password: { type: 'string', example: 'password123' },
               },
             },
@@ -381,7 +373,7 @@ const swaggerPaths = {
 
   '/api/auth/me': {
     get: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔒 Cá nhân] Lấy thông tin cá nhân hiện tại của người dùng đang đăng nhập',
       security: [{ BearerAuth: [] }],
       responses: {
@@ -400,7 +392,7 @@ const swaggerPaths = {
 
   '/api/auth/refresh': {
     post: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Cấp mới Access Token từ Refresh Token (Alias)',
       description: 'Hệ thống tự động đọc Refresh Token từ httpOnly cookie hoặc JSON Request Body để cấp mới Access Token 15 phút.',
       security: [],
@@ -427,7 +419,7 @@ const swaggerPaths = {
 
   '/api/auth/refresh-token': {
     post: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Cấp mới Access Token từ Refresh Token (Tuyến đường chuẩn)',
       description: 'Đọc Refresh Token từ httpOnly cookie hoặc JSON Request Body để cấp mới Access Token 15 phút.',
       security: [],
@@ -454,7 +446,7 @@ const swaggerPaths = {
 
   '/api/auth/logout': {
     post: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔒 Xác thực] Đăng xuất khỏi hệ thống (Blacklist Access Token, xóa Refresh Token & clear Cookie)',
       description: 'Đưa Access Token hiện tại vào Blacklist để vô hiệu hóa ngay lập tức, xóa Refresh Token trong CSDL và xóa httpOnly cookie.',
       security: [{ BearerAuth: [] }],
@@ -477,98 +469,9 @@ const swaggerPaths = {
     },
   },
 
-  '/api/auth/register': {
-    post: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
-      summary: '[🔓 Public] Đăng ký tài khoản người dùng mới (Gửi mã OTP 6 chữ số qua Email, hạn 10 phút)',
-      description: 'Đăng ký tài khoản mới và nhận mã OTP 6 số để kích hoạt tài khoản. Tài khoản ở trạng thái chưa xác minh (isVerified: false).',
-      security: [],
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: {
-              type: 'object',
-              required: ['fullName', 'email', 'password', 'departmentId'],
-              properties: {
-                fullName: { type: 'string', example: 'ThS. Nguyễn Văn Mới' },
-                email: { type: 'string', example: 'nguyenvanmoi@university.edu.vn' },
-                password: { type: 'string', example: 'password123' },
-                role: { type: 'string', enum: ['admin', 'truongkhoa', 'giangvien', 'nhanvien'], example: 'giangvien' },
-                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
-                annualLeaveQuota: { type: 'number', example: 12 },
-              },
-            },
-          },
-        },
-      },
-      responses: {
-        201: { description: 'Đăng ký thành công, mã OTP 6 số đã được gửi qua email (hạn 10 phút)' },
-        400: { description: 'Thiếu dữ liệu bắt buộc hoặc Email đã được sử dụng' },
-      },
-    },
-  },
-
-  '/api/auth/verify-otp': {
-    post: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
-      summary: '[🔓 Public] Xác minh tài khoản bằng mã OTP (Quá 10 phút -> Xóa tài khoản)',
-      description: 'Người dùng nhập mã OTP 6 chữ số nhận từ Email để kích hoạt tài khoản. Nếu quá 10 phút, hệ thống tự động xóa tài khoản và yêu cầu đăng ký lại.',
-      security: [],
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: {
-              type: 'object',
-              required: ['email', 'otp'],
-              properties: {
-                email: { type: 'string', example: 'nguyenvanmoi@university.edu.vn' },
-                otp: { type: 'string', example: '123456' },
-              },
-            },
-          },
-        },
-      },
-      responses: {
-        200: { description: 'Xác minh tài khoản thành công, gửi email chúc mừng' },
-        400: { description: 'Mã OTP không hợp lệ HOẶC đã hết hạn (quá 10 phút, tài khoản đã bị xóa)' },
-        404: { description: 'Không tìm thấy thông tin tài khoản' },
-      },
-    },
-  },
-
-  '/api/auth/verify-account': {
-    post: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
-      summary: '[🔓 Public] Kích hoạt tài khoản bằng mã OTP 6 số (Alias chuẩn)',
-      description: 'Người dùng nhập mã OTP 6 chữ số nhận từ Email để kích hoạt tài khoản (tương tự /verify-otp).',
-      security: [],
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: {
-              type: 'object',
-              required: ['email', 'otp'],
-              properties: {
-                email: { type: 'string', example: 'nguyenvanmoi@university.edu.vn' },
-                otp: { type: 'string', example: '123456' },
-              },
-            },
-          },
-        },
-      },
-      responses: {
-        200: { description: 'Xác minh tài khoản thành công' },
-        400: { description: 'Mã OTP không hợp lệ hoặc đã hết hạn' },
-      },
-    },
-  },
-
   '/api/auth/forgot-password': {
     post: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Yêu cầu mã OTP đặt lại mật khẩu (Hạn 10 phút)',
       description: 'Gửi mã OTP 6 chữ số đến email để xác thực yêu cầu đổi mật khẩu mới.',
       security: [],
@@ -597,7 +500,7 @@ const swaggerPaths = {
 
   '/api/auth/reset-password': {
     post: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Xác thực OTP và đặt lại mật khẩu mới',
       description: 'Nhập mã OTP 6 số còn hiệu lực (< 10 phút) và mật khẩu mới để đổi mật khẩu (thu hồi các token cũ).',
       security: [],
@@ -627,7 +530,7 @@ const swaggerPaths = {
 
   '/api/auth/change-password': {
     put: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔒 Cá nhân] Đổi mật khẩu tài khoản đang đăng nhập',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -654,7 +557,7 @@ const swaggerPaths = {
 
   '/api/auth/avatar': {
     put: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔒 Cá nhân] Cập nhật ảnh đại diện cá nhân (PUT - Upload file hoặc URL)',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -682,7 +585,7 @@ const swaggerPaths = {
       },
     },
     post: {
-      tags: ['3.1 - Xác Thực & Phiên Làm Việc (Auth)'],
+      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔒 Cá nhân] Cập nhật ảnh đại diện cá nhân (POST - Upload file hoặc URL)',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -716,7 +619,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   '/api/users': {
     get: {
-      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      tags: ['02 - Quản Lý Người Dùng (Users)'],
       summary: '[🔒 Admin / Trưởng khoa] Lấy danh sách người dùng (Admin xem toàn trường, Trưởng khoa chỉ xem khoa mình)',
       security: [{ BearerAuth: [] }],
       parameters: [
@@ -731,7 +634,7 @@ const swaggerPaths = {
       },
     },
     post: {
-      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      tags: ['02 - Quản Lý Người Dùng (Users)'],
       summary: '[🔒 Admin] Thêm người dùng mới (Ghi Audit Log)',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -766,7 +669,7 @@ const swaggerPaths = {
 
   '/api/users/{id}': {
     get: {
-      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      tags: ['02 - Quản Lý Người Dùng (Users)'],
       summary: '[🔒 Admin / Trưởng khoa] Xem thông tin chi tiết một người dùng',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -776,7 +679,7 @@ const swaggerPaths = {
       },
     },
     put: {
-      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      tags: ['02 - Quản Lý Người Dùng (Users)'],
       summary: '[🔒 Admin / Trưởng khoa] Cập nhật thông tin người dùng (Ghi Audit Log)',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -806,7 +709,7 @@ const swaggerPaths = {
       },
     },
     delete: {
-      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      tags: ['02 - Quản Lý Người Dùng (Users)'],
       summary: '[🔒 Admin] Vô hiệu hóa người dùng (Soft Delete: isActive = false, Ghi Audit Log)',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -819,7 +722,7 @@ const swaggerPaths = {
 
   '/api/users/{id}/face-descriptor': {
     post: {
-      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      tags: ['02 - Quản Lý Người Dùng (Users)'],
       summary: '[🔒 Admin] Đăng ký Face ID đa góc từ ảnh bằng InsightFace (512 chiều)',
       description: 'Gửi tối đa 5 ảnh góc độ JPEG, PNG hoặc WebP dạng multipart/form-data (chính diện, nghiêng trái, nghiêng phải, ngửa lên, cúi xuống). Face Service trích xuất embedding 512 chiều; backend lưu vector trong face_templates.',
       security: [{ BearerAuth: [] }],
@@ -849,7 +752,7 @@ const swaggerPaths = {
       },
     },
     delete: {
-      tags: ['3.1 - Quản Lý Người Dùng (Users)'],
+      tags: ['02 - Quản Lý Người Dùng (Users)'],
       summary: '[🔒 Admin] Xóa dữ liệu Face ID của nhân sự',
       description: 'Xóa mẫu khuôn mặt khỏi collection face_templates và đặt lại faceRegistered = false để cho phép đăng ký lại.',
       security: [{ BearerAuth: [] }],
@@ -867,7 +770,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   '/api/departments': {
     get: {
-      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
       summary: '[🔒 Xác thực] Lấy danh sách Khoa / Viện / Phòng ban (Cây phân cấp)',
       security: [{ BearerAuth: [] }],
       parameters: [
@@ -880,7 +783,7 @@ const swaggerPaths = {
       },
     },
     post: {
-      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
       summary: '[🔒 Admin] Tạo mới Khoa / Phòng ban / Bộ môn',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -916,7 +819,7 @@ const swaggerPaths = {
 
   '/api/departments/tree': {
     get: {
-      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
       summary: '[🔒 Xác thực] Lấy cây cơ cấu tổ chức phân cấp (Trường > Khoa > Bộ môn)',
       security: [{ BearerAuth: [] }],
       responses: {
@@ -927,7 +830,7 @@ const swaggerPaths = {
 
   '/api/departments/{id}': {
     get: {
-      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
       summary: '[🔒 Xác thực] Lấy chi tiết Khoa / Phòng ban',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -937,7 +840,7 @@ const swaggerPaths = {
       },
     },
     put: {
-      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
       summary: '[🔒 Admin / Trưởng khoa] Cập nhật thông tin Khoa / Phòng ban',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -966,7 +869,7 @@ const swaggerPaths = {
       },
     },
     delete: {
-      tags: ['3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
+      tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
       summary: '[🔒 Admin] Xóa Khoa / Phòng ban (Ràng buộc nhân sự & đơn vị con)',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -982,7 +885,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   '/api/shifts': {
     get: {
-      tags: ['3.3 - Ca Làm Việc & Tiết Học (Shifts)'],
+      tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
       summary: '[🔒 Xác thực] Danh sách cấu hình ca làm việc / tiết học',
       security: [{ BearerAuth: [] }],
       responses: {
@@ -990,7 +893,7 @@ const swaggerPaths = {
       },
     },
     post: {
-      tags: ['3.3 - Ca Làm Việc & Tiết Học (Shifts)'],
+      tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
       summary: '[🔒 Admin] Thêm mới ca làm việc / tiết dạy',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -1022,7 +925,7 @@ const swaggerPaths = {
 
   '/api/shifts/{id}': {
     get: {
-      tags: ['3.3 - Ca Làm Việc & Tiết Học (Shifts)'],
+      tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
       summary: '[🔒 Xác thực] Chi tiết ca làm việc theo ID',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1032,7 +935,7 @@ const swaggerPaths = {
       },
     },
     put: {
-      tags: ['3.3 - Ca Làm Việc & Tiết Học (Shifts)'],
+      tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
       summary: '[🔒 Admin] Cập nhật ca làm việc',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1056,7 +959,7 @@ const swaggerPaths = {
       },
     },
     delete: {
-      tags: ['3.3 - Ca Làm Việc & Tiết Học (Shifts)'],
+      tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
       summary: '[🔒 Admin] Xóa ca làm việc',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1071,7 +974,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   '/api/schedules': {
     get: {
-      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Xác thực] Tra cứu lịch giảng dạy và lịch làm việc',
       security: [{ BearerAuth: [] }],
       parameters: [
@@ -1085,7 +988,7 @@ const swaggerPaths = {
       },
     },
     post: {
-      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Admin / Trưởng khoa] Tạo mới lịch phân công giảng dạy',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -1117,7 +1020,7 @@ const swaggerPaths = {
 
   '/api/schedules/today': {
     get: {
-      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Xác thực] Lấy danh sách lịch giảng dạy hiệu lực trong ngày hôm nay',
       security: [{ BearerAuth: [] }],
       parameters: [
@@ -1132,7 +1035,7 @@ const swaggerPaths = {
 
   '/api/schedules/{id}': {
     get: {
-      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Xác thực] Xem chi tiết một lịch giảng dạy',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1141,7 +1044,7 @@ const swaggerPaths = {
       },
     },
     put: {
-      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Admin / Trưởng khoa] Cập nhật lịch giảng dạy',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1163,7 +1066,7 @@ const swaggerPaths = {
       },
     },
     delete: {
-      tags: ['3.3 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Admin / Trưởng khoa] Xóa lịch giảng dạy',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1178,7 +1081,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   '/api/attendance/check-in': {
     post: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Cá nhân] Điểm danh đầu ca (Check-in GPS / QR / Manual)',
       description: 'Hệ thống tự động tìm lịch dạy phù hợp của người dùng trong khoảng [startTime - 30p, endTime] và đánh giá trạng thái Đúng giờ / Đi muộn.',
       security: [{ BearerAuth: [] }],
@@ -1211,7 +1114,7 @@ const swaggerPaths = {
 
   '/api/attendance/check-out': {
     post: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Cá nhân] Điểm danh kết thúc ca (Check-out)',
       description: 'Tự động tìm kiếm bản ghi check-in mở gần nhất trong ngày để đóng ca và cập nhật thời gian check-out.',
       security: [{ BearerAuth: [] }],
@@ -1224,7 +1127,7 @@ const swaggerPaths = {
 
   '/api/attendance/history': {
     get: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Xác thực] Lịch sử chấm công (Phân quyền: GV cá nhân, Trưởng khoa xem khoa, Admin toàn trường)',
       security: [{ BearerAuth: [] }],
       parameters: [
@@ -1244,7 +1147,7 @@ const swaggerPaths = {
 
   '/api/attendance/{id}': {
     get: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Xác thực] Xem chi tiết bản ghi chấm công',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1253,7 +1156,7 @@ const swaggerPaths = {
       },
     },
     put: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Admin] Điều chỉnh bản ghi chấm công (Ghi Audit Log)',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1282,7 +1185,7 @@ const swaggerPaths = {
 
   '/api/attendance/cron/test-daily-check': {
     post: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Admin] Kích hoạt thủ công tiến trình quét vắng mặt (Test Demo)',
       description: 'Kích hoạt thủ công tiến trình cron kiểm tra vắng mặt ngay lập tức mà không cần đợi 23:59 đêm để phục vụ test demo.',
       security: [{ BearerAuth: [] }],
@@ -1303,7 +1206,7 @@ const swaggerPaths = {
 
   '/api/attendance/trigger-absent-cron': {
     post: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Admin] Kích hoạt thủ công tiến trình quét vắng mặt (Alias URL)',
       description: 'Kích hoạt thủ công tiến trình cron kiểm tra vắng mặt ngay lập tức (Alias của /api/attendance/cron/test-daily-check).',
       security: [{ BearerAuth: [] }],
@@ -1324,7 +1227,7 @@ const swaggerPaths = {
 
   '/api/attendance/face-checkin': {
     post: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Máy chấm công] Điểm danh nhận diện khuôn mặt qua Máy chấm công Face ID',
       description: 'Xác thực qua header x-terminal-key hoặc Bearer Token kèm rate limit 15 req/phút. Gửi ảnh multipart/form-data để Face Service nhận diện bằng InsightFace 512D, tự động tìm ca dạy phù hợp trong ngày và ghi nhận điểm danh.',
       security: [],
@@ -1380,7 +1283,7 @@ const swaggerPaths = {
 
   '/api/attendance/face-checkin-batch': {
     post: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Máy chấm công] Điểm danh nhận diện khuôn mặt hàng loạt (Batch)',
       description: 'Nhận danh sách nhiều vector khuôn mặt quét được đồng thời trong một khung hình camera Máy chấm công để xử lý điểm danh song song.',
       security: [],
@@ -1422,7 +1325,7 @@ const swaggerPaths = {
 
   '/api/attendance/qr/generate': {
     get: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔓 Public] Sinh mã QR Động TOTP (Hiệu lực 15-20s) phục vụ điểm danh Máy chấm công / Lớp học',
       description: 'Sinh chuỗi mã hóa ký HMAC-SHA256 kèm timestamp làm mới liên tục mỗi 15-20 giây để hiển thị trên màn hình Máy chấm công hoặc máy chiếu giảng đường.',
       security: [],
@@ -1449,7 +1352,7 @@ const swaggerPaths = {
 
   '/api/attendance/qr/scan': {
     post: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Cá nhân] Quét mã QR Động trên di động để điểm danh vào ca',
       description: 'Giảng viên dùng điện thoại di động quét mã QR động hiển thị trên máy chiếu / Máy chấm công kết hợp xác thực tọa độ GPS khuôn viên trường (Geofence).',
       security: [{ BearerAuth: [] }],
@@ -1484,7 +1387,7 @@ const swaggerPaths = {
 
   '/api/attendance/campus-config': {
     get: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔓 Public] Lấy cấu hình tọa độ khuôn viên trường & bán kính Geofencing GPS',
       description: 'Trả về tọa độ trung tâm khuôn viên trường đại học và bán kính hợp lệ (mét) cho phép điểm danh di động.',
       security: [],
@@ -1507,7 +1410,7 @@ const swaggerPaths = {
       },
     },
     post: {
-      tags: ['3.4 - Quản Lý Chấm Công (Attendance)'],
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Admin] Cập nhật tọa độ khuôn viên trường & bán kính Geofencing GPS',
       description: 'Chỉ Quản trị viên (Admin) mới có quyền hiệu chỉnh tọa độ trung tâm và bán kính cho phép chấm công GPS.',
       security: [{ BearerAuth: [] }],
@@ -1534,12 +1437,97 @@ const swaggerPaths = {
     },
   },
 
+  '/api/attendance/{id}/evidence': {
+    get: {
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
+      summary: '[🔒 Xác thực] Lấy ảnh chụp minh chứng điểm danh của bản ghi chấm công',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Lấy ảnh minh chứng thành công' },
+        404: { description: 'Không tìm thấy minh chứng ảnh' },
+      },
+    },
+  },
+
+  '/api/attendance/queue/stats': {
+    get: {
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
+      summary: '[🔒 Admin/Kiểm tra] Thống kê hàng đợi chấm công bất đồng bộ BullMQ Redis',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: { description: 'Lấy thống kê hàng đợi thành công' },
+      },
+    },
+  },
+
+  '/api/attendance/faiss/stats': {
+    get: {
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
+      summary: '[🔒 Admin/Kiểm tra] Trạng thái RAM FAISS Index 512D tìm kiếm siêu tốc',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: { description: 'Lấy thống kê FAISS thành công' },
+      },
+    },
+  },
+
+  '/api/attendance/faiss/sync': {
+    post: {
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
+      summary: '[🔒 Admin] Đồng bộ lại FAISS Index từ CSDL MongoDB lên RAM',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: { description: 'Đồng bộ FAISS Index thành công' },
+      },
+    },
+  },
+
+  '/api/attendance/liveness/challenge': {
+    get: {
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
+      summary: '[🔓 Public] Sinh thử thách cử động sống (Liveness Challenge)',
+      description: 'Trả về chuỗi hành động ngẫu nhiên (chớp mắt, quay trái, mỉm cười) kèm JWT token xác thực phiên sống.',
+      security: [],
+      responses: {
+        200: { description: 'Sinh thử thách thành công' },
+      },
+    },
+  },
+
+  '/api/attendance/liveness/verify-challenge': {
+    post: {
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
+      summary: '[🔓 Public] Xác minh ảnh khuôn mặt theo thử thách cử động sống',
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              properties: {
+                image: { type: 'string', format: 'binary' },
+                challengeToken: { type: 'string' },
+                action: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Xác minh liveness thành công' },
+        400: { description: 'Thử thách không hợp lệ hoặc không phát hiện đúng cử động' },
+      },
+    },
+  },
+
   // -------------------------------------------------------------
-  // 3.5 LEAVE REQUESTS
+  // 10. LEAVE REQUESTS & SHIFT EXCHANGES
   // -------------------------------------------------------------
   '/api/leave-requests': {
     post: {
-      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Cá nhân] Tạo đơn xin nghỉ phép / dạy bù / đổi ca',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -1566,7 +1554,7 @@ const swaggerPaths = {
       },
     },
     get: {
-      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Xác thực] Danh sách đơn xin nghỉ phép (Phân quyền theo vai trò)',
       security: [{ BearerAuth: [] }],
       parameters: [
@@ -1582,7 +1570,7 @@ const swaggerPaths = {
 
   '/api/leave-requests/balance': {
     get: {
-      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Cá nhân / Xác thực] Xem số ngày phép còn lại trong năm (Leave Balance)',
       description: 'Dùng Aggregate pipeline tính tổng ngày phép tiêu chuẩn, ngày đã sử dụng và ngày còn lại.',
       security: [{ BearerAuth: [] }],
@@ -1614,7 +1602,7 @@ const swaggerPaths = {
 
   '/api/leave-requests/{id}': {
     get: {
-      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Xác thực] Xem chi tiết một đơn xin nghỉ',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1627,8 +1615,8 @@ const swaggerPaths = {
 
   '/api/leave-requests/{id}/approve': {
     put: {
-      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
-      summary: '[🔒 Admin / Trưởng khoa] Phê duyệt đơn xin nghỉ',
+      tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      summary: '[🔒 Admin / Trưởng khoa] Phê duyệt đơn xin nghỉ (Hỗ trợ Optimistic Locking qua version)',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
       requestBody: {
@@ -1638,6 +1626,7 @@ const swaggerPaths = {
               type: 'object',
               properties: {
                 approvalNote: { type: 'string', example: 'Đồng ý cho nghỉ phép, khoa đã bố trí giảng viên dạy thay.' },
+                version: { type: 'integer', example: 0, description: 'Phiên bản tài liệu kiểm soát khóa lạc quan' },
               },
             },
           },
@@ -1645,13 +1634,14 @@ const swaggerPaths = {
       },
       responses: {
         200: { description: 'Duyệt đơn thành công' },
+        409: { description: 'Xung đột phiên bản dữ liệu (Optimistic Locking Conflict)' },
       },
     },
   },
 
   '/api/leave-requests/{id}/reject': {
     put: {
-      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Admin / Trưởng khoa] Từ chối đơn xin nghỉ',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1661,7 +1651,8 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                approvalNote: { type: 'string', example: 'Trùng lịch thi kết thúc học phần, đề nghị chọn ngày khác.' },
+                rejectionReason: { type: 'string', example: 'Trùng lịch thi kết thúc học phần, đề nghị chọn ngày khác.' },
+                version: { type: 'integer', example: 0 },
               },
             },
           },
@@ -1673,34 +1664,26 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 3.6 AUDIT LOGS
-  // -------------------------------------------------------------
-  '/api/audit-logs': {
-    get: {
-      tags: ['3.6 - Nhật Ký Kiểm Toán An Toàn (Audit Logs)'],
-      summary: '[🔒 Admin] Tra cứu nhật ký kiểm toán hệ thống',
+  '/api/leave-requests/{id}/cancel': {
+    put: {
+      tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      summary: '[🔒 Người tạo đơn / Admin] Hủy đơn xin nghỉ phép đã nộp',
       security: [{ BearerAuth: [] }],
-      parameters: [
-        { name: 'actor', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID người thao tác' },
-        { name: 'action', in: 'query', schema: { type: 'string' }, description: 'Lọc theo hành động (USER_LOGIN, ATTENDANCE_CHECKIN, ...)' },
-        { name: 'targetType', in: 'query', schema: { type: 'string' }, description: 'Lọc theo đối tượng (User, AttendanceLog, ...)' },
-        { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Từ ngày' },
-        { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Đến ngày' },
-      ],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
       responses: {
-        200: { description: 'Lấy danh sách nhật ký thành công' },
-        403: { description: 'Không có quyền truy cập (yêu cầu quyền Admin)' },
+        200: { description: 'Hủy đơn thành công' },
+        400: { description: 'Đơn đã được phê duyệt, không thể tự hủy' },
+        404: { description: 'Không tìm thấy đơn' },
       },
     },
   },
 
   // -------------------------------------------------------------
-  // 3.5.1 UPLOAD ATTACHMENT
+  // 10.1 UPLOAD ATTACHMENT
   // -------------------------------------------------------------
   '/api/upload': {
     post: {
-      tags: ['3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Đã đăng nhập] Tải file minh chứng đính kèm (ảnh, PDF, tài liệu)',
       description: 'Hỗ trợ tải lên file minh chứng (giấy khám sức khỏe, minh chứng đổi ca...) với định dạng PNG, JPG, WEBP, PDF, DOC, DOCX. Giới hạn 10MB.',
       security: [{ BearerAuth: [] }],
@@ -1751,7 +1734,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   '/api/reports/attendance': {
     get: {
-      tags: ['3.7 - Báo Cáo & Thống Kê (Reports)'],
+      tags: ['12 - Báo Cáo & Thống Kê (Reports)'],
       summary: '[🔒 Cá nhân / Trưởng khoa / Admin] Báo cáo tổng hợp số liệu chấm công và ngày phép',
       description: 'Giảng viên/Nhân viên chỉ xem của chính mình; Trưởng khoa xem của khoa; Admin xem toàn trường.',
       security: [{ BearerAuth: [] }],
@@ -1788,7 +1771,7 @@ const swaggerPaths = {
 
   '/api/reports/monthly': {
     get: {
-      tags: ['3.7 - Báo Cáo & Thống Kê (Reports)'],
+      tags: ['12 - Báo Cáo & Thống Kê (Reports)'],
       summary: '[🔒 Admin / Trưởng khoa] Báo cáo tổng hợp ngày công chi tiết theo tháng',
       description: 'Tổng hợp chi tiết danh sách từng nhân sự trong tháng gồm: tổng buổi dạy, đúng giờ, đi muộn, về sớm, vắng mặt, nghỉ có phép.',
       security: [{ BearerAuth: [] }],
@@ -1836,7 +1819,7 @@ const swaggerPaths = {
 
   '/api/reports/export-data': {
     get: {
-      tags: ['3.7 - Báo Cáo & Thống Kê (Reports)'],
+      tags: ['12 - Báo Cáo & Thống Kê (Reports)'],
       summary: '[🔒 Xác thực] Trích xuất dữ liệu đa chiều 5 Sheets phục vụ xuất file Excel tổng hợp',
       description: 'Trả về cấu trúc dữ liệu hoàn chỉnh 5 sheet: Tổng hợp công, Bảng chấm công chi tiết, Danh sách đi muộn/về sớm, Thống kê đơn nghỉ phép, và Phân bổ giờ giảng theo khoa.',
       security: [{ BearerAuth: [] }],
@@ -1869,11 +1852,11 @@ const swaggerPaths = {
   },
 
   // -------------------------------------------------------------
-  // 3.9 AI ASSISTANT
+  // 16. AI ASSISTANT
   // -------------------------------------------------------------
   '/api/ai/chat': {
     post: {
-      tags: ['3.9 - Trợ Lý Thông Minh AI (AI Assistant)'],
+      tags: ['16 - Trợ Lý Thông Minh AI (AI Assistant)'],
       summary: '[🔒 Xác thực] Hỏi đáp & Tra cứu thống kê chấm công thông minh qua AI Chatbot (Gemini / Analytics Engine)',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -1911,11 +1894,11 @@ const swaggerPaths = {
   },
 
   // -------------------------------------------------------------
-  // 3.10 NOTIFICATIONS
+  // 15. NOTIFICATIONS
   // -------------------------------------------------------------
   '/api/notifications': {
     get: {
-      tags: ['3.10 - Hệ Thống Thông Báo (Notifications)'],
+      tags: ['15 - Hệ Thống Thông Báo (Notifications)'],
       summary: '[🔒 Cá nhân] Lấy danh sách thông báo của người dùng (kết quả duyệt đơn, cảnh báo đi muộn/vắng mặt)',
       security: [{ BearerAuth: [] }],
       parameters: [
@@ -1946,12 +1929,13 @@ const swaggerPaths = {
       },
     },
   },
+
   // -------------------------------------------------------------
-  // 3.6 AUDIT LOGS
+  // 13. AUDIT LOGS
   // -------------------------------------------------------------
   '/api/audit-logs': {
     get: {
-      tags: ['3.6 - Nhật Ký Kiểm Toán An Toàn (Audit Logs)'],
+      tags: ['13 - Nhật Ký Kiểm Toán (Audit Logs)'],
       summary: '[🔒 Admin/BGH] Tra cứu nhật ký kiểm toán hệ thống (Audit Logs)',
       description: 'Chỉ dành cho Admin, Hiệu trưởng và Hiệu phó. Hỗ trợ lọc theo actor, action, targetType, status, khoảng thời gian và phân trang.',
       security: [{ BearerAuth: [] }],
@@ -1997,12 +1981,39 @@ const swaggerPaths = {
     },
   },
 
+  '/api/audit-logs/verify-integrity': {
+    get: {
+      tags: ['13 - Nhật Ký Kiểm Toán (Audit Logs)'],
+      summary: '[🔒 Admin/BGH] Xác thực tính toàn vẹn chuỗi hash SHA-256 nhật ký kiểm toán',
+      description: 'Kiểm tra chuỗi hash liên kết giữa các bản ghi audit log để phát hiện mọi hành vi can thiệp hoặc sửa đổi dữ liệu trái phép.',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: {
+          description: 'Kiểm tra toàn vẹn thành công',
+          content: {
+            'application/json': {
+              example: {
+                success: true,
+                message: 'Toàn bộ chuỗi hash nhật ký kiểm toán nguyên vẹn, không phát hiện vi phạm.',
+                data: {
+                  isValid: true,
+                  totalChecked: 150,
+                  tamperedRecordsCount: 0,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+
   // -------------------------------------------------------------
-  // 3.11 PAYROLLS
+  // 11. PAYROLLS & SALARY SNAPSHOT
   // -------------------------------------------------------------
   '/api/payrolls/generate': {
     post: {
-      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH/Trưởng khoa] Tạo & tính toán Snapshot bảng lương năm 2026',
       description: 'Tính toán giờ dạy thực tế, giờ vượt chuẩn, phụ cấp, trích nộp BHXH 10.5% và thuế TNCN lũy tiến 5 bậc.',
       security: [{ BearerAuth: [] }],
@@ -2012,11 +2023,11 @@ const swaggerPaths = {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['thang', 'nam'],
+              required: ['month', 'year'],
               properties: {
-                thang: { type: 'integer', example: 10 },
-                nam: { type: 'integer', example: 2026 },
-                phong_ban_id: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+                month: { type: 'integer', example: 10, description: 'Tháng tính lương (1-12) hoặc thang' },
+                year: { type: 'integer', example: 2026, description: 'Năm tính lương hoặc nam' },
+                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1', description: 'Mã khoa (tùy chọn) hoặc phong_ban_id' },
               },
             },
           },
@@ -2032,11 +2043,12 @@ const swaggerPaths = {
   },
   '/api/payrolls': {
     get: {
-      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH/Trưởng khoa] Lấy danh sách bảng lương toàn trường/khoa',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'thang', in: 'query', schema: { type: 'integer' } },
+        { name: 'month', in: 'query', schema: { type: 'integer', example: 10 }, description: 'Tháng (hoặc thang)' },
+        { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 }, description: 'Năm (hoặc nam)' },
         { name: 'departmentId', in: 'query', schema: { type: 'string' } },
         { name: 'status', in: 'query', schema: { type: 'string', enum: ['CHUA_KHOA', 'DA_KHOA'] } },
         { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
@@ -2052,12 +2064,12 @@ const swaggerPaths = {
   },
   '/api/payrolls/my-payroll': {
     get: {
-      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Cá nhân] Giảng viên/Nhân viên tra cứu bảng lương của chính mình',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'thang', in: 'query', schema: { type: 'integer' } },
-        { name: 'nam', in: 'query', schema: { type: 'integer' } },
+        { name: 'month', in: 'query', schema: { type: 'integer', example: 10 } },
+        { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 } },
       ],
       responses: {
         200: {
@@ -2069,12 +2081,12 @@ const swaggerPaths = {
   },
   '/api/payrolls/summary': {
     get: {
-      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH] Tổng hợp thống kê quỹ lương, tổng giờ vượt chuẩn và thuế TNCN',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'thang', in: 'query', schema: { type: 'integer', example: 10 } },
-        { name: 'nam', in: 'query', schema: { type: 'integer', example: 2026 } },
+        { name: 'month', in: 'query', schema: { type: 'integer', example: 10 }, description: 'Tháng' },
+        { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 }, description: 'Năm' },
       ],
       responses: {
         200: {
@@ -2084,9 +2096,60 @@ const swaggerPaths = {
       },
     },
   },
+  '/api/payrolls/lock': {
+    post: {
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH] Khóa sổ bảng lương theo tháng & chốt công',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['month', 'year'],
+              properties: {
+                month: { type: 'integer', example: 10 },
+                year: { type: 'integer', example: 2026 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Khóa sổ lương thành công' },
+      },
+    },
+  },
+  '/api/payrolls/unlock': {
+    post: {
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH] Mở khóa sổ bảng lương theo tháng kèm lý do',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['month', 'year', 'reason'],
+              properties: {
+                month: { type: 'integer', example: 10 },
+                year: { type: 'integer', example: 2026 },
+                reason: { type: 'string', example: 'Điều chỉnh bổ sung giờ vượt chuẩn' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Mở khóa bảng lương thành công' },
+      },
+    },
+  },
   '/api/payrolls/{id}': {
     get: {
-      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Chi tiết] Xem chi tiết một phiếu lương kèm snapshot các buổi dạy',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2100,8 +2163,8 @@ const swaggerPaths = {
   },
   '/api/payrolls/{id}/lock': {
     put: {
-      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
-      summary: '[🔒 Admin/BGH] Khóa bảng lương chống sửa đổi (isLocked = true)',
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH] Khóa bảng lương chống sửa đổi (qua ID phiếu lương)',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
       responses: {
@@ -2114,10 +2177,22 @@ const swaggerPaths = {
   },
   '/api/payrolls/{id}/unlock': {
     put: {
-      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
-      summary: '[🔒 Admin/BGH] Mở khóa bảng lương (isLocked = false)',
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH] Mở khóa bảng lương (qua ID phiếu lương)',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                reason: { type: 'string', example: 'Mở khóa điều chỉnh' },
+              },
+            },
+          },
+        },
+      },
       responses: {
         200: {
           description: 'Mở khóa bảng lương thành công',
@@ -2128,46 +2203,61 @@ const swaggerPaths = {
   },
   '/api/payrolls/export/excel': {
     get: {
-      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH/Trưởng khoa] Xuất file Excel bảng lương toàn trường/khoa',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'thang', in: 'query', schema: { type: 'integer', example: 10 } },
-        { name: 'nam', in: 'query', schema: { type: 'integer', example: 2026 } },
+        { name: 'month', in: 'query', schema: { type: 'integer', example: 10 } },
+        { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 } },
+        { name: 'departmentId', in: 'query', schema: { type: 'string' } },
       ],
       responses: {
         200: {
-          description: 'File Excel bảng lương tải về',
-          content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {} },
+          description: 'Dữ liệu file Excel bảng lương',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
         },
       },
     },
   },
   '/api/payrolls/export/pdf': {
     get: {
-      tags: ['3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH/Cá nhân] Xuất file PDF phiếu lương chi tiết',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'id', in: 'query', schema: { type: 'string' } },
-        { name: 'thang', in: 'query', schema: { type: 'integer' } },
-        { name: 'nam', in: 'query', schema: { type: 'integer' } },
+        { name: 'id', in: 'query', schema: { type: 'string' }, description: 'ID phiếu lương (hoặc dùng /api/payrolls/{id}/export/pdf)' },
+        { name: 'month', in: 'query', schema: { type: 'integer', example: 10 } },
+        { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 } },
       ],
       responses: {
         200: {
-          description: 'File PDF phiếu lương tải về',
-          content: { 'application/pdf': {} },
+          description: 'Dữ liệu in ấn phiếu lương PDF',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
+  '/api/payrolls/{id}/export/pdf': {
+    get: {
+      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
+      summary: '[🔒 Admin/BGH/Cá nhân] Xuất dữ liệu in ấn phiếu lương PDF theo ID',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: {
+          description: 'Dữ liệu in ấn phiếu lương PDF',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
         },
       },
     },
   },
 
   // -------------------------------------------------------------
-  // 3.12 FACE BIOMETRICS
+  // 08. FACE BIOMETRICS
   // -------------------------------------------------------------
   '/api/face/detect-pose': {
     post: {
-      tags: ['3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔒 Điểm danh/Đăng ký] Kiểm tra tư thế đầu 3D (Pitch, Yaw, Roll) & độ nét khuôn mặt',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -2193,7 +2283,7 @@ const swaggerPaths = {
   },
   '/api/face/enroll-multi-angle': {
     post: {
-      tags: ['3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔒 Admin/Trưởng khoa/Tự đăng ký] Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D',
       description: 'Nhận 5 ảnh các góc (chính diện, trái, phải, ngửa, cúi), trích xuất 5 vector ArcFace 512D và tính toán vector Centroid L2 chuẩn hóa.',
       security: [{ BearerAuth: [] }],
@@ -2204,7 +2294,7 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                userId: { type: 'string' },
+                userId: { type: 'string', description: 'ID người dùng (Admin có thể chỉ định, mặc định là bản thân)' },
                 image_front: { type: 'string', format: 'binary' },
                 image_left: { type: 'string', format: 'binary' },
                 image_right: { type: 'string', format: 'binary' },
@@ -2223,10 +2313,23 @@ const swaggerPaths = {
       },
     },
   },
+  '/api/face/registration-status': {
+    get: {
+      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Cá nhân] Kiểm tra trạng thái đã đăng ký khuôn mặt của chính mình',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: {
+          description: 'Trạng thái khuôn mặt của bản thân',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
   '/api/face/registration-status/{userId}': {
     get: {
-      tags: ['3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
-      summary: '[🔒 Quyền tra cứu] Kiểm tra trạng thái đã đăng ký khuôn mặt của người dùng',
+      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Admin/Trưởng khoa] Kiểm tra trạng thái đã đăng ký khuôn mặt của người dùng',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string' } }],
       responses: {
@@ -2237,10 +2340,23 @@ const swaggerPaths = {
       },
     },
   },
+  '/api/face/my-template': {
+    delete: {
+      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Cá nhân] Tự xóa dữ liệu mẫu khuôn mặt của bản thân (Tuân thủ quyền xóa dữ liệu cá nhân)',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: {
+          description: 'Xóa dữ liệu khuôn mặt thành công',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+        },
+      },
+    },
+  },
   '/api/face/faces/{userId}': {
     delete: {
-      tags: ['3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
-      summary: '[🔒 Admin/Trưởng khoa] Xóa toàn bộ dữ liệu mẫu khuôn mặt và xóa khỏi RAM FAISS',
+      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Admin/Trưởng khoa] Xóa toàn bộ dữ liệu mẫu khuôn mặt của nhân sự và xóa khỏi RAM FAISS',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string' } }],
       responses: {
@@ -2251,9 +2367,66 @@ const swaggerPaths = {
       },
     },
   },
+  '/api/face/checkin': {
+    post: {
+      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Điểm danh] Check-in điểm danh qua Camera nhận diện khuôn mặt Face ID',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['image'],
+              properties: {
+                image: { type: 'string', format: 'binary', description: 'Ảnh chụp khuôn mặt từ camera webcam/di động' },
+                location: {
+                  type: 'object',
+                  properties: {
+                    lat: { type: 'number', example: 21.028511 },
+                    lng: { type: 'number', example: 105.854444 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Điểm danh Check-in qua khuôn mặt thành công' },
+        400: { description: 'Không tìm thấy khuôn mặt hoặc không khớp nhân viên nào' },
+      },
+    },
+  },
+  '/api/face/checkout': {
+    post: {
+      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Điểm danh] Check-out kết thúc ca qua Camera nhận diện khuôn mặt Face ID',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['image'],
+              properties: {
+                image: { type: 'string', format: 'binary', description: 'Ảnh chụp khuôn mặt từ camera webcam/di động' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Điểm danh Check-out qua khuôn mặt thành công' },
+        400: { description: 'Không tìm thấy lượt check-in mở tương ứng' },
+      },
+    },
+  },
   '/api/face/health': {
     get: {
-      tags: ['3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔓 Public/Kiểm tra] Kiểm tra tình trạng kết nối tới Python FastAPI InsightFace Microservice',
       responses: {
         200: {
@@ -2265,11 +2438,11 @@ const swaggerPaths = {
   },
 
   // -------------------------------------------------------------
-  // 3.13 SYSTEM CONFIGS
+  // 14. SYSTEM CONFIGS
   // -------------------------------------------------------------
   '/api/system/configs': {
     get: {
-      tags: ['3.13 - Cấu Hình Hệ Thống Tập Trung (System Configs)'],
+      tags: ['14 - Cấu Hình Hệ Thống Tập Trung (System Configs)'],
       summary: '[🔒 Admin] Lấy toàn bộ tham số cấu hình hệ thống (In-memory Cache)',
       security: [{ BearerAuth: [] }],
       responses: {
@@ -2280,7 +2453,7 @@ const swaggerPaths = {
       },
     },
     put: {
-      tags: ['3.13 - Cấu Hình Hệ Thống Tập Trung (System Configs)'],
+      tags: ['14 - Cấu Hình Hệ Thống Tập Trung (System Configs)'],
       summary: '[🔒 Admin] Cập nhật tham số cấu hình (tự động ghi Audit Log & làm mới RAM Cache)',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -2307,11 +2480,11 @@ const swaggerPaths = {
   },
 
   // -------------------------------------------------------------
-  // 3.14 SUBJECTS (MÔN HỌC / HỌC PHẦN)
+  // 05. SUBJECTS (MÔN HỌC / HỌC PHẦN)
   // -------------------------------------------------------------
   '/api/subjects': {
     get: {
-      tags: ['3.14 - Danh Mục Môn Học & Học Phần (Subjects)'],
+      tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
       summary: '[🔒 Xác thực] Lấy danh sách môn học/học phần đào tạo',
       security: [{ BearerAuth: [] }],
       parameters: [
@@ -2326,7 +2499,7 @@ const swaggerPaths = {
       },
     },
     post: {
-      tags: ['3.14 - Danh Mục Môn Học & Học Phần (Subjects)'],
+      tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
       summary: '[🔒 Admin/Trưởng khoa] Tạo môn học/học phần mới',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -2357,7 +2530,7 @@ const swaggerPaths = {
   },
   '/api/subjects/{id}': {
     get: {
-      tags: ['3.14 - Danh Mục Môn Học & Học Phần (Subjects)'],
+      tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
       summary: '[🔒 Xác thực] Lấy thông tin chi tiết một môn học',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2369,7 +2542,7 @@ const swaggerPaths = {
       },
     },
     put: {
-      tags: ['3.14 - Danh Mục Môn Học & Học Phần (Subjects)'],
+      tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
       summary: '[🔒 Admin/Trưởng khoa] Cập nhật thông tin môn học',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2399,7 +2572,7 @@ const swaggerPaths = {
       },
     },
     delete: {
-      tags: ['3.14 - Danh Mục Môn Học & Học Phần (Subjects)'],
+      tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
       summary: '[🔒 Admin] Xóa môn học khỏi hệ thống',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2413,11 +2586,11 @@ const swaggerPaths = {
   },
 
   // -------------------------------------------------------------
-  // 3.15 HOLIDAYS (DANH MỤC NGÀY NGHỈ LỄ)
+  // 07. HOLIDAYS (DANH MỤC NGÀY NGHỈ LỄ)
   // -------------------------------------------------------------
   '/api/holidays': {
     get: {
-      tags: ['3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
+      tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
       summary: '[🔒 Admin] Lấy danh sách ngày nghỉ lễ toàn trường',
       security: [{ BearerAuth: [] }],
       parameters: [
@@ -2431,7 +2604,7 @@ const swaggerPaths = {
       },
     },
     post: {
-      tags: ['3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
+      tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
       summary: '[🔒 Admin] Tạo ngày nghỉ lễ mới',
       security: [{ BearerAuth: [] }],
       requestBody: {
@@ -2463,7 +2636,7 @@ const swaggerPaths = {
   },
   '/api/holidays/{id}': {
     get: {
-      tags: ['3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
+      tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
       summary: '[🔒 Admin] Lấy chi tiết một ngày nghỉ lễ',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2475,7 +2648,7 @@ const swaggerPaths = {
       },
     },
     put: {
-      tags: ['3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
+      tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
       summary: '[🔒 Admin] Cập nhật thông tin ngày nghỉ lễ',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2504,7 +2677,7 @@ const swaggerPaths = {
       },
     },
     delete: {
-      tags: ['3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
+      tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
       summary: '[🔒 Admin] Xóa ngày nghỉ lễ khỏi hệ thống',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2519,23 +2692,23 @@ const swaggerPaths = {
 };
 
 const swaggerTags = [
-  { name: '3.8 - Hạ Tầng & Kiểm Tra Hệ Thống', description: 'Kiểm tra trạng thái máy chủ và kết nối CSDL MongoDB' },
-  { name: '3.1 - Xác Thực & Phiên Làm Việc (Auth)', description: 'Đăng nhập, cấp mới Token JWT và phân quyền' },
-  { name: '3.1 - Quản Lý Người Dùng (Users)', description: 'Quản lý thông tin giảng viên, nhân viên, phân quyền' },
-  { name: '3.2 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)', description: 'Quản lý cây đơn vị Trường > Khoa > Bộ môn/Phòng ban' },
-  { name: '3.3 - Ca Làm Việc & Tiết Học (Shifts)', description: 'Định nghĩa khung giờ tiết học, ca hành chính và ngưỡng đi muộn/về sớm' },
-  { name: '3.3 - Lịch Phân Công Giảng Dạy (Schedules)', description: 'Thời khóa biểu, lịch giảng dạy và công tác' },
-  { name: '3.4 - Quản Lý Chấm Công (Attendance)', description: 'Check-in, Check-out tự động khớp ca, lịch sử điểm danh' },
-  { name: '3.5 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)', description: 'Quy trình tạo đơn, tính hạn mức nghỉ phép (balance) và phê duyệt' },
-  { name: '3.6 - Nhật Ký Kiểm Toán An Toàn (Audit Logs)', description: 'Lưu vết lịch sử thao tác quan trọng để giám sát' },
-  { name: '3.7 - Báo Cáo & Thống Kê (Reports)', description: 'Thống kê tổng hợp số giờ dạy, đi muộn, nghỉ phép' },
-  { name: '3.9 - Trợ Lý Thông Minh AI (AI Assistant)', description: 'Chatbot AI hỗ trợ thanh tra đào tạo & truy vấn dữ liệu chấm công' },
-  { name: '3.10 - Hệ Thống Thông Báo (Notifications)', description: 'Quản lý thông báo người dùng, cảnh báo chấm công và kết quả phê duyệt đơn' },
-  { name: '3.11 - Quản Lý Bảng Lương & Snapshot (Payrolls)', description: 'Bảng lương Snapshot năm 2026, khóa lương và thuế TNCN lũy tiến 5 bậc' },
-  { name: '3.12 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)', description: 'Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D, kiểm tra tư thế và FAISS Index' },
-  { name: '3.13 - Cấu Hình Hệ Thống Tập Trung (System Configs)', description: 'Quản lý các tham số vận hành: ngưỡng AI, cooldown, bán kính GPS, hạn mức nghỉ phép' },
-  { name: '3.14 - Danh Mục Môn Học & Học Phần (Subjects)', description: 'Quản lý danh mục môn học, số tín chỉ, khoa/bộ môn quản lý' },
-  { name: '3.15 - Danh Mục Ngày Nghỉ Lễ (Holidays)', description: 'Quản lý danh mục các ngày nghỉ lễ toàn trường/quốc gia' },
+  { name: '01 - Xác Thực & Phiên Làm Việc (Auth)', description: 'Đăng nhập, cấp mới Token JWT và phân quyền' },
+  { name: '02 - Quản Lý Người Dùng (Users)', description: 'Quản lý thông tin giảng viên, nhân viên, phân quyền' },
+  { name: '03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)', description: 'Quản lý cây đơn vị Trường > Khoa > Bộ môn/Phòng ban' },
+  { name: '04 - Ca Làm Việc & Tiết Học (Shifts)', description: 'Định nghĩa khung giờ tiết học, ca hành chính và ngưỡng đi muộn/về sớm' },
+  { name: '05 - Danh Mục Môn Học & Học Phần (Subjects)', description: 'Quản lý danh mục môn học, số tín chỉ, khoa/bộ môn quản lý' },
+  { name: '06 - Lịch Phân Công Giảng Dạy (Schedules)', description: 'Thời khóa biểu, lịch giảng dạy và công tác' },
+  { name: '07 - Danh Mục Ngày Nghỉ Lễ (Holidays)', description: 'Quản lý danh mục các ngày nghỉ lễ toàn trường/quốc gia' },
+  { name: '08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)', description: 'Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D, kiểm tra tư thế và FAISS Index' },
+  { name: '09 - Quản Lý Chấm Công (Attendance & PunchLog)', description: 'Check-in, Check-out tự động khớp ca, điểm danh FaceID, QR động, tọa độ GPS' },
+  { name: '10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)', description: 'Quy trình tạo đơn, tính hạn mức nghỉ phép (balance) và phê duyệt' },
+  { name: '11 - Quản Lý Bảng Lương & Snapshot (Payrolls)', description: 'Bảng lương Snapshot năm 2026, khóa lương và thuế TNCN lũy tiến 5 bậc' },
+  { name: '12 - Báo Cáo & Thống Kê (Reports)', description: 'Thống kê tổng hợp số giờ dạy, đi muộn, nghỉ phép' },
+  { name: '13 - Nhật Ký Kiểm Toán (Audit Logs)', description: 'Lưu vết lịch sử thao tác quan trọng để giám sát' },
+  { name: '14 - Cấu Hình Hệ Thống Tập Trung (System Configs)', description: 'Quản lý các tham số vận hành: ngưỡng AI, cooldown, bán kính GPS, hạn mức nghỉ phép' },
+  { name: '15 - Hệ Thống Thông Báo (Notifications)', description: 'Quản lý thông báo người dùng, cảnh báo chấm công và kết quả phê duyệt đơn' },
+  { name: '16 - Trợ Lý Thông Minh AI (AI Assistant)', description: 'Chatbot AI hỗ trợ thanh tra đào tạo & truy vấn dữ liệu chấm công' },
+  { name: '17 - Hạ Tầng & Kiểm Tra Hệ Thống (Health Check)', description: 'Kiểm tra trạng thái máy chủ và kết nối CSDL MongoDB' },
 ];
 
 module.exports = {

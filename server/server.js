@@ -31,26 +31,15 @@ const startServer = async () => {
     startPunchWorker(5);
 
     // Tự động đồng bộ các vector khuôn mặt InsightFace vào FAISS RAM
+    // Tự động đồng bộ các vector khuôn mặt InsightFace vào RAM
     setTimeout(async () => {
       try {
-        const { getCachedUsersWithFace } = require('./utils/attendanceHelpers');
-        const { syncFaissTemplates } = require('./services/faceServiceClient');
-        const users = await getCachedUsersWithFace();
-        const templates = users
-          .filter((u) => Array.isArray(u.faceDescriptors) && u.faceDescriptors.length > 0)
-          .flatMap((u) =>
-            u.faceDescriptors
-              .filter((emb) => Array.isArray(emb) && emb.length === 512)
-              .map((embedding) => ({ userId: u._id.toString(), embedding }))
-          );
-        if (templates.length > 0) {
-          const faissRes = await syncFaissTemplates(templates);
-          console.log(`[FAISS] ⚡ Đã nạp ${faissRes.data?.total_vectors || templates.length} vector đặc trưng vào RAM cho tìm kiếm siêu tốc (<50ms).`);
-        }
+        const { ensureRamCacheWarm } = require('./services/faceServiceClient');
+        await ensureRamCacheWarm();
       } catch (faissSyncErr) {
-        console.warn('[FAISS] Bỏ qua đồng bộ vector lúc khởi động (Face Service có thể chưa sẵn sàng):', faissSyncErr.message);
+        console.warn('[Face Service] Bỏ qua đồng bộ vector lúc khởi động (Face Service có thể chưa sẵn sàng):', faissSyncErr.message);
       }
-    }, 3000);
+    }, 2000);
 
     const http = require('http');
     const server = http.createServer(app);

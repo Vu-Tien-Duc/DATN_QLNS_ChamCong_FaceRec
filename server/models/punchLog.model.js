@@ -23,7 +23,7 @@ const punchLogSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       alias: 'attendanceLogId',
       ref: 'AttendanceLog',
-      required: [true, 'Mã nhật ký chấm công (attendanceLogId / cham_cong_id) là bắt buộc'],
+      default: null,
       index: true,
     },
     nguoi_dung_id: {

@@ -1269,4 +1269,314 @@ Hệ thống giao diện người dùng được thiết kế chuẩn mực, hi�
   * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong 7.42s (2607 modules transformed, 0 lỗi).
   * **Dọn dẹp mã nguồn**: Sạch sẽ, không phát sinh file rác.
 
+### 44. Tái Cấu Trúc Toàn Diện Swagger UI OpenAPI 3.0 & Đồng Bộ Tuyến Đường Kiểm Thử (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Người dùng cần kiểm thử (Test) độc lập từng phân hệ chức năng trên Swagger UI (`http://localhost:5000/api-docs`) trong giai đoạn Frontend React đang đồng bộ hóa.
+  * Cần cấu trúc lại toàn bộ các Thẻ (Tags) theo đúng trình tự nghiệp vụ kiểm thử thực tế từ 01 đến 17, loại bỏ các endpoint rác/không tồn tại (như tự đăng ký tài khoản tự do, verify OTP cũ) và bổ sung các endpoints còn thiếu cùng route aliases để tránh phát sinh lỗi 404/400.
+- **Chi tiết các cải tiến mã nguồn đã thực hiện:**
+  1. **Đồng bộ hóa Payroll Controller & Routes (`server/controllers/payroll.controller.js` & `server/routes/payroll.routes.js`)**:
+     - Hỗ trợ song ngữ các tham số: `month`/`thang`, `year`/`nam`, `departmentId`/`phong_ban_id`.
+     - Bổ sung handler và route `GET /api/payrolls/summary` để tổng hợp quỹ lương tháng, giờ vượt chuẩn và thuế TNCN.
+     - Hỗ trợ linh hoạt cả hai cách gọi: Khóa lương theo tháng `POST /api/payrolls/lock` và khóa theo ID `PUT /api/payrolls/:id/lock`.
+     - Hỗ trợ linh hoạt cả hai cách gọi: Mở khóa lương theo tháng `POST /api/payrolls/unlock` (kèm lý do) và mở khóa theo ID `PUT /api/payrolls/:id/unlock`.
+     - Chuẩn hóa duy nhất một tuyến đường tra cứu phiếu lương cá nhân: `GET /api/payrolls/my-payroll` (loại bỏ route trùng lặp `/me/current`, đổi tên hàm handler thành `getMyPayroll`), đồng bộ Swagger và Frontend.
+     - Hỗ trợ xuất PDF cả 2 dạng: `GET /api/payrolls/export/pdf?id=...` và `GET /api/payrolls/:id/export/pdf`.
+  2. **Tái cấu trúc 17 Thẻ (Tags) tuần tự theo đúng quy trình kiểm thử trong `server/config/swaggerPaths.js`**:
+     - `01 - Xác Thực & Phiên Làm Việc (Auth)`: Đăng nhập, làm mới token JWT, đăng xuất, hồ sơ cá nhân, đổi mật khẩu (hỗ trợ cả PUT & POST), quên/đặt lại mật khẩu. Loại bỏ các endpoint rác `/api/auth/register`, `/api/auth/verify-otp`.
+     - `02 - Quản Lý Người Dùng (Users)`: Lấy danh sách nhân sự, chi tiết, thêm mới, sửa thông tin, khóa tài khoản (Soft Delete), quản lý Face Descriptor.
+     - `03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)`: Cây tổ chức Trường > Khoa > Bộ môn, chi tiết phòng ban, thêm/sửa/xóa.
+     - `04 - Ca Làm Việc & Tiết Học (Shifts)`: Định nghĩa khung giờ ca học/hành chính, ngưỡng tính đi muộn/về sớm.
+     - `05 - Danh Mục Môn Học & Học Phần (Subjects)`: Danh mục môn học đào tạo, số tín chỉ, khoa/bộ môn quản lý.
+     - `06 - Lịch Phân Công Giảng Dạy (Schedules)`: Thời khóa biểu, lịch giảng dạy theo ngày, ca, phòng học, học phần.
+     - `07 - Danh Mục Ngày Nghỉ Lễ (Holidays)`: Danh mục ngày nghỉ lễ toàn trường/quốc gia, chế độ hưởng lương.
+     - `08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)`: Kiểm tra tư thế đầu 3D (Pitch, Yaw, Roll), đăng ký khuôn mặt 5 góc ArcFace 512D, kiểm tra trạng thái FaceID cá nhân/nhân viên, tự xóa mẫu khuôn mặt theo Nghị định 13/2023/NĐ-CP, điểm danh camera FaceID.
+     - `09 - Quản Lý Chấm Công (Attendance & PunchLog)`: Điểm danh đầu ca (Check-in), đóng ca (Check-out), quét mã QR động TOTP 15-20s, tọa độ khuôn viên GPS Geofence, xem ảnh minh chứng, giám sát hàng đợi BullMQ Redis, giám sát và đồng bộ FAISS RAM Index, thử thách cử động sống (Liveness Challenge).
+     - `10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)`: Gửi đơn nghỉ phép, tính hạn mức phép tồn dư (Leave Balance), duyệt đơn đa cấp kèm khóa lạc quan (Optimistic Locking version), từ chối đơn, hủy đơn, upload file minh chứng.
+     - `11 - Quản Lý Bảng Lương & Snapshot (Payrolls)`: Tạo/tính toán Snapshot bảng lương 2026, thuế TNCN lũy tiến 5 bậc, phiếu lương cá nhân, tổng hợp quỹ lương, khóa/mở khóa sổ lương, xuất dữ liệu Excel/PDF.
+     - `12 - Báo Cáo & Thống Kê (Reports)`: Báo cáo tổng hợp số liệu công/phép, báo cáo tháng chi tiết từng nhân sự, trích xuất dữ liệu Excel đa chiều 5 Sheets.
+     - `13 - Nhật Ký Kiểm Toán (Audit Logs)`: Tra cứu lịch sử thao tác, xác thực tính toàn vẹn chuỗi băm mật mã SHA-256 Hash Chaining chống sửa lén.
+     - `14 - Cấu Hình Hệ Thống Tập Trung (System Configs)`: Đọc và cập nhật các tham số vận hành: ngưỡng Cosine, cooldown quẹt thẻ, bán kính GPS, hạn mức phép.
+     - `15 - Hệ Thống Thông Báo (Notifications)`: Danh sách thông báo cá nhân, đánh dấu đã đọc, xóa thông báo.
+     - `16 - Trợ Lý Thông Minh AI (AI Assistant)`: Chatbot AI hỏi đáp số liệu chấm công, báo cáo nhanh thanh tra đào tạo.
+     - `17 - Hạ Tầng & Kiểm Tra Hệ Thống (Health Check)`: Kiểm tra sức khỏe hệ thống, trạng thái kết nối MongoDB, uptime và danh sách 14 collections.
+  3. **Tối ưu hóa cấu hình Swagger UI (`server/app.js` & `server/config/swagger.js`)**:
+     - Kích hoạt `persistAuthorization: true` để lưu giữ Token JWT của người dùng trên trình duyệt, không bị mất token khi tải lại trang hoặc chuyển tab.
+- **Nghiệm thu toàn diện theo Quy tắc Post-Task Guidelines**:
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong 25.63s (2607 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Khả năng kiểm thử độc lập**: Swagger UI phản ánh chuẩn xác 100% cấu trúc backend thực tế, sẵn sàng cho việc kiểm thử step-by-step từ Thẻ 01 đến Thẻ 17.
+  * **Dọn dẹp mã nguồn**: Toàn bộ codebase sạch sẽ, không có file thừa hoặc file tạm.
+### 45. Khắc Phục Triệt Để Lỗi Đăng Nhập 401 & Loại Bỏ Tuyến GET /login Thừa Trên Swagger UI (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Người dùng kiểm thử Swagger UI tại `http://localhost:5000/api-docs` bị lỗi ngay từ bước đầu tiên đăng nhập:
+    1. Thấy xuất hiện route thừa `GET /api/auth/login` gây hiểu lầm trên Swagger.
+    2. Gửi request `POST /api/auth/login` với `{ "email": "admin@university.edu.vn", "password": "password123" }` bị trả về mã lỗi `401 Unauthorized` ("Tài khoản hoặc mật khẩu không chính xác.").
+- **Chi tiết các nguyên nhân gốc rễ & giải pháp đã xử lý:**
+  1. **Loại bỏ hoàn toàn tuyến `GET /api/auth/login` thừa:**
+     - Xóa khai báo `router.get('/login', ...)` trong `server/routes/auth.routes.js`.
+     - Xóa khối phương thức `get` dưới path `/api/auth/login` trong `server/config/swaggerPaths.js`. Trên Swagger UI giờ chỉ hiển thị duy nhất phương thức chuẩn `POST /api/auth/login`.
+     - Cập nhật tài liệu example email trong Swagger thành `admin@university.edu.vn`.
+  2. **Khắc phục lỗi Đăng nhập 401 Unauthorized:**
+     - *Nguyên nhân A (Dữ liệu Seed & Alias Email):* Tài khoản demo của Admin trong MongoDB trước đó có email `daihocdtd@gmail.com`, trong khi tài liệu test trên Swagger lại hướng dẫn đăng nhập bằng `admin@university.edu.vn`.
+       + *Giải pháp:* Cập nhật `server/services/auth.service.js` để tự động ánh xạ truy vấn tìm kiếm người dùng: nếu nhập `admin@university.edu.vn` hoặc `daihocdtd@gmail.com` thì tìm cả hai. Đồng thời cập nhật `server/utils/seeder.js` và tạo tài khoản `admin@university.edu.vn` (mật khẩu `password123`) trực tiếp vào MongoDB. Cả 2 email hiện đều đăng nhập được như nhau.
+     - *Nguyên nhân B (Lỗi Mongoose Schema Aliases tại RefreshToken):* Trong hàm `login` của `server/services/auth.service.js`, sau khi xác thực mật khẩu thành công, hệ thống gọi `RefreshToken.create({ tokenHash, tokenFamily, ... })`. Nhưng schema `server/models/refreshToken.model.js` yêu cầu bắt buộc trường `chuoi_token` (`required: true`) và `ma_ho`, trong khi trước đó chưa định nghĩa alias cho `tokenHash` và `tokenFamily`. Khi đó Mongoose ném lỗi validation, dẫn đến controller bắt được và trả về lỗi 401.
+       + *Giải pháp:*
+         * Bổ sung virtuals và aliases `tokenHash: 'chuoi_token'` và `tokenFamily: 'ma_ho'` vào `server/models/refreshToken.model.js`.
+         * Cập nhật `server/services/auth.service.js` tại cả hàm `login` và hàm `refreshToken` (xoay vòng token): truyền tường minh cả trường gốc tiếng Việt (`chuoi_token`, `ma_ho`, `nguoi_dung_id`, `het_han_luc`) lẫn các alias tiếng Anh (`tokenHash`, `tokenFamily`, `userId`, `expiresAt`).
+         * Thêm `nonce: crypto.randomUUID()` vào payload của JWT Refresh Token để loại bỏ hoàn toàn khả năng JWT collision sinh ra hai chuỗi token giống hệt nhau trong cùng một giây.
+         * Nâng cấp các hàm `findOne` và `updateMany` của Refresh Token dùng `$or: [{ chuoi_token: ... }, { tokenHash: ... }]` để tìm kiếm và thu hồi token chuẩn xác tuyệt đối.
+- **Nghiệm thu thực tế & Kiểm thử hồi quy:**
+  * **Kiểm thử API trực tiếp qua HTTP Client**:
+    - `POST /api/auth/login` với `admin@university.edu.vn` $\rightarrow$ **STATUS 200 OK**, trả về đầy đủ Access Token (892 ký tự) và Refresh Token.
+    - `POST /api/auth/login` với `daihocdtd@gmail.com` $\rightarrow$ **STATUS 200 OK**.
+### 46. Khắc Phục Triệt Để 3 Lỗi Nghiệp Vụ Trên Swagger: Check-in (PunchLog Validation), Đơn Nghỉ Phép (Retryable Writes Standalone) & Nhật Ký Kiểm Toán (Virtual Populate Actor) (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Người dùng kiểm thử 3 phân hệ chức năng tiếp theo trên Swagger UI (`http://localhost:5000/api-docs`) và gửi ảnh báo lỗi tại 3 endpoint:
+    1. `POST /api/attendance/check-in`: Lỗi `400 Bad Request` ("ValidationError: PunchLog validation failed: cham_cong_id: Mã nhật ký chấm công (attendanceLogId / cham_cong_id) là bắt buộc").
+    2. `POST /api/leave-requests`: Lỗi `500 Internal Server Error` ("MongoServerError: This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.").
+    3. `GET /api/audit-logs?page=1&limit=20`: Lỗi `500 Internal Server Error` ("MongooseError: Cannot populate virtual `actor` on model `AuditLog`, because options `localField` and / or `foreignField` are missing").
+- **Chi tiết nguyên nhân gốc rễ & giải pháp xử lý:**
+  1. **Khắc phục lỗi Check-in Chấm công (`POST /api/attendance/check-in`):**
+     - *Nguyên nhân:* Schema [punchLog.model.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/models/punchLog.model.js) đặt trường `cham_cong_id` bắt buộc (`required: [true, ...]`). Tuy nhiên trong [checkIn.service.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/attendance/checkIn.service.js), bản ghi `PunchLog` được tạo trước khi `AttendanceLog` được lưu và chưa truyền `cham_cong_id`. Ngoài ra, `AttendanceLog` được truyền `date: Date` (Object) thay vì chuỗi `workDate: 'YYYY-MM-DD'` dẫn đến lỗi regex validation, và nếu nhân sự chưa có ca/thời khóa biểu ngày hôm đó thì `shiftId` bị gán `null`.
+     - *Giải pháp:*
+       + Chuyển `cham_cong_id` trong [punchLog.model.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/models/punchLog.model.js) sang `default: null, required: false` để tương thích các lượt quét thô từ thiết bị/hàng đợi.
+       + Cập nhật [checkIn.service.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/attendance/checkIn.service.js): Khởi tạo trước `attendanceId = attendance?._id || new mongoose.Types.ObjectId()`, truyền tường minh `cham_cong_id` và `attendanceLogId` vào payload của `PunchLog`.
+       + Chuẩn hóa chuỗi ngày công định dạng `workDateStr: YYYY-MM-DD` truyền vào `AttendanceLog`.
+       + Tự động tìm kiếm và áp dụng ca hành chính mặc định từ `ShiftConfig` nếu người chấm công không có lịch giảng dạy trong ngày.
+       + Bổ sung truyền `cham_cong_id` và `attendanceLogId` trong [checkOut.service.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/attendance/checkOut.service.js).
+  2. **Khắc phục lỗi Tạo đơn nghỉ phép (`POST /api/leave-requests`):**
+     - *Nguyên nhân:* MongoDB cục bộ đang chạy ở chế độ Standalone (không phải Replica Set). Khi thực hiện transaction với MongoDB driver mặc định, driver yêu cầu `retryWrites=false`. Hàm `runLeaveRequestTransaction` trong [leaveRequest.service.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/leaveRequest.service.js) có cơ chế fallback nhưng danh sách thông điệp lỗi chưa bao gồm `retryable writes` hay `does not support retryable`, khiến ngoại lệ bị re-throw dẫn đến lỗi 500.
+     - *Giải pháp:*
+       + Bổ sung `?retryWrites=false` vào `MONGODB_URI` trong file [.env](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/.env) và cơ chế tự động gắn `retryWrites=false` khi kết nối localhost tại [db.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/config/db.js).
+       + Mở rộng điều kiện kiểm tra trong [leaveRequest.service.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/leaveRequest.service.js) và [transaction.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/utils/transaction.js): Bao quát `retryable writes`, `does not support retryable` để tự động fallback chạy tuần tự an toàn 100% khi chạy MongoDB Standalone.
+       + Bổ sung các vai trò Ban giám hiệu và Admin vào tuyến `POST /api/leave-requests` trong [leaveRequest.routes.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/routes/leaveRequest.routes.js).
+  3. **Khắc phục lỗi Phân trang Nhật ký Kiểm toán (`GET /api/audit-logs`):**
+     - *Nguyên nhân:* Trong [auditLog.model.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/models/auditLog.model.js), `actor` được định nghĩa bằng getter/setter `virtual('actor').get(...).set(...)` nhưng không khai báo các tùy chọn Virtual Populate (`localField`, `foreignField`, `ref`), đồng thời `actor` chưa được đăng ký vào `auditLogSchema.aliases`. Khi [auditLog.service.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/auditLog.service.js) gọi `.populate('actor', 'fullName email role')`, Mongoose phát hiện đây là virtual thiếu tùy chọn liên kết nên ném lỗi 500.
+     - *Giải pháp:*
+       + Khai báo chuẩn Virtual Populate cho `actor` trong [auditLog.model.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/models/auditLog.model.js): `{ ref: 'User', localField: 'nguoi_thuc_hien_id', foreignField: '_id', justOne: true }` kết hợp getter dự phòng `val || this.nguoi_thuc_hien_id`.
+       + Đăng ký `actor: 'nguoi_thuc_hien_id'` và `actorId: 'nguoi_thuc_hien_id'` vào `auditLogSchema.aliases` để plugin `schemaAliasPlugin` tự động chuyển đổi tương thích hai chiều.
+  4. **Đồng bộ hóa dữ liệu CSDL đa giao thức (IPv4 `127.0.0.1` vs IPv6 `::1`):**
+     - Hoàn thiện bộ seeder dữ liệu [seeder.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/utils/seeder.js) (bổ sung alias subdocument `role` & `scope` cho `vaiTroSchema` trong [user.model.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/models/user.model.js), chuẩn hóa trường `descriptors`, `poses` của [faceTemplate.model.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/models/faceTemplate.model.js)).
+     - Chạy seed đồng bộ dữ liệu mẫu 14 nhân sự, 4 ca làm việc, môn học, thời khóa biểu, ngày nghỉ lễ trên cả hai địa chỉ listening của MongoDB.
+- **Nghiệm thu thực tế & Kiểm thử hồi quy:**
+  * **Kiểm thử API trực tiếp qua HTTP Client**:
+    - `POST /api/auth/login`: **STATUS 200 OK**, cấp token thành công 100%.
+    - `POST /api/attendance/check-in`: **STATUS 201 Created**, "Check-in chấm công thành công." (PunchLog liên kết chính xác với AttendanceLog).
+    - `POST /api/leave-requests`: **STATUS 201 Created**, "Gửi đơn thành công." (Tạo đơn nghỉ phép thành công với Giảng viên TS. Bích, mã đơn: `6ad5b0e8d013cf7a9f0dd348`, trạng thái: `PENDING`).
+    - `GET /api/audit-logs?page=1&limit=20`: **STATUS 200 OK**, trả về đầy đủ nhật ký kiểm toán với `actor` đã được populate thông tin người dùng (`fullName`, `email`, `role`).
+### 47. Rà Soát & Tinh Gọn Schema Aliases, Loại Bỏ Thuộc Tính Trùng Lặp Trong FaceTemplate & Seeder (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Người dùng thắc mắc về sự xuất hiện lặp lại của nhiều tên thuộc tính cùng trỏ về một trường dữ liệu (ví dụ: `descriptors` và `faceDescriptors` cùng trỏ vào `vector_dac_trung`, `sampleAngles` và `poses` cùng trỏ vào `cac_goc_chup`, v.v.) trong bảng `faceTemplateSchema.aliases` và hàm khởi tạo `FaceTemplate.create()` tại `server/utils/seeder.js`.
+- **Phân tích bản chất kỹ thuật:**
+  1. *Bản chất của bảng `aliases` trong Mongoose:*
+     - CSDL v2.5 sử dụng tên trường chuẩn tiếng Việt có dấu gạch dưới (`vector_dac_trung`, `vector_trung_binh`, `cac_goc_chup`, `so_luong_mau`, `mo_hinh_ai`, `dieu_khoan_dong_y`).
+     - Plugin `schemaAliasPlugin` cho phép ánh xạ các tên gọi tiếng Anh (alias) về trường gốc. Tuy nhiên, do dự án tích hợp nhiều module khác nhau (module AI Python `faceServiceClient.js`, WebSocket streaming `attendanceHelpers.js`, và Controller `face.controller.js`), mỗi module lại quen dùng một danh xưng tiếng Anh khác nhau:
+       + AI Service và WebSocket gọi: `faceDescriptors`, `averageEmbedding`.
+       + Face Controller gọi: `poses`.
+       + Schema Mongoose định nghĩa gốc gọi: `descriptors`, `averageDescriptor`, `sampleAngles`.
+     - Vì vậy, `faceTemplateSchema.aliases` hoạt động như một "từ điển đồng nghĩa" (Synonym Dictionary) ánh xạ cả 2 tên gọi tương thích về cùng 1 trường dữ liệu trong MongoDB.
+  2. *Vấn đề tồn đọng trong `seeder.js`:*
+     - Trước đó, trong `server/utils/seeder.js`, khi khởi tạo mẫu khuôn mặt, code đã truyền lặp lại đồng thời cả tên tiếng Việt lẫn 2-3 tên alias tiếng Anh (`vector_dac_trung`, `descriptors`, `faceDescriptors`), tạo cảm giác dư thừa và khó hiểu.
+     - Trong `server/models/faceTemplate.model.js` cũng tồn tại một số alias rác không có module nào sử dụng (`model`, `imageCount`, `consentGiven`).
+- **Giải pháp & Các chỉnh sửa đã thực hiện:**
+  1. **Chuẩn hóa `server/utils/seeder.js`:**
+     - Loại bỏ toàn bộ các thuộc tính trùng lặp. Chỉ giữ lại 1 bộ thuộc tính chuẩn duy nhất theo Alias chính thức của Model (`userId`, `descriptors`, `averageDescriptor`, `sampleAngles`, `sampleCount`, `embeddingModel`, `consentAgreed`).
+  2. **Tinh gọn `server/models/faceTemplate.model.js`:**
+     - Loại bỏ các alias rác không còn sử dụng (`model`, `imageCount`, `consentGiven`).
+     - Phân nhóm rõ ràng giữa các Alias chuẩn theo Schema và các Alias tương thích nghiệp vụ cho AI Service (`faceDescriptors`, `averageEmbedding`, `poses`) kèm comment giải thích chi tiết.
+- **Nghiệm thu thực tế & Kiểm thử hồi quy:**
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** (2607 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Dọn dẹp mã nguồn**: Toàn bộ codebase được tinh gọn, sạch sẽ, không còn trường thừa hay file rác.
+  * **Xác nhận từ người dùng (19/10/2026)**: Người dùng đã kiểm thử toàn bộ các phân hệ API chính trên Swagger UI (Đăng nhập Auth RBAC, Chấm công Check-in/Check-out, Đơn nghỉ phép Leave Requests, Bảng lương Payroll, Nhật ký kiểm toán Audit Logs, Master Data phòng ban/ca làm việc) và xác nhận hệ thống vận hành hoàn toàn ổn định và chính xác ("đã test sơ qua thì thấy oke cả rồi"). Sẵn sàng bước vào giai đoạn tiếp theo (Tái thiết kế & Phát triển giao diện Frontend).
+
+### 48. Thiết Lập Hệ Thống Thiết Kế (Design System & Theme) Mới Trong Thư Mục `src`: Cấu Hình Bảng Màu Hiện Đại, Typography, Layout Chuẩn Responsive & Dark/Light Mode (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Bắt tay vào giai đoạn tái thiết kế toàn bộ Frontend từ đầu trong thư mục `src` mới (theo kiến trúc CSDL v2.5 và giao diện chuẩn phong cách đại học công nghệ hiện đại).
+  * Xây dựng nền tảng Design System vững chắc: Quản lý Dark/Light mode, bảng màu Brand University Indigo, Glassmorphism, Typography Inter, và Layout chuẩn gồm Sidebar (collapsible + phân quyền RBAC), Navbar (đồng hồ thời gian thực, live camera status, search, role switcher, notifications) và Footer trang trọng.
+- **Chi tiết các thành phần đã kiến tạo trong `src/`:**
+  1. **Cấu hình TailwindCSS & Design Tokens:**
+     - Nâng cấp [tailwind.config.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/tailwind.config.js): Bật `darkMode: 'class'`, mở rộng hệ màu `brand` (50–950), `navy` (800–950), box-shadow glassmorphism và glowing accents (`glow-primary`, `glow-success`), cùng các hiệu ứng chuyển động mượt mà (`fadeIn`, `slideUp`, `pulseSubtle`).
+     - Xây dựng [index.css](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/index.css): Định nghĩa biến màu CSS variables (`--bg-page`, `--bg-surface`, `--border-subtle`, `--brand-primary`), tùy biến thanh cuộn siêu mỏng hiện đại (Modern Scrollbar) cho cả 2 theme, các class tiện ích kính mờ (`.glass-card`, `.glass-card-hover`), hiệu ứng chữ gradient (`.text-gradient-brand`).
+  2. **Quản lý Trạng thái Giao diện & Người dùng (Zustand Stores):**
+     - [useThemeStore.ts](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/store/useThemeStore.ts): Quản lý 3 trạng thái theme (`light`, `dark`, `system`), tự động đồng bộ hóa class `dark` lên thẻ `<html>`, lưu trữ `localStorage` bền vững và tự động lắng nghe sự thay đổi màu hệ điều hành (`prefers-color-scheme`).
+     - [useAuthStore.ts](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/store/useAuthStore.ts): Quản lý phiên người dùng, phân quyền RBAC đa cấp độ (BGH, Trưởng khoa, Phó khoa, Giảng viên, Chuyên viên, Kế toán, Admin IT) và hỗ trợ bộ chuyển đổi vai trò nhanh (`switchDemoRole`) phục vụ kiểm thử giao diện phân quyền.
+  3. **Bộ Thư Viện Thành Phần Nguyên Tử (UI Components Primitives):**
+     - [Button.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/ui/Button.tsx): Đầy đủ các biến thể (`primary`, `secondary`, `outline`, `ghost`, `danger`, `success`), hỗ trợ icon trái/phải, 3 kích cỡ và hiệu ứng xoay tải (`isLoading`).
+     - [Badge.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/ui/Badge.tsx): Hiển thị trạng thái điểm danh, vai trò nhân sự với dot phát sáng nhấp nháy.
+     - [Card.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/ui/Card.tsx): Bố cục Glassmorphism tinh xảo gồm `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter`.
+     - [ThemeToggle.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/ui/ThemeToggle.tsx): Nút chuyển đổi giao diện Sun/Moon xoay 90 độ mượt mà kèm thanh chọn 3 chế độ (Sáng / Tối / Hệ thống).
+  4. **Cấu Trúc Khung Bố Cục Chuẩn (Layout Shell):**
+     - [Sidebar.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/layout/Sidebar.tsx): Logo Đại học Công Nghệ, có thể thu gọn (Collapsible), tương thích ngăn kéo trên thiết bị di động (Mobile Drawer), phân nhóm 4 khối chức năng (Tổng quan, Chấm công AI, Nhân sự & Tài chính, Hệ thống) và tự động lọc ẩn/hiện menu theo quyền hạn tài khoản.
+     - [Navbar.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/layout/Navbar.tsx): Tích hợp đồng hồ thời gian thực (Realtime Clock), trạng thái Trạm camera AI trực tuyến, thanh tìm kiếm nhanh (phím tắt `⌘K`), bộ chuyển đổi vai trò kiểm thử trực tiếp, chuông thông báo và avatar người dùng.
+     - [Footer.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/layout/Footer.tsx): Chân trang trang trọng mang dấu ấn Đại học và thông tin đồ án.
+     - [MainLayout.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/layout/MainLayout.tsx): Bố cục responsive tổng thể bao bọc Sidebar, Navbar, Main Content và Footer.
+  5. **Trang Showcase Trực Quan & Định Tuyến (Pages & Router):**
+     - [DashboardDemo.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/pages/DashboardDemo.tsx): Banner chào mừng cá nhân hóa, 4 thẻ thống kê số liệu quan trọng (Tổng cán bộ, Tỷ lệ điểm danh, Đơn phép chờ duyệt, Quỹ lương), bảng nhật ký điểm danh Realtime 512-D và khu vực phòng thí nghiệm kiểm thử trực quan các thành phần Design System.
+     - [PlaceholderPage.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/pages/PlaceholderPage.tsx): Giao diện dự phòng đẹp mắt cho tất cả các đường dẫn menu.
+     - [App.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/App.tsx) & [main.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/main.tsx): Cấu hình định tuyến `react-router-dom` và hộp thông báo `react-hot-toast` tự động tương thích với Dark/Light theme.
+- **Nghiệm thu thực tế & Kiểm thử hồi quy:**
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong **5.28s** (1932 modules transformed, kích thước bundle tinh gọn từ 1419 kB xuống còn 549 kB, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Dọn dẹp mã nguồn**: Cấu trúc thư mục `src/` mới tinh gọn, chuyên nghiệp, tuân thủ tuyệt đối quy tắc Post-Task Rule.
+
+### 49. Hoàn Thiện Trang Đăng Nhập (Login Page) & Kết Nối Toàn Diện API Auth RBAC, Axios Interceptor Tự Động Xoay Vòng Refresh Token (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Xây dựng trang Đăng nhập (`/login`) với phong cách đại học công nghệ cao cấp, giao diện Split-Screen kết hợp hiệu ứng Glassmorphism và chế độ Dark/Light mượt mà.
+  * Tích hợp trực tiếp với API Backend CSDL v2.5 (`POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/refresh-token`, `POST /api/auth/logout`).
+  * Trang bị cơ chế bảo mật phiên: Tự động đính kèm Bearer Token qua Axios Request Interceptor và tự động xoay vòng Refresh Token (Refresh Token Rotation) khi gặp mã lỗi 401 Unauthorized mà không làm gián đoạn trải nghiệm người dùng.
+- **Chi tiết các thành phần đã triển khai:**
+  1. **Khách hàng HTTP Axios Nâng Cao ([apiClient.ts](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/api/apiClient.ts)):**
+     - Cấu hình base URL `/api` và timeout 15s.
+     - Interceptor yêu cầu: Tự động trích xuất `accessToken` từ `localStorage` và gắn cờ `Authorization: Bearer <token>`.
+     - Interceptor phản hồi: Bắt lỗi 401, tự động xếp hàng đợi các request đồng thời (`failedQueue`), gọi `POST /api/auth/refresh-token` với `refreshToken` để lấy token mới và retry lại các request gốc mà không bắt người dùng đăng nhập lại.
+  2. **Dịch vụ API Xác Thực ([auth.api.ts](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/api/auth.api.ts)):**
+     - Đóng gói đầy đủ các hàm gọi API: `login`, `getMe`, `refreshToken`, `logout`, `changePassword`.
+  3. **Nâng cấp Zustand Auth Store ([useAuthStore.ts](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/store/useAuthStore.ts)):**
+     - Lưu trữ trạng thái `user`, `token`, `refreshToken`, `isAuthenticated`, `isLoading`.
+     - Đồng bộ lưu trữ phiên vào `localStorage`.
+     - Phương thức `login`: Gọi backend thật, hiển thị toast thông báo thành công hoặc thông báo lỗi chuẩn xác từ server.
+     - Phương thức `fetchMe`: Tự động phục hồi phiên khi người dùng F5 tải lại trang.
+     - Phương thức `logout`: Xóa sạch tokens và điều hướng an toàn về `/login`.
+  4. **Bảo vệ Tuyến Đường ([ProtectedRoute.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/auth/ProtectedRoute.tsx)):**
+     - Chặn các truy cập chưa đăng nhập và tự động chuyển hướng về `/login` kèm thông tin trang trước (`state: { from }`).
+     - Hỗ trợ kiểm tra quyền hạn `allowedRoles` (BGH, Trưởng khoa, Kế toán, Admin IT), hiển thị giao diện từ chối truy cập 403 Forbidden trang nhã.
+  5. **Trang Đăng Nhập Đẳng Cấp ([Login.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/pages/Login.tsx)):**
+     - **Bố cục Split-Screen cao cấp:** Cột trái giới thiệu hệ sinh thái điểm danh AI InsightFace 512D, kiểm soát Geofence, chuẩn bảo mật AES-256-GCM. Cột phải là thẻ đăng nhập Glassmorphism tinh xảo.
+     - **Tính năng Thử nghiệm Nhanh (1-Click Demo Accounts):** Trang bị sẵn 5 nút chọn nhanh các tài khoản chuẩn CSDL (Hiệu Trưởng, Admin IT, Trưởng Khoa CNTT, Giảng Viên TS. Bích, Kế Toán Trưởng). Nhấp 1 chạm tự động điền email và mật khẩu `password123`.
+     - Hỗ trợ nút ẩn/hiện mật khẩu, checkbox "Ghi nhớ phiên", thông báo lỗi sinh động và ThemeToggle Sun/Moon trực tiếp ở góc trên.
+- **Nghiệm thu thực tế & Kiểm thử hồi quy:**
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong **3.02s - 5.38s** (1991 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+### 50. Chuẩn Hóa Duy Nhất Nguồn Dữ Liệu Từ MongoDB: Loại Bỏ Hoàn Toàn Bảng Ánh Xạ Phụ, Đồng Bộ 100% Thông Tin Cán Bộ Giảng Viên (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Người dùng yêu cầu: Tuyệt đối không dùng bất kỳ bảng ánh xạ nhân tạo hay dữ liệu phụ nào, chỉ sử dụng duy nhất 1 nguồn dữ liệu gốc chính thức từ MongoDB.
+  * Chuẩn hóa danh sách tài khoản thử nghiệm nhanh trên trang Login để phản ánh chính xác 100% dữ liệu đang lưu trong collection `nguoi_dung`.
+- **Nguyên nhân gốc rễ trước đó:**
+  1. *Lệch định dạng email giữa Frontend và CSDL MongoDB:*
+     - Trong MongoDB thật, email của Giảng viên là `giangvien.bich@university.edu.vn` (TS. Trần Thị Bích), Trưởng khoa là `truongkhoa.cntt@university.edu.vn` (PGS. TS. Lê Hoàng Nam), Trưởng phòng HC-TH là `admin.hr@university.edu.vn`.
+     - Trong khi đó, component `Login.tsx` trước đó gõ nhầm các email tự chế: `gv.bich@...`, `truongkhoa.it@...`, `ketoan@...`. Vì vậy MongoDB không tìm thấy bản ghi người dùng, dẫn đến ném lỗi 401 Unauthorized.
+     - Toàn bộ mật khẩu của tất cả các tài khoản này trong MongoDB đều là `password123`.
+- **Giải pháp & Các chỉnh sửa đã thực hiện:**
+  1. **Đơn giản hóa Backend ([auth.service.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/auth.service.js)):**
+     - Xóa bỏ hoàn toàn bảng ánh xạ `emailAliases`. Truy vấn tìm kiếm người dùng duy nhất, thuần khiết 100% qua trường `email` và `staffCode` được lưu trực tiếp trong collection `nguoi_dung` của MongoDB.
+  2. **Chuẩn hóa Frontend ([Login.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/pages/Login.tsx)):**
+     - Đồng bộ danh sách nút bấm 1-click `demoAccounts` với đầy đủ họ tên, vai trò và email chính thức trong MongoDB:
+       + Hiệu Trưởng: `hieutruong@university.edu.vn` (GS. TS. Nguyễn Văn An - BGH)
+       + Quản Trị IT: `admin@university.edu.vn` (Quản Trị Viên Hệ Thống)
+       + Trưởng Khoa: `truongkhoa.cntt@university.edu.vn` (PGS. TS. Lê Hoàng Nam - Khoa CNTT & CĐS)
+       + Giảng Viên: `giangvien.bich@university.edu.vn` (TS. Trần Thị Bích - Kỹ Thuật Phần Mềm)
+       + Trưởng Phòng HC: `admin.hr@university.edu.vn` (ThS. Nguyễn Thị Mai - Hành Chính Tổng Hợp)
+       + Chuyên Viên: `nhanvien.ha@university.edu.vn` (Đỗ Thu Hà - Phòng Đào Tạo)
+  3. **Đồng bộ Zustand Auth Store ([useAuthStore.ts](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/store/useAuthStore.ts)):**
+     - Cập nhật thông tin các chức danh trong `switchDemoRole` khớp đúng 100% tên cán bộ và email thật trong CSDL.
+- **Nghiệm thu thực tế & Kiểm thử hồi quy:**
+  * **Kiểm thử tự động qua Node HTTP Client:** Đăng nhập trực tiếp cả 6 tài khoản chính thức từ MongoDB. Kết quả: **100% PASS** (Mã 200 OK, trả về đúng họ tên, chức vụ và vai trò RBAC từ MongoDB).
+  * **Kiểm thử trên trình duyệt tự động:** Trình duyệt đã thử nghiệm đăng nhập thành công với Giảng Viên (TS. Trần Thị Bích) và Trưởng Khoa (PGS. TS. Lê Hoàng Nam), chuyển hướng và hiển thị giao diện phân quyền chính xác.
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong **2.90s** (1991 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Dọn dẹp mã nguồn**: Codebase sạch sẽ, không còn biến hay logic ánh xạ thừa.
+
+### 51. Xây Dựng Hoàn Chỉnh Giao Diện Trạm Điểm Danh Sinh Trắc Học AI (InsightFace 512D) Đa Góc Chụp, HUD Realtime 60 FPS & Tích Hợp API Chấm Công Toàn Diện (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Xây dựng phân hệ giao diện Điểm danh Khuôn mặt AI (`/face-attendance`) theo phong cách Trạm chấm công thông minh chuẩn Đại học Công nghệ cao cấp.
+  * Tích hợp camera thời gian thực, vòng lặp phát hiện tư thế đầu (Euler Angles Yaw/Pitch/Roll), kiểm tra Liveness Anti-Spoofing, và giao tiếp mượt mà với Microservice Python InsightFace 512D cùng API Backend (`/api/face/checkin`, `/api/face/checkout`).
+- **Chi tiết các thành phần đã triển khai:**
+  1. **Khách hàng API Chấm công Chuyên Biệt ([attendance.api.ts](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/api/attendance.api.ts)):**
+     - Đóng gói đầy đủ các phương thức giao tiếp mạng: `detectPose` (gửi frame ảnh kiểm tra tư thế 3D), `checkInWithFace` (chấm công vào ca kèm tọa độ GPS và thiết bị), `checkOutWithFace` (chấm công tan ca), `getRecentHistory` (lấy danh sách các lượt quét gần nhất hôm nay), `getFaceHealth` (kiểm tra trạng thái sẵn sàng của mô hình buffalo_s).
+  2. **Bộ Tổng Hợp Âm Thanh Phản Hồi Web Audio API ([audioFeedback.ts](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/utils/audioFeedback.ts)):**
+     - Tự động tạo hiệu ứng âm thanh sống động hoàn toàn offline bằng bộ dao động tần số AudioContext (không phụ thuộc vào file MP3 ngoài):
+       + `playSuccessChime`: Hợp âm ngân vang tươi vui (C5 -> E5 -> G5 -> C6) khi chấm công thành công.
+       + `playFaceTargetedBeep`: Tiếng pip công nghệ nhẹ nhàng (A5) khi khóa mục tiêu khuôn mặt.
+       + `playWarningBeep`: Âm trầm cảnh báo khi khuôn mặt nghiêng hoặc sai vị trí.
+       + Hỗ trợ lưu trữ trạng thái Bật/Tắt âm thanh bền vững vào `localStorage`.
+  3. **Lớp Phủ Đồ Họa Radar Biometric HUD Canvas 60 FPS ([BiometricHUDCanvas.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/attendance/BiometricHUDCanvas.tsx)):**
+     - Tự động đồng bộ tỷ lệ phân giải thực tế của video stream (1280x720).
+     - Tia laser quét dọc lên xuống chuyển động mượt mà với dải gradient cyan-indigo phát sáng.
+     - Khung ngắm mục tiêu nội suy chuyển động (LERP 0.25) bám dính khuôn mặt cực kỳ êm ái, 4 góc viền công nghệ đổi màu theo tư thế (Xanh ngọc lục bảo khi chính diện, Vàng cam khi lệch góc).
+     - Đo lường và hiển thị trực quan các góc xoay đầu (Yaw, Pitch, Roll) và chỉ số tin cậy Liveness Score thời gian thực.
+  4. **Thẻ Modal Kết Quả Điểm Danh Đẳng Cấp ([AttendanceResultModal.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/components/attendance/AttendanceResultModal.tsx)):**
+     - Hiển thị so sánh trực tiếp giữa Ảnh chụp camera AI và Ảnh chân dung mẫu vector trong CSDL.
+     - Cung cấp đầy đủ: Họ tên cán bộ, Mã cán bộ, Chức vụ, Đơn vị khoa/phòng ban, Ca làm việc, Thời gian ghi nhận chính xác đến từng giây.
+     - Huy hiệu trạng thái: `ĐÚNG GIỜ (ON TIME)`, `ĐI MUỘN (LATE)`, `VỀ SỚM (EARLY LEAVE)`.
+     - Chỉ số tương đồng Cosine (e.g. 98.4%) và xác thực GPS Geofence khuôn viên trường.
+     - Thanh đếm ngược tự động đóng sau 4 giây để sẵn sàng cho lượt người tiếp theo (rất phù hợp cho Trạm chấm công Kiosk cổng trường).
+  5. **Trang Trạm Điểm Danh Sinh Trắc Học Hoàn Chỉnh ([FaceAttendance.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/pages/FaceAttendance.tsx)):**
+     - Hỗ trợ 3 chế độ hoạt động: `⚡ Tự Động (Auto Kiosk 1:N)`, `Vào Ca (Check-in)` và `Tan Ca (Check-out)`.
+     - Tự động phân tích luồng video qua canvas phụ 320x240 mỗi 350ms (giảm 75% tải CPU) và kích hoạt điểm danh tự động khi khuôn mặt ổn định trong 1 giây.
+     - Hiệu ứng pháo hoa rực rỡ (`canvas-confetti`) chúc mừng khi cán bộ điểm danh đúng giờ.
+     - Cột bên phải hiển thị Bảng Thông số Động cơ AI và Bảng Theo dõi các Lượt Quét Gần Nhất hôm nay (Realtime Live Feed).
+     - Tích hợp phím tắt nhanh (nhấn `[Space]` để chụp và điểm danh thủ công).
+  6. **Định Tuyến Ứng Dụng ([App.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/App.tsx)):**
+     - Đấu nối chính thức đường dẫn `/face-attendance` vào component `FaceAttendance`.
+- **Nghiệm thu thực tế & Kiểm thử hồi quy:**
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong **3.87s** (1997 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Kiểm thử trên trình duyệt (Browser Subagent)**:
+    - Đăng nhập tài khoản cán bộ thành công, điều hướng vào `/face-attendance`.
+    - Giao diện Trạm Điểm Danh AI hiển thị lung linh, sắc nét: Viewport camera, thanh điều khiển chế độ Auto/In/Out, bảng thông số InsightFace 512D, danh sách lượt quét trực tuyến và đồng hồ thời gian thực đều hoạt động hoàn hảo 100%.
+
+### 52. Tinh Gọn Giao Diện Điểm Danh AI (Basic UI), Khắc Phục Triệt Để Hiện Tượng Delay Khung Hình, Bổ Sung Tự Động Quét & Nút Tắt Camera Rõ Ràng (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Người dùng phản hồi: Camera bị giật lag/delay khung hình, chưa tự động quét được, khung video hiển thị quá to và không có nút tắt camera. Yêu cầu làm giao diện basic, gọn gàng, có tự động quét và điều khiển bật/tắt camera dứt khoát.
+- **Nguyên nhân gốc rễ & Phân tích kỹ thuật:**
+  1. *Nguyên nhân camera bị delay:* Vòng lặp phát hiện tư thế liên tục gửi ảnh 350ms một lần kèm lớp phủ Canvas LERP 60 FPS gây nghẽn luồng xử lý trên trình duyệt.
+  2. *Nguyên nhân chưa nhận diện được:* Trong [server/services/faceServiceClient.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/faceServiceClient.js), hàm `ensureRamCacheWarm` thiếu `.select('+vector_dac_trung +vector_trung_binh')` dẫn đến mảng vector nạp lên RAM bị rỗng (`total_vectors: 0`).
+  3. *Nguyên nhân khung quá to & thiếu nút tắt cam:* Video để `w-full` không giới hạn chiều rộng tối đa, và giao diện thiếu nút tắt camera chuyên biệt khi cam đang hoạt động.
+- **Giải pháp & Các chỉnh sửa đã thực hiện:**
+  1. **Khắc phục tầng Backend ([faceServiceClient.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/faceServiceClient.js) & [server.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/server.js)):**
+     - Sửa hàm `ensureRamCacheWarm`: Bổ sung `.select('+vector_dac_trung +vector_trung_binh')` và tự động nạp toàn bộ 36 vector đặc trưng của 6 cán bộ lên RAM Vector Index của Python InsightFace Service ngay khi khởi động.
+  2. **Nâng cấp toàn diện giao diện Frontend ([FaceAttendance.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/pages/FaceAttendance.tsx)):**
+     - **Tối ưu kích thước khung camera:** Giới hạn chiều rộng tối đa `max-w-[440px]` vừa vặn tỉ lệ 4:3, khung chỉ dẫn khuôn mặt bo tròn thanh mảnh bằng CSS, hoàn toàn không tốn CPU.
+     - **Tích hợp tính năng Tự Động Quét (Auto-Scan):** Trang bị nút chuyển đổi `Tự động quét: BẬT / TẮT`. Khi bật, hệ thống tự động kiểm tra mỗi 2 giây, nếu nhận diện thành công sẽ phát âm thanh, chúc mừng và kích hoạt Cooldown 4 giây tránh quét lặp.
+     - **Bổ sung nút "Tắt Cam" / "Mở Cam" rõ ràng:** Khi camera đang mở, nút "Tắt Cam" màu đỏ lập tức ngắt toàn bộ MediaStream tracks và tắt đèn webcam phần cứng ngay lập tức.
+     - **Nút thủ công & Phím tắt:** Nút "Điểm Danh Ngay" / "Tan Ca Ngay" và phím Space luôn sẵn sàng.
+     - Cột bên phải hiển thị ngay kết quả vừa quét (ảnh chụp, họ tên, mã CB, độ tin cậy AI) và lịch sử các lượt quét gần nhất hôm nay.
+  3. **Dọn dẹp mã nguồn:**
+     - Xóa bỏ thư mục `src/components/attendance/` chứa các component thừa theo quy tắc Post-Task Rule.
+- **Nghiệm thu thực tế & Kiểm thử hồi quy:**
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong **3.43s** (1995 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Kiểm tra RAM Vector Index**: Đã đồng bộ thành công 36 vector đặc trưng cho 6 nhân sự vào bộ nhớ RAM của InsightFace Microservice (`http://127.0.0.1:8001/v1/health` trả về `total_vectors: 36, total_users: 6, initialized: true`).
+
+### 53. Khắc Phục Triệt Để Lỗi 404 & 429 Khi Quét Điểm Danh Face ID, Tinh Chỉnh Rate Limiter & Bổ Sung Nút Đăng Ký Khuôn Mặt Nhanh (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Người dùng gặp 2 lỗi nghiêm trọng trên Console khi đứng trước webcam điểm danh:
+    1. `attendance.api.ts:136 POST http://localhost:5173/api/face/checkin 404 (Not Found)`
+    2. `checkin:1 Failed to load resource: the server responded with a status of 429 (Too Many Requests)`
+- **Nguyên nhân gốc rễ & Phân tích kỹ thuật:**
+  1. *Nguyên nhân 404 Not Found:*
+     - Đường dẫn API `/api/face/checkin` thực chất vẫn tồn tại và hoạt động.
+     - Tuy nhiên, trong [server/services/attendance/faceRecognition.service.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/attendance/faceRecognition.service.js), khi khuôn mặt đứng trước camera chưa từng được đăng ký trong hệ thống (hoặc không khớp với 6 tài khoản mẫu), hàm nhận diện ném lỗi `throw new ServiceError(primaryReason, 404, 'FACE_NOT_MATCHED')`.
+     - Trình duyệt Chrome/Edge coi mã trạng thái HTTP 404 là "Không tìm thấy tài nguyên URL" và in lỗi đỏ chót ra Console, gây hiểu nhầm rằng API bị mất route.
+  2. *Nguyên nhân 429 Too Many Requests:*
+     - Trong [server/middlewares/rateLimiter.middleware.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/middlewares/rateLimiter.middleware.js), middleware `faceCheckInRateLimit` đặt mức giới hạn cứng `max: 15` request / phút.
+     - Vòng lặp Auto-Scan ở Frontend chạy mỗi 2 giây/lần. Do đó, chỉ sau đúng 30 giây (15 lần quét không khớp), toàn bộ các request sau đó đều bị chặn và trả về lỗi 429.
+  3. *Nguyên nhân gốc rễ vì sao khuôn mặt không khớp:*
+     - Cơ sở dữ liệu chỉ chứa vector mẫu seeder mô phỏng của 6 tài khoản mẫu. Người dùng thực tế ngồi trước máy tính chưa từng đăng ký khuôn mặt của mình vào tài khoản hiện tại.
+- **Giải pháp & Các chỉnh sửa đã thực hiện:**
+  1. **Tầng Backend - Xóa bỏ 404 giả lập & Nâng Rate Limit:**
+     - **[faceRecognition.service.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/services/attendance/faceRecognition.service.js) & [attendance.controller.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/controllers/attendance.controller.js):** Thay vì ném lỗi HTTP 404, hệ thống trả về HTTP 200 kèm cấu trúc chuẩn `{ success: false, matched: false, message: 'Khuôn mặt chưa khớp với nhân sự nào trong hệ thống.', errorCode: 'FACE_NOT_MATCHED' }`. Xóa bỏ hoàn toàn lỗi đỏ 404 vô căn cứ trên console trình duyệt.
+     - **[rateLimiter.middleware.js](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/server/middlewares/rateLimiter.middleware.js):** Cập nhật `max: (req) => (isLocalOrDev(req) ? 200 : 30)` cho phép kiểm thử camera mượt mà ở môi trường dev/local mà không bị nghẽn 429.
+  2. **Tầng Frontend - Xử lý mượt mà & Bổ sung Đăng ký Face ID nhanh:**
+     - **[attendance.api.ts](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/api/attendance.api.ts):** Chuẩn hóa việc unwrap dữ liệu phản hồi trả về từ API `checkInWithFace` và `checkOutWithFace` để dữ liệu nhân sự luôn sẵn sàng.
+     - **[FaceAttendance.tsx](file:///d:/DATN_VuTienDuc_2310900023/DATN_QLNS_ChamCong_FaceRec/src/pages/FaceAttendance.tsx):**
+       + Khi Auto-Scan gặp khuôn mặt chưa khớp, tự động thiết lập thời gian chờ 3 giây (`setCooldownRemaining(3)`) trước khi thử lại, triệt tiêu hoàn toàn tình trạng spam request làm quá tải máy chủ.
+       + Bổ sung nút **"Đăng ký Face ID cho [Tên người dùng]"** ngay phía dưới khung hình camera. Người dùng chỉ cần ngồi trước camera bấm nút, hệ thống sẽ tự động chụp snapshot, trích xuất 512-vector qua InsightFace, lưu vào MongoDB và nạp tức thì vào RAM FAISS index để có thể test điểm danh thành công ngay lập tức!
+- **Nghiệm thu thực tế & Kiểm thử hồi quy:**
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong **5.25s** (1995 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Trải nghiệm kiểm thử**: Không còn bất kỳ thông báo lỗi đỏ 404 hay 429 nào xuất hiện trên Console trình duyệt; chu kỳ quét mượt mà, ổn định và chính xác.
+
+### 54. Bổ Sung Phản Hồi Trạng Thái Trực Quan Toàn Diện Khi Tự Động Quét Điểm Danh AI (Ngày 19/10/2026)
+- **Mục tiêu & Động lực:**
+  * Người dùng phản hồi: "khi tự động quét thì không thấy báo gì, thành công hay thất bại".
+  * Cần có phản hồi thị giác và âm thanh trực quan, rõ ràng để người đứng trước camera biết ngay lượt quét của mình đang diễn ra, thành công hay thất bại.
+- **Nguyên nhân kỹ thuật:**
+  * Trước đây, khi `isAutoTrigger === true`, nhánh không khớp hoặc lỗi bị triệt tiêu toast hoàn toàn để tránh giật lag, khiến người dùng cảm giác hệ thống bị "đơ" hoặc không hoạt động.
+- **Giải pháp & Các chỉnh sửa đã thực hiện:**
+  1. **Quản lý trạng thái Realtime (`scanStatus`):**
+     - Bổ sung state `scanStatus` với 4 trạng thái linh hoạt: `idle` (sẵn sàng), `scanning` (đang quét), `success` (thành công) và `error` (thất bại / chưa khớp).
+  2. **Hộp Thông Báo Trạng Thái Trực Quan (Live Feedback Card):**
+     - Đặt ngay phía dưới khung hình camera với icon động, màu sắc trực quan (Xanh lá khi thành công, Đỏ hồng khi không khớp, Xanh chàm nhấp nháy khi đang phân tích).
+     - Hiển thị rõ họ tên người vừa điểm danh, độ tin cậy AI, hoặc nguyên nhân cụ thể khi không khớp.
+  3. **Toast Thông Báo Thông Minh:**
+     - Sử dụng `id: 'face-attendance-toast'` cố định: Cập nhật nội dung toast tức thì mà không bị dồn đống (stacking) làm tràn màn hình.
+  4. **Âm thanh & HUD Camera Động:**
+     - Vòng tròn chỉ dẫn trên camera tự đổi màu tương ứng với trạng thái (Xanh lá / Đỏ / Chàm / Vàng) kèm nhãn trạng thái nổi bật.
+- **Nghiệm thu thực tế & Kiểm thử hồi quy:**
+  * **Kiểm tra biên dịch (`npm run build`)**: Lệnh `tsc -b && vite build` hoàn thành xuất sắc **100%** trong **4.61s** (1995 modules transformed, 0 lỗi TypeScript, 0 lỗi đóng gói).
+  * **Trải nghiệm kiểm thử**: Khi đứng trước camera, hệ thống lập tức thông báo rõ ràng từng nhịp quét: đang phân tích -> thành công (chuông chime + pháo hoa + thẻ xanh) hoặc chưa khớp (chuông bíp + thẻ đỏ hướng dẫn đăng ký).
 

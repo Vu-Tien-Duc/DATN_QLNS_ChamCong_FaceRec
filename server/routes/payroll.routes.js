@@ -11,7 +11,8 @@ const {
   unlockPayroll,
   getPayrolls,
   getPayrollById,
-  getMyCurrentPayroll,
+  getMyPayroll,
+  getPayrollSummary,
   exportPayrollExcel,
   exportPayrollPdf,
 } = require('../controllers/payroll.controller');
@@ -20,27 +21,34 @@ const { verifyToken, verifyRole } = require('../middlewares/auth.middleware');
 router.use(verifyToken);
 
 // 1. Xem phiếu lương của chính mình
-router.get('/me/current', getMyCurrentPayroll);
+router.get('/my-payroll', getMyPayroll);
 
-// 2. Xuất dữ liệu báo cáo bảng lương Excel
+// 2. Thống kê tổng hợp quỹ lương tháng
+router.get('/summary', verifyRole(['admin', 'hieutruong', 'hieupho', 'truongkhoa']), getPayrollSummary);
+
+// 3. Xuất dữ liệu báo cáo bảng lương Excel
 router.get('/export/excel', verifyRole(['admin', 'hieutruong', 'hieupho', 'truongkhoa']), exportPayrollExcel);
 
-// 3. Trích xuất dữ liệu phiếu lương PDF cá nhân
+// 4. Trích xuất dữ liệu phiếu lương PDF (Hỗ trợ cả :id/export/pdf và /export/pdf?id=...)
+router.get('/export/pdf', exportPayrollPdf);
 router.get('/:id/export/pdf', exportPayrollPdf);
 
-// 4. Khởi tạo & Tính toán bảng lương dự thảo
+// 5. Khởi tạo & Tính toán bảng lương dự thảo
 router.post('/generate', verifyRole(['admin', 'hieutruong', 'hieupho', 'truongkhoa']), generatePayroll);
 
-// 5. Khóa sổ lương tháng & chốt công
+// 6. Khóa sổ lương tháng & chốt công (Hỗ trợ cả POST /lock và PUT /:id/lock)
 router.post('/lock', verifyRole(['admin', 'hieutruong', 'hieupho']), lockPayroll);
+router.put('/:id/lock', verifyRole(['admin', 'hieutruong', 'hieupho']), lockPayroll);
 
-// 6. Mở khóa sổ lương tháng (Admin/BGH)
+// 7. Mở khóa sổ lương tháng (Admin/BGH - Hỗ trợ cả POST /unlock và PUT /:id/unlock)
 router.post('/unlock', verifyRole(['admin', 'hieutruong', 'hieupho']), unlockPayroll);
+router.put('/:id/unlock', verifyRole(['admin', 'hieutruong', 'hieupho']), unlockPayroll);
 
-// 7. Tra cứu danh sách bảng lương
+// 8. Tra cứu danh sách bảng lương
 router.get('/', getPayrolls);
 
-// 8. Xem chi tiết phiếu lương theo ID
+// 9. Xem chi tiết phiếu lương theo ID
 router.get('/:id', getPayrollById);
 
 module.exports = router;
+

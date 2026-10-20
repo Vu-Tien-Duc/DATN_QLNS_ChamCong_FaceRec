@@ -55,25 +55,27 @@ const processFaceAttendance = async ({
     const primaryReason = (aiResult.reasons && aiResult.reasons[0]) || 'Khuôn mặt không khớp với hồ sơ nhân sự nào.';
 
     // Phân loại mã lỗi từ AI
+    let errorCode = 'FACE_NOT_MATCHED';
+    let message = primaryReason;
+
     if (primaryReason.includes('AMBIGUOUS_MATCH')) {
-      throw new ServiceError(
-        'Nhận diện mơ hồ: Độ chênh lệch giữa 2 ứng viên tương đồng nhất nhỏ hơn 0.05. Hệ thống từ chối để chống nhận diện nhầm.',
-        409,
-        'AMBIGUOUS_MATCH'
-      );
-    }
-    if (primaryReason.includes('SPOOF_DETECTED')) {
-      throw new ServiceError(
-        'Phát hiện dấu hiệu giả mạo sinh trắc học (ảnh in hoặc màn hình kỹ thuật số).',
-        403,
-        'LIVENESS_FAILED'
-      );
-    }
-    if (primaryReason.includes('MULTIPLE_FACES')) {
-      throw new ServiceError('Phát hiện nhiều người trong khung hình. Vui lòng chấm công từng người.', 400, 'MULTIPLE_FACES');
+      errorCode = 'AMBIGUOUS_MATCH';
+      message = 'Nhận diện mơ hồ: Độ chênh lệch giữa 2 ứng viên tương đồng nhất nhỏ hơn 0.05. Hệ thống từ chối để chống nhận diện nhầm.';
+    } else if (primaryReason.includes('SPOOF_DETECTED')) {
+      errorCode = 'LIVENESS_FAILED';
+      message = 'Phát hiện dấu hiệu giả mạo sinh trắc học (ảnh in hoặc màn hình kỹ thuật số).';
+    } else if (primaryReason.includes('MULTIPLE_FACES')) {
+      errorCode = 'MULTIPLE_FACES';
+      message = 'Phát hiện nhiều người trong khung hình. Vui lòng chấm công từng người.';
     }
 
-    throw new ServiceError(primaryReason, 404, 'FACE_NOT_MATCHED');
+    return {
+      success: false,
+      matched: false,
+      message,
+      errorCode,
+      similarity: aiResult.similarity || 0,
+    };
   }
 
   const userId = aiResult.userId;

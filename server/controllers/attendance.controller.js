@@ -5,8 +5,6 @@
  */
 const {
   processFaceAttendance,
-} = require('../services/attendance/faceRecognition.service');
-const {
   performCheckIn,
   performCheckOut,
   getAttendanceHistory: fetchAttendanceHistory,
@@ -64,6 +62,15 @@ const faceRecognizeAttendance = async (req, res, next) => {
       verifyOnly,
       useQueue,
     });
+
+    if (result.matched === false || result.success === false) {
+      return res.status(200).json({
+        success: false,
+        message: result.message || 'Không khớp khuôn mặt.',
+        data: result,
+        errorCode: result.errorCode || 'FACE_NOT_MATCHED',
+      });
+    }
 
     return sendSuccess(res, result.message, result, 200);
   } catch (error) {

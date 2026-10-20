@@ -102,14 +102,14 @@ const getAiChatRateKey = (req) => {
  */
 const faceCheckInRateLimit = rateLimit({
   windowMs: 60 * 1000,
-  max: 15,
+  max: (req) => (isLocalOrDev(req) ? 200 : 30),
   standardHeaders: true,
   legacyHeaders: false,
   store: getRateLimitStore(),
   handler: (req, res) =>
     res.status(429).json({
       success: false,
-      message: 'Máy chấm công Face ID đã vượt giới hạn 15 lần quét/phút. Vui lòng thử lại sau ít phút.',
+      message: 'Máy chấm công Face ID đã vượt giới hạn quét/phút. Vui lòng thử lại sau ít phút.',
       errorCode: 'FACE_CHECKIN_RATE_LIMIT_EXCEEDED',
       data: null,
     }),

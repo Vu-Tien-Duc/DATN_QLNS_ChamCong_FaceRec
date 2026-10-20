@@ -117,11 +117,19 @@ const auditLogSchema = new mongoose.Schema(
   }
 );
 
-auditLogSchema.virtual('actor')
-  .get(function () { return this.nguoi_thuc_hien_id; })
-  .set(function (v) { this.nguoi_thuc_hien_id = v; });
+const actorVirtual = auditLogSchema.virtual('actor', {
+  ref: 'User',
+  localField: 'nguoi_thuc_hien_id',
+  foreignField: '_id',
+  justOne: true,
+});
+actorVirtual.get(function (val) {
+  return val || this.nguoi_thuc_hien_id;
+});
 
 auditLogSchema.aliases = {
+  actor: 'nguoi_thuc_hien_id',
+  actorId: 'nguoi_thuc_hien_id',
   userId: 'nguoi_thuc_hien_id',
   actorType: 'loai_chu_the',
   action: 'hanh_dong',

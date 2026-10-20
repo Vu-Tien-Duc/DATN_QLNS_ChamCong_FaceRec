@@ -1,149 +1,135 @@
-/**
- * apiClient.ts - Axios instance với auto refresh token
- *
- * Token Strategy:
- * • Access Token  → Zustand RAM (không dùng localStorage)
- * • Refresh Token → httpOnly cookie (withCredentials: true)
- * • 401 + FORCE_LOGGED_OUT → clear + redirect /login
- * • 401 bình thường → gọi /auth/refresh → lấy token mới
- */
-
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { useAuthStore } from '../store/useAuthStore';
 
-// ─── Callbacks từ AuthContext ──────────────────────────────────────────────
-let _onForceLogout: (() => void) | null = null;
-let _onRefreshFailed: (() => void) | null = null;
-
-export function configureApiClient(
-  onForceLogout: () => void,
-  onRefreshFailed: () => void,
-) {
-  _onForceLogout = onForceLogout;
-  _onRefreshFailed = onRefreshFailed;
+// Định nghĩa kiểu phản hồi chuẩn từ Backend CSDL v2.5
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data: T;
+  message?: string;
+  errorCode?: string | null;
+  errors?: any;
 }
 
-// ─── Axios Instance ────────────────────────────────────────────────────────
 export const apiClient = axios.create({
   baseURL: '/api',
-  timeout: 20000,
-  withCredentials: true,
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-// ─── Request Interceptor ───────────────────────────────────────────────────
+// Request Interceptor: Gắn Bearer Token
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = useAuthStore.getState().accessToken;
-    if (token) {
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+    if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => Promise.reject(error),
+  (error) => Promise.reject(error)
 );
 
-// ─── Response Interceptor ─────────────────────────────────────────────────
+// Response Interceptor: Tự động xoay vòng Refresh Token khi gặp lỗi 401
 let isRefreshing = false;
 let failedQueue: Array<{
-  resolve: (token: string) => void;
-  reject: (err: unknown) => void;
+  resolve: (value?: any) => void;
+  reject: (reason?: any) => void;
 }> = [];
 
-function processQueue(error: unknown, token: string | null) {
-  failedQueue.forEach((p) => {
-    if (error) p.reject(error);
-    else p.resolve(token!);
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
   });
   failedQueue = [];
-}
+};
 
 apiClient.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError<{ code?: string }>) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & {
-      _retry?: boolean;
-    };
-    const status = error.response?.status;
-    const data = error.response?.data;
+  async (error: AxiosError<ApiResponse>) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // ── Force Logout ──
-    if (status === 401 && data?.code === 'FORCE_LOGGED_OUT') {
-      _onForceLogout?.();
+    // Bỏ qua nếu lỗi không phải 401 hoặc request là login/refresh
+    if (
+      !error.response ||
+      error.response.status !== 401 ||
+      originalRequest?.url?.includes('/auth/login') ||
+      originalRequest?.url?.includes('/auth/refresh')
+    ) {
       return Promise.reject(error);
     }
 
-    // ── Auto Refresh ──
-    if (status === 401 && !originalRequest?._retry) {
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({
-            resolve: (token: string) => {
-              originalRequest.headers.Authorization = `Bearer ${token}`;
-              resolve(apiClient(originalRequest));
-            },
-            reject,
-          });
-        });
-      }
-
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      try {
-        const refreshRes = await axios.post(
-          '/api/auth/refresh',
-          {},
-          { withCredentials: true, timeout: 10000 },
-        );
-        const newToken =
-          refreshRes.data?.data?.token ||
-          refreshRes.data?.data?.accessToken ||
-          refreshRes.data?.token ||
-          refreshRes.data?.accessToken;
-        if (!newToken) throw new Error('Không nhận được access token mới');
-
-        useAuthStore.getState().setAccessToken(newToken);
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        processQueue(null, newToken);
-        return apiClient(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
-        _onRefreshFailed?.();
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
+    if (originalRequest._retry) {
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
-  },
-);
+    originalRequest._retry = true;
 
-/**
- * Helper an toàn để bóc tách mảng từ các định dạng response khác nhau của backend:
- * - res.data (mảng thuần)
- * - res.data.data (mảng thuần)
- * - res.data.data.records (phân trang: { total, records: [...] })
- * - res.data.data.logs, users, departments, v.v...
- */
-export function extractArray<T = any>(payload: unknown): T[] {
-  if (Array.isArray(payload)) return payload;
-  if (!payload || typeof payload !== 'object') return [];
-  const p = payload as Record<string, unknown>;
-  if (Array.isArray(p.records)) return p.records as T[];
-  if (Array.isArray(p.data)) return p.data as T[];
-  if (Array.isArray(p.logs)) return p.logs as T[];
-  if (Array.isArray(p.users)) return p.users as T[];
-  if (Array.isArray(p.departments)) return p.departments as T[];
-  if (Array.isArray(p.items)) return p.items as T[];
-  if (p.data && typeof p.data === 'object') {
-    const sub = p.data as Record<string, unknown>;
-    if (Array.isArray(sub.records)) return sub.records as T[];
-    if (Array.isArray(sub.data)) return sub.data as T[];
-    if (Array.isArray(sub.logs)) return sub.logs as T[];
-    if (Array.isArray(sub.users)) return sub.users as T[];
-    if (Array.isArray(sub.departments)) return sub.departments as T[];
-    if (Array.isArray(sub.items)) return sub.items as T[];
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      })
+        .then((token) => {
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+          }
+          return apiClient(originalRequest);
+        })
+        .catch((err) => Promise.reject(err));
+    }
+
+    isRefreshing = true;
+    const refreshToken = localStorage.getItem('refreshToken');
+
+    if (!refreshToken) {
+      isRefreshing = false;
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+      return Promise.reject(error);
+    }
+
+    try {
+      const res = await axios.post<ApiResponse<{ token: string; refreshToken?: string }>>(
+        '/api/auth/refresh-token',
+        { refreshToken }
+      );
+
+      const newToken = res.data.data?.token;
+      const newRefreshToken = res.data.data?.refreshToken;
+
+      if (newToken) {
+        localStorage.setItem('accessToken', newToken);
+        localStorage.setItem('token', newToken);
+        if (newRefreshToken) {
+          localStorage.setItem('refreshToken', newRefreshToken);
+        }
+
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+        processQueue(null, newToken);
+
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        }
+        return apiClient(originalRequest);
+      } else {
+        throw new Error('Không nhận được token mới');
+      }
+    } catch (refreshErr) {
+      processQueue(refreshErr, null);
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+      return Promise.reject(refreshErr);
+    } finally {
+      isRefreshing = false;
+    }
   }
-  return [];
-}
+);

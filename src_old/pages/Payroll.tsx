@@ -35,7 +35,7 @@ export default function Payroll() {
   const fetchMyPayroll = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get('/payrolls/me/current');
+      const res = await apiClient.get('/payrolls/my-payroll');
       if (res.data?.success && res.data?.data) {
         setMyPayroll(res.data.data);
       } else {

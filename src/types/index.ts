@@ -1,196 +1,122 @@
-// Utility types cho toàn bộ hệ thống QLNS Chấm công
+// =============================================================================
+// TYPES CHUẨN CHO FRONTEND DỰ ÁN QLNS & CHẤM CÔNG FACE RECOGNITION (CSDL v2.5)
+// =============================================================================
 
-export interface ApiResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  total?: number;
-  page?: number;
-  limit?: number;
+export type RoleType =
+  | 'BGH'
+  | 'TRUONG_KHOA'
+  | 'PHO_KHOA'
+  | 'TRUONG_BO_MON'
+  | 'GIANG_VIEN'
+  | 'NHAN_VIEN'
+  | 'ADMIN_IT'
+  | 'KE_TOAN'
+  | 'QUAN_LY_XE';
+
+export type UserRoleLegacy =
+  | 'admin'
+  | 'bgh'
+  | 'truong_khoa'
+  | 'pho_khoa'
+  | 'giang_vien'
+  | 'nhan_vien'
+  | 'it_admin'
+  | 'ke_toan';
+
+export interface UserRoleItem {
+  role: RoleType | string;
+  scope: 'TOAN_TRUONG' | 'KHOA' | 'BO_MON' | 'PHONG_BAN';
+  departmentId?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
-export interface UserBasic {
+export interface UserProfile {
   _id: string;
   fullName: string;
   email: string;
-  avatar?: string;
   phone?: string;
-  role?: { _id: string; name: string } | string;
-  department?: { _id: string; name: string } | string;
-  isActive?: boolean;
-  isFaceRegistered?: boolean;
-  facePhoto?: string;
+  avatar?: string;
+  role: UserRoleLegacy;
+  roles?: UserRoleItem[];
+  departmentId?: {
+    _id: string;
+    name: string;
+    code?: string;
+  } | string;
+  departmentName?: string;
+  employeeCode?: string;
+  isActive: boolean;
+  isFaceRegistered: boolean;
+  annualLeaveQuota?: number;
+  lastLogin?: string;
 }
 
-export interface ShiftConfig {
+export interface DepartmentItem {
   _id: string;
   name: string;
-  startTime: string;
-  endTime: string;
-  lateThresholdMinutes?: number;
-  description?: string;
-  isActive?: boolean;
-}
-
-export interface Schedule {
-  _id: string;
-  userId?: UserBasic;
-  shiftId?: ShiftConfig;
-  date: string;
-  status?: string;
-  note?: string;
+  code: string;
+  type?: string;
+  managerId?: UserProfile | string;
+  memberCount?: number;
 }
 
 export type AttendanceStatus =
   | 'ON_TIME'
   | 'LATE'
-  | 'ABSENT'
   | 'EARLY_LEAVE'
+  | 'ABSENT'
   | 'EXCUSED_ABSENCE'
-  | 'CHECKED_IN'
-  | 'CHECKED_OUT'
-  | 'PRESENT';
+  | 'HOLIDAY';
 
-export type CheckInMethod = 'face' | 'qr' | 'manual' | 'gps' | 'fingerprint';
+export type CheckInMethod = 'FACE_RECOGNITION' | 'GPS' | 'QR_CODE' | 'MANUAL';
 
-export interface AttendanceLog {
-  _id: string;
-  userId?: UserBasic;
-  shiftId?: ShiftConfig | string;
+export interface AttendanceToday {
+  _id?: string;
+  date: string;
   checkInTime?: string;
   checkOutTime?: string;
-  status?: AttendanceStatus;
+  status: AttendanceStatus;
+  shiftName?: string;
   method?: CheckInMethod;
-  note?: string;
-  date?: string;
-  createdAt: string;
-  faceSnapshotUrl?: string;
-  similarity?: number;
+  similarityScore?: number;
+  faceConfidence?: number;
+  isApproved?: boolean;
 }
 
-export interface Department {
-  _id: string;
-  name: string;
-  code?: string;
-  description?: string;
-  headId?: UserBasic | string;
-  memberCount?: number;
-  isActive?: boolean;
-}
-
-export interface Subject {
-  _id: string;
-  name: string;
-  code?: string;
-  credits?: number;
-  description?: string;
-  departmentId?: Department | string;
-  isActive?: boolean;
-}
-
-export type LeaveType = 'ANNUAL' | 'SICK' | 'PERSONAL' | 'MATERNITY' | 'OTHER';
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type LeaveType = 'ANNUAL' | 'SICK' | 'MATERNITY' | 'UNPAID' | 'BUSINESS';
 
-export interface LeaveRequest {
+export interface LeaveRequestItem {
   _id: string;
-  userId?: UserBasic;
+  userId: UserProfile | string;
   type: LeaveType;
   startDate: string;
   endDate: string;
+  totalDays: number;
   reason: string;
   status: LeaveStatus;
-  adminNote?: string;
+  approverId?: UserProfile | string;
+  approverComment?: string;
   createdAt: string;
 }
 
-export interface PhuCapItem {
-  loai_phu_cap?: string;
-  he_so_hoac_ty_le?: number;
-  so_tien?: number;
-}
-
-export interface KhoanDieuChinh {
-  ly_do?: string;
-  so_tien?: number;
-}
-
-export interface Payroll {
-  _id: string;
-  userId?: UserBasic | any;
-  month: number;
-  year: number;
-  salaryCoefficient?: number;
-  baseSalary?: number;
-  primarySalary?: number;
-  positionAllowance?: number;
-  seniorityAllowance?: number;
-  vocationalAllowance?: number;
-  allowances?: PhuCapItem[];
-  bonusItems?: KhoanDieuChinh[];
-  deductionItems?: KhoanDieuChinh[];
-  teachingHours?: {
-    baseQuota?: number;
-    reductionRatio?: number;
-    adjustedQuota?: number;
-    accumulatedStandardHours?: number;
-    overQuotaHours?: number;
-    hourlyRate?: number;
-    overQuotaRemuneration?: number;
-    advancedPayment?: number;
-  };
-  grossIncome?: number;
-  insurance?: {
-    socialInsurance?: number;
-    healthInsurance?: number;
-    unemploymentInsurance?: number;
-    totalInsurance?: number;
-  };
-  personalIncomeTax?: {
-    personalDeduction?: number;
-    dependentDeduction?: number;
-    taxableIncome?: number;
-    taxAmount?: number;
-  };
-  bao_hiem?: {
-    bhxh?: number;
-    bhyt?: number;
-    bhtn?: number;
-    tong_bao_hiem?: number;
-  };
-  thue_tncn?: {
-    giam_tru_ban_than?: number;
-    giam_tru_phu_thuoc?: number;
-    thu_nhap_tinh_thue?: number;
-    tien_thue?: number;
-  };
-  netSalary?: number;
-  status?: 'DU_THAO' | 'CHO_DUYET' | 'DA_DUYET' | 'DA_KHOA' | 'DA_THANH_TOAN';
-  isLocked?: boolean;
-  lockedAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface Holiday {
-  _id: string;
-  name: string;
-  startDate: string;
-  endDate: string;
-  daysCount?: number;
+export interface StatMetric {
+  title: string;
+  value: string | number;
+  change?: string;
+  trend?: 'up' | 'down' | 'neutral';
   description?: string;
-  year?: number;
-  isPaid?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  iconName: string;
 }
 
-export interface AiChatMessage {
-  id: string;
-  sender: 'user' | 'ai';
-  text: string;
-  timestamp: string;
-  agentMode?: 'attendance' | 'policy' | 'academic';
-  provider?: string;
-  data?: any;
-}
+export type ThemeMode = 'light' | 'dark' | 'system';
 
+export interface NavigationItem {
+  name: string;
+  path: string;
+  icon: string;
+  badge?: string | number;
+  allowedRoles?: (UserRoleLegacy | string)[];
+  children?: NavigationItem[];
+}

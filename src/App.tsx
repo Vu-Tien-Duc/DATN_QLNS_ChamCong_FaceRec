@@ -1,112 +1,208 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { AuthProvider } from './context/AuthContext';
-import { ProtectedRoute } from './components/ProtectedRoute';
-import { Layout } from './components/Layout';
+import { MainLayout } from './components/layout/MainLayout';
+import { DashboardDemo } from './pages/DashboardDemo';
+import { FaceAttendance } from './pages/FaceAttendance';
+import { PlaceholderPage } from './pages/PlaceholderPage';
+import { Login } from './pages/Login';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { useThemeStore } from './store/useThemeStore';
+import { useAuthStore } from './store/useAuthStore';
 
-// Pages
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Users from './pages/Users';
-import Departments from './pages/Departments';
-import AttendanceMe from './pages/AttendanceMe';
-import AttendanceManage from './pages/AttendanceManage';
-import Shifts from './pages/Shifts';
-import Schedules from './pages/Schedules';
-import Subjects from './pages/Subjects';
-import LeaveRequests from './pages/LeaveRequests';
-import Reports from './pages/Reports';
-import AuditLogs from './pages/AuditLogs';
-import Settings from './pages/Settings';
-import FaceRegistrationPage from './pages/FaceRegistrationPage';
-import Payroll from './pages/Payroll';
-import AIChat from './pages/AIChat';
-import Holidays from './pages/Holidays';
+export const App: React.FC = () => {
+  const { isDark } = useThemeStore();
+  const { fetchMe } = useAuthStore();
 
-export default function App() {
+  // Tự động kiểm tra và làm mới hồ sơ người dùng nếu đã có token
+  useEffect(() => {
+    fetchMe();
+  }, [fetchMe]);
+
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
-          {/* Public route */}
-          <Route path="/login" element={<Login />} />
-
-          {/* Protected routes */}
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <Routes>
-                    {/* Dashboard */}
-                    <Route path="/" element={<Dashboard />} />
-
-                    {/* Trợ lý AI */}
-                    <Route path="/ai-chat" element={<AIChat />} />
-
-                    {/* Nhân sự & Sinh trắc học */}
-                    <Route path="/users" element={<Users />} />
-                    <Route path="/departments" element={<Departments />} />
-                    <Route path="/face-registration" element={<FaceRegistrationPage />} />
-
-                    {/* Chấm công */}
-                    <Route path="/attendance/me" element={<AttendanceMe />} />
-                    <Route path="/attendance/history" element={<AttendanceManage />} />
-                    <Route path="/attendance/manage" element={<AttendanceManage />} />
-
-                    {/* Lịch làm việc & Ngày nghỉ */}
-                    <Route path="/shifts" element={<Shifts />} />
-                    <Route path="/schedules" element={<Schedules />} />
-                    <Route path="/holidays" element={<Holidays />} />
-
-                    {/* Môn học */}
-                    <Route path="/subjects" element={<Subjects />} />
-
-                    {/* Nghỉ phép */}
-                    <Route path="/leave-requests" element={<LeaveRequests />} />
-
-                    {/* Bảng lương & Thu nhập */}
-                    <Route path="/payroll" element={<Payroll />} />
-
-                    {/* Báo cáo */}
-                    <Route path="/reports/attendance" element={<Reports />} />
-                    <Route path="/reports/audit" element={<AuditLogs />} />
-
-                    {/* Cài đặt */}
-                    <Route path="/settings" element={<Settings />} />
-
-                    {/* Fallback */}
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </Layout>
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </Router>
-
-      {/* Toast notifications */}
+    <BrowserRouter>
+      {/* Toast Notification Container */}
       <Toaster
         position="top-right"
         toastOptions={{
-          duration: 3000,
+          duration: 3500,
           style: {
-            background: '#fff',
-            color: '#1e293b',
-            fontSize: '14px',
-            fontWeight: '500',
-            borderRadius: '12px',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
-          },
-          success: {
-            iconTheme: { primary: '#10b981', secondary: '#fff' },
-          },
-          error: {
-            iconTheme: { primary: '#ef4444', secondary: '#fff' },
+            background: isDark ? '#1e293b' : '#ffffff',
+            color: isDark ? '#f8fafc' : '#0f172a',
+            border: isDark ? '1px solid #334155' : '1px solid #e2e8f0',
+            borderRadius: '16px',
+            fontSize: '13px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
           },
         }}
       />
-    </AuthProvider>
+
+      <Routes>
+        {/* Tuyến Đăng nhập công khai */}
+        <Route path="/login" element={<Login />} />
+
+        {/* Các tuyến được bảo vệ bởi ProtectedRoute */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <MainLayout />
+            </ProtectedRoute>
+          }
+        >
+          {/* Trang chủ / Dashboard */}
+          <Route index element={<DashboardDemo />} />
+
+          {/* Các phân hệ Chấm công & Sinh trắc học */}
+          <Route path="face-attendance" element={<FaceAttendance />} />
+          <Route
+            path="attendance-me"
+            element={
+              <PlaceholderPage
+                title="Lịch Sử Chấm Công Cá Nhân"
+                description="Xem chi tiết các lượt quét vân tay/khuôn mặt, ca làm việc và tổng số giờ công trong tháng."
+              />
+            }
+          />
+          <Route
+            path="attendance-manage"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa']}>
+                <PlaceholderPage
+                  title="Quản Lý Chấm Công Toàn Trường"
+                  description="Bảng tổng hợp điểm danh cán bộ, giảng viên theo khoa và hỗ trợ điểm danh bổ sung có phê duyệt."
+                />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Đơn từ & Lịch trình */}
+          <Route
+            path="leave-requests"
+            element={
+              <PlaceholderPage
+                title="Quản Lý Đơn Nghỉ Phép"
+                description="Nộp đơn nghỉ ốm, phép năm, việc riêng và quy trình phê duyệt cấp bậc Trưởng khoa / Ban Giám Hiệu."
+              />
+            }
+          />
+          <Route
+            path="schedules"
+            element={
+              <PlaceholderPage
+                title="Thời Khóa Biểu & Lịch Công Tác"
+                description="Lịch giảng dạy theo môn học, phòng học và phát hiện xung đột lịch trình tự động."
+              />
+            }
+          />
+
+          {/* Nhân sự & Tổ chức */}
+          <Route
+            path="users"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa']}>
+                <PlaceholderPage
+                  title="Hồ Sơ Cán Bộ & Giảng Viên"
+                  description="Quản lý thông tin nhân sự, chức danh ma trận RBAC, phân quyền khoa và trạng thái Face ID."
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="departments"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa']}>
+                <PlaceholderPage
+                  title="Khoa & Phòng Ban"
+                  description="Cơ cấu tổ chức trường đại học, ban giám hiệu, các khoa đào tạo và phòng ban chức năng."
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="subjects"
+            element={
+              <PlaceholderPage
+                title="Danh Mục Môn Học"
+                description="Quản lý học phần, số tín chỉ, định mức giờ chuẩn giảng dạy và thuộc khoa quản lý."
+              />
+            }
+          />
+
+          {/* Tài chính Lương & Báo cáo */}
+          <Route
+            path="payroll"
+            element={
+              <PlaceholderPage
+                title="Bảng Lương 2026 (Snapshot)"
+                description="Tính lương tự động theo công thức 2026: Lương cơ sở 2.34tr, phụ cấp chức vụ, thâm niên, ưu đãi nghề và khấu trừ thuế TNCN."
+              />
+            }
+          />
+          <Route
+            path="reports"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'ke_toan', 'truong_khoa']}>
+                <PlaceholderPage
+                  title="Báo Cáo & Thống Kê"
+                  description="Biểu đồ tỷ lệ đi làm đúng giờ, đi muộn, vắng mặt và xuất file Excel báo cáo định kỳ."
+                />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Cấu hình & Quản trị hệ thống */}
+          <Route
+            path="face-templates"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'bgh']}>
+                <PlaceholderPage
+                  title="Mẫu Sinh Trắc Học FaceID (512D)"
+                  description="Quản lý mẫu vector khuôn mặt mã hóa AES-256-GCM theo Nghị định 13/2023/NĐ-CP."
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="shifts"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'bgh']}>
+                <PlaceholderPage
+                  title="Ca Làm Việc & Khung Giờ Điểm Danh"
+                  description="Ca hành chính sáng/chiều và các ca học theo tiết giảng đường."
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="audit-logs"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'bgh']}>
+                <PlaceholderPage
+                  title="Nhật Ký Kiểm Toán Hệ Thống (Audit Logs)"
+                  description="Theo dõi mọi hành vi đăng nhập, thêm, sửa, xóa dữ liệu nhạy cảm phục vụ bảo mật an toàn thông tin."
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <PlaceholderPage
+                  title="Cấu Hình 19 Tham Số Hệ Thống"
+                  description="Điều chỉnh ngưỡng AI, bán kính GPS geofence trường, lương cơ sở và hạn mức phép năm."
+                />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Fallback 404 */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
-}
+};
+
+export default App;

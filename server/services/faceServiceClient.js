@@ -238,29 +238,36 @@ const ensureRamCacheWarm = async () => {
 
       // 2. Nếu Redis chưa có cache, nạp từ MongoDB
       const FaceTemplate = require('../models/faceTemplate.model');
-      const templates = await FaceTemplate.find({ isActive: { $ne: false } })
-        .populate('userId', 'fullName staffCode')
+      const templates = await FaceTemplate.find()
+        .select('+vector_dac_trung +vector_trung_binh +descriptors +averageDescriptor')
+        .populate('nguoi_dung_id', 'ho_ten ma_can_bo fullName staffCode')
         .lean();
 
-      const payload = templates
-        .map((t) => {
-          const u = (t.userId && typeof t.userId === 'object') ? t.userId : {};
-          const avg = t.averageEmbedding;
-          const allVecs = t.faceDescriptors || [];
-          const resolvedUserId = (u._id || t.userId || '').toString();
-          return {
-            userId: resolvedUserId,
-            employeeId: u.staffCode || resolvedUserId,
-            fullName: u.fullName || 'User',
-            embedding: avg || (allVecs.length > 0 ? allVecs[0] : null),
-          };
-        })
-        .filter((item) => item.embedding && item.userId);
+      const payload = [];
+      for (const t of templates) {
+        const u = t.nguoi_dung_id || t.userId || {};
+        const resolvedUserId = (u._id || t.nguoi_dung_id || t.userId || '').toString();
+        const fullName = u.ho_ten || u.fullName || 'Cán bộ';
+        const staffCode = u.ma_can_bo || u.staffCode || resolvedUserId;
+        const avg = t.vector_trung_binh || t.averageEmbedding || t.averageDescriptor;
+        const allVecs = t.vector_dac_trung || t.faceDescriptors || t.descriptors || [];
+
+        if (Array.isArray(avg) && avg.length === 512) {
+          payload.push({ userId: resolvedUserId, employeeId: staffCode, fullName, embedding: avg });
+        }
+        if (Array.isArray(allVecs)) {
+          allVecs.forEach((vec) => {
+            if (Array.isArray(vec) && vec.length === 512) {
+              payload.push({ userId: resolvedUserId, employeeId: staffCode, fullName, embedding: vec });
+            }
+          });
+        }
+      }
 
       if (payload.length > 0) {
         await syncFaissTemplates(payload);
         await cacheFaceVectors(payload, 1800).catch(() => {});
-        console.log(`[Face AI Self-Healing] Tự phục hồi thành công ${payload.length} mẫu khuôn mặt từ MongoDB lên RAM & lưu Redis Cache.`);
+        console.log(`[Face AI Self-Healing] Tự phục hồi thành công ${payload.length} vector khuôn mặt từ MongoDB lên RAM & lưu Redis Cache.`);
       }
       return { healed: true, count: payload.length, source: 'mongodb' };
     }

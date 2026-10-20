@@ -228,7 +228,22 @@ const seedData = async () => {
     // Admin 1: Chuyên viên IT quản lý server / hệ thống
     const adminUser = await User.create({
       fullName: 'Quản Trị Viên Hệ Thống (Admin IT)',
+      email: 'admin@university.edu.vn',
+      staffCode: 'ADMIN01',
+      passwordHash,
+      role: 'admin',
+      departmentId: boardOfPresidents._id,
+      annualLeaveQuota: 15,
+      isActive: true,
+      isVerified: true,
+      roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }],
+    });
+
+    // Admin 2: Tài khoản dự phòng đại học
+    const adminBackup = await User.create({
+      fullName: 'Quản Trị Viên Hệ Thống (Dự phòng)',
       email: 'daihocdtd@gmail.com',
+      staffCode: 'ADMIN02',
       passwordHash,
       role: 'admin',
       departmentId: boardOfPresidents._id,
@@ -421,13 +436,12 @@ const seedData = async () => {
 
       await FaceTemplate.create({
         userId: u._id,
-        faceDescriptors: descriptors,
-        poses: poses,
-        averageEmbedding: avgVec,
-        imageCount: 5,
-        model: 'buffalo_s',
-        consentGiven: true,
-        isL2Normalized: true,
+        descriptors,
+        averageDescriptor: avgVec,
+        sampleAngles: poses,
+        sampleCount: poses.length,
+        embeddingModel: 'buffalo_s',
+        consentAgreed: true,
       });
 
       u.isFaceRegistered = true;

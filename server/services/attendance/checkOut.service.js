@@ -102,6 +102,8 @@ const performCheckOut = async ({
 
   // 2. Tạo bản ghi PunchLog (Collection 4 - nhat_ky_quet_the)
   const punchPayload = {
+    cham_cong_id: openLog._id,
+    attendanceLogId: openLog._id,
     userId,
     punchTime: nowVN,
     punchType: 'CHECK_OUT',

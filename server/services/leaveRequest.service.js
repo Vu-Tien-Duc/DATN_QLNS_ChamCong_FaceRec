@@ -189,8 +189,9 @@ const getLeaveStatsByYear = async (userId, year, { session } = {}) => {
  * Thực thi transaction an toàn (với fallback khi MongoDB chạy ở chế độ standalone không Replica Set)
  */
 const runLeaveRequestTransaction = async (work) => {
-  const session = await mongoose.startSession();
+  let session = null;
   try {
+    session = await mongoose.startSession();
     let result;
     try {
       await session.withTransaction(async () => {
@@ -203,6 +204,8 @@ const runLeaveRequestTransaction = async (work) => {
         txError?.codeName === 'IllegalOperation' ||
         message.includes('Transaction numbers are only allowed') ||
         message.includes('does not support transactions') ||
+        message.includes('does not support retryable') ||
+        message.includes('retryable writes') ||
         message.includes('replica set')
       ) {
         // Fallback: thực thi tuần tự không transaction trên môi trường standalone/local test
@@ -212,8 +215,26 @@ const runLeaveRequestTransaction = async (work) => {
       }
     }
     return result;
+  } catch (outerErr) {
+    const msg = outerErr?.message || '';
+    if (
+      outerErr?.code === 20 ||
+      outerErr?.codeName === 'IllegalOperation' ||
+      msg.includes('Transaction numbers are only allowed') ||
+      msg.includes('does not support transactions') ||
+      msg.includes('does not support retryable') ||
+      msg.includes('retryable writes') ||
+      msg.includes('replica set')
+    ) {
+      return await work(null);
+    }
+    throw outerErr;
   } finally {
-    await session.endSession();
+    if (session) {
+      try {
+        await session.endSession();
+      } catch (_) {}
+    }
   }
 };
 

@@ -24,15 +24,6 @@ const handleAvatarUpload = (req, res, next) => {
   });
 };
 
-// Hướng dẫn nếu vô tình gọi GET /login
-router.get('/login', (req, res) => {
-  res.status(405).json({
-    success: false,
-    message: 'Phương thức GET không được hỗ trợ cho route này. Vui lòng gửi HTTP POST với Body JSON { email, password } để đăng nhập.',
-    hint: 'Sử dụng POST /api/auth/login',
-  });
-});
-
 // 1. Xác thực & Đăng nhập (Áp dụng Rate Limiting tối đa 5 lần / 15 phút)
 router.post('/login', loginLimiter, login);
 
@@ -41,9 +32,10 @@ router.post('/refresh-token', refreshToken);
 router.post('/refresh', refreshToken); // Alias chuẩn frontend
 router.post('/logout', logout);
 
-// 3. Thông tin cá nhân & Đổi mật khẩu (Áp dụng passwordResetLimiter)
+// 3. Thông tin cá nhân & Đổi mật khẩu (Hỗ trợ cả PUT & POST, có passwordResetLimiter)
 router.get('/me', verifyToken, getMe);
 router.put('/change-password', verifyToken, passwordResetLimiter, changePassword);
+router.post('/change-password', verifyToken, passwordResetLimiter, changePassword);
 
 // 4. Cập nhật ảnh đại diện (Hỗ trợ cả PUT & POST, multipart & JSON)
 router.put('/avatar', verifyToken, handleAvatarUpload, updateAvatar);

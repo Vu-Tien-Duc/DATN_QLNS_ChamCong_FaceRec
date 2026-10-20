@@ -81,6 +81,7 @@ const generateRefreshToken = (user, familyId = null) => {
       userId: user._id.toString(),
       tokenFamily,
       type: 'refresh',
+      nonce: crypto.randomUUID(),
     },
     secret,
     { expiresIn }
@@ -97,21 +98,30 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
     throw new ServiceError('Vui lòng nhập đầy đủ email và mật khẩu.', 400);
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
-  const user = await User.findOne({ email: normalizedEmail })
-    .select('+passwordHash')
+  const inputStr = email.trim();
+  const normalizedEmail = inputStr.toLowerCase();
+
+  const query = {
+    $or: [
+      { email: normalizedEmail },
+      { staffCode: inputStr.toUpperCase() },
+    ],
+  };
+
+  const user = await User.findOne(query)
+    .select('+passwordHash +mat_khau_ma_hoa')
     .populate('departmentId', 'name code type location');
 
   if (!user) {
     throw new ServiceError('Tài khoản hoặc mật khẩu không chính xác.', 401);
   }
 
-  const isUserActive = user.isActive !== false;
+  const isUserActive = user.isActive !== false && user.kich_hoat !== false;
   if (!isUserActive) {
     throw new ServiceError('Tài khoản của bạn đã bị vô hiệu hóa hoặc tạm khóa. Vui lòng liên hệ phòng Tổ chức Cán bộ.', 403);
   }
 
-  const targetPasswordHash = user.passwordHash;
+  const targetPasswordHash = user.passwordHash || user.mat_khau_ma_hoa;
   const isMatch = targetPasswordHash ? await bcrypt.compare(password, targetPasswordHash) : false;
   if (!isMatch) {
     throw new ServiceError('Tài khoản hoặc mật khẩu không chính xác.', 401);
@@ -125,12 +135,21 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   const expiresAt = new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000);
 
   // Lưu bản ghi Refresh Token vào MongoDB
+  const hashedTokenStr = hashToken(refreshTokenString);
   await RefreshToken.create({
+    chuoi_token: hashedTokenStr,
+    token: hashedTokenStr,
+    tokenHash: hashedTokenStr,
+    ma_ho: tokenFamily,
+    familyId: tokenFamily,
+    tokenFamily: tokenFamily,
+    nguoi_dung_id: user._id,
     userId: user._id,
-    tokenHash: hashToken(refreshTokenString),
-    tokenFamily,
+    dia_chi_ip: ipAddress || null,
     ipAddress: ipAddress || null,
+    thong_tin_trinh_duyet: userAgent || null,
     userAgent: userAgent || null,
+    het_han_luc: expiresAt,
     expiresAt,
   });
 
@@ -186,7 +205,9 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
   }
 
   // 2. Tìm bản ghi Refresh Token trong Database
-  const tokenDoc = await RefreshToken.findOne({ tokenHash: incomingHash });
+  const tokenDoc = await RefreshToken.findOne({
+    $or: [{ chuoi_token: incomingHash }, { tokenHash: incomingHash }],
+  });
 
   if (!tokenDoc) {
     throw new ServiceError('Refresh token không hợp lệ hoặc đã bị hủy.', 403);
@@ -271,12 +292,21 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
   const expiresAt = new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000);
 
   if (typeof RefreshToken.create === 'function') {
+    const hashedNewToken = hashToken(newRefreshTokenString);
     await RefreshToken.create({
-      userId: user._id,
-      tokenHash: hashToken(newRefreshTokenString),
+      chuoi_token: hashedNewToken,
+      token: hashedNewToken,
+      tokenHash: hashedNewToken,
+      ma_ho: tokenFamily,
+      familyId: tokenFamily,
       tokenFamily,
+      nguoi_dung_id: user._id,
+      userId: user._id,
+      dia_chi_ip: ipAddress || null,
       ipAddress: ipAddress || null,
+      thong_tin_trinh_duyet: userAgent || null,
       userAgent: userAgent || null,
+      het_han_luc: expiresAt,
       expiresAt,
     });
   }
@@ -290,7 +320,7 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
   await Promise.all([
     setGraceToken(incomingHash, graceData, 15),
     setGraceToken(incomingToken, graceData, 15),
-  ]).catch(() => {});
+  ]).catch(() => { });
   rotationGraceCache.set(incomingHash, graceData);
   rotationGraceCache.set(incomingToken, graceData);
 
@@ -316,7 +346,7 @@ const logout = async ({ refreshTokenString, accessTokenString, userId }) => {
   if (refreshTokenString) {
     const hashed = hashToken(refreshTokenString);
     await RefreshToken.updateMany(
-      { tokenHash: hashed },
+      { $or: [{ chuoi_token: hashed }, { tokenHash: hashed }] },
       { $set: { isUsed: true, da_su_dung: true } }
     );
   }

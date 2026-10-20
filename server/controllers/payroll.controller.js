@@ -30,7 +30,9 @@ const handleServiceError = (res, error, next) => {
  */
 const generatePayroll = async (req, res, next) => {
   try {
-    const { month, year, departmentId } = req.body;
+    const month = req.body?.month || req.body?.thang;
+    const year = req.body?.year || req.body?.nam;
+    const departmentId = req.body?.departmentId || req.body?.phong_ban_id;
     if (!month || !year) {
       return sendError(res, 'Tháng (month) và năm (year) là bắt buộc.', null, 400);
     }
@@ -47,12 +49,20 @@ const generatePayroll = async (req, res, next) => {
 };
 
 /**
- * 2. Khóa lương tháng & chốt công
- * @route POST /api/payrolls/lock
+ * 2. Khóa lương tháng & chốt công (Hỗ trợ cả POST /lock và PUT /:id/lock)
+ * @route POST /api/payrolls/lock hoặc PUT /api/payrolls/:id/lock
  */
 const lockPayroll = async (req, res, next) => {
   try {
-    const { month, year } = req.body;
+    let month = req.body?.month || req.body?.thang;
+    let year = req.body?.year || req.body?.nam;
+    if (req.params?.id && (!month || !year)) {
+      const p = await fetchPayrollById(req.params.id, req.user);
+      if (p) {
+        month = p.month;
+        year = p.year;
+      }
+    }
     if (!month || !year) {
       return sendError(res, 'Tháng (month) và năm (year) là bắt buộc.', null, 400);
     }
@@ -69,12 +79,21 @@ const lockPayroll = async (req, res, next) => {
 };
 
 /**
- * 3. Mở khóa lương tháng
- * @route POST /api/payrolls/unlock
+ * 3. Mở khóa lương tháng (Hỗ trợ cả POST /unlock và PUT /:id/unlock)
+ * @route POST /api/payrolls/unlock hoặc PUT /api/payrolls/:id/unlock
  */
 const unlockPayroll = async (req, res, next) => {
   try {
-    const { month, year, reason } = req.body;
+    let month = req.body?.month || req.body?.thang;
+    let year = req.body?.year || req.body?.nam;
+    let reason = req.body?.reason || req.body?.ly_do || 'Mở khóa bảng lương theo yêu cầu điều chỉnh.';
+    if (req.params?.id && (!month || !year)) {
+      const p = await fetchPayrollById(req.params.id, req.user);
+      if (p) {
+        month = p.month;
+        year = p.year;
+      }
+    }
     if (!month || !year) {
       return sendError(res, 'Tháng (month) và năm (year) là bắt buộc.', null, 400);
     }
@@ -97,7 +116,11 @@ const unlockPayroll = async (req, res, next) => {
  */
 const getPayrolls = async (req, res, next) => {
   try {
-    const { month, year, departmentId, status, userId } = req.query;
+    const month = req.query.month || req.query.thang;
+    const year = req.query.year || req.query.nam;
+    const departmentId = req.query.departmentId || req.query.phong_ban_id;
+    const status = req.query.status;
+    const userId = req.query.userId || req.query.nguoi_dung_id;
     const payrolls = await fetchPayrolls({
       month,
       year,
@@ -126,34 +149,78 @@ const getPayrollById = async (req, res, next) => {
 };
 
 /**
- * 6. Xem phiếu lương của chính mình trong tháng hiện tại
- * @route GET /api/payrolls/me/current
+ * 6. Xem phiếu lương của chính mình
+ * @route GET /api/payrolls/my-payroll
  */
-const getMyCurrentPayroll = async (req, res, next) => {
+const getMyPayroll = async (req, res, next) => {
   try {
     const now = new Date();
-    const month = req.query.month || (now.getMonth() + 1);
-    const year = req.query.year || now.getFullYear();
+    const month = req.query.month || req.query.thang || (now.getMonth() + 1);
+    const year = req.query.year || req.query.nam || now.getFullYear();
     const payrolls = await fetchPayrolls({
       month,
       year,
-      userId: req.user.id,
+      userId: req.user.id || req.user._id,
       currentUser: req.user,
     });
-    const currentPayroll = payrolls[0] || null;
-    return sendSuccess(res, 'Lấy phiếu lương cá nhân thành công.', currentPayroll);
+    const myPayroll = payrolls[0] || null;
+    return sendSuccess(res, 'Lấy phiếu lương cá nhân thành công.', myPayroll);
   } catch (error) {
     handleServiceError(res, error, next);
   }
 };
 
 /**
- * 7. Xuất dữ liệu bảng lương định dạng Excel
+ * 7. Tổng hợp thống kê quỹ lương tháng
+ * @route GET /api/payrolls/summary
+ */
+const getPayrollSummary = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const month = Number(req.query.month || req.query.thang || (now.getMonth() + 1));
+    const year = Number(req.query.year || req.query.nam || now.getFullYear());
+    const payrolls = await fetchPayrolls({
+      month,
+      year,
+      currentUser: req.user,
+    });
+    let totalNetSalary = 0;
+    let totalGrossSalary = 0;
+    let totalTax = 0;
+    let totalInsurance = 0;
+    let totalOvertimePay = 0;
+    for (const p of payrolls) {
+      totalNetSalary += Number(p.netSalary || 0);
+      totalGrossSalary += Number(p.grossIncome || p.tong_thu_nhap || 0);
+      totalTax += Number(p.personalIncomeTax || 0);
+      totalInsurance += Number(p.socialInsuranceDeduction || 0);
+      totalOvertimePay += Number(p.overtimePay || 0);
+    }
+    return sendSuccess(res, `Tổng hợp quỹ lương tháng ${month}/${year}.`, {
+      month,
+      year,
+      totalRecords: payrolls.length,
+      totalNetSalary,
+      totalGrossSalary,
+      totalTax,
+      totalInsurance,
+      totalOvertimePay,
+      isLocked: payrolls.some((p) => p.status === 'DA_KHOA' || p.isLocked),
+    });
+  } catch (error) {
+    handleServiceError(res, error, next);
+  }
+};
+
+/**
+ * 8. Xuất dữ liệu bảng lương định dạng Excel
  * @route GET /api/payrolls/export/excel
  */
 const exportPayrollExcel = async (req, res, next) => {
   try {
-    const { month, year, departmentId } = req.query;
+    const month = req.query.month || req.query.thang;
+    const year = req.query.year || req.query.nam;
+    const departmentId = req.query.departmentId || req.query.phong_ban_id;
     if (!month || !year) {
       return sendError(res, 'Tháng (month) và năm (year) là bắt buộc.', null, 400);
     }
@@ -170,12 +237,16 @@ const exportPayrollExcel = async (req, res, next) => {
 };
 
 /**
- * 8. Trích xuất dữ liệu in ấn phiếu lương PDF
- * @route GET /api/payrolls/:id/export/pdf
+ * 9. Trích xuất dữ liệu in ấn phiếu lương PDF
+ * @route GET /api/payrolls/:id/export/pdf hoặc GET /api/payrolls/export/pdf?id=...
  */
 const exportPayrollPdf = async (req, res, next) => {
   try {
-    const pdfData = await exportPayrollPdfData(req.params.id, req.user);
+    const id = req.params?.id || req.query?.id;
+    if (!id) {
+      return sendError(res, 'Vui lòng cung cấp mã phiếu lương (id) qua path hoặc query param.', null, 400);
+    }
+    const pdfData = await exportPayrollPdfData(id, req.user);
     return sendSuccess(res, 'Trích xuất dữ liệu in phiếu lương PDF thành công.', pdfData);
   } catch (error) {
     handleServiceError(res, error, next);
@@ -188,7 +259,8 @@ module.exports = {
   unlockPayroll,
   getPayrolls,
   getPayrollById,
-  getMyCurrentPayroll,
+  getMyPayroll,
+  getPayrollSummary,
   exportPayrollExcel,
   exportPayrollPdf,
 };

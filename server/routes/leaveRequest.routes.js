@@ -29,8 +29,8 @@ const optionalFileUpload = (req, res, next) => {
   }
 };
 
-// Cán bộ, giảng viên, trưởng khoa, phó khoa nộp đơn
-router.post('/', verifyRole(['truongkhoa', 'phokhoa', 'giangvien', 'nhanvien']), optionalFileUpload, createLeaveRequest);
+// Cán bộ, giảng viên, trưởng khoa, phó khoa, ban giám hiệu và admin nộp đơn
+router.post('/', verifyRole(['admin', 'hieutruong', 'hieupho', 'truongkhoa', 'phokhoa', 'giangvien', 'nhanvien']), optionalFileUpload, createLeaveRequest);
 router.get('/', verifyRole(['admin', 'hieutruong', 'hieupho', 'truongkhoa', 'phokhoa', 'giangvien', 'nhanvien']), getLeaveRequests);
 router.get('/balance', verifyRole(['admin', 'hieutruong', 'hieupho', 'truongkhoa', 'phokhoa', 'giangvien', 'nhanvien']), getLeaveBalance);
 router.get('/:id', verifyRole(['admin', 'hieutruong', 'hieupho', 'truongkhoa', 'phokhoa', 'giangvien', 'nhanvien']), getLeaveRequestById);

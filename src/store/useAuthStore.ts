@@ -1,150 +1,212 @@
-/**
- * useAuthStore - Zustand Store quản lý xác thực & phân quyền
- *
- * Bảo mật Token:
- * ✅ Access Token  → RAM (Zustand) - KHÔNG lưu localStorage
- * ✅ Refresh Token → httpOnly Cookie (server set)
- * ✅ User info     → sessionStorage (chỉ tab hiện tại, không chứa secret)
- */
-
 import { create } from 'zustand';
-import { subscribeWithSelector } from 'zustand/middleware';
-
-// ─── Types ────────────────────────────────────────────────────────────────
-export interface AuthUser {
-  _id: string;
-  fullName: string;
-  email: string;
-  avatar?: string;
-  role?: string | {
-    _id: string;
-    name: string;
-    permissions: string[];
-  };
-  roles?: string[];
-  roleNames?: string[];
-  department?: string | { _id: string; name: string };
-  permissions: string[];
-  isFaceRegistered?: boolean;
-  facePhoto?: string;
-  faceRegisteredAt?: string | Date;
-  isActive?: boolean;
-  staffCode?: string;
-}
+import toast from 'react-hot-toast';
+import { UserProfile, UserRoleLegacy } from '../types';
+import { authApi, LoginPayload } from '../api/auth.api';
 
 interface AuthState {
-  user: AuthUser | null;
-  accessToken: string | null;
+  user: UserProfile | null;
+  token: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
-  isInitialized: boolean;
-  loading: boolean;
-
-  setAccessToken: (token: string | null) => void;
-  setUser: (user: AuthUser | null) => void;
-  setLoading: (loading: boolean) => void;
-  setInitialized: (v: boolean) => void;
-  clearSession: () => void;
-
-  hasRole: (roleName: string) => boolean;
-  can: (permissionCode: string) => boolean;
+  isLoading: boolean;
+  login: (payload: LoginPayload) => Promise<boolean>;
+  logout: () => Promise<void>;
+  fetchMe: () => Promise<void>;
+  setUser: (user: UserProfile | null) => void;
+  setToken: (token: string | null) => void;
+  switchDemoRole: (role: UserRoleLegacy) => void;
 }
 
-// ─── SessionStorage helpers ────────────────────────────────────────────────
-const SESSION_KEY = 'qlns_session_user';
-
-const saveSessionUser = (user: AuthUser | null) => {
-  if (user) {
-    try {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
-    } catch (_) {}
-  } else {
-    sessionStorage.removeItem(SESSION_KEY);
-  }
+const getStoredToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('accessToken') || localStorage.getItem('token');
 };
 
-const loadSessionUser = (): AuthUser | null => {
+const getStoredRefreshToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('refreshToken');
+};
+
+const getStoredUser = (): UserProfile | null => {
+  if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem('user');
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 };
 
-// ─── Store ────────────────────────────────────────────────────────────────
-export const useAuthStore = create<AuthState>()(
-  subscribeWithSelector((set, get) => ({
-    user: loadSessionUser(),
-    accessToken: null,
-    isAuthenticated: false,
-    isInitialized: false,
-    loading: true,
+export const useAuthStore = create<AuthState>((set, get) => ({
+  user: getStoredUser(),
+  token: getStoredToken(),
+  refreshToken: getStoredRefreshToken(),
+  isAuthenticated: !!getStoredToken(),
+  isLoading: false,
 
-    setAccessToken: (token) => {
-      set({
-        accessToken: token,
-        isAuthenticated: !!(token && get().user),
-      });
-    },
+  setUser: (user) => {
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('user');
+    }
+    set({ user, isAuthenticated: !!user });
+  },
 
-    setUser: (user) => {
-      saveSessionUser(user);
-      set({
-        user,
-        isAuthenticated: !!(get().accessToken && user),
-      });
-    },
+  setToken: (token) => {
+    if (token) {
+      localStorage.setItem('accessToken', token);
+      localStorage.setItem('token', token);
+    } else {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('token');
+    }
+    set({ token, isAuthenticated: !!token });
+  },
 
-    setLoading: (loading) => set({ loading }),
-    setInitialized: (v) => set({ isInitialized: v }),
+  login: async (payload: LoginPayload) => {
+    set({ isLoading: true });
+    try {
+      const res = await authApi.login(payload);
+      if (res.success && res.data) {
+        const { token, accessToken, refreshToken, user } = res.data;
+        const finalToken = accessToken || token;
 
-    clearSession: () => {
-      saveSessionUser(null);
+        localStorage.setItem('accessToken', finalToken);
+        localStorage.setItem('token', finalToken);
+        if (refreshToken) {
+          localStorage.setItem('refreshToken', refreshToken);
+        }
+        localStorage.setItem('user', JSON.stringify(user));
+
+        set({
+          user,
+          token: finalToken,
+          refreshToken: refreshToken || null,
+          isAuthenticated: true,
+          isLoading: false,
+        });
+
+        toast.success(`Chào mừng ${user.fullName} đăng nhập thành công!`);
+        return true;
+      } else {
+        toast.error(res.message || 'Đăng nhập không thành công.');
+        set({ isLoading: false });
+        return false;
+      }
+    } catch (error: any) {
+      const errMsg = error.response?.data?.message || error.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại.';
+      toast.error(errMsg);
+      set({ isLoading: false });
+      return false;
+    }
+  },
+
+  fetchMe: async () => {
+    const currentToken = getStoredToken();
+    if (!currentToken) {
+      set({ isAuthenticated: false, user: null });
+      return;
+    }
+
+    try {
+      const res = await authApi.getMe();
+      if (res.success && res.data?.user) {
+        const user = res.data.user;
+        localStorage.setItem('user', JSON.stringify(user));
+        set({ user, isAuthenticated: true });
+      }
+    } catch (error) {
+      console.warn('Lỗi khi lấy thông tin người dùng hiện tại:', error);
+    }
+  },
+
+  logout: async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Bỏ qua lỗi mạng khi logout
+    } finally {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+
       set({
         user: null,
-        accessToken: null,
+        token: null,
+        refreshToken: null,
         isAuthenticated: false,
-        isInitialized: true,
-        loading: false,
       });
-    },
 
-    // ── Role Check ──
-    hasRole: (roleName: string): boolean => {
-      const { user } = get();
-      if (!user) return false;
-      const target = roleName.toLowerCase().trim();
+      toast.success('Đã đăng xuất khỏi hệ thống.');
+    }
+  },
 
-      const primaryRoleName =
-        typeof user.role === 'object' ? user.role?.name : user.role;
-      if (primaryRoleName && String(primaryRoleName).toLowerCase().trim() === target) return true;
+  switchDemoRole: (role: UserRoleLegacy) => {
+    const roleProfiles: Record<UserRoleLegacy, Partial<UserProfile>> = {
+      bgh: {
+        fullName: 'GS. TS. Nguyễn Văn An',
+        email: 'hieutruong@university.edu.vn',
+        role: 'bgh',
+        departmentName: 'Ban Giám Hiệu',
+        roles: [{ role: 'BGH', scope: 'TOAN_TRUONG' }],
+      },
+      admin: {
+        fullName: 'Quản Trị Viên Hệ Thống (IT Admin)',
+        email: 'admin@university.edu.vn',
+        role: 'admin',
+        departmentName: 'Phòng Quản Trị Công Nghệ',
+        roles: [{ role: 'ADMIN_IT', scope: 'TOAN_TRUONG' }],
+      },
+      truong_khoa: {
+        fullName: 'PGS. TS. Lê Hoàng Nam',
+        email: 'truongkhoa.cntt@university.edu.vn',
+        role: 'truong_khoa',
+        departmentName: 'Khoa Công Nghệ Thông Tin & CĐS',
+        roles: [{ role: 'TRUONG_KHOA', scope: 'KHOA' }],
+      },
+      giang_vien: {
+        fullName: 'TS. Trần Thị Bích',
+        email: 'giangvien.bich@university.edu.vn',
+        role: 'giang_vien',
+        departmentName: 'Khoa Công Nghệ Thông Tin & CĐS',
+        roles: [{ role: 'GIANG_VIEN', scope: 'BO_MON' }],
+      },
+      nhan_vien: {
+        fullName: 'Đỗ Thu Hà',
+        email: 'nhanvien.ha@university.edu.vn',
+        role: 'nhan_vien',
+        departmentName: 'Phòng Đào Tạo',
+        roles: [{ role: 'NHAN_VIEN', scope: 'PHONG_BAN' }],
+      },
+      ke_toan: {
+        fullName: 'ThS. Nguyễn Thị Mai',
+        email: 'admin.hr@university.edu.vn',
+        role: 'ke_toan',
+        departmentName: 'Phòng Hành Chính - Tổng Hợp',
+        roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }],
+      },
+      pho_khoa: {
+        fullName: 'TS. Đặng Tiến Hưng',
+        email: 'phokhoa.cntt@university.edu.vn',
+        role: 'pho_khoa',
+        departmentName: 'Khoa Công Nghệ Thông Tin & CĐS',
+        roles: [{ role: 'PHO_TRUONG_KHOA', scope: 'KHOA' }],
+      },
+      it_admin: {
+        fullName: 'Kỹ sư Quản trị Server',
+        email: 'it.support@university.edu.vn',
+        role: 'it_admin',
+        departmentName: 'Phòng Quản Trị Công Nghệ',
+        roles: [{ role: 'ADMIN_IT', scope: 'TOAN_TRUONG' }],
+      },
+    };
 
-      if (user.roles && Array.isArray(user.roles)) {
-        if (user.roles.some((r: string) => String(r).toLowerCase().trim() === target)) return true;
-      }
-
-      if (user.roleNames && Array.isArray(user.roleNames)) {
-        if (user.roleNames.some((r: string) => String(r).toLowerCase().trim() === target)) return true;
-      }
-
-      return false;
-    },
-
-    // ── Permission Check ──
-    can: (permissionCode: string): boolean => {
-      const { user, hasRole } = get();
-      if (!user) return false;
-
-      if (hasRole('admin') || user.permissions?.includes('all') || user.permissions?.includes('*')) return true;
-
-      // Giảng viên và nhân viên đều có quyền chấm công cơ bản
-      if (permissionCode === 'attendance.checkin') {
-        const isAdmin = hasRole('admin') || hasRole('truongkhoa');
-        return !isAdmin; // Tất cả trừ admin mới cần chấm công thủ công
-      }
-
-      if (!user.permissions || !Array.isArray(user.permissions)) return false;
-      return user.permissions.includes(permissionCode);
-    },
-  })),
-);
+    const currentUser = get().user;
+    const updated = currentUser ? { ...currentUser, ...(roleProfiles[role] || {}) } : (roleProfiles[role] as UserProfile);
+    localStorage.setItem('user', JSON.stringify(updated));
+    set({ user: updated });
+    toast.success(`Đã chuyển thử nghiệm sang vai trò: ${role.toUpperCase()}`);
+  },
+}));

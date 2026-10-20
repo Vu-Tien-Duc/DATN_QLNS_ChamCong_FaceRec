@@ -28,6 +28,7 @@ const runInTransaction = async (workFn) => {
       msg.includes('Transaction numbers are only allowed') ||
       msg.includes('This MongoDB deployment does not support transactions') ||
       msg.includes('does not support retryable') ||
+      msg.includes('retryable writes') ||
       msg.includes('Multi-document transactions') ||
       msg.includes('not allowed on Atlas free cluster') ||
       msg.includes('Transactions are not supported') ||

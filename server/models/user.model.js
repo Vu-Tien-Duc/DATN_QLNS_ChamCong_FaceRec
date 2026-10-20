@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 require('./department.model');
 
 const GENDER_MAP = {
@@ -27,6 +28,7 @@ const vaiTroSchema = new mongoose.Schema(
   {
     ma_vai_tro: {
       type: String,
+      alias: 'role',
       enum: [
         'ADMIN', 'BGH', 'TCCB', 'DAO_TAO', 'KE_TOAN', 'KIEM_TOAN',
         'TRUONG_KHOA', 'PHO_TRUONG_KHOA',
@@ -38,6 +40,7 @@ const vaiTroSchema = new mongoose.Schema(
     },
     pham_vi: {
       type: String,
+      alias: 'scope',
       enum: ['TOAN_TRUONG', 'KHOA', 'BO_MON', 'PHONG_BAN'],
       required: true,
     },
@@ -66,6 +69,13 @@ const vaiTroSchema = new mongoose.Schema(
 vaiTroSchema.virtual('ma_don_vi')
   .get(function () { return this.don_vi_id; })
   .set(function (v) { this.don_vi_id = v; });
+
+vaiTroSchema.aliases = {
+  role: 'ma_vai_tro',
+  scope: 'pham_vi',
+  departmentId: 'don_vi_id',
+};
+vaiTroSchema.plugin(schemaAliasPlugin);
 
 const userSchema = new mongoose.Schema(
   {
@@ -492,7 +502,6 @@ userSchema.methods.revokeAllSessions = async function () {
   return this.save();
 };
 
-const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 userSchema.plugin(schemaAliasPlugin);
 
 userSchema.pre('validate', function () {
