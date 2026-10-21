@@ -239,7 +239,7 @@ attendanceLogSchema.aliases = {
   userId: 'nguoi_dung_id',
   shiftId: 'ca_id',
   scheduleId: 'lich_trinh_id',
-  date: 'ngay_cong',
+  workDate: 'ngay_cong',
   checkInTime: 'thoi_gian_vao',
   checkOutTime: 'thoi_gian_ra',
   workDurationMinutes: 'thoi_luong_lam_viec_phut',

@@ -49,7 +49,7 @@ const verifyToken = async (req, res, next) => {
     }
 
     const user = await User.findById(decoded.id || decoded.userId).select(
-      'role departmentId isActive passwordChangedAt tokenVersion fullName email roles'
+      'role primaryRole vai_tro_chinh departmentId don_vi_chinh_id isActive kich_hoat passwordChangedAt doi_mat_khau_luc tokenVersion phien_ban_token fullName ho_ten email roles danh_sach_vai_tro da_dang_ky_face isFaceRegistered anh_khuon_mat facePhoto'
     );
 
     if (!user) {

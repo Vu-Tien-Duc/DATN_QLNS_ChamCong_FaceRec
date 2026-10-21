@@ -234,9 +234,6 @@ punchLogSchema.virtual('location')
     }
   });
 
-punchLogSchema.virtual('scanTime').get(function () { return this.thoi_gian_quet; });
-punchLogSchema.virtual('isFraud').get(function () { return this.co_gian_lan; });
-
 // Bảng ánh xạ định danh tiếng Anh chuẩn duy nhất (Canonical English Aliases)
 punchLogSchema.aliases = {
   attendanceLogId: 'cham_cong_id',

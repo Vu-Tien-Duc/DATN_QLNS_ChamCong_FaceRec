@@ -52,7 +52,7 @@ const getDepartmentById = async (req, res, next) => {
  */
 const createDepartment = async (req, res, next) => {
   try {
-    const { name, type, parentId, managerId, location } = req.body;
+    const { name, type, parentId, managerId, location, latitude, longitude, radiusMeters } = req.body;
     const ipAddress = req.ip || req.connection?.remoteAddress || null;
 
     const department = await departmentService.createDepartment({
@@ -61,7 +61,10 @@ const createDepartment = async (req, res, next) => {
       parentId,
       managerId,
       location,
-      actorId: req.user.id,
+      latitude,
+      longitude,
+      radiusMeters,
+      actorId: req.user.id || req.user._id,
       ipAddress,
     });
 

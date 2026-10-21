@@ -38,7 +38,7 @@ const auditLogSchema = new mongoose.Schema(
   {
     nguoi_thuc_hien_id: {
       type: mongoose.Schema.Types.ObjectId,
-      alias: 'userId',
+      alias: 'actor',
       ref: 'User',
       default: null,
     },
@@ -129,8 +129,6 @@ actorVirtual.get(function (val) {
 
 auditLogSchema.aliases = {
   actor: 'nguoi_thuc_hien_id',
-  actorId: 'nguoi_thuc_hien_id',
-  userId: 'nguoi_thuc_hien_id',
   actorType: 'loai_chu_the',
   action: 'hanh_dong',
   targetId: 'doi_tuong_id',

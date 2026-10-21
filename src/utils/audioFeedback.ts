@@ -22,7 +22,7 @@ class AudioFeedbackService {
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume().catch(() => {});
+      this.ctx.resume().catch(() => { });
     }
     return this.ctx;
   }
@@ -65,7 +65,7 @@ class AudioFeedbackService {
         osc.start(now + idx * 0.08);
         osc.stop(now + idx * 0.08 + 0.4);
       });
-    } catch (_) {}
+    } catch (_) { }
   }
 
   /**
@@ -92,7 +92,7 @@ class AudioFeedbackService {
 
       osc.start(now);
       osc.stop(now + 0.09);
-    } catch (_) {}
+    } catch (_) { }
   }
 
   /**
@@ -120,6 +120,34 @@ class AudioFeedbackService {
 
       osc.start(now);
       osc.stop(now + 0.26);
+    } catch (_) { }
+  }
+
+  /**
+   * Âm thanh chụp ảnh camera (Shutter click)
+   */
+  public playShutterClick() {
+    if (this.isMuted) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(1200, now);
+      osc.frequency.exponentialRampToValueAtTime(80, now + 0.05);
+
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.065);
     } catch (_) {}
   }
 }

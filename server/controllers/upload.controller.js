@@ -107,14 +107,24 @@ const downloadFile = async (req, res, next) => {
     const escapedFilename = escapeRegExp(safeFilename);
     const mediaReferencePattern = new RegExp(`${escapedFilename}(?:[?#].*)?$`, 'i');
 
-    // 1.1 Nếu là Avatar người dùng: cho phép truy cập công khai
-    const isAvatar = await User.exists({ avatar: { $regex: mediaReferencePattern } });
-    if (isAvatar) {
+    // 1.1 Nếu là Avatar người dùng hoặc Ảnh đại diện khuôn mặt: cho phép hiển thị công khai trên thẻ <img>
+    const isAvatarOrFacePhoto = await User.exists({
+      $or: [
+        { avatar: { $regex: mediaReferencePattern } },
+        { anh_dai_dien: { $regex: mediaReferencePattern } },
+        { facePhoto: { $regex: mediaReferencePattern } },
+        { anh_khuon_mat: { $regex: mediaReferencePattern } },
+      ],
+    });
+    if (isAvatarOrFacePhoto) {
       return streamMinioFile(res, objectKey, true);
     }
 
-    // 1.2 Nếu là ảnh chụp khuôn mặt sinh trắc học: kiểm tra quyền người dùng
+    // 1.2 Nếu là ảnh chụp khuôn mặt sinh trắc học chưa gắn vào hồ sơ công khai: kiểm tra quyền người dùng
     if (isFaceImage) {
+      if (!req.headers.authorization) {
+        return streamMinioFile(res, objectKey, false);
+      }
       const faceUser = await User.findOne({ facePhoto: { $regex: mediaReferencePattern } }).select('_id');
       return verifyToken(req, res, (authError) => {
         if (authError) return next(authError);

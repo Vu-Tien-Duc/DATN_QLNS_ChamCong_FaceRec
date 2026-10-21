@@ -54,19 +54,9 @@ const refreshTokenSchema = new mongoose.Schema(
   }
 );
 
-refreshTokenSchema.virtual('tokenHash')
-  .get(function () { return this.chuoi_token; })
-  .set(function (val) { this.chuoi_token = val; });
-
-refreshTokenSchema.virtual('tokenFamily')
-  .get(function () { return this.ma_ho; })
-  .set(function (val) { this.ma_ho = val; });
-
 refreshTokenSchema.aliases = {
   token: 'chuoi_token',
-  tokenHash: 'chuoi_token',
   familyId: 'ma_ho',
-  tokenFamily: 'ma_ho',
   isUsed: 'da_su_dung',
   usedAt: 'thoi_diem_su_dung',
   device: 'thiet_bi',

@@ -28,14 +28,15 @@ const MINIO_BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'datn-qlns-storage';
 const MINIO_REGION = process.env.MINIO_REGION || 'us-east-1';
 const STORAGE_DRIVER = (process.env.STORAGE_DRIVER || 'minio').toLowerCase();
 
-// Thư mục cục bộ dùng cho Local Fallback
-const LOCAL_STORAGE_ROOT = path.resolve(__dirname, '../../uploads');
+// Thư mục cục bộ dùng cho Local Fallback (Lưu bên ngoài project tránh nặng repository)
+const LOCAL_STORAGE_ROOT = process.env.STORAGE_LOCAL_DIR
+  ? path.resolve(process.env.STORAGE_LOCAL_DIR)
+  : path.resolve('D:/DATN_VuTienDuc_2310900023/storage-uploads');
 const getLocalEvidenceDir = () =>
-  path.resolve(process.env.ATTENDANCE_EVIDENCE_DIR || path.join(__dirname, '../../private/attendance-evidence'));
-
+  path.resolve(process.env.ATTENDANCE_EVIDENCE_DIR || 'D:/DATN_VuTienDuc_2310900023/attendance-evidence');
 
 // Đảm bảo thư mục fallback cục bộ tồn tại
-for (const dir of [LOCAL_STORAGE_ROOT, getLocalEvidenceDir(), path.join(LOCAL_STORAGE_ROOT, 'faces')]) {
+for (const dir of [LOCAL_STORAGE_ROOT, getLocalEvidenceDir(), path.join(LOCAL_STORAGE_ROOT, 'faces'), path.join(LOCAL_STORAGE_ROOT, 'attachments')]) {
   if (!fs.existsSync(dir)) {
     try {
       fs.mkdirSync(dir, { recursive: true });
@@ -113,9 +114,21 @@ const resolveLocalPath = (objectKey) => {
   const cleanKey = objectKey.replace(/^[/\\]+/, '');
   if (cleanKey.startsWith('evidence/')) {
     const filename = cleanKey.replace(/^evidence[/\\]+/, '');
-    return path.join(getLocalEvidenceDir(), filename);
+    const customEvidencePath = path.join(getLocalEvidenceDir(), filename);
+    if (fs.existsSync(customEvidencePath)) return customEvidencePath;
+    const internalEvidencePath = path.resolve(__dirname, '../../private/attendance-evidence', filename);
+    if (fs.existsSync(internalEvidencePath)) return internalEvidencePath;
+    return customEvidencePath;
   }
-  return path.join(LOCAL_STORAGE_ROOT, cleanKey);
+  const externalPath = path.join(LOCAL_STORAGE_ROOT, cleanKey);
+  if (fs.existsSync(externalPath)) {
+    return externalPath;
+  }
+  const internalPath = path.resolve(__dirname, '../../uploads', cleanKey);
+  if (fs.existsSync(internalPath)) {
+    return internalPath;
+  }
+  return externalPath;
 };
 
 /**
@@ -136,9 +149,17 @@ const putObject = async (objectKey, buffer, contentType = 'application/octet-str
 
   if (hasMinio && minioClient) {
     try {
+      const sanitizedMeta = {};
+      for (const [k, v] of Object.entries(metaData)) {
+        if (typeof v === 'string') {
+          sanitizedMeta[k] = encodeURIComponent(v);
+        } else if (v !== undefined && v !== null) {
+          sanitizedMeta[k] = String(v);
+        }
+      }
       const uploadMeta = {
         'Content-Type': contentType,
-        ...metaData,
+        ...sanitizedMeta,
       };
       await minioClient.putObject(MINIO_BUCKET_NAME, cleanKey, buffer, buffer.length, uploadMeta);
       return {
@@ -316,6 +337,75 @@ const deleteObject = async (objectKey) => {
 };
 
 /**
+ * 8.1. Xóa toàn bộ ảnh khuôn mặt thuộc về người dùng (MinIO & Local Fallback)
+ * Hỗ trợ xóa theo Mã cán bộ (StaffCode), ID hoặc Đường dẫn ảnh cụ thể
+ * @param {string|mongoose.Types.ObjectId} userId
+ * @param {string} [staffCode]
+ * @param {string} [photoPath]
+ */
+const deleteUserFaceFiles = async (userId, staffCode = null, photoPath = null) => {
+  if (!userId && !staffCode && !photoPath) return;
+  const idStr = userId ? userId.toString() : '';
+  const codeStr = staffCode ? staffCode.toString().replace(/[^a-zA-Z0-9_-]/g, '_') : '';
+
+  const prefixes = [];
+  if (codeStr) prefixes.push(`faces/face-${codeStr}-`);
+  if (idStr) prefixes.push(`faces/face-${idStr}-`);
+
+  // 1. Xóa trên MinIO Object Storage
+  const hasMinio = await ensureBucketExists();
+  if (hasMinio && minioClient) {
+    try {
+      const objectsToDelete = new Set();
+
+      // Nếu có tên file ảnh cụ thể, xóa trực tiếp
+      if (photoPath) {
+        const clean = photoPath.replace(/^\/api\/(?:v1\/)?uploads\//, '').replace(/^\/uploads\//, '');
+        const objKey = clean.startsWith('faces/') ? clean : `faces/${clean}`;
+        objectsToDelete.add(objKey);
+      }
+
+      for (const prefix of prefixes) {
+        const stream = minioClient.listObjects(MINIO_BUCKET_NAME, prefix, true);
+        for await (const obj of stream) {
+          if (obj && obj.name) {
+            objectsToDelete.add(obj.name);
+          }
+        }
+      }
+
+      if (objectsToDelete.size > 0) {
+        await minioClient.removeObjects(MINIO_BUCKET_NAME, Array.from(objectsToDelete));
+      }
+    } catch (minioErr) {
+      console.warn('[Object Storage] Lỗi khi xóa tệp MinIO cho user:', minioErr.message);
+    }
+  }
+
+  // 2. Xóa trên các thư mục local fallback
+  const localDirs = [
+    path.join(LOCAL_STORAGE_ROOT, 'faces'),
+    path.resolve(__dirname, '../../uploads/faces'),
+  ];
+
+  for (const dir of localDirs) {
+    if (fs.existsSync(dir)) {
+      try {
+        const files = await fsp.readdir(dir);
+        for (const file of files) {
+          const matchesCode = codeStr && file.startsWith(`face-${codeStr}-`);
+          const matchesId = idStr && file.startsWith(`face-${idStr}-`);
+          const matchesPhoto = photoPath && file === path.basename(photoPath);
+          if (matchesCode || matchesId || matchesPhoto) {
+            await fsp.unlink(path.join(dir, file)).catch(() => {});
+          }
+        }
+      } catch (_) {}
+    }
+  }
+};
+
+/**
  * 9. Sinh URL Ký Trước (Presigned GET URL) có giới hạn thời gian
  * @param {string} objectKey Đường dẫn định danh tệp
  * @param {number} expirySeconds Thời gian hết hạn của URL (mặc định 900s = 15 phút)
@@ -361,6 +451,8 @@ module.exports = {
   getObject,
   getObjectStream,
   deleteObject,
+  deleteUserFaceFiles,
+  resolveLocalPath,
   getPresignedUrl,
   getStorageStatus,
   MINIO_BUCKET_NAME,

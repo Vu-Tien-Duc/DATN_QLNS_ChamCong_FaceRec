@@ -23,6 +23,66 @@ const { getDeanDepartmentIds } = require('../utils/deanScope');
 const ADMIN_ROLE = 'admin';
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
+const normalizePrimaryRole = (roleInput) => {
+  const raw = String(roleInput || 'giangvien').trim().toLowerCase();
+  const map = {
+    truong_khoa: 'truongkhoa',
+    pho_khoa: 'phokhoa',
+    pho_truong_khoa: 'phokhoa',
+    truong_bo_mon: 'truongbomon',
+    pho_bo_mon: 'phobomon',
+    giang_vien: 'giangvien',
+    nhan_vien: 'nhanvien',
+    chuyen_vien: 'nhanvien',
+    it_admin: 'admin',
+    admin_it: 'admin',
+  };
+  return map[raw] || raw;
+};
+
+const buildDefaultRolesArray = (roleStr, departmentId = null) => {
+  const norm = normalizePrimaryRole(roleStr);
+  let rbacRole = 'GIANG_VIEN';
+  let scope = departmentId ? 'KHOA' : 'TOAN_TRUONG';
+
+  if (norm === 'admin') {
+    rbacRole = 'ADMIN';
+    scope = 'TOAN_TRUONG';
+  } else if (norm === 'bgh') {
+    rbacRole = 'BGH';
+    scope = 'TOAN_TRUONG';
+  } else if (norm === 'tccb') {
+    rbacRole = 'TCCB';
+    scope = 'TOAN_TRUONG';
+  } else if (norm === 'dao_tao') {
+    rbacRole = 'DAO_TAO';
+    scope = 'TOAN_TRUONG';
+  } else if (norm === 'ke_toan') {
+    rbacRole = 'KE_TOAN';
+    scope = 'TOAN_TRUONG';
+  } else if (norm === 'kiem_toan') {
+    rbacRole = 'KIEM_TOAN';
+    scope = 'TOAN_TRUONG';
+  } else if (norm === 'truongkhoa') {
+    rbacRole = 'TRUONG_KHOA';
+    scope = 'KHOA';
+  } else if (norm === 'phokhoa') {
+    rbacRole = 'PHO_TRUONG_KHOA';
+    scope = 'KHOA';
+  } else if (norm === 'truongbomon') {
+    rbacRole = 'TRUONG_BO_MON';
+    scope = 'BO_MON';
+  } else if (norm === 'nhanvien') {
+    rbacRole = 'CHUYEN_VIEN';
+    scope = departmentId ? 'PHONG_BAN' : 'TOAN_TRUONG';
+  } else {
+    rbacRole = 'GIANG_VIEN';
+    scope = departmentId ? 'KHOA' : 'TOAN_TRUONG';
+  }
+
+  return [{ role: rbacRole, scope, departmentId: departmentId || null }];
+};
+
 class ServiceError extends Error {
   constructor(message, statusCode = 400, errorCode = null, data = null) {
     super(message);
@@ -55,10 +115,10 @@ const fetchUsers = async ({ role, departmentId, isActive, search, page = 1, limi
   }
 
   if (role) {
-    query.role = role;
+    query.primaryRole = normalizePrimaryRole(role);
   }
 
-  if (isActive !== undefined) {
+  if (isActive !== undefined && isActive !== '') {
     query.isActive = isActive === 'true' || isActive === true;
   }
 
@@ -86,8 +146,69 @@ const fetchUsers = async ({ role, departmentId, isActive, search, page = 1, limi
     User.countDocuments(query),
   ]);
 
+  const FaceTemplate = require('../models/faceTemplate.model');
+  const userIds = users.map((u) => u._id);
+  const templates = await FaceTemplate.find({
+    $or: [{ nguoi_dung_id: { $in: userIds } }, { userId: { $in: userIds } }],
+  }).select('nguoi_dung_id userId ngay_dang_ky so_luong_mau').lean();
+
+  const templateMap = new Map();
+  for (const t of templates) {
+    const uid = (t.nguoi_dung_id || t.userId)?.toString();
+    if (uid) templateMap.set(uid, t);
+  }
+
+  const mappedUsers = users.map((u) => {
+    const t = templateMap.get(u._id.toString());
+    const isFaceReg =
+      Boolean(t) ||
+      Boolean(u.da_dang_ky_face) ||
+      Boolean(u.isFaceRegistered);
+
+    const deptObj =
+      u.departmentId && typeof u.departmentId === 'object'
+        ? u.departmentId
+        : u.don_vi_chinh_id && typeof u.don_vi_chinh_id === 'object'
+          ? u.don_vi_chinh_id
+          : null;
+
+    const departmentName = deptObj ? (deptObj.name || deptObj.ten_phong_ban || '') : '';
+    const staffCode = u.staffCode || u.ma_can_bo || '';
+    const roleVal = u.role || u.primaryRole || u.vai_tro_chinh || 'giangvien';
+    const avatarVal = u.anh_dai_dien || u.avatar || u.anh_khuon_mat || u.facePhoto || null;
+    const facePhotoVal = u.anh_khuon_mat || u.facePhoto || null;
+
+    return {
+      ...u,
+      fullName: u.fullName || u.ho_ten || '',
+      role: roleVal,
+      primaryRole: roleVal,
+      staffCode,
+      phoneNumber: u.phoneNumber || u.so_dien_thoai || '',
+      position: u.position || u.chuc_vu || '',
+      academicRank: u.academicRank || u.hoc_ham || 'KHONG',
+      degree: u.degree || u.hoc_vi || 'CU_NHAN',
+      staffType: u.staffType || u.loai_nhan_su || 'GIANG_VIEN',
+      contractType: u.contractType || u.loai_hop_dong || 'TOAN_THOI_GIAN',
+      salaryScale: u.salaryScale || u.ngach_luong || 'V.07.01.03',
+      salaryCoefficient: u.salaryCoefficient ?? u.he_so_luong ?? 2.34,
+      dependentsCount: u.dependentsCount ?? u.so_nguoi_phu_thuoc ?? 0,
+      annualLeaveQuota: u.annualLeaveQuota ?? u.so_ngay_phep_nam ?? 12,
+      gender: u.gender || u.gioi_tinh || 'NAM',
+      employmentStatus: u.employmentStatus || u.trang_thai_lam_viec || 'DANG_LAM_VIEC',
+      isActive: u.isActive ?? u.kich_hoat ?? true,
+      departmentId: deptObj || u.departmentId || u.don_vi_chinh_id || null,
+      departmentName,
+      avatar: avatarVal,
+      isFaceRegistered: isFaceReg,
+      faceRegisteredAt: t?.ngay_dang_ky || u.ngay_dang_ky_face || u.faceRegisteredAt || null,
+      facePhoto: facePhotoVal,
+      sampleCount: t?.so_luong_mau || t?.sampleCount || 0,
+    };
+  });
+
   return {
-    users,
+    users: mappedUsers,
     pagination: {
       total,
       page: pageNum,
@@ -139,14 +260,28 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
     staffCode,
     phoneNumber,
     position,
+    academicRank,
+    degree,
+    staffType,
+    contractType,
+    salaryScale,
+    salaryCoefficient,
+    dependentsCount,
+    annualLeaveQuota,
+    gender,
+    dateOfBirth,
+    startDate,
+    address,
+    employmentStatus,
+    avatar,
     roles,
   } = data;
 
   const finalName = (fullName || '').trim();
   const finalEmail = (email || '').trim().toLowerCase();
-  const finalStaffCode = (staffCode || '').trim();
-  const finalRole = (role || 'giangvien').toLowerCase();
-  const finalDeptId = departmentId;
+  const finalStaffCode = (staffCode || '').trim().toUpperCase();
+  const finalRole = normalizePrimaryRole(role || 'giangvien');
+  const finalDeptId = departmentId || null;
 
   if (!finalName) throw new ServiceError('Họ tên không được để trống.', 400);
   if (!finalEmail || !EMAIL_REGEX.test(finalEmail)) throw new ServiceError('Địa chỉ email không hợp lệ.', 400);
@@ -180,16 +315,32 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
     passwordHash: hashedPassword,
     staffCode: finalStaffCode,
     role: finalRole,
-    departmentId: finalDeptId || null,
-    phoneNumber: phoneNumber || null,
-    position: position || null,
-    roles: roles || [{ role: finalRole, departmentId: finalDeptId || null }],
+    primaryRole: finalRole,
+    departmentId: finalDeptId,
+    phoneNumber: phoneNumber || undefined,
+    position: position || undefined,
+    academicRank: academicRank || 'KHONG',
+    degree: degree || 'CU_NHAN',
+    staffType: staffType || (finalRole === 'giangvien' ? 'GIANG_VIEN' : 'HANH_CHINH'),
+    contractType: contractType || 'TOAN_THOI_GIAN',
+    salaryScale: salaryScale || 'V.07.01.03',
+    salaryCoefficient: salaryCoefficient !== undefined ? Number(salaryCoefficient) : 2.34,
+    dependentsCount: dependentsCount !== undefined ? Number(dependentsCount) : 0,
+    annualLeaveQuota: annualLeaveQuota !== undefined ? Number(annualLeaveQuota) : 12,
+    gender: gender || 'NAM',
+    dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+    startDate: startDate ? new Date(startDate) : new Date(),
+    address: address || '',
+    employmentStatus: employmentStatus || 'DANG_LAM_VIEC',
+    avatar: avatar || null,
+    roles: Array.isArray(roles) && roles.length > 0 ? roles : buildDefaultRolesArray(finalRole, finalDeptId),
     isActive: true,
-    tokenVersion: 0,
+    isVerified: true,
+    tokenVersion: 1,
   });
 
   AuditLog.create({
-    actor: currentUser._id,
+    actor: currentUser._id || currentUser.id,
     actorType: 'USER',
     action: 'CREATE_USER',
     targetId: newUser._id.toString(),
@@ -198,9 +349,12 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
     details: { fullName: finalName, email: finalEmail, role: finalRole, staffCode: finalStaffCode },
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
-  const result = newUser.toObject();
-  delete result.passwordHash;
-  return result;
+  const populated = await User.findById(newUser._id)
+    .populate('departmentId', 'name code type location')
+    .select('-passwordHash')
+    .lean();
+
+  return populated || newUser.toObject();
 };
 
 /**
@@ -238,6 +392,20 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     staffCode,
     phoneNumber,
     position,
+    academicRank,
+    degree,
+    staffType,
+    contractType,
+    salaryScale,
+    salaryCoefficient,
+    dependentsCount,
+    annualLeaveQuota,
+    gender,
+    dateOfBirth,
+    startDate,
+    address,
+    employmentStatus,
+    avatar,
     isActive,
     roles,
   } = data;
@@ -254,7 +422,7 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
   }
 
   if (staffCode) {
-    const code = staffCode.trim();
+    const code = staffCode.trim().toUpperCase();
     const existing = await User.findOne({
       staffCode: code,
       _id: { $ne: userId },
@@ -263,28 +431,48 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     user.staffCode = code;
   }
 
-  if (role) {
-    user.role = role.toLowerCase();
-  }
-
   if (departmentId !== undefined) {
     user.departmentId = departmentId || null;
   }
 
+  if (role) {
+    const normRole = normalizePrimaryRole(role);
+    user.role = normRole;
+    user.primaryRole = normRole;
+    if (roles === undefined) {
+      user.roles = buildDefaultRolesArray(normRole, user.departmentId);
+    }
+  }
+
   if (phoneNumber !== undefined) {
-    user.phoneNumber = phoneNumber || null;
+    user.phoneNumber = phoneNumber || undefined;
   }
 
   if (position !== undefined) {
-    user.position = position || null;
+    user.position = position || '';
   }
+
+  if (academicRank !== undefined) user.academicRank = academicRank;
+  if (degree !== undefined) user.degree = degree;
+  if (staffType !== undefined) user.staffType = staffType;
+  if (contractType !== undefined) user.contractType = contractType;
+  if (salaryScale !== undefined) user.salaryScale = salaryScale;
+  if (salaryCoefficient !== undefined) user.salaryCoefficient = Number(salaryCoefficient);
+  if (dependentsCount !== undefined) user.dependentsCount = Number(dependentsCount);
+  if (annualLeaveQuota !== undefined) user.annualLeaveQuota = Number(annualLeaveQuota);
+  if (gender !== undefined) user.gender = gender;
+  if (dateOfBirth !== undefined) user.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+  if (startDate !== undefined) user.startDate = startDate ? new Date(startDate) : user.startDate;
+  if (address !== undefined) user.address = address;
+  if (employmentStatus !== undefined) user.employmentStatus = employmentStatus;
+  if (avatar !== undefined) user.avatar = avatar || null;
 
   if (roles !== undefined) user.roles = roles;
 
   if (isActive !== undefined) {
     user.isActive = Boolean(isActive);
     if (!user.isActive) {
-      user.tokenVersion = (user.tokenVersion || 0) + 1;
+      user.tokenVersion = (user.tokenVersion || 1) + 1;
     }
   }
 
@@ -295,13 +483,13 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     const hashed = await bcrypt.hash(password, salt);
     user.passwordHash = hashed;
     user.passwordChangedAt = new Date();
-    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    user.tokenVersion = (user.tokenVersion || 1) + 1;
   }
 
   await user.save();
 
   AuditLog.create({
-    actor: currentUser._id,
+    actor: currentUser._id || currentUser.id,
     actorType: 'USER',
     action: 'UPDATE_USER',
     targetId: user._id.toString(),
@@ -310,9 +498,12 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     details: { updatedFields: Object.keys(data) },
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
-  const result = user.toObject();
-  delete result.passwordHash;
-  return result;
+  const populated = await User.findById(user._id)
+    .populate('departmentId', 'name code type location')
+    .select('-passwordHash')
+    .lean();
+
+  return populated || user.toObject();
 };
 
 /**

@@ -91,17 +91,20 @@ const registerFaceDescriptorForUser = async ({
   );
 
   const dupCheck = checkDuplicateFace(vectorList, otherUsers);
-  if (dupCheck.isDuplicate && dupCheck.duplicateUser && !isForce) {
+  if (dupCheck.isDuplicate && dupCheck.duplicateUser) {
     const dup = dupCheck.duplicateUser;
+    const staffInfo = dup.staffCode ? `Mã CB: ${dup.staffCode} - ` : '';
     throw new ServiceError(
-      `Khuôn mặt này đã được đăng ký cho tài khoản "${dup.fullName}" (${dup.email}). Mỗi nhân sự chỉ được sở hữu một khuôn mặt duy nhất!`,
+      `Phát hiện trùng lặp sinh trắc học: Khuôn mặt này đã được đăng ký cho tài khoản "${dup.fullName}" (${staffInfo}${dup.email || 'đã có Face ID'}). Mỗi nhân sự chỉ được sở hữu một khuôn mặt duy nhất trong hệ thống!`,
       409,
       'USER_FACE_ALREADY_REGISTERED',
       {
         duplicateUserId: dup._id,
         duplicateFullName: dup.fullName,
         duplicateEmail: dup.email,
+        duplicateStaffCode: dup.staffCode,
         distance: dupCheck.distance,
+        similarity: dupCheck.similarity,
         threshold: dupCheck.threshold,
       }
     );
@@ -112,28 +115,41 @@ const registerFaceDescriptorForUser = async ({
 
   // 4. Lưu vào Collection 2 FaceTemplate (mau_khuon_mat)
   const templateDoc = await FaceTemplate.findOneAndUpdate(
-    { userId: targetUser._id },
+    { $or: [{ nguoi_dung_id: targetUser._id }, { userId: targetUser._id }] },
     {
       $set: {
-        userId: targetUser._id,
-        descriptors: vectorList,
-        averageDescriptor: vectorTrungBinh,
-        poses: effectivePoses,
-        samplesCount: vectorList.length,
-        embeddingDimensions: 512,
-        embeddingModel: 'buffalo_s',
-        registeredBy: currentUser?._id || currentUser?.id || targetUser._id,
-        registeredAt: new Date(),
-        consentAgreed: true,
+        nguoi_dung_id: targetUser._id,
+        vector_dac_trung: vectorList,
+        vector_trung_binh: vectorTrungBinh,
+        cac_goc_chup: effectivePoses,
+        so_luong_mau: vectorList.length,
+        so_chieu_vector: 512,
+        mo_hinh_ai: 'buffalo_s',
+        nguoi_dang_ky_id: currentUser?._id || currentUser?.id || targetUser._id,
+        ngay_dang_ky: new Date(),
+        dieu_khoan_dong_y: true,
       },
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 
   // 5. Cập nhật User model
+  targetUser.da_dang_ky_face = true;
   targetUser.isFaceRegistered = true;
+  targetUser.ngay_dang_ky_face = new Date();
   targetUser.faceRegisteredAt = new Date();
   await targetUser.save();
+
+  await User.findByIdAndUpdate(targetUser._id, {
+    $set: {
+      da_dang_ky_face: true,
+      isFaceRegistered: true,
+      ngay_dang_ky_face: new Date(),
+      faceRegisteredAt: new Date(),
+      ngay_dong_y_sinh_trac: new Date(),
+      biometricConsentDate: new Date(),
+    },
+  });
 
   // 6. Xóa cache Node.js & nạp vector vào FAISS RAM của Python Face Service
   invalidateFaceCache();
@@ -155,8 +171,8 @@ const registerFaceDescriptorForUser = async ({
     ipAddress: ip || null,
     details: {
       userEmail: targetUser.email,
-      samplesCount: vectorList.length,
-      poses: effectivePoses,
+      sampleCount: vectorList.length,
+      sampleAngles: effectivePoses,
       forcedOverride: isForce,
       encryptedAtRest: true,
       encryptionAlgorithm: 'AES-256-GCM',
@@ -171,8 +187,8 @@ const registerFaceDescriptorForUser = async ({
     fullName: targetUser.fullName,
     email: targetUser.email,
     faceRegistered: true,
-    samplesCount: vectorList.length,
-    poses: effectivePoses,
+    sampleCount: vectorList.length,
+    sampleAngles: effectivePoses,
     templateId: templateDoc._id,
   };
 };
@@ -226,26 +242,54 @@ const registerFaceImagesForUser = async ({ id, files, poses, force, currentUser,
  * 3. Xóa dữ liệu khuôn mặt Face ID
  */
 const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
-  const targetUser = await User.findById(id);
+  if (!id) {
+    throw new ServiceError('Thiếu định danh người dùng cần xóa dữ liệu khuôn mặt.', 400);
+  }
+
+  const mongoose = require('mongoose');
+  let targetUser = null;
+  if (mongoose.isValidObjectId(id)) {
+    targetUser = await User.findById(id);
+  }
+  if (!targetUser) {
+    targetUser = await User.findOne({
+      $or: [{ staffCode: id }, { ma_can_bo: id }, { employeeCode: id }, { email: id }],
+    });
+  }
+
   if (!targetUser) {
     throw new ServiceError('Không tìm thấy người dùng.', 404);
   }
 
-  // 1. Xóa khỏi Collection mau_khuon_mat
-  const deleteResult = await FaceTemplate.deleteMany({ userId: targetUser._id });
+  // 1. Xóa khỏi Collection mau_khuon_mat (bảo đảm cả 2 trường nguoi_dung_id và userId)
+  const deleteResult = await FaceTemplate.deleteMany({
+    $or: [{ nguoi_dung_id: targetUser._id }, { userId: targetUser._id }],
+  });
 
-  // 2. Reset các trường sinh trắc học trên User
+  // 2. Reset các trường sinh trắc học trên User (chuẩn hóa CSDL v2.5 Canonical 1-to-1)
+  const currentAvatar = targetUser.avatar || targetUser.anh_dai_dien || '';
+  const shouldClearAvatar = currentAvatar.includes('/faces/face-') || currentAvatar.includes('face-');
   await User.findByIdAndUpdate(targetUser._id, {
     $set: {
-      isFaceRegistered: false,
-      facePhoto: null,
-      faceRegisteredAt: null,
-      faceDescriptor: [],
-      faceAngles: { straight: [], left: [], right: [], up: [], down: [] },
+      da_dang_ky_face: false,
+      anh_khuon_mat: null,
+      ...(shouldClearAvatar ? { anh_dai_dien: null } : {}),
+      ngay_dang_ky_face: null,
+      ngay_dong_y_sinh_trac: null,
     },
   });
 
-  // 3. Xóa khỏi RAM cache Node & FAISS RAM Python
+  // 3. Xóa toàn bộ ảnh sinh trắc học khỏi MinIO Object Storage & Thư mục fallback
+  const { deleteUserFaceFiles } = require('../config/minio');
+  await deleteUserFaceFiles(
+    targetUser._id,
+    targetUser.staffCode || targetUser.ma_can_bo,
+    targetUser.facePhoto || targetUser.anh_khuon_mat
+  ).catch((err) =>
+    console.warn('[Face Storage Cleanup Warning]:', err.message)
+  );
+
+  // 4. Xóa khỏi RAM cache Node & FAISS RAM Python
   invalidateFaceCache();
 
   removeFaissTemplate(targetUser._id.toString()).catch((err) =>
@@ -269,6 +313,8 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   return {
+    success: true,
+    message: 'Đã xóa và hủy bỏ vĩnh viễn dữ liệu sinh trắc học theo Nghị định 13/2023/NĐ-CP thành công.',
     userId: targetUser._id,
     fullName: targetUser.fullName,
     faceRegistered: false,
@@ -280,7 +326,9 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
  * 4. Lấy dữ liệu mẫu khuôn mặt của người dùng
  */
 const getFaceTemplateByUserId = async (userId) => {
-  return FaceTemplate.findOne({ userId }).select('poses samplesCount embeddingModel registeredAt embeddingDimensions');
+  return FaceTemplate.findOne({
+    $or: [{ nguoi_dung_id: userId }, { userId }],
+  }).select('sampleAngles sampleCount embeddingModel registeredAt embeddingDimensions');
 };
 
 module.exports = {

@@ -128,7 +128,6 @@ const faceTemplateSchema = new mongoose.Schema(
 );
 
 faceTemplateSchema.aliases = {
-  // Alias chuẩn theo định nghĩa Schema
   userId: 'nguoi_dung_id',
   descriptors: 'vector_dac_trung',
   averageDescriptor: 'vector_trung_binh',
@@ -147,14 +146,7 @@ faceTemplateSchema.aliases = {
   encryptedAverageDescriptor: 'vector_trung_binh_ma_hoa',
   createdAt: 'tao_luc',
   updatedAt: 'cap_nhat_luc',
-
-  // Alias tương thích ngược cho các service AI & Controller (FaceServiceClient, WebSocket, FaceController)
-  faceDescriptors: 'vector_dac_trung',
-  averageEmbedding: 'vector_trung_binh',
-  poses: 'cac_goc_chup',
 };
-
-
 
 const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 const { encryptBiometricVector, decryptBiometricVector } = require('../utils/biometricEncryption');

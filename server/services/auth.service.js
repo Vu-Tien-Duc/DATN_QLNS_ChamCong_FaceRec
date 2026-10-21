@@ -138,19 +138,11 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   const hashedTokenStr = hashToken(refreshTokenString);
   await RefreshToken.create({
     chuoi_token: hashedTokenStr,
-    token: hashedTokenStr,
-    tokenHash: hashedTokenStr,
     ma_ho: tokenFamily,
-    familyId: tokenFamily,
-    tokenFamily: tokenFamily,
     nguoi_dung_id: user._id,
-    userId: user._id,
     dia_chi_ip: ipAddress || null,
-    ipAddress: ipAddress || null,
     thong_tin_trinh_duyet: userAgent || null,
-    userAgent: userAgent || null,
     het_han_luc: expiresAt,
-    expiresAt,
   });
 
   // Cập nhật thông tin đăng nhập cuối
@@ -168,8 +160,25 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
     details: { email: user.email, role: user.role },
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
+  const FaceTemplate = require('../models/faceTemplate.model');
+  let faceTemplate = null;
+  try {
+    faceTemplate = await FaceTemplate.findOne({
+      $or: [
+        { nguoi_dung_id: user._id },
+        { userId: user._id },
+      ],
+    }).select('ngay_dang_ky so_luong_mau').lean();
+  } catch (_) {}
+
   const userObj = user.toObject ? user.toObject() : { ...user };
   delete userObj.passwordHash;
+
+  const isRegistered = Boolean(faceTemplate);
+
+  userObj.isFaceRegistered = isRegistered;
+  userObj.da_dang_ky_face = isRegistered;
+  userObj.faceRegisteredAt = isRegistered ? (faceTemplate?.ngay_dang_ky || userObj.faceRegisteredAt || null) : null;
 
   return {
     token,
@@ -206,15 +215,15 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
 
   // 2. Tìm bản ghi Refresh Token trong Database
   const tokenDoc = await RefreshToken.findOne({
-    $or: [{ chuoi_token: incomingHash }, { tokenHash: incomingHash }],
+    $or: [{ chuoi_token: incomingHash }, { token: incomingHash }, { tokenHash: incomingHash }],
   });
 
   if (!tokenDoc) {
     throw new ServiceError('Refresh token không hợp lệ hoặc đã bị hủy.', 403);
   }
 
-  const tokenFamily = tokenDoc.tokenFamily;
-  const userId = tokenDoc.userId;
+  const tokenFamily = tokenDoc.familyId || tokenDoc.tokenFamily || tokenDoc.ma_ho;
+  const userId = tokenDoc.userId || tokenDoc.nguoi_dung_id;
 
   // 3. PHÁT HIỆN REPLAY ATTACK: Token này đã bị sử dụng hoặc đã bị thu hồi trước đó
   const isUsed = tokenDoc.isUsed || tokenDoc.da_su_dung;
@@ -236,7 +245,11 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
     // Quá 15 giây hoặc không có grace cache: PHÁT HIỆN REPLAY ATTACK
     if (tokenFamily) {
       if (typeof RefreshToken.deleteMany === 'function') {
-        await RefreshToken.deleteMany({ tokenFamily });
+        await RefreshToken.deleteMany({
+          tokenFamily,
+          familyId: tokenFamily,
+          ma_ho: tokenFamily,
+        });
       }
     } else if (userId && typeof RefreshToken.deleteMany === 'function') {
       await RefreshToken.deleteMany({ userId });
@@ -295,19 +308,11 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
     const hashedNewToken = hashToken(newRefreshTokenString);
     await RefreshToken.create({
       chuoi_token: hashedNewToken,
-      token: hashedNewToken,
-      tokenHash: hashedNewToken,
       ma_ho: tokenFamily,
-      familyId: tokenFamily,
-      tokenFamily,
       nguoi_dung_id: user._id,
-      userId: user._id,
       dia_chi_ip: ipAddress || null,
-      ipAddress: ipAddress || null,
       thong_tin_trinh_duyet: userAgent || null,
-      userAgent: userAgent || null,
       het_han_luc: expiresAt,
-      expiresAt,
     });
   }
 
@@ -378,7 +383,19 @@ const getMe = async (userId) => {
     throw new ServiceError('Không tìm thấy thông tin người dùng.', 404);
   }
 
-  return user;
+  const FaceTemplate = require('../models/faceTemplate.model');
+  const template = await FaceTemplate.findOne({
+    $or: [{ nguoi_dung_id: user._id }, { userId: user._id }],
+  }).select('ngay_dang_ky so_luong_mau').lean();
+
+  const userObj = user.toObject ? user.toObject() : user;
+  const isRegistered = Boolean(template);
+
+  userObj.isFaceRegistered = isRegistered;
+  userObj.da_dang_ky_face = isRegistered;
+  userObj.faceRegisteredAt = isRegistered ? (template?.ngay_dang_ky || userObj.faceRegisteredAt || null) : null;
+
+  return userObj;
 };
 
 /**

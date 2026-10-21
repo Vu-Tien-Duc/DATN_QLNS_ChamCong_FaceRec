@@ -89,9 +89,9 @@ async function runFaceEnrollmentTests() {
   const templateObj = templateDoc.toObject ? templateDoc.toObject({ virtuals: true }) : templateDoc;
   assert.strictEqual(String(templateDoc.userId || templateDoc.nguoi_dung_id), String(dummyUserId), 'userId alias đúng');
   assert.strictEqual(templateDoc.embeddingModel, 'buffalo_s', 'embeddingModel alias đúng');
-  assert.strictEqual(templateDoc.samplesCount, 5, 'samplesCount virtual/alias đúng');
+  assert.strictEqual(templateDoc.sampleCount, 5, 'sampleCount alias đúng');
   assert.strictEqual(templateDoc.consentAgreed, true, 'consentAgreed alias đúng');
-  console.log('✓ Test 3 ĐẠT: Dual-standard Aliases và Virtuals của FaceTemplate hoạt động hoàn hảo.');
+  console.log('✓ Test 3 ĐẠT: Canonical Aliases của FaceTemplate hoạt động hoàn hảo.');
 
   // Test 4: Thuật toán Biometric Fusion - Phát hiện trùng lặp khuôn mặt (Cùng một người)
   const user1Vec = generateRandomVector512(42);

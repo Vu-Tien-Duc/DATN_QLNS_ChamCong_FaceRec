@@ -173,7 +173,7 @@ const validateManagerEligibility = async (managerId, deptType, currentDeptId = n
 /**
  * Chuẩn hóa đối tượng phòng ban tương thích 2 chiều tiếng Anh & tiếng Việt
  */
-const formatDepartmentDoc = (d) => {
+const formatDepartmentDoc = (d, countMaps = null) => {
   if (!d) return null;
   const raw = d.toObject ? d.toObject({ virtuals: true }) : { ...d };
 
@@ -182,8 +182,8 @@ const formatDepartmentDoc = (d) => {
   if (rawParent && typeof rawParent === 'object') {
     parentObj = {
       _id: rawParent._id,
-      name: rawParent.name || '',
-      type: rawParent.type || 'khoa',
+      name: rawParent.name || rawParent.ten_phong_ban || '',
+      type: rawParent.type || rawParent.loai_don_vi || 'khoa',
     };
   } else if (rawParent) {
     parentObj = rawParent;
@@ -194,27 +194,65 @@ const formatDepartmentDoc = (d) => {
   if (rawManager && typeof rawManager === 'object') {
     managerObj = {
       _id: rawManager._id,
-      fullName: rawManager.fullName || '',
+      fullName: rawManager.fullName || rawManager.ho_ten || '',
       email: rawManager.email || '',
-      role: rawManager.role || 'giangvien',
-      avatar: rawManager.avatar || null,
+      staffCode: rawManager.staffCode || rawManager.ma_can_bo || '',
+      role: rawManager.role || rawManager.vai_tro || 'giangvien',
+      avatarUrl: rawManager.avatarUrl || rawManager.anh_dai_dien || rawManager.anh_khuon_mat || rawManager.avatar || null,
       isActive: rawManager.isActive !== undefined ? rawManager.isActive : true,
     };
   } else if (rawManager) {
     managerObj = rawManager;
   }
 
-  const lat = raw.location?.lat ?? null;
-  const lng = raw.location?.lng ?? null;
+  const lat = raw.latitude ?? raw.toa_do?.vi_do ?? raw.location?.latitude ?? raw.location?.lat ?? null;
+  const lng = raw.longitude ?? raw.toa_do?.kinh_do ?? raw.location?.longitude ?? raw.location?.lng ?? null;
+  const radiusMeters = raw.radiusMeters ?? raw.ban_kinh_met ?? 200;
+
+  const idStr = raw._id ? raw._id.toString() : '';
+  const memberCount = countMaps?.userCounts?.get(idStr) ?? raw.memberCount ?? 0;
+  const subjectCount = countMaps?.subjectCounts?.get(idStr) ?? raw.subjectCount ?? 0;
 
   return {
     ...raw,
-    name: raw.name || '',
-    type: raw.type || 'khoa',
+    name: raw.name || raw.ten_phong_ban || '',
+    type: raw.type || raw.loai_don_vi || 'khoa',
     parentId: parentObj,
     managerId: managerObj,
-    location: { lat, lng },
+    latitude: lat,
+    longitude: lng,
+    radiusMeters,
+    location: { lat, lng, latitude: lat, longitude: lng },
+    memberCount,
+    subjectCount,
   };
+};
+
+/**
+ * Thống kê nhanh số lượng cán bộ và môn học theo từng đơn vị
+ */
+const fetchDepartmentStatsMaps = async () => {
+  try {
+    const Subject = mongoose.models.Subject || mongoose.models.MonHoc || require('../models/subject.model');
+    const [userAgg, subjectAgg] = await Promise.all([
+      User.aggregate([{ $match: { don_vi_id: { $ne: null } } }, { $group: { _id: '$don_vi_id', count: { $sum: 1 } } }]),
+      Subject.aggregate([{ $match: { don_vi_id: { $ne: null } } }, { $group: { _id: '$don_vi_id', count: { $sum: 1 } } }]),
+    ]);
+
+    const userCounts = new Map();
+    userAgg.forEach((item) => {
+      if (item._id) userCounts.set(item._id.toString(), item.count);
+    });
+
+    const subjectCounts = new Map();
+    subjectAgg.forEach((item) => {
+      if (item._id) subjectCounts.set(item._id.toString(), item.count);
+    });
+
+    return { userCounts, subjectCounts };
+  } catch {
+    return { userCounts: new Map(), subjectCounts: new Map() };
+  }
 };
 
 /**
@@ -260,14 +298,16 @@ const getAllDepartments = async ({ type, parentId, tree = 'true', page, limit })
   if (type) query.type = type;
   if (parentId !== undefined) query.parentId = parentId === 'null' ? null : parentId;
 
+  const countMaps = await fetchDepartmentStatsMaps();
+
   // Cấu trúc cây phân cấp
   if (tree === 'true' && !type && parentId === undefined) {
     const departments = await Department.find(query)
       .populate('parentId', 'name type')
-      .populate('managerId', 'fullName email role avatar isActive')
+      .populate('managerId', 'fullName email staffCode role avatarUrl isActive')
       .sort({ name: 1 });
 
-    const formattedDepts = departments.map(formatDepartmentDoc);
+    const formattedDepts = departments.map((d) => formatDepartmentDoc(d, countMaps));
     const treeData = buildDepartmentTree(formattedDepts);
     return { isTree: true, data: treeData };
   }
@@ -281,14 +321,14 @@ const getAllDepartments = async ({ type, parentId, tree = 'true', page, limit })
     const [departments, total] = await Promise.all([
       Department.find(query)
         .populate('parentId', 'name type')
-        .populate('managerId', 'fullName email role avatar isActive')
+        .populate('managerId', 'fullName email staffCode role avatarUrl isActive')
         .sort({ name: 1 })
         .skip(skip)
         .limit(limitNum),
       Department.countDocuments(query),
     ]);
 
-    const formattedDepts = departments.map(formatDepartmentDoc);
+    const formattedDepts = departments.map((d) => formatDepartmentDoc(d, countMaps));
     return {
       isPaginated: true,
       data: {
@@ -306,10 +346,10 @@ const getAllDepartments = async ({ type, parentId, tree = 'true', page, limit })
   // Danh sách phẳng không phân trang
   const departments = await Department.find(query)
     .populate('parentId', 'name type')
-    .populate('managerId', 'fullName email role avatar isActive')
+    .populate('managerId', 'fullName email staffCode role avatarUrl isActive')
     .sort({ name: 1 });
 
-  const formattedDepts = departments.map(formatDepartmentDoc);
+  const formattedDepts = departments.map((d) => formatDepartmentDoc(d, countMaps));
   return { isFlat: true, data: formattedDepts };
 };
 
@@ -317,20 +357,34 @@ const getAllDepartments = async ({ type, parentId, tree = 'true', page, limit })
  * Lấy chi tiết Khoa / Phòng ban theo ID
  */
 const getDepartmentById = async (id) => {
-  const department = await Department.findById(id)
-    .populate('parentId', 'name type')
-    .populate('managerId', 'fullName email role avatar isActive');
+  const [department, countMaps] = await Promise.all([
+    Department.findById(id)
+      .populate('parentId', 'name type')
+      .populate('managerId', 'fullName email staffCode role avatarUrl isActive'),
+    fetchDepartmentStatsMaps(),
+  ]);
 
   if (!department) {
     throw new ServiceError('Không tìm thấy Khoa / Phòng ban.', 404);
   }
-  return formatDepartmentDoc(department);
+  return formatDepartmentDoc(department, countMaps);
 };
 
 /**
  * Tạo mới Khoa / Phòng ban
  */
-const createDepartment = async ({ name, type, parentId, managerId, location, actorId, ipAddress }) => {
+const createDepartment = async ({
+  name,
+  type,
+  parentId,
+  managerId,
+  location,
+  latitude,
+  longitude,
+  radiusMeters,
+  actorId,
+  ipAddress,
+}) => {
   if (!name || !type) {
     throw new ServiceError('Tên và loại đơn vị (khoa, bomon, phongban) là bắt buộc.', 400);
   }
@@ -371,6 +425,17 @@ const createDepartment = async ({ name, type, parentId, managerId, location, act
     throw new ServiceError(managerError, 400);
   }
 
+  const resolvedLat =
+    latitude !== undefined && latitude !== '' && latitude !== null
+      ? Number(latitude)
+      : location?.latitude ?? location?.lat ?? null;
+  const resolvedLng =
+    longitude !== undefined && longitude !== '' && longitude !== null
+      ? Number(longitude)
+      : location?.longitude ?? location?.lng ?? null;
+  const resolvedRadius =
+    radiusMeters !== undefined && radiusMeters !== '' && radiusMeters !== null ? Number(radiusMeters) : 200;
+
   let newDept = null;
   await runInTransaction(async (session) => {
     const createOptions = session ? { session } : {};
@@ -381,7 +446,8 @@ const createDepartment = async ({ name, type, parentId, managerId, location, act
           type,
           parentId: normalizedParentId,
           managerId: managerId || null,
-          location: location || { lat: null, lng: null },
+          location: { lat: resolvedLat, lng: resolvedLng, latitude: resolvedLat, longitude: resolvedLng },
+          radiusMeters: resolvedRadius,
         },
       ],
       createOptions
@@ -410,9 +476,9 @@ const createDepartment = async ({ name, type, parentId, managerId, location, act
 
   const populatedDept = await Department.findById(newDept._id)
     .populate('parentId', 'name type')
-    .populate('managerId', 'fullName email role avatar');
+    .populate('managerId', 'fullName email staffCode role avatarUrl isActive');
 
-  return populatedDept;
+  return formatDepartmentDoc(populatedDept);
 };
 
 /**
@@ -514,6 +580,22 @@ const updateDepartment = async ({ id, body, actorId, ipAddress }) => {
   updatePayload.parentId = newParentId;
   updatePayload.managerId = targetManagerId;
 
+  if (body.latitude !== undefined || body.longitude !== undefined || body.location !== undefined) {
+    const resolvedLat =
+      body.latitude !== undefined && body.latitude !== '' && body.latitude !== null
+        ? Number(body.latitude)
+        : body.location?.latitude ?? body.location?.lat ?? existingDept.latitude ?? null;
+    const resolvedLng =
+      body.longitude !== undefined && body.longitude !== '' && body.longitude !== null
+        ? Number(body.longitude)
+        : body.location?.longitude ?? body.location?.lng ?? existingDept.longitude ?? null;
+    updatePayload.location = { lat: resolvedLat, lng: resolvedLng, latitude: resolvedLat, longitude: resolvedLng };
+  }
+
+  if (body.radiusMeters !== undefined && body.radiusMeters !== '' && body.radiusMeters !== null) {
+    updatePayload.radiusMeters = Number(body.radiusMeters);
+  }
+
   const needsManagerSync =
     targetManagerId !== (existingDept.managerId?._id?.toString() || existingDept.managerId?.toString()) ||
     newType !== existingDept.type;
@@ -525,7 +607,7 @@ const updateDepartment = async ({ id, body, actorId, ipAddress }) => {
 
     updatedDept = await Department.findByIdAndUpdate(id, updatePayload, updateOptions)
       .populate('parentId', 'name type')
-      .populate('managerId', 'fullName email role avatar');
+      .populate('managerId', 'fullName email staffCode role avatarUrl isActive');
 
     if (needsManagerSync) {
       await syncDepartmentManager(
@@ -554,7 +636,7 @@ const updateDepartment = async ({ id, body, actorId, ipAddress }) => {
     },
   });
 
-  return updatedDept;
+  return formatDepartmentDoc(updatedDept);
 };
 
 /**

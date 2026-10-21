@@ -4,6 +4,10 @@ import { Toaster } from 'react-hot-toast';
 import { MainLayout } from './components/layout/MainLayout';
 import { DashboardDemo } from './pages/DashboardDemo';
 import { FaceAttendance } from './pages/FaceAttendance';
+import { FaceRegistrationPage } from './pages/FaceRegistrationPage';
+import { Schedules } from './pages/Schedules';
+import { Users } from './pages/Users';
+import { Departments } from './pages/Departments';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { Login } from './pages/Login';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -86,36 +90,22 @@ export const App: React.FC = () => {
               />
             }
           />
-          <Route
-            path="schedules"
-            element={
-              <PlaceholderPage
-                title="Thời Khóa Biểu & Lịch Công Tác"
-                description="Lịch giảng dạy theo môn học, phòng học và phát hiện xung đột lịch trình tự động."
-              />
-            }
-          />
+          <Route path="schedules" element={<Schedules />} />
 
           {/* Nhân sự & Tổ chức */}
           <Route
             path="users"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa']}>
-                <PlaceholderPage
-                  title="Hồ Sơ Cán Bộ & Giảng Viên"
-                  description="Quản lý thông tin nhân sự, chức danh ma trận RBAC, phân quyền khoa và trạng thái Face ID."
-                />
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'tccb']}>
+                <Users />
               </ProtectedRoute>
             }
           />
           <Route
             path="departments"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa']}>
-                <PlaceholderPage
-                  title="Khoa & Phòng Ban"
-                  description="Cơ cấu tổ chức trường đại học, ban giám hiệu, các khoa đào tạo và phòng ban chức năng."
-                />
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'truongkhoa', 'pho_khoa', 'tccb', 'giangvien', 'nhanvien']}>
+                <Departments />
               </ProtectedRoute>
             }
           />
@@ -153,13 +143,18 @@ export const App: React.FC = () => {
 
           {/* Cấu hình & Quản trị hệ thống */}
           <Route
+            path="face-registration"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'bgh']}>
+                <FaceRegistrationPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="face-templates"
             element={
               <ProtectedRoute allowedRoles={['admin', 'bgh']}>
-                <PlaceholderPage
-                  title="Mẫu Sinh Trắc Học FaceID (512D)"
-                  description="Quản lý mẫu vector khuôn mặt mã hóa AES-256-GCM theo Nghị định 13/2023/NĐ-CP."
-                />
+                <FaceRegistrationPage />
               </ProtectedRoute>
             }
           />

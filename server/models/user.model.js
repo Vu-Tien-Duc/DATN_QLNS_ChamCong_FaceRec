@@ -226,7 +226,7 @@ const userSchema = new mongoose.Schema(
     },
     don_vi_chinh_id: {
       type: mongoose.Schema.Types.ObjectId,
-      alias: 'mainDepartmentId',
+      alias: 'departmentId',
       ref: 'Department',
       default: null,
     },
@@ -268,6 +268,22 @@ const userSchema = new mongoose.Schema(
       type: Date,
       alias: 'biometricConsentDate',
       default: null,
+    },
+    da_dang_ky_face: {
+      type: Boolean,
+      alias: 'isFaceRegistered',
+      default: false,
+    },
+    ngay_dang_ky_face: {
+      type: Date,
+      alias: 'faceRegisteredAt',
+      default: null,
+    },
+    anh_khuon_mat: {
+      type: String,
+      alias: 'facePhoto',
+      default: null,
+      trim: true,
     },
     da_xac_thuc: {
       type: Boolean,
@@ -418,6 +434,9 @@ userSchema.aliases = {
   leaveVersion: 'phien_ban_don_nghi',
   tokenVersion: 'phien_ban_token',
   biometricConsentDate: 'ngay_dong_y_sinh_trac',
+  isFaceRegistered: 'da_dang_ky_face',
+  faceRegisteredAt: 'ngay_dang_ky_face',
+  facePhoto: 'anh_khuon_mat',
   isVerified: 'da_xac_thuc',
   passwordChangedAt: 'doi_mat_khau_luc',
   otpCode: 'ma_otp',

@@ -112,12 +112,12 @@ export const Login: React.FC = () => {
       {/* ─── Header Navigation (Top Bar) ────────────────────────────── */}
       <header className="relative z-10 w-full px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 via-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md shadow-brand-500/25">
-            <GraduationCap className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-xl bg-white p-1 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center shadow-sm overflow-hidden">
+            <img src="/logo.png" alt="NTU Logo" className="w-full h-full object-contain" />
           </div>
           <div className="flex flex-col">
             <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-white">
-              TRƯỜNG ĐẠI HỌC CÔNG NGHỆ
+              TRƯỜNG ĐẠI HỌC NGUYỄN TRÃI (NTU)
             </span>
             <span className="text-[11px] font-medium text-brand-600 dark:text-brand-400 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -195,6 +195,21 @@ export const Login: React.FC = () => {
           {/* Right Column: Glassmorphism Login Card */}
           <div className="lg:col-span-5">
             <div className="p-6 sm:p-8 rounded-3xl bg-white/90 dark:bg-slate-900/85 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 shadow-2xl space-y-6">
+              {/* Brand Banner */}
+              <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="w-12 h-12 rounded-2xl bg-white p-1.5 border border-slate-200/80 dark:border-slate-700/80 shadow-xs flex-shrink-0 flex items-center justify-center">
+                  <img src="/logo.png" alt="NTU Logo" className="w-full h-full object-contain" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white tracking-tight">
+                    ĐẠI HỌC NGUYỄN TRÃI
+                  </h3>
+                  <p className="text-[11px] text-brand-600 dark:text-brand-400 font-medium">
+                    Cổng Chấm Công & Nhân Sự FaceID
+                  </p>
+                </div>
+              </div>
+
               {/* Form Title */}
               <div className="space-y-1 text-center sm:text-left">
                 <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">

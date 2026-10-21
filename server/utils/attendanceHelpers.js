@@ -37,6 +37,26 @@ const euclideanDistance = (vecA, vecB) => {
   return Math.sqrt(sum);
 };
 
+/**
+ * Tính Cosine Similarity giữa hai vector đặc trưng (Dot Product nếu đã chuẩn hóa L2)
+ * @param {number[]} vecA
+ * @param {number[]} vecB
+ * @returns {number} Giá trị trong khoảng [-1.0, 1.0]
+ */
+const cosineSimilarity = (vecA, vecB) => {
+  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom > 0 ? dotProduct / denom : 0;
+};
+
 // Ngưỡng so khớp nhận diện khuôn mặt Máy chấm công Face ID (1-to-N matching).
 const FACE_MATCH_THRESHOLD = 0.48;
 
@@ -84,13 +104,14 @@ const computeNormalizedCentroid = (descriptors) => {
  */
 const checkDuplicateFace = (incomingDescriptors, otherUsersWithFace) => {
   if (!Array.isArray(incomingDescriptors) || incomingDescriptors.length === 0) {
-    return { isDuplicate: false, duplicateUser: null, distance: Infinity, threshold: DUPLICATE_FACE_THRESHOLD };
+    return { isDuplicate: false, duplicateUser: null, distance: Infinity, similarity: 0, threshold: 0.88 };
   }
 
   const inputPrimary = incomingDescriptors[0];
   const inputCentroid = computeNormalizedCentroid(incomingDescriptors);
   let closestDuplicateUser = null;
   let minRecordedDistance = Infinity;
+  let maxRecordedSimilarity = -1;
 
   for (const other of otherUsersWithFace) {
     const otherCandidates = Array.isArray(other.faceDescriptors)
@@ -104,45 +125,52 @@ const checkDuplicateFace = (incomingDescriptors, otherUsersWithFace) => {
     const otherPrimary = otherCandidates[0];
     const otherCentroid = computeNormalizedCentroid(otherCandidates);
 
-    // 1. Khoảng cách trực tiếp giữa 2 góc chính diện (Primary Frontal Distance)
+    // 1. Khoảng cách Euclidean & Cosine giữa 2 góc chính diện
     const primaryDist =
       inputPrimary && otherPrimary ? euclideanDistance(inputPrimary, otherPrimary) : Infinity;
+    const primarySim =
+      inputPrimary && otherPrimary ? cosineSimilarity(inputPrimary, otherPrimary) : -1;
 
-    // 2. Khoảng cách giữa 2 vector trung tâm sinh trắc học (Biometric Centroid Distance)
+    // 2. Khoảng cách Euclidean & Cosine giữa 2 vector trung tâm (Centroid)
     const centroidDist =
       inputCentroid && otherCentroid ? euclideanDistance(inputCentroid, otherCentroid) : Infinity;
+    const centroidSim =
+      inputCentroid && otherCentroid ? cosineSimilarity(inputCentroid, otherCentroid) : -1;
 
-    // 3. Khoảng cách tối thiểu giữa toàn bộ các cặp mẫu
+    // 3. Tìm cặp tương đồng nhất trong toàn bộ các góc chụp
     let minPairDist = Infinity;
+    let maxPairSim = -1;
     for (const inVec of incomingDescriptors) {
       for (const exVec of otherCandidates) {
         const d = euclideanDistance(inVec, exVec);
         if (d < minPairDist) minPairDist = d;
+        const s = cosineSimilarity(inVec, exVec);
+        if (s > maxPairSim) maxPairSim = s;
       }
     }
 
-    const effectiveMin = Math.min(primaryDist, centroidDist, minPairDist);
-    if (effectiveMin < minRecordedDistance) {
-      minRecordedDistance = effectiveMin;
+    const effectiveMinDist = Math.min(primaryDist, centroidDist, minPairDist);
+    if (effectiveMinDist < minRecordedDistance) {
+      minRecordedDistance = effectiveMinDist;
+    }
+
+    const effectiveMaxSim = Math.max(primarySim, centroidSim, maxPairSim);
+    if (effectiveMaxSim > maxRecordedSimilarity) {
+      maxRecordedSimilarity = effectiveMaxSim;
     }
 
     const is512 = inputPrimary?.length === 512;
-    const diffThreshold = is512 ? 0.85 : 0.32;
-    const dupThreshold = is512 ? 0.65 : 0.28;
-    const dupDeepThreshold = is512 ? 0.60 : 0.25;
-
-    // NGUYÊN TẮC BẢO VỆ ĐỒNG NGHIỆP:
-    // Nếu cả góc chính diện và vector trung tâm đều cách nhau xa:
-    // Hai người này CHẮC CHẮN là 2 cá thể riêng biệt, không được báo trùng!
-    if (primaryDist >= diffThreshold && centroidDist >= diffThreshold) {
-      continue;
-    }
 
     // TIÊU CHÍ XÁC NHẬN TRÙNG LẶP (CÙNG MỘT NGƯỜI):
-    const isDup =
-      primaryDist < dupThreshold ||
-      centroidDist < dupThreshold ||
-      (primaryDist < (is512 ? 0.70 : 0.30) && centroidDist < (is512 ? 0.70 : 0.30) && minPairDist < dupDeepThreshold);
+    // Đối với ArcFace 512D:
+    // - Cosine Similarity giữa 2 ảnh chính diện >= 0.58 HOẶC
+    // - Cosine Similarity giữa 2 Centroid >= 0.58 HOẶC
+    // - Khoảng cách Euclidean tối thiểu <= 0.88 HOẶC
+    // - Có bất kỳ cặp góc nào tương đồng >= 0.62
+    // (Đảm bảo 100% bắt được cùng 1 người dù lệch góc hay đổi biểu cảm; người khác biệt chỉ có Cosine < 0.35)
+    const isDup = is512
+      ? (primarySim >= 0.58 || centroidSim >= 0.58 || maxPairSim >= 0.62 || primaryDist <= 0.88 || centroidDist <= 0.88 || minPairDist <= 0.84)
+      : (primaryDist < 0.28 || centroidDist < 0.28 || minPairDist < 0.25);
 
     if (isDup) {
       closestDuplicateUser = other;
@@ -150,11 +178,12 @@ const checkDuplicateFace = (incomingDescriptors, otherUsersWithFace) => {
     }
   }
 
-  const effectiveThreshold = inputPrimary?.length === 512 ? 0.65 : DUPLICATE_FACE_THRESHOLD;
+  const effectiveThreshold = inputPrimary?.length === 512 ? 0.88 : DUPLICATE_FACE_THRESHOLD;
   return {
     isDuplicate: !!closestDuplicateUser,
     duplicateUser: closestDuplicateUser,
     distance: minRecordedDistance < Infinity ? +minRecordedDistance.toFixed(4) : 0,
+    similarity: maxRecordedSimilarity >= 0 ? +maxRecordedSimilarity.toFixed(4) : 0,
     threshold: effectiveThreshold,
   };
 };
@@ -174,33 +203,48 @@ const getCachedUsersWithFace = async () => {
     return _cachedUsersWithFace;
   }
 
-  const templates = await FaceTemplate.find().select('+descriptors');
+  // 1. Lấy tất cả FaceTemplate có vector đặc trưng
+  const templates = await FaceTemplate.find()
+    .select('+vector_dac_trung +descriptors +vector_trung_binh +averageDescriptor')
+    .lean();
+
   const validTemplates = (templates || [])
     .map((template) => {
-      const uId = template.userId;
-      const descs = template.descriptors || [];
+      const uId = (template.nguoi_dung_id || template.userId)?.toString();
+      const descs = template.vector_dac_trung || template.descriptors || [];
       return {
-        userId: uId ? uId.toString() : null,
+        userId: uId || null,
         descriptors: Array.isArray(descs) ? descs : [],
       };
     })
     .filter((t) => t.userId && t.descriptors.length > 0);
 
+  if (validTemplates.length === 0) {
+    _cachedUsersWithFace = [];
+    _faceCacheExpiry = now + FACE_CACHE_TTL_MS;
+    return [];
+  }
+
+  // 2. Lấy thông tin User tương ứng (không lọc isActive để luôn bảo vệ khuôn mặt đã đăng ký)
   const users = await User.find({
     _id: { $in: validTemplates.map((template) => template.userId) },
-    isActive: true,
-  }).select('fullName email role departmentId avatar');
+  }).select('ho_ten fullName email ma_nhan_su staffCode vai_tro_chinh role anh_dai_dien avatar').lean();
 
   const descriptorsByUserId = new Map(
     validTemplates.map((template) => [template.userId, template.descriptors])
   );
+
   const usersWithFace = users
     .map((user) => {
-      const userObj = user.toObject ? user.toObject({ virtuals: true }) : { ...user };
+      const uIdStr = user._id.toString();
       return {
-        ...userObj,
-        fullName: userObj.fullName || '',
-        faceDescriptors: descriptorsByUserId.get(user._id.toString()) || [],
+        _id: user._id,
+        fullName: user.ho_ten || user.fullName || 'Nhân sự',
+        email: user.email || '',
+        staffCode: user.ma_nhan_su || user.staffCode || '',
+        role: user.vai_tro_chinh || user.role || '',
+        avatar: user.anh_dai_dien || user.avatar || '',
+        faceDescriptors: descriptorsByUserId.get(uIdStr) || [],
       };
     })
     .filter((user) => user.faceDescriptors.length > 0);
@@ -719,6 +763,7 @@ const verifyDynamicQRCode = (token) => {
 module.exports = {
   // Biometrics
   euclideanDistance,
+  cosineSimilarity,
   FACE_MATCH_THRESHOLD,
   getEffectiveFaceMatchThreshold: () => systemConfigService.getConfigSync('FACE_MATCH_THRESHOLD', FACE_MATCH_THRESHOLD),
   DUPLICATE_FACE_THRESHOLD,

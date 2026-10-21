@@ -7,6 +7,7 @@ const {
   createSchedule,
   updateSchedule,
   deleteSchedule,
+  addException,
 } = require('../controllers/schedule.controller');
 const { verifyToken, authorizeRoles } = require('../middlewares/auth.middleware');
 
@@ -388,5 +389,25 @@ router.put('/:id', authorizeRoles('admin', 'truongkhoa'), updateSchedule);
  *         description: Không tìm thấy lịch để xóa (SCHEDULE_001)
  */
 router.delete('/:id', authorizeRoles('admin', 'truongkhoa'), deleteSchedule);
+
+/**
+ * @swagger
+ * /api/schedules/{id}/exceptions:
+ *   post:
+ *     summary: Ghi nhận ngoại lệ buổi học (Nghỉ, Hủy, Dạy bù)
+ *     tags: [Schedules]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Ghi nhận ngoại lệ thành công
+ */
+router.post('/:id/exceptions', authorizeRoles('admin', 'truongkhoa', 'giangvien', 'nhanvien'), addException);
 
 module.exports = router;

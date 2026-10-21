@@ -6,8 +6,9 @@ export const Footer: React.FC = () => {
     <footer className="mt-auto py-4 px-6 border-t border-slate-200/60 dark:border-slate-800/80 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm text-xs text-slate-500 dark:text-slate-400">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
         <div className="flex items-center gap-2">
+          <img src="/logo.png" alt="NTU" className="w-5 h-5 object-contain" />
           <span className="font-semibold text-slate-700 dark:text-slate-300">
-            Hệ Thống Quản Lý Nhân Sự & Chấm Công Đại Học
+            Hệ Thống Quản Lý Nhân Sự & Chấm Công - Đại Học Nguyễn Trãi (NTU)
           </span>
           <span className="hidden md:inline">• Đồ Án Tốt Nghiệp 2026</span>
         </div>

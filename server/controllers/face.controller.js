@@ -46,6 +46,8 @@ const detectPose = async (req, res) => {
     });
 
     const isDetected = result?.status === 'face_detected';
+    const detectedPoseEn = result?.detectedPose || result?.pose?.pose_en || (isDetected ? 'STRAIGHT' : 'NONE');
+    const detectedPoseVi = result?.detectedPoseVi || result?.pose?.pose || 'chinh_dien';
 
     return res.json({
       face_detected: isDetected,
@@ -59,11 +61,14 @@ const detectPose = async (req, res) => {
           }
         : null,
       pose: {
-        pose: result?.detectedPose ?? (isDetected ? 'STRAIGHT' : 'NONE'),
-        yaw_deg: result?.yaw ?? 0,
-        pitch_deg: result?.pitch ?? 0,
-        roll_deg: result?.roll ?? 0,
+        pose: detectedPoseEn,
+        pose_en: detectedPoseEn,
+        pose_vi: detectedPoseVi,
+        yaw_deg: result?.yaw ?? result?.pose?.yaw_deg ?? 0,
+        pitch_deg: result?.pitch ?? result?.pose?.pitch_deg ?? 0,
+        roll_deg: result?.roll ?? result?.pose?.roll_deg ?? 0,
       },
+      landmarks: result?.landmarks || null,
       liveness: result?.liveness ?? null,
       quality: result?.quality ?? null,
     });
@@ -83,6 +88,17 @@ const detectPose = async (req, res) => {
  */
 const enrollMultiAngleFace = async (req, res) => {
   try {
+    // 0. Phân quyền: Chỉ Quản trị viên (Admin / BGH) mới có quyền đăng ký khuôn mặt cho mọi người
+    const userRole = (req.user?.role || req.user?.primaryRole || req.user?.vai_tro_chinh || '').toLowerCase();
+    const isAdmin = ['admin', 'bgh', 'admin_it', 'it_admin'].includes(userRole);
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Chỉ có Quản trị viên (Admin) mới có quyền đăng ký khuôn mặt cho cán bộ, giảng viên. Cá nhân chỉ có thể điểm danh, không thể tự đăng ký.',
+        errorCode: 'FORBIDDEN_ADMIN_ONLY_FACE_ENROLL',
+      });
+    }
+
     const employeeId = req.body.employee_id || req.body.userId || req.user?._id?.toString();
     const fullName = req.body.full_name || req.body.fullName;
     const force = req.body.force === true || req.body.force === 'true';
@@ -165,21 +181,8 @@ const enrollMultiAngleFace = async (req, res) => {
       });
     }
 
-    // 4. Lưu ảnh khuôn mặt đại diện (chính diện) lên MinIO Object Storage
-    let facePhotoUrl = targetUser.facePhoto;
-    if (req.files) {
-      const primaryFile = req.files['image_straight']?.[0] || req.files['straight']?.[0] || req.files['image']?.[0];
-      if (primaryFile && primaryFile.buffer) {
-        const fileName = `face-${targetUser._id}-${Date.now()}.jpg`;
-        await minioStorage.putObject(`faces/${fileName}`, primaryFile.buffer, 'image/jpeg', {
-          userId: targetUser._id.toString(),
-          category: 'face-registration',
-        });
-        facePhotoUrl = `/uploads/faces/${fileName}`;
-      }
-    }
-
-    // 5. Đăng ký qua Service (Chống trùng lặp, lưu FaceTemplate, đồng bộ RAM FAISS)
+    // 4. Đăng ký qua Service (Chống trùng lặp, lưu FaceTemplate, đồng bộ RAM FAISS)
+    // Thực hiện đăng ký sinh trắc học trước để đảm bảo nếu bị trùng mặt (409) thì không lưu tệp ảnh rác
     const result = await registerFaceDescriptorForUser({
       id: targetUser._id,
       descriptors: allVectors,
@@ -189,9 +192,58 @@ const enrollMultiAngleFace = async (req, res) => {
       ip: req.ip,
     });
 
-    if (facePhotoUrl && facePhotoUrl !== targetUser.facePhoto) {
-      await User.findByIdAndUpdate(targetUser._id, { $set: { facePhoto: facePhotoUrl } });
+    // 5. Khi đăng ký thành công: Lưu ảnh khuôn mặt đại diện (chính diện) lên MinIO Object Storage
+    let facePhotoUrl = targetUser.facePhoto;
+    if (req.files) {
+      const primaryFile = req.files['image_straight']?.[0] || req.files['straight']?.[0] || req.files['image']?.[0];
+      if (primaryFile && primaryFile.buffer) {
+        // Dọn dẹp ảnh cũ của nhân sự trên MinIO/ổ cứng trước khi lưu ảnh mới
+        await minioStorage.deleteUserFaceFiles(
+          targetUser._id,
+          targetUser.staffCode || targetUser.ma_can_bo,
+          targetUser.facePhoto || targetUser.anh_khuon_mat
+        ).catch(() => {});
+
+        // Đặt tên file chuẩn Enterprise: face-<MãCánBộ>-<TênKhôngDấu>.jpg
+        const staffCode = (targetUser.staffCode || targetUser.ma_can_bo || targetUser.ma_nhan_vien || targetUser._id.toString()).replace(/[^a-zA-Z0-9_-]/g, '_');
+        let cleanName = (targetUser.fullName || targetUser.ho_ten || 'can-bo')
+          .replace(/\(.*?\)/g, '')
+          .replace(/^(ThS|TS|PGS|GS|Ths|Ts)\.?\s+/i, '')
+          .trim()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+        if (!cleanName) cleanName = 'avatar';
+
+        const fileName = `face-${staffCode}-${cleanName}.jpg`;
+        await minioStorage.putObject(`faces/${fileName}`, primaryFile.buffer, 'image/jpeg', {
+          userId: targetUser._id.toString(),
+          staffCode,
+          fullName: targetUser.fullName || targetUser.ho_ten,
+          category: 'face-registration',
+        });
+        facePhotoUrl = `/uploads/faces/${fileName}`;
+      }
     }
+
+    // 6. Cập nhật User model trong MongoDB đảm bảo trường da_dang_ky_face luôn là true
+    const finalFacePhoto = facePhotoUrl || targetUser.facePhoto || targetUser.anh_khuon_mat;
+    const currentAvatar = targetUser.avatar || targetUser.anh_dai_dien;
+    const shouldSyncAvatar = !currentAvatar || currentAvatar.includes('/faces/face-');
+
+    await User.findByIdAndUpdate(targetUser._id, {
+      $set: {
+        da_dang_ky_face: true,
+        ngay_dang_ky_face: new Date(),
+        anh_khuon_mat: finalFacePhoto,
+        ...(shouldSyncAvatar && finalFacePhoto ? { anh_dai_dien: finalFacePhoto } : {}),
+        ngay_dong_y_sinh_trac: new Date(),
+      },
+    });
 
     return res.status(200).json({
       success: true,
@@ -225,33 +277,52 @@ const getRegistrationStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Thiếu định danh người dùng.' });
     }
 
-    const user = await User.findById(targetId).select(
-      'fullName email isFaceRegistered faceRegisteredAt facePhoto'
-    );
+    const user = await User.findById(targetId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng.' });
     }
 
-    const template = await FaceTemplate.findOne({ userId: user._id }).select('poses samplesCount embeddingModel registeredAt');
+    // Tra cứu FaceTemplate cả 2 tên trường nguoi_dung_id và userId
+    const template = await FaceTemplate.findOne({
+      $or: [{ nguoi_dung_id: user._id }, { userId: user._id }],
+    });
 
-    const isRegistered =
-      Boolean(template) ||
-      user.isFaceRegistered === true ||
-      Boolean(user.facePhoto);
+    const hasValidTemplate = Boolean(
+      template &&
+      ((Array.isArray(template.descriptors) && template.descriptors.length > 0) ||
+       (Array.isArray(template.vector_dac_trung) && template.vector_dac_trung.length > 0))
+    );
+
+    const isRegistered = hasValidTemplate;
+
+    // Tự động đồng bộ cờ da_dang_ky_face trên User cho khớp chính xác với thực tế có FaceTemplate hay không
+    if (user.da_dang_ky_face !== isRegistered || user.isFaceRegistered !== isRegistered) {
+      await User.findByIdAndUpdate(user._id, {
+        $set: {
+          da_dang_ky_face: isRegistered,
+          ngay_dang_ky_face: isRegistered ? (template.ngay_dang_ky || template.registeredAt || new Date()) : null,
+        },
+      });
+    }
 
     return res.json({
       success: true,
       data: {
         userId: user._id,
-        fullName: user.fullName,
+        fullName: user.ho_ten || user.fullName,
         email: user.email,
         isRegistered,
         isFaceRegistered: isRegistered,
-        faceRegisteredAt: template?.registeredAt || user.faceRegisteredAt,
-        facePhoto: user.facePhoto,
-        sampleCount: template?.samplesCount || 0,
-        sampleAngles: template?.poses || [],
-        aiModel: template?.embeddingModel || 'buffalo_s',
+        faceRegisteredAt: isRegistered
+          ? (template?.ngay_dang_ky ||
+             template?.registeredAt ||
+             user.ngay_dang_ky_face ||
+             user.faceRegisteredAt)
+          : null,
+        facePhoto: isRegistered ? (user.anh_khuon_mat || user.facePhoto) : null,
+        sampleCount: isRegistered ? (template?.so_luong_mau || template?.sampleCount || 0) : 0,
+        sampleAngles: isRegistered ? (template?.cac_goc_chup || template?.sampleAngles || []) : [],
+        embeddingModel: template?.mo_hinh_ai || template?.embeddingModel || 'buffalo_s',
       },
     });
   } catch (err) {
@@ -267,9 +338,9 @@ const deleteFaceData = async (req, res) => {
   try {
     const targetUserId = req.params.userId || req.user?._id?.toString() || req.user?.id?.toString();
     const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
-    const userRole = (req.user?.role || '').toLowerCase();
+    const userRole = (req.user?.role || req.user?.primaryRole || req.user?.vai_tro_chinh || '').toLowerCase();
     const isSelf = currentUserId && targetUserId && currentUserId === targetUserId;
-    const isAuthorizedManager = ['admin', 'truongkhoa'].includes(userRole);
+    const isAuthorizedManager = ['admin', 'bgh', 'admin_it', 'it_admin', 'tccb', 'truong_khoa', 'truongkhoa'].includes(userRole);
 
     if (!isSelf && !isAuthorizedManager) {
       return res.status(403).json({
@@ -312,10 +383,50 @@ const getFaceHealth = async (req, res) => {
   }
 };
 
+/**
+ * 6. Kiểm thử nhận diện khuôn mặt Realtime (AI 1:N FAISS, không tạo log chấm công, không kiểm tra geofence hay ca trực)
+ * @route POST /api/face/test-recognition
+ */
+const testFaceRecognition = async (req, res) => {
+  try {
+    let imageBuffer = null;
+    if (req.file && req.file.buffer) {
+      imageBuffer = req.file.buffer;
+    } else if (req.body?.image) {
+      const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, '');
+      imageBuffer = Buffer.from(base64Data, 'base64');
+    }
+
+    if (!imageBuffer) {
+      return res.status(400).json({ success: false, matched: false, message: 'Vui lòng cung cấp hình ảnh khuôn mặt từ camera.' });
+    }
+
+    const { processFaceAttendance } = require('../services/attendance');
+    const result = await processFaceAttendance({
+      imageBuffer,
+      location: null,
+      deviceId: 'TEST_RECOGNITION_TOOL',
+      reqIp: req.ip || '127.0.0.1',
+      verifyOnly: true,
+      useQueue: false,
+    });
+
+    return res.json(result);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      matched: false,
+      message: err.message || 'Lỗi khi kiểm thử nhận diện khuôn mặt.',
+    });
+  }
+};
+
 module.exports = {
   detectPose,
   enrollMultiAngleFace,
   getRegistrationStatus,
   deleteFaceData,
   getFaceHealth,
+  testFaceRecognition,
 };
+

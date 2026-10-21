@@ -28,7 +28,18 @@ Sử dụng quy trình này sau khi hoàn tất các tác vụ chỉnh sửa mã
 
 ---
 
-### Bước 2: Chạy Build Kiểm Tra Dự Án (`npm run build`)
+### Bước 2: Chuẩn Hóa Tên Thuộc Tính & Ánh Xạ Alias (Canonical 1-to-1 Mapping - Không Trùng Lặp)
+1. **Quy tắc 1 Cột CSDL = 1 Alias duy nhất:**
+   - Mỗi trường dữ liệu vật lý tiếng Việt trong CSDL MongoDB (schema) **CHỈ ĐƯỢC PHÉP có duy nhất 1 alias tiếng Anh chuẩn hóa** (Canonical English Alias).
+   - **Tuyệt đối cấm** khai báo 2 hay nhiều alias cùng trỏ về 1 trường CSDL trong bảng `.aliases` hoặc schema (ví dụ sai: `sampleCount` và `samplesCount` cùng trỏ `so_luong_mau`, `date` và `workDate` cùng trỏ `ngay_cong`, `poses` và `sampleAngles` cùng trỏ `cac_goc_chup`, `punchTime` và `scanTime` cùng trỏ `thoi_gian_quet`, `isFraud` và `isFraudulent` cùng trỏ `co_gian_lan`, `department` và `departmentId` cùng trỏ `don_vi_chinh_id`).
+2. **Quy tắc JSON Response và Service:**
+   - Khi trả dữ liệu từ Controller hoặc xử lý trong Service: chỉ dùng duy nhất 1 thuộc tính chuẩn hóa, không trả về cùng lúc cả 2 tên đồng nghĩa (như `sampleCount` & `samplesCount`, `poses` & `sampleAngles`, `embeddingModel` & `aiModel`) làm rối loạn kiểu dữ liệu và phát sinh lỗi sai lệch.
+3. **Quy tắc rà soát:**
+   - Kiểm tra toàn bộ các đối tượng `.aliases` trong `server/models/*.model.js` để đảm bảo không có bất kỳ trường CSDL nào có nhiều hơn 1 alias trỏ tới.
+
+---
+
+### Bước 3: Chạy Build Kiểm Tra Dự Án (`npm run build`)
 1. **Thực thi lệnh build:**
    ```powershell
    npm run build
@@ -36,12 +47,12 @@ Sử dụng quy trình này sau khi hoàn tất các tác vụ chỉnh sửa mã
    *(Chạy với `BypassSandbox: true` để tsc và Vite truy cập đầy đủ môi trường node).*
 
 2. **Đánh giá kết quả:**
-   - Nếu lệnh trả về `exited with code 0`: Mã nguồn đã chuẩn chỉ, không có lỗi cú pháp hoặc TypeScript. Tiến tới Bước 4.
-   - Nếu lệnh build thất bại (lỗi TypeScript `tsc` hoặc Vite transform): Tiến hành Bước 3.
+   - Nếu lệnh trả về `exited with code 0`: Mã nguồn đã chuẩn chỉ, không có lỗi cú pháp hoặc TypeScript. Tiến tới Bước 5.
+   - Nếu lệnh build thất bại (lỗi TypeScript `tsc` hoặc Vite transform): Tiến hành Bước 4.
 
 ---
 
-### Bước 3: Tự động phân tích và khắc phục lỗi
+### Bước 4: Tự động phân tích và khắc phục lỗi
 1. Đọc kỹ thông báo lỗi chi tiết từ log (file, dòng lỗi, mã lỗi TS...).
 2. Phân loại lỗi thường gặp:
    - Sai lệch kiểu dữ liệu hoặc thiếu trường trong interface / type.
@@ -52,6 +63,6 @@ Sử dụng quy trình này sau khi hoàn tất các tác vụ chỉnh sửa mã
 
 ---
 
-### Bước 4: Báo cáo ngắn gọn cho người dùng
+### Bước 5: Báo cáo ngắn gọn cho người dùng
 - Liệt kê các file thừa đã được dọn dẹp.
 - Thông báo kết quả build thành công (thời gian build và trạng thái bundle).

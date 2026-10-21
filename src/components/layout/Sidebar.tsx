@@ -60,6 +60,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
       items: [
         { name: 'Chấm Công Cá Nhân', path: '/attendance-me', icon: Clock },
         {
+          name: 'Đăng Ký Face ID (5 Góc)',
+          path: '/face-registration',
+          icon: Sparkles,
+          roles: ['admin', 'bgh'],
+        },
+        {
           name: 'Quản Lý Điểm Danh',
           path: '/attendance-manage',
           icon: Layers,
@@ -156,25 +162,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
 
       {/* Main Sidebar */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-800 transition-all duration-300 ease-in-out lg:static ${
-          isCollapsed ? 'w-20' : 'w-64'
-        } ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+        className={`fixed top-0 bottom-0 left-0 z-50 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-800 transition-all duration-300 ease-in-out lg:static ${isCollapsed ? 'w-20' : 'w-64'
+          } ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
         {/* Brand / Logo Header */}
         <div className="h-16 px-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 via-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20 flex-shrink-0">
-              <GraduationCap className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-white p-1 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center shadow-xs flex-shrink-0 overflow-hidden">
+              <img src="/logo.png" alt="NTU Logo" className="w-full h-full object-contain" />
             </div>
 
             {!isCollapsed && (
               <div className="flex flex-col min-w-0">
                 <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-white truncate">
-                  ĐH CÔNG NGHỆ
+                  ĐH NGUYỄN TRÃI
                 </span>
                 <span className="text-[11px] font-medium text-brand-600 dark:text-brand-400 truncate flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  FaceID Smart HR
+                  NTU Smart HR
                 </span>
               </div>
             )}
@@ -202,8 +207,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
           {navGroups.map((group, gIdx) => {
             // Lọc các item theo quyền của user
+            const normUserRole = String(userRole || '').toLowerCase().replace(/_/g, '');
             const visibleItems = group.items.filter(
-              (item) => !item.roles || item.roles.includes(userRole)
+              (item) =>
+                !item.roles ||
+                item.roles.some((r) => r.toLowerCase().replace(/_/g, '') === normUserRole)
             );
 
             if (visibleItems.length === 0) return null;
@@ -226,11 +234,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
                       to={item.path}
                       onClick={onMobileClose}
                       title={isCollapsed ? item.name : undefined}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative ${
-                        isActive
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative ${isActive
                           ? 'bg-brand-50 text-brand-700 shadow-sm dark:bg-brand-950/60 dark:text-brand-300 font-semibold'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
-                      } ${isCollapsed ? 'justify-center' : ''}`}
+                        } ${isCollapsed ? 'justify-center' : ''}`}
                     >
                       {/* Active indicator bar */}
                       {isActive && (
@@ -238,11 +245,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
                       )}
 
                       <Icon
-                        className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                          isActive
+                        className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${isActive
                             ? 'text-brand-600 dark:text-brand-400'
                             : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
-                        }`}
+                          }`}
                       />
 
                       {!isCollapsed && <span className="truncate flex-1">{item.name}</span>}
@@ -267,9 +273,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
         {/* User Profile Footer */}
         <div className="p-3 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40">
           <div
-            className={`flex items-center gap-3 p-2 rounded-xl transition-all ${
-              isCollapsed ? 'justify-center' : ''
-            }`}
+            className={`flex items-center gap-3 p-2 rounded-xl transition-all ${isCollapsed ? 'justify-center' : ''
+              }`}
           >
             <div className="relative flex-shrink-0">
               <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-brand-500 to-indigo-600 text-white font-semibold flex items-center justify-center text-xs shadow-sm">

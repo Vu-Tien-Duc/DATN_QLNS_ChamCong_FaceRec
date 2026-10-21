@@ -121,8 +121,11 @@ export const DashboardDemo: React.FC = () => {
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-3 max-w-2xl">
             <div className="flex flex-wrap items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-white p-1 flex items-center justify-center shadow-xs">
+                <img src="/logo.png" alt="NTU Logo" className="w-full h-full object-contain" />
+              </div>
               <Badge variant="brand" size="sm" dot>
-                Hệ Thống Trực Tuyến 2026
+                Đại Học Nguyễn Trãi (NTU)
               </Badge>
               <Badge variant="purple" size="sm">
                 Vai trò: {user?.role?.toUpperCase() || 'BGH'}

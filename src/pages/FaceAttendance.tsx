@@ -24,9 +24,15 @@ import { apiClient } from '../api/apiClient';
 import { audioFeedback } from '../utils/audioFeedback';
 import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
+import { FaceAttendanceScannerModal } from '../components/biometrics/FaceAttendanceScannerModal';
+import { FaceRegistrationModal } from '../components/biometrics/FaceRegistrationModal';
+import { Sparkles, Maximize2 } from 'lucide-react';
 
 export const FaceAttendance: React.FC = () => {
   const { user: authUser } = useAuthStore();
+
+  const [isScannerModalOpen, setIsScannerModalOpen] = useState<boolean>(false);
+  const [isEnrollModalOpen, setIsEnrollModalOpen] = useState<boolean>(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -35,7 +41,6 @@ export const FaceAttendance: React.FC = () => {
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [cameraLoading, setCameraLoading] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [isEnrolling, setIsEnrolling] = useState<boolean>(false);
 
   // Chế độ & Tính năng tự động
   const [actionType, setActionType] = useState<'CHECK_IN' | 'CHECK_OUT'>('CHECK_IN');
@@ -250,51 +255,7 @@ export const FaceAttendance: React.FC = () => {
     [actionType, cooldownRemaining, isCameraActive, isProcessing, loadRecentHistory]
   );
 
-  // Đăng ký nhanh Face ID từ camera hiện tại cho tài khoản đang đăng nhập
-  const handleQuickEnroll = async () => {
-    if (!authUser) {
-      toast.error('Vui lòng đăng nhập để đăng ký khuôn mặt.');
-      return;
-    }
-    const capture = await captureFrameBlob();
-    if (!capture) {
-      toast.error('Không thể chụp ảnh từ camera. Vui lòng kiểm tra lại webcam.');
-      return;
-    }
 
-    try {
-      setIsEnrolling(true);
-      const loadingToastId = toast.loading('Đang trích xuất vector khuôn mặt và cập nhật dữ liệu...');
-
-      const formData = new FormData();
-      formData.append('image', capture.blob, 'straight.jpg');
-      formData.append('image_straight', capture.blob, 'straight.jpg');
-      formData.append('employee_id', (authUser as any)._id || (authUser as any).id);
-      formData.append('fullName', authUser.fullName);
-      formData.append('consentAgreed', 'true');
-      formData.append('force', 'true');
-
-      const res = await apiClient.post<any>('/face/enroll-multi-angle', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      toast.dismiss(loadingToastId);
-
-      if (res.data?.success) {
-        toast.success(`Đăng ký Face ID thành công cho ${authUser.fullName}! Giờ bạn đã có thể điểm danh.`);
-        audioFeedback.playSuccessChime();
-        confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
-        setCooldownRemaining(1);
-      } else {
-        toast.error(res.data?.message || 'Đăng ký không thành công.');
-      }
-    } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Lỗi khi đăng ký khuôn mặt.';
-      toast.error(msg);
-    } finally {
-      setIsEnrolling(false);
-    }
-  };
 
   // 5. Đếm ngược Cooldown
   useEffect(() => {
@@ -353,13 +314,43 @@ export const FaceAttendance: React.FC = () => {
           </p>
         </div>
 
-        {/* Thanh công cụ phụ: Âm thanh & Tự động quét */}
-        <div className="flex items-center gap-2">
+        {/* Thanh công cụ phụ: Âm thanh & Tự động quét & Mở Modal */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Nút Mở Trình Quét AI HUD Laser 3D */}
+          <button
+            type="button"
+            onClick={() => {
+              stopCamera();
+              setIsScannerModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-500/40 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-xs font-bold transition-all cursor-pointer shadow-xs"
+            title="Mở trình quét AI Face ID dạng Modal với hiệu ứng quét Laser và xác nhận nhân sự"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>Trình Quét AI HUD Laser</span>
+          </button>
+
+          {/* Nút Đăng Ký 5 Góc Face ID (Chỉ Quản trị viên Admin mới có quyền) */}
+          {['admin', 'bgh'].includes(authUser?.role || '') && (
+            <button
+              type="button"
+              onClick={() => {
+                stopCamera();
+                setIsEnrollModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300 hover:bg-cyan-100 dark:hover:bg-cyan-900/50 text-xs font-bold transition-all cursor-pointer shadow-xs"
+              title="Đăng ký 5 góc khuôn mặt (Chỉ dành cho Quản trị viên)"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Đăng Ký 5 Góc (Admin)</span>
+            </button>
+          )}
+
           {/* Nút Bật/Tắt Tự Động Quét */}
           <button
             type="button"
             onClick={() => setIsAutoScan(!isAutoScan)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
               isAutoScan
                 ? 'border-emerald-500/40 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
                 : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500'
@@ -387,7 +378,7 @@ export const FaceAttendance: React.FC = () => {
               setIsMuted(nextMuted);
               audioFeedback.setMuted(nextMuted);
             }}
-            className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 hover:text-brand-500 transition-colors"
+            className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 hover:text-brand-500 transition-colors cursor-pointer"
             title={isMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
           >
             {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-brand-500" />}
@@ -594,19 +585,27 @@ export const FaceAttendance: React.FC = () => {
                 )}
               </p>
 
-              {/* Đăng ký nhanh Face ID từ camera nếu chưa đăng ký */}
+              {/* Trạng thái đăng ký Face ID */}
               {authUser && isCameraActive && (
-                <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <span className="text-[11px] text-slate-500">Chưa khớp mặt bạn?</span>
-                  <button
-                    type="button"
-                    onClick={handleQuickEnroll}
-                    disabled={isEnrolling}
-                    className="text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 hover:underline flex items-center gap-1.5 transition-colors"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" />
-                    {isEnrolling ? 'Đang trích xuất...' : `Đăng ký Face ID cho ${authUser.fullName}`}
-                  </button>
+                <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-500">Chưa khớp mặt bạn?</span>
+                  {['admin', 'bgh'].includes(authUser?.role || '') ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopCamera();
+                        setIsEnrollModalOpen(true);
+                      }}
+                      className="font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 hover:underline flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Đăng ký Face ID (Quyền Admin)</span>
+                    </button>
+                  ) : (
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">
+                      Liên hệ Quản trị viên (Admin) để đăng ký khuôn mặt
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -724,6 +723,33 @@ export const FaceAttendance: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal Trình Quét AI Face ID (HUD 3D Laser & Popup Xác Nhận Nhân Sự) */}
+      <FaceAttendanceScannerModal
+        isOpen={isScannerModalOpen}
+        mode={actionType === 'CHECK_IN' ? 'check-in' : 'check-out'}
+        onClose={() => {
+          setIsScannerModalOpen(false);
+          startCamera();
+        }}
+        onSuccess={() => {
+          loadRecentHistory();
+        }}
+      />
+
+      {/* Modal Đăng Ký Khuôn Mặt 5 Góc (Euler Guidance, Warmup & Decree 13/2023) */}
+      <FaceRegistrationModal
+        isOpen={isEnrollModalOpen}
+        user={authUser}
+        onClose={() => {
+          setIsEnrollModalOpen(false);
+          startCamera();
+        }}
+        onSuccess={() => {
+          toast.success('Đã lưu mẫu khuôn mặt 5 góc thành công!');
+          useAuthStore.getState().fetchMe?.();
+        }}
+      />
     </div>
   );
 };

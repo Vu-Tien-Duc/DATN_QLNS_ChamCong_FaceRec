@@ -20,8 +20,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
 
   // Kiểm tra quyền truy cập theo vai trò nếu có yêu cầu
   if (allowedRoles && allowedRoles.length > 0) {
-    const userRole = user?.role;
-    const hasRole = userRole && allowedRoles.includes(userRole);
+    const normUserRole = String(user?.role || '').toLowerCase().replace(/_/g, '');
+    const hasRole =
+      Boolean(normUserRole) &&
+      allowedRoles.some((r) => r.toLowerCase().replace(/_/g, '') === normUserRole);
 
     if (!hasRole) {
       return (

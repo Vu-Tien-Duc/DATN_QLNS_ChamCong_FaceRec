@@ -33,6 +33,8 @@ dist-ssr/
 
 # Private attendance evidence files
 /private/attendance-evidence/
+uploads/
+/uploads/
 
 # Python face service environment and local configuration
 /face-service/.venv/

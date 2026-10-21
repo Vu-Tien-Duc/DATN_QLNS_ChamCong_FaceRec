@@ -247,7 +247,7 @@ const fetchSchedules = async ({
   const [total, schedules] = await Promise.all([
     Schedule.countDocuments(query),
     Schedule.find(query)
-      .populate('userId', 'fullName email staffCode role departmentId')
+      .populate('userId', 'fullName email staffCode role departmentId avatarUrl')
       .populate('shiftId', 'name startTime endTime')
       .populate('subjectId', 'name code credits departmentId')
       .sort({ weekday: 1, startPeriod: 1, startTime: 1 })

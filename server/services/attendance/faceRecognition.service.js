@@ -3,6 +3,7 @@
  * Mã nguồn sạch chuẩn CSDL v2.5: Động cơ 1:N RAM Index, Bộ lọc Margin Top 1-2 >= 0.05,
  * Cooldown 60s chống quét lặp, Geofence GPS Haversine và Lưu vết Audit/PunchLog.
  */
+const mongoose = require('mongoose');
 const AttendanceLog = require('../../models/attendanceLog.model');
 const PunchLog = require('../../models/punchLog.model');
 const Schedule = require('../../models/schedule.model');
@@ -78,14 +79,42 @@ const processFaceAttendance = async ({
     };
   }
 
-  const userId = aiResult.userId;
-  const user = await User.findById(userId);
+  const rawUserId = aiResult.userId || aiResult.employee_id;
+  let user = null;
+  if (rawUserId) {
+    if (mongoose.Types.ObjectId.isValid(rawUserId)) {
+      user = await User.findById(rawUserId);
+    }
+    if (!user) {
+      user = await User.findOne({
+        $or: [
+          { staffCode: rawUserId },
+          { employeeCode: rawUserId },
+          { ma_nhan_vien: rawUserId },
+          { ma_can_bo: rawUserId },
+          { email: rawUserId },
+        ],
+      });
+    }
+  }
+
   if (!user || user.isActive === false) {
     throw new ServiceError('Tài khoản người dùng không tồn tại hoặc đã bị khóa.', 403);
   }
 
+  const userId = user._id;
+
   // Nếu là chế độ verifyOnly: Chỉ trả về thông tin nhận diện để hiển thị popup xác nhận
   if (verifyOnly) {
+    let departmentName = '';
+    if (user.departmentId) {
+      try {
+        const Department = require('../../models/department.model');
+        const dept = await Department.findById(user.departmentId);
+        if (dept) departmentName = dept.name || dept.ten_phong_ban || '';
+      } catch (_) {}
+    }
+
     return {
       success: true,
       matched: true,
@@ -96,7 +125,8 @@ const processFaceAttendance = async ({
         email: user.email,
         role: user.role,
         avatar: user.avatar,
-        department: user.departmentId,
+        staffCode: user.staffCode || user.employeeCode || user.ma_nhan_vien || '',
+        department: departmentName || user.departmentName || '',
       },
       similarity: aiResult.similarity,
       confidence: aiResult.confidence,
