@@ -151,8 +151,8 @@ const run = async () => {
   // Test 9: Phân quyền RBAC đa cấp (BGH, Trưởng khoa, Trưởng bộ môn, Giảng viên)
   const { checkUserPermission, checkDepartmentPermission } = require('../services/ai/aiAnalytics.service');
 
-  // 9.1 BGH (Hiệu trưởng / Hiệu phó) có quyền xem toàn trường
-  const hieuTruongUser = { id: 'ht1', role: 'hieutruong' };
+  // 9.1 BGH (Ban Giám Hiệu) có quyền xem toàn trường
+  const hieuTruongUser = { id: 'ht1', role: 'bgh' };
   const permHT = await checkUserPermission(hieuTruongUser, 'any_user_id');
   assert.strictEqual(permHT.allowed, true, 'Hiệu trưởng phải có quyền xem dữ liệu nhân sự');
 

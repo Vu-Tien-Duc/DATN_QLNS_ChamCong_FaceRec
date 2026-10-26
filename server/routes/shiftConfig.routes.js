@@ -161,7 +161,7 @@ router.get('/:id', getShiftConfigById);
  *       409:
  *         description: Ca làm việc đã tồn tại (SHIFT_004)
  */
-router.post('/', authorizeRoles('admin'), createShiftConfig);
+router.post('/', authorizeRoles('admin', 'bgh', 'daotao'), createShiftConfig);
 
 /**
  * @swagger
@@ -194,7 +194,7 @@ router.post('/', authorizeRoles('admin'), createShiftConfig);
  *       409:
  *         description: Tên ca bị trùng với ca khác (SHIFT_004)
  */
-router.put('/:id', authorizeRoles('admin'), updateShiftConfig);
+router.put('/:id', authorizeRoles('admin', 'bgh', 'daotao'), updateShiftConfig);
 
 /**
  * @swagger
@@ -219,6 +219,6 @@ router.put('/:id', authorizeRoles('admin'), updateShiftConfig);
  *       404:
  *         description: Không tìm thấy ca làm việc (SHIFT_001)
  */
-router.delete('/:id', authorizeRoles('admin'), deleteShiftConfig);
+router.delete('/:id', authorizeRoles('admin', 'bgh', 'daotao'), deleteShiftConfig);
 
 module.exports = router;

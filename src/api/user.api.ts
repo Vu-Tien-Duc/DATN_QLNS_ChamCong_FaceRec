@@ -69,10 +69,12 @@ export const userApi = {
   },
 
   /**
-   * 7. Lấy danh sách Khoa / Bộ môn / Phòng ban trực thuộc nhà trường
+   * 7. Lấy danh sách Khoa / Bộ môn / Phòng ban trực thuộc nhà trường (danh sách phẳng)
    */
   getDepartments: async (): Promise<ApiResponse<DepartmentItem[]>> => {
-    const res = await apiClient.get<ApiResponse<DepartmentItem[]>>('/departments');
+    const res = await apiClient.get<ApiResponse<DepartmentItem[]>>('/departments', {
+      params: { tree: 'false' },
+    });
     return res.data;
   },
 

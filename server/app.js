@@ -105,6 +105,9 @@ app.use(cookieParser());
 app.get('/uploads/:filename', downloadFile);
 app.get('/api/uploads/:filename', downloadFile);
 app.get('/api/v1/uploads/:filename', downloadFile);
+app.get('/upload/file/:filename', downloadFile);
+app.get('/api/upload/file/:filename', downloadFile);
+app.get('/api/v1/upload/file/:filename', downloadFile);
 app.get('/uploads/faces/:filename', (req, res, next) => {
   req.params.filename = `face-${req.params.filename.replace(/^face-/, '')}`;
   return downloadFile(req, res, next);
@@ -113,6 +116,19 @@ app.get('/api/uploads/faces/:filename', (req, res, next) => {
   req.params.filename = `face-${req.params.filename.replace(/^face-/, '')}`;
   return downloadFile(req, res, next);
 });
+app.get('/uploads/avatars/:filename', (req, res, next) => {
+  req.params.filename = `avatar-${req.params.filename.replace(/^avatar-/, '')}`;
+  return downloadFile(req, res, next);
+});
+app.get('/api/uploads/avatars/:filename', (req, res, next) => {
+  req.params.filename = `avatar-${req.params.filename.replace(/^avatar-/, '')}`;
+  return downloadFile(req, res, next);
+});
+app.get('/uploads/evidence/:filename', downloadFile);
+app.get('/api/uploads/evidence/:filename', downloadFile);
+app.get('/api/v1/uploads/evidence/:filename', downloadFile);
+app.get('/api/attendance/evidence/:filename', downloadFile);
+app.get('/api/v1/attendance/evidence/:filename', downloadFile);
 
 
 // 4. Swagger UI Documentation Route
@@ -159,36 +175,42 @@ app.get('/health', (req, res) => {
 app.use('/api', apiRoutes);
 app.use('/api/v1', apiRoutes);
 
-// 7. Phục vụ Frontend tĩnh (Production Single-Port Deployment)
+// 7. Phục vụ Frontend tĩnh (Chuẩn Single-Port 5000: Express Backend + React Frontend)
 const distPath = path.join(__dirname, '../dist');
-if (fs.existsSync(distPath)) {
+const indexHtml = path.join(distPath, 'index.html');
+
+if (fs.existsSync(distPath) && fs.existsSync(indexHtml)) {
   app.use(express.static(distPath));
 
-  // SPA Fallback: Mọi yêu cầu từ trình duyệt (Accept: text/html) đều trả về index.html của React Router
+  // SPA Fallback: Mọi yêu cầu từ trình duyệt đều trả về index.html của React Router
   app.use((req, res, next) => {
     if (req.method !== 'GET') return next();
     if (
       req.path.startsWith('/api') ||
       req.path.startsWith('/uploads') ||
       req.path.startsWith('/api-docs') ||
-      req.path.startsWith('/health')
+      req.path.startsWith('/health') ||
+      req.path.startsWith('/socket.io')
     ) {
       return next();
     }
-    const indexHtml = path.join(distPath, 'index.html');
-    if (fs.existsSync(indexHtml) && (req.accepts('html') || !req.accepts('json'))) {
-      return res.sendFile(indexHtml);
-    }
-    next();
+    return res.sendFile(indexHtml);
   });
 } else {
-  // Khi chưa build frontend (môi trường dev chỉ chạy backend)
-  app.get('/', (req, res) => {
-    res.json({
-      message: 'Chào mừng đến với API Hệ thống Quản lý Chấm công Trường Đại học',
-      swaggerDocs: '/api-docs',
-      version: '1.0.0',
-    });
+  // Khi chưa build thư mục dist: Tự động chuyển hướng về Vite dev server
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') return next();
+    if (
+      req.path.startsWith('/api') ||
+      req.path.startsWith('/uploads') ||
+      req.path.startsWith('/api-docs') ||
+      req.path.startsWith('/health') ||
+      req.path.startsWith('/socket.io')
+    ) {
+      return next();
+    }
+    const vitePort = process.env.VITE_PORT || 5173;
+    return res.redirect(`http://localhost:${vitePort}${req.originalUrl}`);
   });
 }
 

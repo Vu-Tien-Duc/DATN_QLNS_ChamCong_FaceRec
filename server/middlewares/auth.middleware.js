@@ -97,23 +97,65 @@ const verifyToken = async (req, res, next) => {
 /**
  * Trợ thủ: Lấy toàn bộ danh sách vai trò đang còn hiệu lực của người dùng
  */
+const normalizeRoleKey = (r) => {
+  if (!r) return '';
+  const clean = String(r).toLowerCase().replace(/[\s_-]+/g, '');
+  // Chỉ chuyển đổi các mã chức danh mở rộng từ CSDL Schema về Canonical Key
+  switch (clean) {
+    case 'photruongkhoa':
+      return 'phokhoa';
+    case 'photruongbomon':
+      return 'phobomon';
+    case 'photruongphong':
+      return 'phophong';
+    case 'chuyenvien':
+      return 'nhanvien';
+    default:
+      return clean;
+  }
+};
+
+/**
+ * Trợ thủ: Lấy toàn bộ danh sách vai trò đang còn hiệu lực của người dùng (chỉ chứa Canonical Keys)
+ */
 const getActiveRoles = (user) => {
   const now = new Date();
   const roles = new Set();
 
-  const primaryRole = user.role;
-  if (primaryRole) roles.add(primaryRole.toLowerCase());
+  const addNorm = (r) => {
+    const canonical = normalizeRoleKey(r);
+    if (canonical) roles.add(canonical);
+  };
+
+  addNorm(user.role);
+  addNorm(user.primaryRole);
+  addNorm(user.vai_tro_chinh);
 
   if (Array.isArray(user.roles)) {
     for (const v of user.roles) {
       if (!v) continue;
-      const roleName = (typeof v === 'string' ? v : v.role || '').toLowerCase();
+      const roleName = typeof v === 'string' ? v : v.role || v.ma_vai_tro || '';
       if (!roleName) continue;
 
-      if (v.expiresAt && new Date(v.expiresAt) < now) {
+      const expiry = v.endDate || v.den_ngay;
+      if (expiry && new Date(expiry) < now) {
         continue; // Bỏ qua vai trò đã hết nhiệm kỳ công tác
       }
-      roles.add(roleName);
+      addNorm(roleName);
+    }
+  }
+
+  if (Array.isArray(user.danh_sach_vai_tro)) {
+    for (const v of user.danh_sach_vai_tro) {
+      if (!v) continue;
+      const roleName = v.ma_vai_tro || v.role || '';
+      if (!roleName) continue;
+
+      const expiry = v.den_ngay || v.endDate;
+      if (expiry && new Date(expiry) < now) {
+        continue;
+      }
+      addNorm(roleName);
     }
   }
 
@@ -128,7 +170,8 @@ const getUserPermissions = (user) => {
   const permissions = new Set();
 
   for (const role of activeRoles) {
-    const rolePerms = ROLE_PERMISSIONS[role] || [];
+    const roleUpper = role.toUpperCase();
+    const rolePerms = ROLE_PERMISSIONS[roleUpper] || ROLE_PERMISSIONS[role] || [];
     for (const p of rolePerms) {
       permissions.add(p);
     }
@@ -146,11 +189,10 @@ const verifyRole = (allowedRoles = []) => {
       return sendError(res, 'Người dùng chưa được xác thực.', null, 401);
     }
 
-    const rolesToCheck = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
-    const normalizedAllowed = rolesToCheck.map((r) => String(r).toLowerCase());
-
+    const rolesToCheck = (Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles]).map(normalizeRoleKey);
     const userRoles = getActiveRoles(req.user);
-    const hasRole = normalizedAllowed.some((r) => userRoles.has(r));
+
+    const hasRole = rolesToCheck.some((r) => userRoles.has(r));
 
     if (!hasRole) {
       return sendError(

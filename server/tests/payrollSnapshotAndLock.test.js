@@ -131,7 +131,7 @@ const run = async () => {
   // Test 5: Xác thực Mở khóa lương (Unlock Payroll)
   const validateUnlockPermission = (user, reason) => {
     const role = (user.role || '').toUpperCase();
-    if (!['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG'].includes(role)) {
+    if (!['ADMIN', 'BGH'].includes(role)) {
       const err = new Error('UNAUTHORIZED_UNLOCK');
       err.statusCode = 403;
       throw err;
@@ -156,8 +156,8 @@ const run = async () => {
     (err) => err.statusCode === 400
   );
 
-  // Hiệu trưởng mở khóa hợp lệ có lý do
-  assert.equal(validateUnlockPermission({ role: 'HIEU_TRUONG' }, 'Điều chỉnh thù lao bù giờ sau phúc khảo'), true);
+  // BGH mở khóa hợp lệ có lý do
+  assert.equal(validateUnlockPermission({ role: 'BGH' }, 'Điều chỉnh thù lao bù giờ sau phúc khảo'), true);
   console.log('✓ Test 5 ĐẠT: Phân quyền mở khóa lương nghiêm ngặt dành riêng cho BGH/Admin có lý do kiểm toán.');
 
   // Test 6: Kiểm tra cấu trúc dữ liệu xuất Excel & PDF

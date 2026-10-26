@@ -101,13 +101,26 @@ const downloadFile = async (req, res, next) => {
 
     const safeFilename = path.basename(rawFilename);
     const isFaceImage = safeFilename.startsWith('face-');
-    const objectKey = isFaceImage ? `faces/${safeFilename}` : `attachments/${safeFilename}`;
+    const isAttendanceEvidence = safeFilename.startsWith('attendance-');
+    const isAvatarImage = safeFilename.startsWith('avatar-');
+    const objectKey = isFaceImage
+      ? `faces/${safeFilename}`
+      : isAttendanceEvidence
+        ? `evidence/${safeFilename}`
+        : isAvatarImage
+          ? `avatars/${safeFilename}`
+          : `attachments/${safeFilename}`;
 
     // 1. Phân quyền truy cập tệp:
     const escapedFilename = escapeRegExp(safeFilename);
     const mediaReferencePattern = new RegExp(`${escapedFilename}(?:[?#].*)?$`, 'i');
 
-    // 1.1 Nếu là Avatar người dùng hoặc Ảnh đại diện khuôn mặt: cho phép hiển thị công khai trên thẻ <img>
+    // 1.1 Nếu là ảnh minh chứng điểm danh hoặc ảnh Avatar: cho phép hiển thị công khai trên thẻ <img>
+    if (isAttendanceEvidence || isAvatarImage) {
+      return streamMinioFile(res, objectKey, true);
+    }
+
+    // 1.2 Nếu là Avatar người dùng hoặc Ảnh đại diện khuôn mặt: cho phép hiển thị công khai trên thẻ <img>
     const isAvatarOrFacePhoto = await User.exists({
       $or: [
         { avatar: { $regex: mediaReferencePattern } },

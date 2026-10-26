@@ -25,6 +25,39 @@ class ServiceError extends Error {
   }
 }
 
+const NON_ADMIN_MONGO_CRITERIA = {
+  vai_tro_chinh: { $nin: ['ADMIN', 'admin', 'BGH', 'bgh'] },
+  ma_can_bo: { $not: /^(ADMIN|BGH)/i },
+  email: { $not: /^admin@/i, $not: /daihocdtd@/i, $not: /^hieutruong@/i },
+};
+
+const isSystemAdminUser = (u) => {
+  if (!u) return false;
+  const r = String(u.role || u.primaryRole || u.vai_tro_chinh || '').toLowerCase();
+  const code = String(u.staffCode || u.ma_can_bo || '').toUpperCase();
+  const email = String(u.email || '').toLowerCase();
+  const name = String(u.fullName || u.ho_ten || '').toLowerCase();
+  const hasAdminOrBghRole = Array.isArray(u.roles) && u.roles.some((item) => {
+    const itemRole = String(item.role || item.ma_vai_tro || '').toUpperCase();
+    return itemRole === 'ADMIN' || itemRole === 'BGH';
+  });
+  return (
+    r === 'admin' ||
+    r === 'bgh' ||
+    r.includes('quản trị') ||
+    r.includes('giám hiệu') ||
+    code.startsWith('ADMIN') ||
+    code.startsWith('BGH') ||
+    hasAdminOrBghRole ||
+    email.startsWith('admin@') ||
+    email.includes('daihocdtd@') ||
+    email.startsWith('hieutruong@') ||
+    name.includes('quản trị viên') ||
+    name.includes('hiệu trưởng') ||
+    name.includes('ban giám hiệu')
+  );
+};
+
 /**
  * Thuật toán tính thuế TNCN lũy tiến 5 bậc (Luật Thuế TNCN sửa đổi áp dụng năm 2026)
  * - Bậc 1: Đến 10 triệu: 5%
@@ -266,7 +299,7 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
 const generateMonthlyPayroll = async ({ month, year, departmentId, currentUser }) => {
   const currentUserId = currentUser.id || currentUser._id;
   const role = (currentUser.role || '').toUpperCase();
-  const isAdminOrHR = ['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG', 'HR'].includes(role);
+  const isAdminOrHR = ['ADMIN', 'BGH', 'KE_TOAN'].includes(role);
 
   if (!isAdminOrHR && role !== 'TRUONG_KHOA' && role !== 'TRUONGKHOA') {
     throw new ServiceError('Bạn không có quyền khởi tạo bảng lương.', 403);
@@ -287,8 +320,8 @@ const generateMonthlyPayroll = async ({ month, year, departmentId, currentUser }
     );
   }
 
-  // Xác định phạm vi người dùng cần tính lương
-  let userQuery = { isActive: true };
+  // Xác định phạm vi người dùng cần tính lương (loại trừ tài khoản Admin hệ thống)
+  let userQuery = { isActive: true, ...NON_ADMIN_MONGO_CRITERIA };
   if (!isAdminOrHR) {
     const deanUserIds = await getDeanScopedUserIds(currentUser);
     userQuery._id = { $in: deanUserIds };
@@ -296,7 +329,8 @@ const generateMonthlyPayroll = async ({ month, year, departmentId, currentUser }
     userQuery.departmentId = departmentId;
   }
 
-  const users = await User.find(userQuery);
+  const rawUsers = await User.find(userQuery);
+  const users = rawUsers.filter((u) => !isSystemAdminUser(u));
   if (users.length === 0) {
     throw new ServiceError('Không tìm thấy cán bộ, giảng viên nào trong phạm vi được chọn.', 404);
   }
@@ -344,7 +378,7 @@ const generateMonthlyPayroll = async ({ month, year, departmentId, currentUser }
 const lockMonthlyPayroll = async ({ month, year, currentUser, ip }) => {
   const currentUserId = currentUser.id || currentUser._id;
   const role = (currentUser.role || '').toUpperCase();
-  const isAuthorized = ['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG'].includes(role);
+  const isAuthorized = ['ADMIN', 'BGH', 'KE_TOAN'].includes(role);
 
   if (!isAuthorized) {
     throw new ServiceError('Chỉ Quản trị viên hoặc Ban Giám Hiệu mới có quyền khóa bảng lương.', 403);
@@ -409,7 +443,7 @@ const lockMonthlyPayroll = async ({ month, year, currentUser, ip }) => {
 const unlockMonthlyPayroll = async ({ month, year, reason, currentUser, ip }) => {
   const currentUserId = currentUser.id || currentUser._id;
   const role = (currentUser.role || '').toUpperCase();
-  const isAuthorized = ['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG'].includes(role);
+  const isAuthorized = ['ADMIN', 'BGH', 'KE_TOAN'].includes(role);
 
   if (!isAuthorized) {
     throw new ServiceError('Chỉ Quản trị viên hoặc Ban Giám Hiệu mới có quyền mở khóa bảng lương.', 403);
@@ -475,7 +509,7 @@ const fetchPayrolls = async ({ month, year, departmentId, status, userId, curren
     } else {
       query.userId = { $in: deanUserIds };
     }
-  } else if (['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG', 'HR'].includes(role)) {
+  } else if (['ADMIN', 'BGH', 'KE_TOAN'].includes(role)) {
     if (userId) {
       query.userId = userId;
     } else if (departmentId) {
@@ -485,12 +519,17 @@ const fetchPayrolls = async ({ month, year, departmentId, status, userId, curren
   }
 
   const payrolls = await Payroll.find(query)
-    .populate('userId', 'fullName email role departmentId avatar staffCode')
+    .populate({
+      path: 'userId',
+      select: 'fullName email role departmentId avatar staffCode academicRank degree position',
+      populate: { path: 'departmentId', select: 'name code type' },
+    })
     .populate('createdBy', 'fullName email')
     .populate('approvedBy', 'fullName email')
     .sort({ month: -1, year: -1, createdAt: -1 });
 
-  return payrolls;
+  // Loại trừ phiếu lương của tài khoản Admin kỹ thuật
+  return payrolls.filter((p) => !isSystemAdminUser(p.userId));
 };
 
 /**
@@ -502,7 +541,11 @@ const fetchPayrollById = async (id, currentUser) => {
   }
 
   const payroll = await Payroll.findById(id)
-    .populate('userId', 'fullName email role departmentId avatar staffCode')
+    .populate({
+      path: 'userId',
+      select: 'fullName email role departmentId avatar staffCode academicRank degree position',
+      populate: { path: 'departmentId', select: 'name code type' },
+    })
     .populate('createdBy', 'fullName email')
     .populate('approvedBy', 'fullName email');
 

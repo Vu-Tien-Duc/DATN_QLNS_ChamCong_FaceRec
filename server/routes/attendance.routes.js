@@ -4,6 +4,7 @@ const {
   checkIn,
   checkOut,
   getAttendanceHistory,
+  getMyAttendanceHistory,
   getAttendanceById,
   getAttendanceEvidence,
   updateAttendanceByAdmin,
@@ -487,7 +488,9 @@ router.post('/check-out', checkOut);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
+router.get('/my-history', getMyAttendanceHistory);
 router.get('/history', getAttendanceHistory);
+router.get('/', getAttendanceHistory);
 
 /**
  * @swagger
@@ -554,8 +557,8 @@ router.get('/history', getAttendanceHistory);
  *       403:
  *         description: Quyền truy cập bị từ chối (Chỉ Admin)
  */
-router.post('/trigger-absent-cron', authorizeRoles('admin'), triggerDailyAbsentCheck);
-router.post('/cron/test-daily-check', authorizeRoles('admin'), triggerDailyAbsentCheck);
+router.post('/trigger-absent-cron', authorizeRoles('admin', 'bgh'), triggerDailyAbsentCheck);
+router.post('/cron/test-daily-check', authorizeRoles('admin', 'bgh'), triggerDailyAbsentCheck);
 
 /**
  * @swagger
@@ -653,5 +656,6 @@ router.get('/:id', getAttendanceById);
  *         description: Không tìm thấy bản ghi chấm công
  */
 router.put('/:id', authorizeRoles('admin'), updateAttendanceByAdmin);
+router.put('/:id/adjust', authorizeRoles('admin', 'bgh', 'truongkhoa'), updateAttendanceByAdmin);
 
 module.exports = router;

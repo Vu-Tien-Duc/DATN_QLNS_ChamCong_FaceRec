@@ -57,8 +57,8 @@ async function runRbacTests() {
   const cuuTruongKhoa = {
     role: 'giangvien',
     roles: [
-      { role: 'TRUONG_KHOA', scope: 'KHOA', startDate: new Date('2020-01-01'), expiresAt: new Date('2024-01-01') },
-      { role: 'GIANG_VIEN', scope: 'KHOA', startDate: new Date('2024-01-02'), expiresAt: null }
+      { role: 'TRUONG_KHOA', scope: 'KHOA', startDate: new Date('2020-01-01'), endDate: new Date('2024-01-01') },
+      { role: 'GIANG_VIEN', scope: 'KHOA', startDate: new Date('2024-01-02'), endDate: null }
     ]
   };
   assert.strictEqual(hasPermission(cuuTruongKhoa, PERMISSIONS.DON_TU_DUYET_CAP_1), false);

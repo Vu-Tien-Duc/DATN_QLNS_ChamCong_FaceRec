@@ -28,7 +28,7 @@ const getDepartmentScopeIds = async (departmentId) => {
   return allIds;
 };
 
-const isCampusLevelAdmin = (role) => ['admin', 'hieutruong', 'hieupho', 'nhanvien_kiemtoan'].includes(role);
+const isCampusLevelAdmin = (role) => ['admin', 'bgh', 'kiemtoan'].includes(role);
 const isFacultyLevelLeader = (role) => ['truongkhoa', 'phokhoa'].includes(role);
 
 /**

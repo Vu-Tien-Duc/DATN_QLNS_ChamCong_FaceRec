@@ -20,6 +20,7 @@ const {
 } = require('../services/faceTemplate.service');
 const minioStorage = require('../config/minio');
 const { sendSuccess, sendError } = require('../utils/responseHandler');
+const { getActiveRoles } = require('../middlewares/auth.middleware');
 
 /**
  * 1. Nhận diện tư thế đầu 3D realtime từ frame webcam
@@ -89,8 +90,8 @@ const detectPose = async (req, res) => {
 const enrollMultiAngleFace = async (req, res) => {
   try {
     // 0. Phân quyền: Chỉ Quản trị viên (Admin / BGH) mới có quyền đăng ký khuôn mặt cho mọi người
-    const userRole = (req.user?.role || req.user?.primaryRole || req.user?.vai_tro_chinh || '').toLowerCase();
-    const isAdmin = ['admin', 'bgh', 'admin_it', 'it_admin'].includes(userRole);
+    const userRoles = getActiveRoles(req.user);
+    const isAdmin = userRoles.has('admin') || userRoles.has('bgh');
     if (!isAdmin) {
       return res.status(403).json({
         success: false,
@@ -230,17 +231,14 @@ const enrollMultiAngleFace = async (req, res) => {
       }
     }
 
-    // 6. Cập nhật User model trong MongoDB đảm bảo trường da_dang_ky_face luôn là true
+    // 6. Cập nhật User model trong MongoDB (Dữ liệu sinh trắc học Face ID lưu riêng, không ghi đè Avatar hồ sơ cá nhân)
     const finalFacePhoto = facePhotoUrl || targetUser.facePhoto || targetUser.anh_khuon_mat;
-    const currentAvatar = targetUser.avatar || targetUser.anh_dai_dien;
-    const shouldSyncAvatar = !currentAvatar || currentAvatar.includes('/faces/face-');
 
     await User.findByIdAndUpdate(targetUser._id, {
       $set: {
         da_dang_ky_face: true,
         ngay_dang_ky_face: new Date(),
         anh_khuon_mat: finalFacePhoto,
-        ...(shouldSyncAvatar && finalFacePhoto ? { anh_dai_dien: finalFacePhoto } : {}),
         ngay_dong_y_sinh_trac: new Date(),
       },
     });
@@ -251,7 +249,7 @@ const enrollMultiAngleFace = async (req, res) => {
       data: {
         userId: targetUser._id,
         fullName: targetUser.fullName,
-        anglesRegistered: recordedPoses,
+        sampleAngles: recordedPoses,
         sampleCount: allVectors.length,
         facePhoto: facePhotoUrl,
         templateId: result.templateId,
@@ -311,7 +309,6 @@ const getRegistrationStatus = async (req, res) => {
         userId: user._id,
         fullName: user.ho_ten || user.fullName,
         email: user.email,
-        isRegistered,
         isFaceRegistered: isRegistered,
         faceRegisteredAt: isRegistered
           ? (template?.ngay_dang_ky ||
@@ -338,9 +335,13 @@ const deleteFaceData = async (req, res) => {
   try {
     const targetUserId = req.params.userId || req.user?._id?.toString() || req.user?.id?.toString();
     const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
-    const userRole = (req.user?.role || req.user?.primaryRole || req.user?.vai_tro_chinh || '').toLowerCase();
-    const isSelf = currentUserId && targetUserId && currentUserId === targetUserId;
-    const isAuthorizedManager = ['admin', 'bgh', 'admin_it', 'it_admin', 'tccb', 'truong_khoa', 'truongkhoa'].includes(userRole);
+    const isSelf = Boolean(currentUserId && targetUserId && String(currentUserId) === String(targetUserId));
+    const userRoles = getActiveRoles(req.user);
+    const isAuthorizedManager =
+      userRoles.has('admin') ||
+      userRoles.has('bgh') ||
+      userRoles.has('tccb') ||
+      userRoles.has('truongkhoa');
 
     if (!isSelf && !isAuthorizedManager) {
       return res.status(403).json({

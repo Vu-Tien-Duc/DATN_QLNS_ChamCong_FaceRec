@@ -15,11 +15,11 @@ router.use(verifyToken);
 router.get('/', getSubjects);
 router.get('/:id', getSubjectById);
 
-// Admin và Trưởng khoa có quyền tạo và chỉnh sửa môn học
-router.post('/', authorizeRoles('admin', 'truongkhoa'), createSubject);
-router.put('/:id', authorizeRoles('admin', 'truongkhoa'), updateSubject);
+// Admin, BGH, Đào tạo và Trưởng khoa có quyền tạo và chỉnh sửa môn học
+router.post('/', authorizeRoles('admin', 'bgh', 'daotao', 'truongkhoa'), createSubject);
+router.put('/:id', authorizeRoles('admin', 'bgh', 'daotao', 'truongkhoa'), updateSubject);
 
-// Chỉ Admin có quyền xóa môn học
-router.delete('/:id', authorizeRoles('admin'), deleteSubject);
+// Admin và BGH có quyền xóa môn học
+router.delete('/:id', authorizeRoles('admin', 'bgh'), deleteSubject);
 
 module.exports = router;

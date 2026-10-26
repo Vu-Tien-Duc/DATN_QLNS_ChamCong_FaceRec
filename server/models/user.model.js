@@ -34,7 +34,7 @@ const vaiTroSchema = new mongoose.Schema(
         'TRUONG_KHOA', 'PHO_TRUONG_KHOA',
         'TRUONG_BO_MON', 'PHO_TRUONG_BO_MON',
         'TRUONG_PHONG', 'PHO_TRUONG_PHONG',
-        'GIANG_VIEN', 'CHUYEN_VIEN'
+        'GIANG_VIEN', 'CHUYEN_VIEN', 'NHAN_VIEN'
       ],
       required: true,
     },
@@ -74,6 +74,9 @@ vaiTroSchema.aliases = {
   role: 'ma_vai_tro',
   scope: 'pham_vi',
   departmentId: 'don_vi_id',
+  startDate: 'tu_ngay',
+  endDate: 'den_ngay',
+  isDelegated: 'duoc_uy_quyen',
 };
 vaiTroSchema.plugin(schemaAliasPlugin);
 
@@ -213,8 +216,9 @@ const userSchema = new mongoose.Schema(
       type: String,
       alias: 'primaryRole',
       enum: [
-        'admin', 'truongkhoa', 'phokhoa', 'truongbomon', 'phobomon', 'giangvien', 'nhanvien',
-        'ADMIN', 'BGH', 'bgh', 'TCCB', 'tccb', 'DAO_TAO', 'dao_tao', 'KE_TOAN', 'ke_toan', 'KIEM_TOAN', 'kiem_toan'
+        'admin', 'truongkhoa', 'phokhoa', 'truongbomon', 'phobomon', 'giangvien', 'nhanvien', 'nhan_vien',
+        'ADMIN', 'BGH', 'bgh', 'TCCB', 'tccb', 'DAO_TAO', 'dao_tao', 'KE_TOAN', 'ke_toan', 'KIEM_TOAN', 'kiem_toan',
+        'CHUYEN_VIEN', 'NHAN_VIEN'
       ],
       default: 'giangvien',
     },
@@ -464,7 +468,7 @@ userSchema.virtual('identityCard')
     this.so_cccd_ma_hoa = v;
   });
 
-// Getter/Setter ảo cho `role` / `vai_tro` tương thích ngược 100% với middleware và UI cũ:
+// Getter/Setter ảo cho `role` / `vai_tro` tương thích ngược 100% với middleware và UI chuẩn RBAC v2.5:
 userSchema.virtual('role')
   .get(function () {
     if (this.danh_sach_vai_tro && this.danh_sach_vai_tro.length > 0) {
@@ -474,15 +478,20 @@ userSchema.virtual('role')
       if (activeRole) {
         const map = {
           ADMIN: 'admin',
-          BGH: 'admin',
+          BGH: 'bgh',
           TRUONG_KHOA: 'truongkhoa',
-          PHO_TRUONG_KHOA: 'truongkhoa',
-          TRUONG_BO_MON: 'truongkhoa',
-          PHO_TRUONG_BO_MON: 'truongkhoa',
-          TRUONG_PHONG: 'truongkhoa',
-          PHO_TRUONG_PHONG: 'truongkhoa',
+          PHO_TRUONG_KHOA: 'phokhoa',
+          TRUONG_BO_MON: 'truongbomon',
+          PHO_TRUONG_BO_MON: 'phobomon',
+          TRUONG_PHONG: 'truongphong',
+          PHO_TRUONG_PHONG: 'phophong',
+          DAO_TAO: 'dao_tao',
+          KE_TOAN: 'ke_toan',
+          KIEM_TOAN: 'kiem_toan',
+          TCCB: 'tccb',
           GIANG_VIEN: 'giangvien',
           CHUYEN_VIEN: 'nhanvien',
+          NHAN_VIEN: 'nhanvien',
         };
         return map[activeRole.ma_vai_tro] || activeRole.ma_vai_tro.toLowerCase();
       }

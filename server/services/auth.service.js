@@ -177,7 +177,6 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   const isRegistered = Boolean(faceTemplate);
 
   userObj.isFaceRegistered = isRegistered;
-  userObj.da_dang_ky_face = isRegistered;
   userObj.faceRegisteredAt = isRegistered ? (faceTemplate?.ngay_dang_ky || userObj.faceRegisteredAt || null) : null;
 
   return {
@@ -392,7 +391,6 @@ const getMe = async (userId) => {
   const isRegistered = Boolean(template);
 
   userObj.isFaceRegistered = isRegistered;
-  userObj.da_dang_ky_face = isRegistered;
   userObj.faceRegisteredAt = isRegistered ? (template?.ngay_dang_ky || userObj.faceRegisteredAt || null) : null;
 
   return userObj;
@@ -460,23 +458,38 @@ const updateAvatar = async ({ userId, avatarUrl, imageBuffer, file, ipAddress })
 
   let finalAvatarPath = avatarUrl;
 
-  if (file && file.filename) {
-    finalAvatarPath = `/uploads/${file.filename}`;
-  } else if (imageBuffer) {
-    const ext = 'jpg';
+  const bufferToSave = imageBuffer || (file && file.buffer ? file.buffer : null);
+
+  if (bufferToSave) {
+    const ext = file && file.originalname ? path.extname(file.originalname).replace('.', '').toLowerCase() || 'jpg' : 'jpg';
+    const mimeType = file?.mimetype || 'image/jpeg';
     const fileName = `avatar-${userId}-${Date.now()}.${ext}`;
-    await minioStorage.putObject(`avatars/${fileName}`, imageBuffer, 'image/jpeg', {
+
+    // Lưu vào Object Storage (MinIO hoặc Local Fallback)
+    await minioStorage.putObject(`avatars/${fileName}`, bufferToSave, mimeType, {
       userId: userId.toString(),
       category: 'avatar',
     });
-    finalAvatarPath = `/uploads/${fileName}`;
-  }
 
-  if (!finalAvatarPath) {
-    throw new ServiceError('Không có dữ liệu ảnh đại diện để cập nhật.', 400);
+    // Đồng thời lưu bản sao trực tiếp vào thư mục uploads/avatars/ của project
+    try {
+      const fs = require('fs');
+      const localUploadDir = path.resolve(__dirname, '../../uploads/avatars');
+      if (!fs.existsSync(localUploadDir)) {
+        fs.mkdirSync(localUploadDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(localUploadDir, fileName), bufferToSave);
+    } catch (_) {}
+
+    finalAvatarPath = `/uploads/${fileName}`;
+  } else if (file && file.filename) {
+    finalAvatarPath = `/uploads/${file.filename}`;
+  } else if (avatarUrl === null || avatarUrl === '') {
+    finalAvatarPath = null;
   }
 
   user.avatar = finalAvatarPath;
+  user.anh_dai_dien = finalAvatarPath;
   await user.save();
 
   AuditLog.create({

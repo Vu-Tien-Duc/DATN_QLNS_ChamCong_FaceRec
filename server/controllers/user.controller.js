@@ -25,19 +25,6 @@ const handleServiceError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
   }
-  if (error.code === 11000) {
-    const duplicateField = Object.keys(error.keyPattern || {})[0];
-    const messages = {
-      email: 'Email đã tồn tại trên hệ thống.',
-      staffCode: 'Mã cán bộ / giảng viên đã tồn tại trên hệ thống.',
-    };
-    return sendError(
-      res,
-      messages[duplicateField] || 'Dữ liệu người dùng bị trùng với một bản ghi đã tồn tại.',
-      null,
-      409
-    );
-  }
   return next(error);
 };
 
@@ -133,7 +120,7 @@ const registerFaceDescriptor = async (req, res, next) => {
       result = await registerFaceImagesForUser({
         id,
         files,
-        poses: sampleAngles,
+        sampleAngles,
         force: force === 'true' || force === true,
         currentUser: req.user,
         ip: req.ip,

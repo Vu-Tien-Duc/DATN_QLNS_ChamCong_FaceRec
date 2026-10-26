@@ -68,45 +68,66 @@ const seedData = async () => {
     // CẤP CAO NHẤT: Ban Giám Hiệu (Toàn trường)
     // =========================================================================
     const boardOfPresidents = await Department.create({
-      name: 'Ban Giám Hiệu',
+      name: 'Hội Đồng Trường & Ban Giám Hiệu',
       type: 'phongban',
       parentId: null,
-      location: { lat: 21.028511, lng: 105.854167 },
+      location: { lat: 20.9782, lng: 105.7656 },
     });
 
     // =========================================================================
-    // KHỐI QUẢN LÝ & PHÒNG BAN CHỨC NĂNG (type: phongban, parentId: Ban Giám Hiệu)
+    // KHỐI QUẢN LÝ & CÁC BAN CHỨC NĂNG NTU (type: phongban, parentId: Ban Giám Hiệu)
     // =========================================================================
-    const trainingDept = await Department.create({
-      name: 'Phòng Đào Tạo',
-      type: 'phongban',
-      parentId: boardOfPresidents._id,
-      location: { lat: 21.028612, lng: 105.854278 },
-    });
-
     const hrDept = await Department.create({
-      name: 'Phòng Hành Chính - Tổng Hợp',
+      name: 'Ban Quản Trị – Hành Chính',
       type: 'phongban',
       parentId: boardOfPresidents._id,
-      location: { lat: 21.028713, lng: 105.854389 },
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+
+    const trainingDept = await Department.create({
+      name: 'Ban Đào Tạo & Khoa Học Công Nghệ',
+      type: 'phongban',
+      parentId: boardOfPresidents._id,
+      location: { lat: 20.9782, lng: 105.7656 },
     });
 
     const studentAffairsDept = await Department.create({
-      name: 'Phòng Công Tác Sinh Viên',
+      name: 'Ban Công Tác Sinh Viên',
       type: 'phongban',
       parentId: boardOfPresidents._id,
-      location: { lat: 21.028814, lng: 105.854499 },
+      location: { lat: 20.9782, lng: 105.7656 },
     });
 
     const qaTestingDept = await Department.create({
-      name: 'Phòng Khảo Thí & Đảm Bảo Chất Lượng',
+      name: 'Ban Khảo Thí & Đảm Bảo Chất Lượng',
       type: 'phongban',
       parentId: boardOfPresidents._id,
-      location: { lat: 21.028915, lng: 105.854501 },
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+
+    const financeDept = await Department.create({
+      name: 'Ban Tài Chính – Kế Toán',
+      type: 'phongban',
+      parentId: boardOfPresidents._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+
+    const admissionDept = await Department.create({
+      name: 'Ban Tuyển Sinh & Truyền Thông',
+      type: 'phongban',
+      parentId: boardOfPresidents._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+
+    const intlProjectsDept = await Department.create({
+      name: 'Ban Hợp Tác Quốc Tế & Phát Triển Dự Án',
+      type: 'phongban',
+      parentId: boardOfPresidents._id,
+      location: { lat: 20.9782, lng: 105.7656 },
     });
 
     // =========================================================================
-    // KHỐI ĐÀO TẠO: KHOA & BỘ MÔN (type: khoa & bomon)
+    // KHỐI KHOA ĐÀO TẠO CHUYÊN MÔN & BỘ MÔN TRỰC THUỘC NTU (type: khoa & bomon)
     // =========================================================================
 
     // 1. Khoa Công Nghệ Thông Tin & Chuyển Đổi Số
@@ -114,86 +135,136 @@ const seedData = async () => {
       name: 'Khoa Công Nghệ Thông Tin & Chuyển Đổi Số',
       type: 'khoa',
       parentId: boardOfPresidents._id,
-      location: { lat: 21.028615, lng: 105.85428 },
+      location: { lat: 20.9782, lng: 105.7656 },
     });
     const seDept = await Department.create({
-      name: 'Bộ Môn Kỹ Thuật Phần Mềm',
+      name: 'Bộ Môn Kỹ Thuật Phần Mềm & AI',
       type: 'bomon',
       parentId: itFaculty._id,
-      location: { lat: 21.028615, lng: 105.85428 },
+      location: { lat: 20.9782, lng: 105.7656 },
     });
     const isDept = await Department.create({
-      name: 'Bộ Môn Hệ Thống Thông Tin',
+      name: 'Bộ Môn Mạng Máy Tính & An Toàn Thông Tin',
       type: 'bomon',
       parentId: itFaculty._id,
-      location: { lat: 21.028618, lng: 105.854285 },
+      location: { lat: 20.9782, lng: 105.7656 },
     });
 
-    // 2. Khoa Kinh Tế - Quản Trị Kinh Doanh
+    // 2. Khoa Kinh Tế – Quản Trị & Truyền Thông
     const econFaculty = await Department.create({
-      name: 'Khoa Kinh Tế - Quản Trị Kinh Doanh',
+      name: 'Khoa Kinh Tế – Quản Trị & Truyền Thông',
       type: 'khoa',
       parentId: boardOfPresidents._id,
-      location: { lat: 21.028715, lng: 105.85439 },
-    });
-    const accDept = await Department.create({
-      name: 'Bộ Môn Kế Toán',
-      type: 'bomon',
-      parentId: econFaculty._id,
-      location: { lat: 21.028715, lng: 105.85439 },
+      location: { lat: 20.9782, lng: 105.7656 },
     });
     const baDept = await Department.create({
-      name: 'Bộ Môn Quản Trị Kinh Doanh',
+      name: 'Bộ Môn Quản Trị Kinh Doanh & Marketing',
       type: 'bomon',
       parentId: econFaculty._id,
-      location: { lat: 21.028718, lng: 105.854395 },
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+    const accDept = await Department.create({
+      name: 'Bộ Môn Kế Toán & Kiểm Toán',
+      type: 'bomon',
+      parentId: econFaculty._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+    await Department.create({
+      name: 'Bộ Môn Quan Hệ Công Chúng & Truyền Thông (PR)',
+      type: 'bomon',
+      parentId: econFaculty._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+    await Department.create({
+      name: 'Bộ Môn Quản Trị Du Lịch & Lữ Hành',
+      type: 'bomon',
+      parentId: econFaculty._id,
+      location: { lat: 20.9782, lng: 105.7656 },
     });
 
-    // 3. Khoa Ngôn Ngữ và Văn Hóa Hàn Quốc / Nhật Bản
-    const langFaculty = await Department.create({
-      name: 'Khoa Ngôn Ngữ và Văn Hóa Hàn Quốc / Nhật Bản',
-      type: 'khoa',
-      parentId: boardOfPresidents._id,
-      location: { lat: 21.02882, lng: 105.85445 },
-    });
-    const koreanDept = await Department.create({
-      name: 'Bộ Môn Ngôn Ngữ & Văn Hóa Hàn Quốc',
-      type: 'bomon',
-      parentId: langFaculty._id,
-      location: { lat: 21.02882, lng: 105.85445 },
-    });
-    const japaneseDept = await Department.create({
-      name: 'Bộ Môn Ngôn Ngữ & Văn Hóa Nhật Bản',
-      type: 'bomon',
-      parentId: langFaculty._id,
-      location: { lat: 21.028825, lng: 105.854455 },
-    });
-
-    // 4. Khoa Thiết Kế Mỹ Thuật Ứng Dụng
+    // 3. Khoa Mỹ Thuật Ứng Dụng & Kiến Trúc
     const designFaculty = await Department.create({
-      name: 'Khoa Thiết Kế Mỹ Thuật Ứng Dụng',
+      name: 'Khoa Mỹ Thuật Ứng Dụng & Kiến Trúc',
       type: 'khoa',
       parentId: boardOfPresidents._id,
-      location: { lat: 21.02893, lng: 105.85455 },
+      location: { lat: 20.9782, lng: 105.7656 },
     });
     const graphicDept = await Department.create({
       name: 'Bộ Môn Thiết Kế Đồ Họa',
       type: 'bomon',
       parentId: designFaculty._id,
-      location: { lat: 21.02893, lng: 105.85455 },
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+    await Department.create({
+      name: 'Bộ Môn Thiết Kế Nội Thất',
+      type: 'bomon',
+      parentId: designFaculty._id,
+      location: { lat: 20.9782, lng: 105.7656 },
     });
     const archDept = await Department.create({
       name: 'Bộ Môn Kiến Trúc',
       type: 'bomon',
       parentId: designFaculty._id,
-      location: { lat: 21.028935, lng: 105.854555 },
+      location: { lat: 20.9782, lng: 105.7656 },
     });
 
-    console.log('✔ Đã tạo đầy đủ 14 đơn vị tổ chức:');
-    console.log('  - 1 Ban Giám Hiệu');
-    console.log('  - 4 Phòng ban chức năng: Đào tạo, Hành chính - Tổng hợp, Công tác sinh viên, Khảo thí & ĐBCL');
-    console.log('  - 4 Khoa đào tạo: CNTT & CĐS, Kinh tế - QTKD, Ngôn ngữ Hàn/Nhật, Thiết kế Mỹ thuật ứng dụng');
-    console.log('  - 8 Bộ môn chuyên môn trực thuộc 4 Khoa.');
+    // 4. Khoa Quốc Tế – Ngôn Ngữ & Văn Hóa
+    const langFaculty = await Department.create({
+      name: 'Khoa Quốc Tế – Ngôn Ngữ & Văn Hóa',
+      type: 'khoa',
+      parentId: boardOfPresidents._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+    const koreanDept = await Department.create({
+      name: 'Bộ Môn Ngôn Ngữ & Văn Hóa Hàn Quốc',
+      type: 'bomon',
+      parentId: langFaculty._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+    const japaneseDept = await Department.create({
+      name: 'Bộ Môn Ngôn Ngữ & Văn Hóa Nhật Bản',
+      type: 'bomon',
+      parentId: langFaculty._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+    await Department.create({
+      name: 'Bộ Môn Ngôn Ngữ Anh & Quốc Tế Học',
+      type: 'bomon',
+      parentId: langFaculty._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+    await Department.create({
+      name: 'Bộ Môn Ngôn Ngữ & Văn Hóa Trung Quốc',
+      type: 'bomon',
+      parentId: langFaculty._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+
+    // 5. Khoa Tài Chính – Ngân Hàng
+    const financeFaculty = await Department.create({
+      name: 'Khoa Tài Chính – Ngân Hàng',
+      type: 'khoa',
+      parentId: boardOfPresidents._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+    await Department.create({
+      name: 'Bộ Môn Tài Chính Doanh Nghiệp & Fintech',
+      type: 'bomon',
+      parentId: financeFaculty._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+    await Department.create({
+      name: 'Bộ Môn Ngân Hàng Số',
+      type: 'bomon',
+      parentId: financeFaculty._id,
+      location: { lat: 20.9782, lng: 105.7656 },
+    });
+
+    console.log('✔ Đã tạo đầy đủ 28 đơn vị tổ chức chuẩn Đại học Nguyễn Trãi (NTU):');
+    console.log('  - 1 Hội Đồng Trường & Ban Giám Hiệu');
+    console.log('  - 7 Ban chức năng: Quản trị – Hành chính, Đào tạo & KHCN, CTSV, Khảo thí & ĐBCL, Tài chính – Kế toán, Tuyển sinh & Truyền thông, Hợp tác quốc tế');
+    console.log('  - 5 Khoa đào tạo chuyên môn: CNTT & CĐS, Kinh tế – QTKD & Truyền thông, Mỹ thuật ứng dụng & Kiến trúc, Quốc tế – Ngôn ngữ & Văn hóa, Tài chính – Ngân hàng');
+    console.log('  - 15 Bộ môn chuyên môn trực thuộc 5 Khoa.');
 
     console.log('\n--- 3. TẠO TÀI KHOẢN NGƯỜI DÙNG ÁNH XẠ CHỨC DANH (USERS) ---');
     const defaultPassword = 'password123';

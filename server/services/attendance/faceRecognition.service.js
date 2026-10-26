@@ -13,10 +13,12 @@ const AuditLog = require('../../models/auditLog.model');
 const { recognizeFace, ensureRamCacheWarm } = require('../faceServiceClient');
 const { validateGeofence } = require('../../utils/attendanceHelpers');
 const { storeAttendanceEvidence } = require('../../utils/attendanceEvidence');
+const { evaluateUserScheduleForCheckIn } = require('./attendanceScheduleEligibility.service');
 const {
   ServiceError,
   getVietnamTime,
   getVietnamDayRange,
+  timeStringToMinutes,
   calculateAttendanceStatus,
   calculateCheckOutStatus,
 } = require('../../utils/attendanceTime.utils');
@@ -41,6 +43,7 @@ const processFaceAttendance = async ({
   reqIp = '127.0.0.1',
   verifyOnly = false,
   useQueue = false,
+  requestedAction = null,
 }) => {
   if (!imageBuffer) {
     throw new ServiceError('Vui lòng cung cấp hình ảnh khuôn mặt từ camera.', 400);
@@ -206,32 +209,122 @@ const processFaceAttendance = async ({
   const activeSchedules = await Schedule.find({
     userId,
     weekday: todayWeekday,
-  }).populate('shiftId').populate('subjectId');
+  })
+    .populate('ca_id')
+    .populate('shiftId')
+    .populate('subjectId');
 
-  // Tìm bản ghi chấm công đang mở (chưa Check-out) hôm nay
-  const openLog = await AttendanceLog.findOne({
+  // Tra cứu bản ghi chấm công trong ngày hôm nay của người dùng
+  const todayLog = await AttendanceLog.findOne({
     userId,
-    workDate: workDateStr,
-    checkInTime: { $gte: startOfDay, $lte: endOfDay },
-    checkOutTime: null,
-  }).populate('shiftId');
+    $or: [
+      { workDate: workDateStr },
+      { ngay_cong: workDateStr },
+      { checkInTime: { $gte: startOfDay, $lte: endOfDay } },
+    ],
+  })
+    .populate('ca_id')
+    .populate('shiftId');
+
+  // Bản ghi chấm công đang mở (đã Check-in nhưng chưa Check-out)
+  let openLog = todayLog && todayLog.checkInTime && !todayLog.checkOutTime ? todayLog : null;
+
+  // Quyết định hành động: CHECK_IN hay CHECK_OUT
+  let actionType = 'CHECK_IN';
+
+  if (requestedAction === 'CHECK_IN') {
+    if (todayLog) {
+      const inTimeStr = todayLog.checkInTime
+        ? new Date(todayLog.checkInTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        : '--:--';
+
+      if (todayLog.checkOutTime) {
+        const outTimeStr = new Date(todayLog.checkOutTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        throw new ServiceError(
+          `Cán bộ ${user.fullName} đã hoàn thành điểm danh cả vào ca (${inTimeStr}) và tan ca (${outTimeStr}) hôm nay rồi.`,
+          409,
+          'ATTENDANCE_COMPLETED_TODAY'
+        );
+      } else {
+        throw new ServiceError(
+          `Cán bộ ${user.fullName} đã điểm danh vào ca hôm nay lúc ${inTimeStr} rồi. Vui lòng chuyển sang 'Tan Ca' nếu muốn check-out.`,
+          409,
+          'ATTENDANCE_ALREADY_CHECKED_IN'
+        );
+      }
+    }
+    actionType = 'CHECK_IN';
+  } else if (requestedAction === 'CHECK_OUT') {
+    if (!openLog) {
+      if (todayLog && todayLog.checkOutTime) {
+        const outTimeStr = new Date(todayLog.checkOutTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        throw new ServiceError(
+          `Cán bộ ${user.fullName} đã thực hiện tan ca hôm nay lúc ${outTimeStr} rồi.`,
+          409,
+          'ATTENDANCE_ALREADY_CHECKED_OUT'
+        );
+      } else {
+        throw new ServiceError(
+          `Không tìm thấy lượt vào ca nào hôm nay của cán bộ ${user.fullName} để tan ca. Vui lòng điểm danh vào ca trước.`,
+          404,
+          'ATTENDANCE_NO_OPEN_RECORD'
+        );
+      }
+    }
+    actionType = 'CHECK_OUT';
+  } else {
+    // Chế độ Tự Động (Auto-detect): Nếu có lượt vào đang mở -> Thực hiện Tan Ca; nếu đã hoàn thành cả ngày -> Thông báo; nếu chưa -> Vào Ca
+    if (openLog) {
+      actionType = 'CHECK_OUT';
+    } else if (todayLog && todayLog.checkOutTime) {
+      const inTimeStr = todayLog.checkInTime
+        ? new Date(todayLog.checkInTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        : '--:--';
+      const outTimeStr = new Date(todayLog.checkOutTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+      throw new ServiceError(
+        `Cán bộ ${user.fullName} đã hoàn thành điểm danh cả vào ca (${inTimeStr}) và tan ca (${outTimeStr}) hôm nay rồi.`,
+        409,
+        'ATTENDANCE_COMPLETED_TODAY'
+      );
+    } else {
+      actionType = 'CHECK_IN';
+    }
+  }
 
   // Lưu ảnh minh chứng điểm danh an toàn
   const storedEvidencePath = await storeAttendanceEvidence(imageBuffer);
 
-  let actionType = 'CHECK_IN';
   let attendanceRecord = null;
 
-  if (openLog) {
-    // 6. Thực hiện CHECK-OUT nếu đã có lượt Check-in trước đó
-    actionType = 'CHECK_OUT';
+  if (actionType === 'CHECK_OUT' && openLog) {
+    // 6. Thực hiện CHECK-OUT
     const checkOutTime = new Date();
     openLog.checkOutTime = checkOutTime;
     if (storedEvidencePath) openLog.capturedImage = storedEvidencePath;
 
+    let shiftConfig = openLog.shiftId || openLog.ca_id;
+    if (
+      shiftConfig &&
+      (!shiftConfig.endTime || typeof shiftConfig === 'string' || shiftConfig instanceof mongoose.Types.ObjectId)
+    ) {
+      const shiftDoc = await ShiftConfig.findById(shiftConfig._id || shiftConfig);
+      if (shiftDoc) shiftConfig = shiftDoc;
+    }
+    if (!shiftConfig || !shiftConfig.endTime) {
+      shiftConfig = await ShiftConfig.findOne({ isActive: true });
+    }
+
+    // Tính thời lượng làm việc (phút và giờ công)
+    if (openLog.checkInTime) {
+      const diffMs = checkOutTime.getTime() - new Date(openLog.checkInTime).getTime();
+      const durationMins = Math.max(0, Math.round(diffMs / 60000));
+      openLog.workDurationMinutes = durationMins;
+      openLog.workHours = Number((durationMins / 60).toFixed(2));
+    }
+
     const { finalStatus, isEarlyLeave, earlyMinutes } = calculateCheckOutStatus(
       checkOutTime,
-      openLog.shiftId,
+      shiftConfig,
       openLog.status
     );
 
@@ -263,34 +356,50 @@ const processFaceAttendance = async ({
       verificationMethod: geoCheck.verificationMethod,
     });
   } else {
-    // 7. Thực hiện CHECK-IN
-    actionType = 'CHECK_IN';
-    const checkInTime = new Date();
-
-    // Xác định ca làm việc phù hợp nhất (theo lịch hoặc ca hành chính)
-    let selectedShift = activeSchedules[0]?.shiftId;
-    let selectedScheduleId = activeSchedules[0]?._id || null;
-
-    if (!selectedShift) {
-      selectedShift = await ShiftConfig.findOne({ isActive: true });
+    // 7. Thực hiện CHECK-IN: Bắt buộc kiểm tra Lịch phân công giảng dạy / ca làm việc hôm nay
+    const scheduleEval = await evaluateUserScheduleForCheckIn(userId, null, user);
+    if (!scheduleEval || !scheduleEval.canCheckIn) {
+      const userPrefix = (user.role || '').toLowerCase() === 'giangvien' ? 'Giảng viên' : 'Cán bộ';
+      throw new ServiceError(
+        scheduleEval?.message || `${userPrefix} ${user.fullName} hôm nay không có lịch phân công giảng dạy hoặc ca làm việc nào trên hệ thống. Không thể chấm công.`,
+        400,
+        scheduleEval?.status || 'NO_SCHEDULE'
+      );
     }
 
-    const calculatedStatus = calculateAttendanceStatus(checkInTime, selectedShift, nowVN);
+    const checkInTime = new Date();
+    const selectedSchedule = scheduleEval.selectedSchedule;
+    const selectedShift = scheduleEval.shift;
+    const selectedScheduleId = selectedSchedule?._id || null;
+    const calculatedStatus = scheduleEval.status || 'ON_TIME';
+    const lateMinutes = scheduleEval.lateMinutes || 0;
 
-    attendanceRecord = await AttendanceLog.create({
-      userId,
-      shiftId: selectedShift?._id || null,
-      scheduleId: selectedScheduleId,
-      workDate: workDateStr,
-      checkInTime,
-      method: 'FACE_AI',
-      status: calculatedStatus,
-      confidenceScore: aiResult.similarity,
-      capturedImage: storedEvidencePath,
-      location: location || { lat: null, lng: null },
-      isFraudulent: geoCheck.isFraud,
-      fraudReason: geoCheck.fraudReason,
-    });
+    try {
+      attendanceRecord = await AttendanceLog.create({
+        userId,
+        shiftId: selectedShift?._id || null,
+        scheduleId: selectedScheduleId,
+        workDate: workDateStr,
+        checkInTime,
+        lateMinutes,
+        method: 'FACE_AI',
+        status: calculatedStatus,
+        confidenceScore: aiResult.similarity,
+        capturedImage: storedEvidencePath,
+        location: location || { lat: null, lng: null },
+        isFraudulent: geoCheck.isFraud,
+        fraudReason: geoCheck.fraudReason,
+      });
+    } catch (createErr) {
+      if (createErr.code === 11000) {
+        throw new ServiceError(
+          `Cán bộ ${user.fullName} đã có bản ghi điểm danh ca làm việc ngày hôm nay rồi.`,
+          409,
+          'ATTENDANCE_RECORD_EXISTS'
+        );
+      }
+      throw createErr;
+    }
 
     // Ghi PunchLog lượt vào
     await PunchLog.create({

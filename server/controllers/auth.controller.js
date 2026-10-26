@@ -43,7 +43,6 @@ const login = async (req, res, next) => {
 
     return sendSuccess(res, 'Đăng nhập thành công.', {
       token: result.token,
-      accessToken: result.token,
       refreshToken: result.refreshToken,
       user: result.user,
     });
@@ -75,7 +74,6 @@ const refreshToken = async (req, res, next) => {
 
     return sendSuccess(res, 'Làm mới phiên đăng nhập thành công.', {
       token: result.accessToken,
-      accessToken: result.accessToken,
       refreshToken: result.refreshToken,
     });
   } catch (error) {

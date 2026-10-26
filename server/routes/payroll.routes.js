@@ -24,25 +24,25 @@ router.use(verifyToken);
 router.get('/my-payroll', getMyPayroll);
 
 // 2. Thống kê tổng hợp quỹ lương tháng
-router.get('/summary', verifyRole(['admin', 'hieutruong', 'hieupho', 'truongkhoa']), getPayrollSummary);
+router.get('/summary', verifyRole(['admin', 'bgh', 'ketoan', 'truongkhoa']), getPayrollSummary);
 
 // 3. Xuất dữ liệu báo cáo bảng lương Excel
-router.get('/export/excel', verifyRole(['admin', 'hieutruong', 'hieupho', 'truongkhoa']), exportPayrollExcel);
+router.get('/export/excel', verifyRole(['admin', 'bgh', 'ketoan', 'truongkhoa']), exportPayrollExcel);
 
 // 4. Trích xuất dữ liệu phiếu lương PDF (Hỗ trợ cả :id/export/pdf và /export/pdf?id=...)
 router.get('/export/pdf', exportPayrollPdf);
 router.get('/:id/export/pdf', exportPayrollPdf);
 
 // 5. Khởi tạo & Tính toán bảng lương dự thảo
-router.post('/generate', verifyRole(['admin', 'hieutruong', 'hieupho', 'truongkhoa']), generatePayroll);
+router.post('/generate', verifyRole(['admin', 'bgh', 'ketoan', 'truongkhoa']), generatePayroll);
 
 // 6. Khóa sổ lương tháng & chốt công (Hỗ trợ cả POST /lock và PUT /:id/lock)
-router.post('/lock', verifyRole(['admin', 'hieutruong', 'hieupho']), lockPayroll);
-router.put('/:id/lock', verifyRole(['admin', 'hieutruong', 'hieupho']), lockPayroll);
+router.post('/lock', verifyRole(['admin', 'bgh', 'ketoan']), lockPayroll);
+router.put('/:id/lock', verifyRole(['admin', 'bgh', 'ketoan']), lockPayroll);
 
 // 7. Mở khóa sổ lương tháng (Admin/BGH - Hỗ trợ cả POST /unlock và PUT /:id/unlock)
-router.post('/unlock', verifyRole(['admin', 'hieutruong', 'hieupho']), unlockPayroll);
-router.put('/:id/unlock', verifyRole(['admin', 'hieutruong', 'hieupho']), unlockPayroll);
+router.post('/unlock', verifyRole(['admin', 'bgh', 'ketoan']), unlockPayroll);
+router.put('/:id/unlock', verifyRole(['admin', 'bgh', 'ketoan']), unlockPayroll);
 
 // 8. Tra cứu danh sách bảng lương
 router.get('/', getPayrolls);

@@ -186,7 +186,7 @@ const registerFaceDescriptorForUser = async ({
     userId: targetUser._id,
     fullName: targetUser.fullName,
     email: targetUser.email,
-    faceRegistered: true,
+    isFaceRegistered: true,
     sampleCount: vectorList.length,
     sampleAngles: effectivePoses,
     templateId: templateDoc._id,
@@ -196,17 +196,18 @@ const registerFaceDescriptorForUser = async ({
 /**
  * 2. Đăng ký từ danh sách file ảnh gửi lên
  */
-const registerFaceImagesForUser = async ({ id, files, poses, force, currentUser, ip }) => {
+const registerFaceImagesForUser = async ({ id, files, sampleAngles, poses, force, currentUser, ip }) => {
   if (!Array.isArray(files) || files.length === 0) {
     throw new ServiceError('Vui lòng cung cấp ít nhất một file ảnh khuôn mặt.', 400);
   }
 
   const descriptors = [];
   const recordedPoses = [];
+  const anglesInput = sampleAngles || poses;
 
   for (let idx = 0; idx < files.length; idx++) {
     const file = files[idx];
-    const poseKey = (Array.isArray(poses) && poses[idx]) ? poses[idx] : (DEFAULT_POSES[idx] || `goc_${idx + 1}`);
+    const poseKey = (Array.isArray(anglesInput) && anglesInput[idx]) ? anglesInput[idx] : (DEFAULT_POSES[idx] || `goc_${idx + 1}`);
     const poseLabel = POSE_LABELS[poseKey] || `Góc ${idx + 1}`;
 
     const extraction = await extractFaceEmbedding({
@@ -231,7 +232,7 @@ const registerFaceImagesForUser = async ({ id, files, poses, force, currentUser,
   return registerFaceDescriptorForUser({
     id,
     faceDescriptors: descriptors,
-    poses: recordedPoses,
+    sampleAngles: recordedPoses,
     force,
     currentUser,
     ip,

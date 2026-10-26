@@ -53,6 +53,13 @@ const faceRecognizeAttendance = async (req, res, next) => {
 
     const useQueue = req.query?.async === 'true' || req.body?.useQueue === true;
     const verifyOnly = req.body?.verifyOnly === true || req.body?.verifyOnly === 'true';
+    const requestedAction =
+      req.body?.actionType ||
+      (req.originalUrl?.includes('checkout') || req.path?.includes('checkout')
+        ? 'CHECK_OUT'
+        : req.originalUrl?.includes('checkin') || req.path?.includes('checkin')
+        ? 'CHECK_IN'
+        : null);
 
     const result = await processFaceAttendance({
       imageBuffer,
@@ -61,6 +68,7 @@ const faceRecognizeAttendance = async (req, res, next) => {
       reqIp,
       verifyOnly,
       useQueue,
+      requestedAction,
     });
 
     if (result.matched === false || result.success === false) {
@@ -165,6 +173,32 @@ const getAttendanceHistory = async (req, res, next) => {
       currentUser: req.user,
     });
     return sendSuccess(res, 'Lấy lịch sử chấm công thành công.', result, 200);
+  } catch (error) {
+    handleServiceError(res, error, next);
+  }
+};
+
+/**
+ * @desc Lịch sử chấm công của chính người dùng hiện tại (bảo đảm 100% chỉ trả về bản thân)
+ * @route GET /api/v1/attendance/my-history
+ */
+const getMyAttendanceHistory = async (req, res, next) => {
+  try {
+    const { status, from, to, page, limit, method, isFraud } = req.query;
+    const result = await fetchAttendanceHistory({
+      role: 'giangvien', // Ép buộc xem cá nhân
+      userId: req.user.id,
+      currentUserId: req.user.id,
+      status,
+      method,
+      isFraud,
+      from,
+      to,
+      page,
+      limit,
+      currentUser: req.user,
+    });
+    return sendSuccess(res, 'Lấy lịch sử chấm công cá nhân thành công.', result, 200);
   } catch (error) {
     handleServiceError(res, error, next);
   }
@@ -303,6 +337,7 @@ module.exports = {
   checkIn,
   checkOut,
   getAttendanceHistory,
+  getMyAttendanceHistory,
   getAttendanceById,
   getAttendanceEvidence,
   updateAttendanceByAdmin,

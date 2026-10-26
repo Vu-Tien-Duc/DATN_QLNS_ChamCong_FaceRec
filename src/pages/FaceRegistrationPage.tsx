@@ -34,6 +34,8 @@ import { faceApi, RegistrationStatusResponse } from '../api/face.api';
 import { apiClient } from '../api/apiClient';
 import { FaceRegistrationModal } from '../components/biometrics/FaceRegistrationModal';
 import { useAuthStore } from '../store/useAuthStore';
+import { hasRole } from '../utils/rbac';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 export const FaceRegistrationPage: React.FC = () => {
   const { user: authUser, fetchMe } = useAuthStore();
@@ -79,8 +81,9 @@ export const FaceRegistrationPage: React.FC = () => {
     } catch (_) {}
   };
 
-  const canManageOthers = ['admin', 'bgh', 'admin_it', 'it_admin', 'tccb'].includes(
-    (authUser?.role || (authUser as any)?.primaryRole || '').toLowerCase()
+  const canManageOthers = useMemo(
+    () => hasRole(authUser, ['admin', 'bgh', 'tccb']),
+    [authUser]
   );
 
   const loadStatus = async () => {
@@ -177,6 +180,29 @@ export const FaceRegistrationPage: React.FC = () => {
     return { name: rawName, title: '' };
   };
 
+  // Helper lấy tên viết tắt chuẩn tiếng Việt (loại bỏ học hàm ThS, TS, PGS, GS...)
+  const getUserInitials = (fullName?: string): string => {
+    if (!fullName) return 'CB';
+    const cleaned = fullName
+      .replace(/\(.*?\)/g, '')
+      .replace(/^(GS\.|PGS\.|TS\.|ThS\.|CN\.|KS\.|Đ\/c|Thầy|Cô|GS|PGS|TS|ThS)\s+/gi, '')
+      .replace(/^(GS\.|PGS\.|TS\.|ThS\.|CN\.|KS\.|Đ\/c|Thầy|Cô|GS|PGS|TS|ThS)\s+/gi, '')
+      .trim();
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return (cleaned.substring(0, 2) || 'CB').toUpperCase();
+  };
+
+  // Helper lấy Avatar hồ sơ cá nhân (Avatar là riêng, không lấy facePhoto sinh trắc học)
+  const getCleanAvatarUrl = (emp: any): string | null => {
+    const raw = emp.avatar || emp.avatarUrl || emp.anh_dai_dien;
+    if (!raw || typeof raw !== 'string') return null;
+    if (raw.includes('/faces/face-') || raw.includes('category=face-registration')) return null;
+    return raw;
+  };
+
   // Lọc danh sách nhân viên theo Tab
   const filteredEmployees = useMemo(() => {
     return employeeList.filter((emp) => {
@@ -203,9 +229,7 @@ export const FaceRegistrationPage: React.FC = () => {
     paginatedEmployees.forEach((emp) => {
       const deptName =
         emp.departmentName ||
-        emp.department?.name ||
-        emp.departmentId?.name ||
-        emp.don_vi_chinh_id?.name ||
+        (typeof emp.departmentId === 'object' ? emp.departmentId?.name : null) ||
         'Văn phòng / Ban';
       if (!map.has(deptName)) {
         map.set(deptName, []);
@@ -505,8 +529,10 @@ export const FaceRegistrationPage: React.FC = () => {
                 {paginatedEmployees.map((emp) => {
                   const isRegistered = Boolean(emp.isFaceRegistered);
                   const parsed = formatNameAndTitle(emp.fullName || '');
-                  const staffCodeVal = emp.staffCode || emp.ma_can_bo || emp.employeeCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
-                  const deptNameVal = emp.departmentName || emp.department?.name || emp.departmentId?.name || emp.don_vi_chinh_id?.name || 'Văn phòng / Ban';
+                  const staffCodeVal = emp.staffCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
+                  const deptNameVal = emp.departmentName || (typeof emp.departmentId === 'object' ? emp.departmentId?.name : null) || 'Văn phòng / Ban';
+                  const avatarUrl = getCleanAvatarUrl(emp);
+                  const initials = getUserInitials(emp.fullName);
 
                   return (
                     <div
@@ -516,23 +542,13 @@ export const FaceRegistrationPage: React.FC = () => {
                       {/* Cột 1: Cán bộ / Giảng viên */}
                       <div className="w-full sm:w-auto min-w-0 flex items-center justify-between sm:justify-start gap-2.5">
                         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-500 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs overflow-hidden">
-                            {emp.avatar || emp.facePhoto ? (
-                              <img
-                                src={emp.avatar || emp.facePhoto}
-                                alt={emp.fullName}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                  if (e.currentTarget.parentElement) {
-                                    e.currentTarget.parentElement.textContent = parsed.name.charAt(0) || 'U';
-                                  }
-                                }}
-                              />
-                            ) : (
-                              parsed.name.charAt(0) || 'U'
-                            )}
-                          </div>
+                          <UserAvatar
+                            name={emp.fullName}
+                            avatarUrl={emp.avatar || emp.avatarUrl || emp.anh_dai_dien}
+                            staffCode={emp.staffCode || emp._id}
+                            size="sm"
+                            shape="rounded"
+                          />
                           <div className="flex flex-col min-w-0 flex-1">
                             <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-[13px] truncate block" title={parsed.name}>
                               {parsed.name}
@@ -673,8 +689,10 @@ export const FaceRegistrationPage: React.FC = () => {
               {paginatedEmployees.map((emp) => {
                 const isRegistered = Boolean(emp.isFaceRegistered);
                 const parsed = formatNameAndTitle(emp.fullName || '');
-                const staffCodeVal = emp.staffCode || emp.ma_can_bo || emp.employeeCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
-                const deptNameVal = emp.departmentName || emp.department?.name || emp.departmentId?.name || emp.don_vi_chinh_id?.name || 'Văn phòng / Ban';
+                const staffCodeVal = emp.staffCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
+                const deptNameVal = emp.departmentName || (typeof emp.departmentId === 'object' ? emp.departmentId?.name : null) || 'Văn phòng / Ban';
+                const avatarUrl = getCleanAvatarUrl(emp);
+                const initials = getUserInitials(emp.fullName);
 
                 return (
                   <div
@@ -685,23 +703,13 @@ export const FaceRegistrationPage: React.FC = () => {
                       {/* Top Header Card */}
                       <div className="flex items-start justify-between gap-2 mb-3">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-brand-500 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs overflow-hidden">
-                            {emp.avatar || emp.facePhoto ? (
-                              <img
-                                src={emp.avatar || emp.facePhoto}
-                                alt={emp.fullName}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                  if (e.currentTarget.parentElement) {
-                                    e.currentTarget.parentElement.textContent = parsed.name.charAt(0) || 'U';
-                                  }
-                                }}
-                              />
-                            ) : (
-                              parsed.name.charAt(0) || 'U'
-                            )}
-                          </div>
+                          <UserAvatar
+                            name={emp.fullName}
+                            avatarUrl={emp.avatar || emp.avatarUrl || emp.anh_dai_dien}
+                            staffCode={emp.staffCode || emp._id}
+                            size="lg"
+                            shape="rounded"
+                          />
                           <div className="min-w-0">
                             <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate" title={parsed.name}>
                               {parsed.name}
@@ -801,8 +809,10 @@ export const FaceRegistrationPage: React.FC = () => {
               {paginatedEmployees.map((emp) => {
                 const isRegistered = Boolean(emp.isFaceRegistered);
                 const parsed = formatNameAndTitle(emp.fullName || '');
-                const staffCodeVal = emp.staffCode || emp.ma_can_bo || emp.employeeCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
-                const deptNameVal = emp.departmentName || emp.department?.name || emp.departmentId?.name || emp.don_vi_chinh_id?.name || 'Văn phòng / Ban';
+                const staffCodeVal = emp.staffCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
+                const deptNameVal = emp.departmentName || (typeof emp.departmentId === 'object' ? emp.departmentId?.name : null) || 'Văn phòng / Ban';
+                const avatarUrl = getCleanAvatarUrl(emp);
+                const initials = getUserInitials(emp.fullName);
 
                 return (
                   <div
@@ -811,23 +821,13 @@ export const FaceRegistrationPage: React.FC = () => {
                   >
                     {/* Bên trái: Avatar nhỏ, Tên, Mã, Đơn vị */}
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-brand-500 to-indigo-600 text-white flex items-center justify-center font-bold text-[11px] shrink-0 shadow-2xs overflow-hidden">
-                        {emp.avatar || emp.facePhoto ? (
-                          <img
-                            src={emp.avatar || emp.facePhoto}
-                            alt={emp.fullName}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                              if (e.currentTarget.parentElement) {
-                                e.currentTarget.parentElement.textContent = parsed.name.charAt(0) || 'U';
-                              }
-                            }}
-                          />
-                        ) : (
-                          parsed.name.charAt(0) || 'U'
-                        )}
-                      </div>
+                      <UserAvatar
+                        name={emp.fullName}
+                        avatarUrl={emp.avatar || emp.avatarUrl || emp.anh_dai_dien}
+                        staffCode={emp.staffCode || emp._id}
+                        size="xs"
+                        shape="rounded"
+                      />
 
                       <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
                         <span className="font-bold text-slate-900 dark:text-white truncate max-w-[160px] sm:max-w-[220px]" title={parsed.name}>
@@ -948,7 +948,9 @@ export const FaceRegistrationPage: React.FC = () => {
                         {group.members.map((emp) => {
                           const isRegistered = Boolean(emp.isFaceRegistered);
                           const parsed = formatNameAndTitle(emp.fullName || '');
-                          const staffCodeVal = emp.staffCode || emp.ma_can_bo || emp.employeeCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
+                          const staffCodeVal = emp.staffCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
+                          const avatarUrl = getCleanAvatarUrl(emp);
+                          const initials = getUserInitials(emp.fullName);
 
                           return (
                             <div
@@ -956,23 +958,13 @@ export const FaceRegistrationPage: React.FC = () => {
                               className="p-3 sm:px-4 sm:py-2.5 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors flex items-center justify-between gap-3 text-xs"
                             >
                               <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-500 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs overflow-hidden">
-                                  {emp.avatar || emp.facePhoto ? (
-                                    <img
-                                      src={emp.avatar || emp.facePhoto}
-                                      alt={emp.fullName}
-                                      className="w-full h-full object-cover"
-                                      onError={(e) => {
-                                        e.currentTarget.style.display = 'none';
-                                        if (e.currentTarget.parentElement) {
-                                          e.currentTarget.parentElement.textContent = parsed.name.charAt(0) || 'U';
-                                        }
-                                      }}
-                                    />
-                                  ) : (
-                                    parsed.name.charAt(0) || 'U'
-                                  )}
-                                </div>
+                                <UserAvatar
+                                  name={emp.fullName}
+                                  avatarUrl={emp.avatar || emp.avatarUrl || emp.anh_dai_dien}
+                                  staffCode={emp.staffCode || emp._id}
+                                  size="sm"
+                                  shape="rounded"
+                                />
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2">
                                     <span className="font-bold text-slate-900 dark:text-white truncate" title={parsed.name}>

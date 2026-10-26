@@ -13,7 +13,7 @@ const POPULATE_DEPARTMENT = {
   populate: { path: 'parentId', select: 'name type' },
 };
 
-const getSubjects = async ({ search, departmentId, isActive, page, limit }) => {
+const getSubjects = async ({ search, departmentId, isActive, credits, page, limit }) => {
   const query = {};
   if (search && search.trim()) {
     const keyword = search.trim();
@@ -31,6 +31,14 @@ const getSubjects = async ({ search, departmentId, isActive, page, limit }) => {
   if (isActive !== undefined && isActive !== '') {
     query.isActive = isActive === 'true' || isActive === true;
   }
+  if (credits !== undefined && credits !== '') {
+    query.so_tin_chi = Number(credits);
+  }
+
+  const rawCredits = await Subject.distinct('so_tin_chi');
+  const availableCredits = rawCredits
+    .filter((c) => typeof c === 'number' && !isNaN(c) && c > 0)
+    .sort((a, b) => a - b);
 
   if (page && limit) {
     const pageNum = Math.max(1, parseInt(page, 10));
@@ -39,7 +47,7 @@ const getSubjects = async ({ search, departmentId, isActive, page, limit }) => {
       Subject.countDocuments(query),
       Subject.find(query).populate(POPULATE_DEPARTMENT).sort({ code: 1 }).skip((pageNum - 1) * limitNum).limit(limitNum),
     ]);
-    return { total, page: pageNum, totalPages: Math.ceil(total / limitNum), limit: limitNum, subjects };
+    return { total, page: pageNum, totalPages: Math.ceil(total / limitNum), limit: limitNum, subjects, availableCredits };
   }
 
   return Subject.find(query).populate(POPULATE_DEPARTMENT).sort({ code: 1 });

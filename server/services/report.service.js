@@ -19,6 +19,40 @@ const calculateCalendarDays = (startDate, endDate) => {
   return Math.max(1, Math.round((endUtc - startUtc) / 86400000) + 1);
 };
 
+// Helper nhận diện tài khoản Quản trị hệ thống IT và Lãnh đạo BGH (không phải đối tượng chấm công)
+const NON_ADMIN_MONGO_CRITERIA = {
+  vai_tro_chinh: { $nin: ['ADMIN', 'admin', 'BGH', 'bgh'] },
+  ma_can_bo: { $not: /^(ADMIN|BGH)/i },
+  email: { $not: /^admin@/i, $not: /daihocdtd@/i, $not: /^hieutruong@/i },
+};
+
+const isSystemAdminUser = (u) => {
+  if (!u) return false;
+  const r = String(u.role || u.primaryRole || u.vai_tro_chinh || '').toLowerCase();
+  const code = String(u.staffCode || u.ma_can_bo || '').toUpperCase();
+  const email = String(u.email || '').toLowerCase();
+  const name = String(u.fullName || u.ho_ten || '').toLowerCase();
+  const hasAdminOrBghRole = Array.isArray(u.roles) && u.roles.some((item) => {
+    const itemRole = String(item.role || item.ma_vai_tro || '').toUpperCase();
+    return itemRole === 'ADMIN' || itemRole === 'BGH';
+  });
+  return (
+    r === 'admin' ||
+    r === 'bgh' ||
+    r.includes('quản trị') ||
+    r.includes('giám hiệu') ||
+    code.startsWith('ADMIN') ||
+    code.startsWith('BGH') ||
+    hasAdminOrBghRole ||
+    email.startsWith('admin@') ||
+    email.includes('daihocdtd@') ||
+    email.startsWith('hieutruong@') ||
+    name.includes('quản trị viên') ||
+    name.includes('hiệu trưởng') ||
+    name.includes('ban giám hiệu')
+  );
+};
+
 const getAttendanceReportData = async ({ userId, departmentId, from, to, currentUser }) => {
   let targetUserIds = [];
   const canViewAll = hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || ['admin', 'ADMIN'].includes(currentUser.role);
@@ -30,11 +64,11 @@ const getAttendanceReportData = async ({ userId, departmentId, from, to, current
     } else if (departmentId) {
       const childDepartments = await Department.find({ parentId: departmentId }).select('_id');
       const departmentIds = [departmentId, ...childDepartments.map((department) => department._id)];
-      const departmentUsers = await User.find({ departmentId: { $in: departmentIds } }).select('_id');
-      targetUserIds = departmentUsers.map((user) => user._id);
+      const departmentUsers = await User.find({ departmentId: { $in: departmentIds }, ...NON_ADMIN_MONGO_CRITERIA }).select('_id staffCode email role fullName roles');
+      targetUserIds = departmentUsers.filter((u) => !isSystemAdminUser(u)).map((user) => user._id);
     } else {
-      const users = await User.find({ isActive: true }).select('_id');
-      targetUserIds = users.map((user) => user._id);
+      const allUsers = await User.find({ isActive: true, ...NON_ADMIN_MONGO_CRITERIA }).select('_id staffCode email role fullName roles');
+      targetUserIds = allUsers.filter((u) => !isSystemAdminUser(u)).map((user) => user._id);
     }
   } else if (canViewDept) {
     const scopedUserIds = await getDeanScopedUserIds(currentUser);
@@ -380,7 +414,7 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
   const startDate = new Date(`${year}-${mStr}-01T00:00:00.000+07:00`);
   const endDate = new Date(`${year}-${mStr}-${lastDayStr}T23:59:59.999+07:00`);
 
-  let userFilter = { isActive: true };
+  let userFilter = { isActive: true, ...NON_ADMIN_MONGO_CRITERIA };
   if (departmentId) {
     if (Array.isArray(departmentId)) {
       userFilter.departmentId = { $in: departmentId };
@@ -393,7 +427,14 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
 
   const totalUsers = await User.countDocuments(userFilter);
 
-  let userQuery = User.find(userFilter).select('_id fullName email role departmentId avatar');
+  // Nạp danh mục đơn vị để ánh xạ tên phòng ban
+  const allDepartments = await Department.find().select('_id name ten_phong_ban').lean();
+  const deptMap = {};
+  allDepartments.forEach((d) => {
+    deptMap[d._id.toString()] = d.name || d.ten_phong_ban || '';
+  });
+
+  let userQuery = User.find(userFilter).select('_id fullName email role departmentId avatar staffCode ma_can_bo');
 
   const { page, limit } = options;
   if (page && limit) {
@@ -404,7 +445,8 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
     userQuery = userQuery.limit(500);
   }
 
-  const users = await userQuery;
+  const rawUsers = await userQuery;
+  const users = rawUsers.filter((u) => !isSystemAdminUser(u));
   const userIds = users.map((u) => u._id);
 
   // Chỉ lấy các trường cần thiết phục vụ thống kê
@@ -425,21 +467,51 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
     const uRole = user.role || '';
     const uDeptId = user.departmentId || null;
     const uAvatar = user.avatar || null;
+    const dName = uDeptId ? deptMap[uDeptId.toString()] || 'Chưa phân bổ' : 'Chưa phân bổ';
+    const sCode = user.staffCode || user.ma_can_bo || (user._id ? `CB-${user._id.toString().slice(-4).toUpperCase()}` : '--');
+
+    const totalShifts = userAttendances.length;
+    const onTime = userAttendances.filter((a) => a.status === 'ON_TIME').length;
+    const late = userAttendances.filter((a) => a.status === 'LATE').length;
+    const early = userAttendances.filter((a) => a.status === 'EARLY_LEAVE').length;
+    const absent = userAttendances.filter((a) => a.status === 'ABSENT').length;
+    const excused = userAttendances.filter((a) => a.status === 'EXCUSED_ABSENCE').length;
+    const valid = onTime + excused;
+    const attendanceRate = totalShifts > 0 ? Math.round((valid / totalShifts) * 100) : 100;
+
     return {
+      userId: user._id,
+      employeeId: sCode,
+      staffCode: sCode,
+      fullName: uFullName,
+      email: user.email,
+      role: uRole,
+      departmentId: uDeptId,
+      departmentName: dName,
+      avatar: uAvatar,
       user: {
         id: user._id,
         fullName: uFullName,
         email: user.email,
         role: uRole,
         departmentId: uDeptId,
+        departmentName: dName,
         avatar: uAvatar,
+        staffCode: sCode,
       },
-      totalWorkingDays: userAttendances.length,
-      onTimeCount: userAttendances.filter((a) => a.status === 'ON_TIME').length,
-      lateCount: userAttendances.filter((a) => a.status === 'LATE').length,
-      earlyLeaveCount: userAttendances.filter((a) => a.status === 'EARLY_LEAVE').length,
-      absentCount: userAttendances.filter((a) => a.status === 'ABSENT').length,
-      excusedCount: userAttendances.filter((a) => a.status === 'EXCUSED_ABSENCE').length,
+      totalShifts,
+      totalWorkingDays: totalShifts,
+      onTime,
+      onTimeCount: onTime,
+      late,
+      lateCount: late,
+      early,
+      earlyLeaveCount: early,
+      absent,
+      absentCount: absent,
+      excused,
+      excusedCount: excused,
+      attendanceRate,
     };
   });
 
@@ -555,8 +627,7 @@ const generateExportReportData = async ({
     deptMap[d._id.toString()] = d.name || d.ten_phong_ban || '';
   });
 
-  // 2. Lấy danh sách nhân sự áp dụng
-  const userFilter = { isActive: true };
+  const userFilter = { isActive: true, ...NON_ADMIN_MONGO_CRITERIA };
   if (targetUserIds && targetUserIds.length > 0) {
     userFilter._id = { $in: targetUserIds };
   } else if (departmentId) {
@@ -569,7 +640,8 @@ const generateExportReportData = async ({
     }
   }
 
-  const users = await User.find(userFilter).select('_id fullName email role departmentId').lean();
+  const rawUsers = await User.find(userFilter).select('_id fullName email role departmentId staffCode roles').lean();
+  const users = rawUsers.filter((u) => !isSystemAdminUser(u));
   const effectiveUserIds = users.map((u) => u._id);
 
   // 3. Lấy tất cả lịch sử chấm công trong khoảng thời gian

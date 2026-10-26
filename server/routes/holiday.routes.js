@@ -10,19 +10,18 @@ const {
 const { verifyToken, authorizeRoles } = require('../middlewares/auth.middleware');
 
 router.use(verifyToken);
-router.use(authorizeRoles('admin'));
 
-// GET /api/holidays?year=2026 - Lấy danh sách ngày nghỉ lễ
+// GET /api/holidays?year=2026 - Lấy danh sách ngày nghỉ lễ (Tất cả cán bộ đã đăng nhập đều được xem)
 router.get('/', getHolidays);
 router.get('/:id', getHolidayById);
 
-// POST /api/holidays - Tạo ngày nghỉ lễ mới
-router.post('/', createHoliday);
+// POST /api/holidays - Tạo ngày nghỉ lễ mới (Admin & BGH)
+router.post('/', authorizeRoles('admin', 'bgh'), createHoliday);
 
 // PUT /api/holidays/:id - Cập nhật ngày nghỉ lễ
-router.put('/:id', updateHoliday);
+router.put('/:id', authorizeRoles('admin', 'bgh'), updateHoliday);
 
 // DELETE /api/holidays/:id - Xóa ngày nghỉ lễ
-router.delete('/:id', deleteHoliday);
+router.delete('/:id', authorizeRoles('admin', 'bgh'), deleteHoliday);
 
 module.exports = router;

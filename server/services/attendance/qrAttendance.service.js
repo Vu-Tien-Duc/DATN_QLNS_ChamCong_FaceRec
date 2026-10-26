@@ -80,15 +80,17 @@ const processScanQRCode = async ({
     let calculatedStatus = 'ON_TIME';
     let lateMinutes = 0;
 
-    try {
-      const evalResult = await evaluateUserScheduleForCheckIn(userId, nowVN);
-      if (evalResult && evalResult.shift) {
-        effectiveShift = evalResult.shift;
-        const statusInfo = calculateAttendanceStatus(nowVN, effectiveShift);
-        calculatedStatus = statusInfo.status;
-        lateMinutes = statusInfo.lateMinutes || 0;
-      }
-    } catch (_) {}
+    const evalResult = await evaluateUserScheduleForCheckIn(userId);
+    if (!evalResult || !evalResult.canCheckIn) {
+      throw new ServiceError(
+        evalResult?.message || 'Hôm nay bạn không có lịch phân công làm việc hoặc giảng dạy trên hệ thống. Không thể thực hiện chấm công.',
+        400,
+        evalResult?.status || 'NO_SCHEDULE'
+      );
+    }
+    effectiveShift = evalResult.shift;
+    calculatedStatus = evalResult.status || 'ON_TIME';
+    lateMinutes = evalResult.lateMinutes || 0;
 
     // Tạo PunchLog (Collection 4 - nhat_ky_quet_the)
     const punchLog = await PunchLog.create({

@@ -230,8 +230,8 @@ function getEffectivePermissions(user) {
 
   if (Array.isArray(rolesList) && rolesList.length > 0) {
     for (const r of rolesList) {
-      // Bỏ qua vai trò đã hết nhiệm kỳ
-      const expiry = r.expiresAt;
+      // Bỏ qua vai trò đã hết nhiệm kỳ (endDate / den_ngay)
+      const expiry = r.endDate || r.den_ngay;
       if (expiry && new Date(expiry) < now) {
         continue;
       }

@@ -122,37 +122,22 @@ const performCheckIn = async ({
   }
 
   if (!effectiveShift) {
-    try {
-      const evalResult = await evaluateUserScheduleForCheckIn(userId, nowVN);
-      if (evalResult && evalResult.shift) {
-        effectiveShift = evalResult.shift;
-        const statusInfo = calculateAttendanceStatus(nowVN, effectiveShift);
-        calculatedStatus = statusInfo.status;
-        lateMinutes = statusInfo.lateMinutes || 0;
-      }
-    } catch (_) {}
-  }
-
-  if (!effectiveShift) {
-    effectiveShift =
-      (await ShiftConfig.findOne({ isDefault: true })) ||
-      (await ShiftConfig.findOne({ loai_ca: { $in: ['HANH_CHINH', 'hanhchinh', 'standard'] } })) ||
-      (await ShiftConfig.findOne());
-  }
-
-  if (effectiveShift) {
+    const evalResult = await evaluateUserScheduleForCheckIn(userId);
+    if (!evalResult || !evalResult.canCheckIn) {
+      throw new ServiceError(
+        evalResult?.message || 'Hôm nay bạn không có lịch phân công làm việc hoặc giảng dạy trên hệ thống. Không thể thực hiện chấm công.',
+        400,
+        evalResult?.status || 'NO_SCHEDULE'
+      );
+    }
+    effectiveShift = evalResult.shift;
+    scheduleId = evalResult.selectedSchedule?._id || null;
+    calculatedStatus = evalResult.status || 'ON_TIME';
+    lateMinutes = evalResult.lateMinutes || 0;
+  } else {
     const statusInfo = calculateAttendanceStatus(nowVN, effectiveShift);
     calculatedStatus = statusInfo.status;
     lateMinutes = statusInfo.lateMinutes || 0;
-  } else {
-    // Fallback: Nếu không gán ca, tính theo giờ hành chính chuẩn 08:00
-    const currentHour = nowVN.getHours();
-    const currentMin = nowVN.getMinutes();
-    const totalMinutes = currentHour * 60 + currentMin;
-    if (totalMinutes > 8 * 60 + 15) {
-      calculatedStatus = 'LATE';
-      lateMinutes = totalMinutes - 8 * 60;
-    }
   }
 
   // 4. Khởi tạo ID AttendanceLog và tạo bản ghi PunchLog (Collection 4 - nhat_ky_quet_the)

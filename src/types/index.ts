@@ -3,13 +3,13 @@
 // =============================================================================
 
 export type RoleType =
+  | 'ADMIN'
   | 'BGH'
   | 'TRUONG_KHOA'
   | 'PHO_KHOA'
   | 'TRUONG_BO_MON'
   | 'GIANG_VIEN'
   | 'NHAN_VIEN'
-  | 'ADMIN_IT'
   | 'KE_TOAN'
   | 'QUAN_LY_XE';
 
@@ -20,7 +20,6 @@ export type UserRoleLegacy =
   | 'pho_khoa'
   | 'giang_vien'
   | 'nhan_vien'
-  | 'it_admin'
   | 'ke_toan';
 
 export interface UserRoleItem {
@@ -48,7 +47,6 @@ export interface UserProfile {
   fullName: string;
   email: string;
   phoneNumber?: string;
-  phone?: string;
   avatar?: string;
   role: UserRoleLegacy | string;
   primaryRole?: string;
@@ -60,7 +58,6 @@ export interface UserProfile {
     type?: string;
   } | string | null;
   departmentName?: string;
-  employeeCode?: string;
   staffCode?: string;
   position?: string;
   academicRank?: AcademicRankType;

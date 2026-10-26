@@ -5,8 +5,8 @@ const { verifyToken, verifyRole } = require('../middlewares/auth.middleware');
 
 router.use(verifyToken);
 
-// Chỉ Admin và Ban Giám Hiệu (Hiệu trưởng, Hiệu phó) mới được tra cứu nhật ký kiểm toán hệ thống
-router.get('/verify-integrity', verifyRole(['admin', 'hieutruong', 'hieupho']), verifyAuditIntegrity);
-router.get('/', verifyRole(['admin', 'hieutruong', 'hieupho']), getAuditLogs);
+// Chỉ Admin, Ban Giám Hiệu và Kiểm toán mới được tra cứu nhật ký kiểm toán hệ thống
+router.get('/verify-integrity', verifyRole(['admin', 'bgh', 'kiemtoan']), verifyAuditIntegrity);
+router.get('/', verifyRole(['admin', 'bgh', 'kiemtoan']), getAuditLogs);
 
 module.exports = router;

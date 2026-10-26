@@ -195,7 +195,7 @@ const updateConfig = async (key, rawValue, currentUser = null, req = null) => {
 };
 
 /**
- * Cập nhật nhiều cấu hình cùng lúc
+ * Cập nhật nhiều cấu hình cùng lúc (Tự động khởi tạo khóa cấu hình nếu chưa tồn tại trong CSDL)
  */
 const bulkUpdateConfigs = async (configs = [], currentUser = null, req = null) => {
   if (!Array.isArray(configs) || configs.length === 0) {
@@ -207,8 +207,31 @@ const bulkUpdateConfigs = async (configs = [], currentUser = null, req = null) =
     const key = item.key;
     const value = item.value;
     if (key) {
-      const updated = await updateConfig(key, value, currentUser, req);
-      results.push(updated);
+      const upperKey = String(key).trim().toUpperCase();
+      const existing = await SystemConfig.findOne({ key: upperKey });
+      if (existing) {
+        const updated = await updateConfig(upperKey, value, currentUser, req);
+        results.push(updated);
+      } else {
+        const validatedValue = validateConfigValue(upperKey, value);
+        const created = await SystemConfig.create({
+          key: upperKey,
+          value: validatedValue,
+          group: item.group || 'SYSTEM',
+          description: item.description || `Tham số hệ thống ${upperKey}`,
+          updatedBy: currentUser?._id || currentUser?.id || null,
+        });
+        cache.set(upperKey, {
+          id: created._id,
+          key: created.key,
+          value: validatedValue,
+          group: created.group,
+          description: created.description,
+          updatedAt: created.updatedAt,
+          updatedBy: created.updatedBy,
+        });
+        results.push(created);
+      }
     }
   }
 

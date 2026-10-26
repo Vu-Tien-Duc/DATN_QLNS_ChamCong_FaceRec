@@ -208,7 +208,20 @@ phieuLuongSchema.virtual('teachingHours')
   });
 
 phieuLuongSchema.virtual('insurance')
-  .get(function () { return this.bao_hiem; })
+  .get(function () {
+    if (!this.bao_hiem) return null;
+    const b = this.bao_hiem;
+    return {
+      socialInsurance: b.bhxh ?? 0,
+      healthInsurance: b.bhyt ?? 0,
+      unemploymentInsurance: b.bhtn ?? 0,
+      totalInsurance: b.tong_bao_hiem ?? 0,
+      bhxh: b.bhxh ?? 0,
+      bhyt: b.bhyt ?? 0,
+      bhtn: b.bhtn ?? 0,
+      tong_bao_hiem: b.tong_bao_hiem ?? 0,
+    };
+  })
   .set(function (v) {
     if (!v) return;
     this.bao_hiem = this.bao_hiem || {};
@@ -223,7 +236,20 @@ phieuLuongSchema.virtual('insurance')
   });
 
 phieuLuongSchema.virtual('personalIncomeTax')
-  .get(function () { return this.thue_tncn; })
+  .get(function () {
+    if (!this.thue_tncn) return null;
+    const t = this.thue_tncn;
+    return {
+      personalDeduction: t.giam_tru_ban_than ?? 0,
+      dependentDeduction: t.giam_tru_phu_thuoc ?? 0,
+      taxableIncome: t.thu_nhap_tinh_thue ?? 0,
+      taxAmount: t.tien_thue ?? 0,
+      giam_tru_ban_than: t.giam_tru_ban_than ?? 0,
+      giam_tru_phu_thuoc: t.giam_tru_phu_thuoc ?? 0,
+      thu_nhap_tinh_thue: t.thu_nhap_tinh_thue ?? 0,
+      tien_thue: t.tien_thue ?? 0,
+    };
+  })
   .set(function (v) {
     if (!v) return;
     this.thue_tncn = this.thue_tncn || {};

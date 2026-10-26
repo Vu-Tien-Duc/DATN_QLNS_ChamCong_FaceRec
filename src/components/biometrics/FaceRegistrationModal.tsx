@@ -28,7 +28,9 @@ import confetti from 'canvas-confetti';
 import toast from 'react-hot-toast';
 import { faceApi, DetectPoseResponse } from '../../api/face.api';
 import { audioFeedback } from '../../utils/audioFeedback';
+import { Portal } from '../ui/Portal';
 import { useAuthStore } from '../../store/useAuthStore';
+import { cameraManager } from '../../utils/cameraManager';
 
 export interface AngleConfigItem {
   key: string;
@@ -518,6 +520,15 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
         },
       });
 
+      cameraManager.registerStream(stream);
+
+      // Nếu modal đã đóng trong lúc chờ cấp quyền
+      if (!isOpen) {
+        stream.getTracks().forEach((track) => track.stop());
+        cameraManager.unregisterStream(stream);
+        return;
+      }
+
       streamRef.current = stream;
       isCameraActiveRef.current = true;
       setIsCameraActive(true);
@@ -560,10 +571,17 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
       warmupTimerRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+          track.enabled = false;
+        } catch (_) {}
+      });
+      cameraManager.unregisterStream(streamRef.current);
       streamRef.current = null;
     }
     if (videoRef.current) {
+      videoRef.current.pause();
       videoRef.current.srcObject = null;
     }
     if (animationFrameRef.current) {
@@ -1470,11 +1488,12 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
   const isCurrentAngleCaptured = Boolean(capturedImages[currentAngleObj.key]?.previewUrl);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+    <Portal>
+      <div data-camera-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
       {/* Hidden processing canvas */}
       <canvas ref={canvasRef} className="hidden" />
 
-      <div className="bg-slate-900 border border-slate-800 text-white rounded-3xl p-6 shadow-2xl max-w-4xl w-full relative overflow-hidden flex flex-col gap-4 max-h-[94vh] overflow-y-auto custom-scrollbar">
+      <div className="bg-slate-900 border border-slate-800 text-white rounded-3xl p-6 shadow-2xl shadow-black/60 ring-1 ring-white/15 max-w-4xl w-full relative overflow-hidden flex flex-col gap-4 max-h-[94vh] overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-200">
         {/* Glow trang trí */}
         <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
@@ -2362,5 +2381,6 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
         </div>
       </div>
     </div>
-  );
+  </Portal>
+);
 };

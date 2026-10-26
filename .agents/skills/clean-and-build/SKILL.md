@@ -63,6 +63,19 @@ Sử dụng quy trình này sau khi hoàn tất các tác vụ chỉnh sửa mã
 
 ---
 
-### Bước 5: Báo cáo ngắn gọn cho người dùng
+### Bước 5: Chiến Lược Phạm Vi Đọc & Kiểm Thử Tiết Kiệm Quota (Bắt Buộc)
+1. **Chỉ đọc các file liên quan trực tiếp (Strict File Reading Scope):**
+   - CHỈ ĐƯỢC PHÉP đọc các file nằm trong phạm vi của module hoặc tính năng đang thực hiện.
+   - TUYỆT ĐỐI KHÔNG đọc các file ngoài lề, không đọc lan man toàn bộ thư mục hoặc các file không liên quan.
+   - Khi đọc file, bắt buộc áp dụng **File Slicing** (`StartLine`, `EndLine` từ 30–80 dòng) hoặc `grep_search`, cấm đọc toàn bộ file dài (>150 dòng).
+
+2. **Chỉ test file liên quan trực tiếp (Strict Test Scope - Không Test Hết):**
+   - **Khi sửa logic Backend:** CHỈ chạy duy nhất file test của module đó (ví dụ: sửa auth/token -> chạy `node server/tests/rbacAndTokenRotation.test.js`; sửa khuôn mặt -> chạy `node server/tests/faceEnrollment.test.js`).
+   - **Khi sửa UI / Frontend:** CHỈ chạy `npm run build` để kiểm tra TypeScript/cú pháp, TUYỆT ĐỐI KHÔNG chạy test backend.
+   - **Cấm tự ý chạy toàn bộ test (`npm test`):** Không được tự ý chạy 18 test suites cùng lúc trừ khi người dùng ra lệnh rõ ràng hoặc nghiệm thu milestone lớn.
+
+---
+
+### Bước 6: Báo cáo ngắn gọn cho người dùng
 - Liệt kê các file thừa đã được dọn dẹp.
 - Thông báo kết quả build thành công (thời gian build và trạng thái bundle).

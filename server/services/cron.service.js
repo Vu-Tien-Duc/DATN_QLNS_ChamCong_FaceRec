@@ -18,6 +18,7 @@ const systemConfigService = require('./systemConfig.service');
 const { sendAbsentWarningEmail, sendDailyAttendanceSummaryEmail } = require('./email.service');
 const { getVietnamTime, getVietnamDayRange, timeStringToMinutes } = require('../utils/attendanceTime.utils');
 const { withDistributedLock } = require('../utils/distributedLock');
+const { isScheduleActiveOnDate } = require('../utils/scheduleDate.utils');
 
 /**
  * Kiểm tra xem email có thể gửi thư thực tế qua Internet không (tránh gửi vào domain mẫu sinh viên/giảng viên ảo làm bounce thư)
@@ -58,7 +59,8 @@ const getTodayActiveSchedules = async (targetDate = new Date()) => {
       .populate('subjectId', 'name code credits departmentId')
       .sort({ startTime: 1 });
 
-    return schedules;
+    const activeSchedules = schedules.filter((sch) => isScheduleActiveOnDate(sch, vnTime));
+    return activeSchedules;
   } catch (error) {
     console.error('[Cron Service] Lỗi khi truy vấn getTodayActiveSchedules:', error);
     throw error;

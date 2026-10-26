@@ -14,7 +14,7 @@ interface AuthState {
   fetchMe: () => Promise<void>;
   setUser: (user: UserProfile | null) => void;
   setToken: (token: string | null) => void;
-  switchDemoRole: (role: UserRoleLegacy) => void;
+  switchDemoRole: (role: UserRoleLegacy) => Promise<void>;
 }
 
 const getStoredToken = (): string | null => {
@@ -55,11 +55,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setToken: (token) => {
     if (token) {
-      localStorage.setItem('accessToken', token);
       localStorage.setItem('token', token);
     } else {
-      localStorage.removeItem('accessToken');
       localStorage.removeItem('token');
+      localStorage.removeItem('accessToken');
     }
     set({ token, isAuthenticated: !!token });
   },
@@ -69,11 +68,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const res = await authApi.login(payload);
       if (res.success && res.data) {
-        const { token, accessToken, refreshToken, user } = res.data;
-        const finalToken = accessToken || token;
+        const { token, refreshToken, user } = res.data;
 
-        localStorage.setItem('accessToken', finalToken);
-        localStorage.setItem('token', finalToken);
+        localStorage.setItem('token', token);
         if (refreshToken) {
           localStorage.setItem('refreshToken', refreshToken);
         }
@@ -81,7 +78,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         set({
           user,
-          token: finalToken,
+          token,
           refreshToken: refreshToken || null,
           isAuthenticated: true,
           isLoading: false,
@@ -111,10 +108,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const res = await authApi.getMe();
-      if (res.success && res.data?.user) {
-        const user = res.data.user;
-        localStorage.setItem('user', JSON.stringify(user));
-        set({ user, isAuthenticated: true });
+      const userData = ((res.data as any)?.user || res.data) as UserProfile;
+      if (res.success && userData && (userData._id || (userData as any).id || userData.email)) {
+        localStorage.setItem('user', JSON.stringify(userData));
+        set({ user: userData, isAuthenticated: true });
       }
     } catch (error) {
       console.warn('Lỗi khi lấy thông tin người dùng hiện tại:', error);
@@ -143,7 +140,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  switchDemoRole: (role: UserRoleLegacy) => {
+  switchDemoRole: async (role: UserRoleLegacy) => {
+    const roleEmails: Record<UserRoleLegacy, string> = {
+      bgh: 'hieutruong@university.edu.vn',
+      admin: 'admin@university.edu.vn',
+      truong_khoa: 'truongkhoa.cntt@university.edu.vn',
+      pho_khoa: 'phokhoa.cntt@university.edu.vn',
+      giang_vien: 'giangvien.bich@university.edu.vn',
+      nhan_vien: 'nhanvien.ha@university.edu.vn',
+      ke_toan: 'admin.hr@university.edu.vn',
+    };
+
+    const targetEmail = roleEmails[role];
+    if (targetEmail) {
+      const ok = await get().login({ email: targetEmail, password: 'password123' });
+      if (ok) {
+        toast.success(`Đã đăng nhập xác thực thành công vai trò: ${role.toUpperCase()}`);
+        return;
+      }
+    }
+
+    // Fallback nếu offline hoặc không có mạng
     const roleProfiles: Record<UserRoleLegacy, Partial<UserProfile>> = {
       bgh: {
         fullName: 'GS. TS. Nguyễn Văn An',
@@ -153,11 +170,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         roles: [{ role: 'BGH', scope: 'TOAN_TRUONG' }],
       },
       admin: {
-        fullName: 'Quản Trị Viên Hệ Thống (IT Admin)',
+        fullName: 'Quản Trị Viên Hệ Thống (Admin)',
         email: 'admin@university.edu.vn',
         role: 'admin',
         departmentName: 'Phòng Quản Trị Công Nghệ',
-        roles: [{ role: 'ADMIN_IT', scope: 'TOAN_TRUONG' }],
+        roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }],
       },
       truong_khoa: {
         fullName: 'PGS. TS. Lê Hoàng Nam',
@@ -193,13 +210,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         role: 'pho_khoa',
         departmentName: 'Khoa Công Nghệ Thông Tin & CĐS',
         roles: [{ role: 'PHO_TRUONG_KHOA', scope: 'KHOA' }],
-      },
-      it_admin: {
-        fullName: 'Kỹ sư Quản trị Server',
-        email: 'it.support@university.edu.vn',
-        role: 'it_admin',
-        departmentName: 'Phòng Quản Trị Công Nghệ',
-        roles: [{ role: 'ADMIN_IT', scope: 'TOAN_TRUONG' }],
       },
     };
 

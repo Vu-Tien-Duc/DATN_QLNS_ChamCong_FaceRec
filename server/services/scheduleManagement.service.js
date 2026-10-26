@@ -241,15 +241,15 @@ const fetchSchedules = async ({
   }
 
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const limitNum = Math.min(500, Math.max(1, parseInt(limit, 10) || 200));
   const skip = (pageNum - 1) * limitNum;
 
   const [total, schedules] = await Promise.all([
     Schedule.countDocuments(query),
     Schedule.find(query)
-      .populate('userId', 'fullName email staffCode role departmentId avatarUrl')
-      .populate('shiftId', 'name startTime endTime')
-      .populate('subjectId', 'name code credits departmentId')
+      .populate('userId', 'fullName email staffCode role departmentId avatar facePhoto ho_ten ma_can_bo ms_can_bo')
+      .populate('shiftId', 'name startTime endTime ten_ca gio_bat_dau gio_ket_thuc lateThresholdMinutes nguong_di_muon_phut')
+      .populate('subjectId', 'name code credits departmentId ten_mon ma_mon so_tin_chi phong_ban_id')
       .sort({ weekday: 1, startPeriod: 1, startTime: 1 })
       .skip(skip)
       .limit(limitNum)
@@ -276,9 +276,9 @@ const fetchScheduleById = async (scheduleId, currentUser) => {
   }
 
   const schedule = await Schedule.findById(scheduleId)
-    .populate('userId', 'fullName email staffCode role departmentId')
-    .populate('shiftId', 'name startTime endTime')
-    .populate('subjectId', 'name code credits');
+    .populate('userId', 'fullName email staffCode role departmentId avatar facePhoto ho_ten ma_can_bo ms_can_bo')
+    .populate('shiftId', 'name startTime endTime ten_ca gio_bat_dau gio_ket_thuc lateThresholdMinutes nguong_di_muon_phut')
+    .populate('subjectId', 'name code credits ten_mon ma_mon so_tin_chi phong_ban_id');
 
   if (!schedule) {
     throw new ServiceError('Không tìm thấy lịch giảng dạy/công tác.', 404);
@@ -311,24 +311,62 @@ const createNewSchedule = async (data, currentUser) => {
     endDate,
     scheduleType = 'CHINH_KHOA',
     makeupDate,
-    weekNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    academicYear = '2026-2027',
+    weekNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    academicYear = '2025-2026',
     semester = 1,
+    latitude,
+    longitude,
+    radiusMeters,
+    vi_do,
+    kinh_do,
+    ban_kinh_met,
   } = data;
 
-  if (!userId || !roomId || weekday === undefined) {
-    throw new ServiceError('Vui lòng cung cấp đầy đủ: Giảng viên, Phòng học, Thứ trong tuần.', 400);
+  if (!userId || weekday === undefined) {
+    throw new ServiceError('Vui lòng cung cấp đầy đủ: Cán bộ / Giảng viên và Thứ trong tuần.', 400);
   }
+
+  // Đồng bộ giờ và tiết từ Ca làm việc (Shift) nếu có shiftId
+  let resolvedStartTime = startTime || '07:00';
+  let resolvedEndTime = endTime || '11:30';
+  let resolvedStartPeriod = Number(startPeriod) || 1;
+  let resolvedPeriodCount = Number(periodCount) || 4;
+
+  if (shiftId && mongoose.isValidObjectId(shiftId)) {
+    const shiftDoc = await ShiftConfig.findById(shiftId).lean();
+    if (shiftDoc) {
+      if (!startTime && shiftDoc.startTime) resolvedStartTime = shiftDoc.startTime;
+      if (!endTime && shiftDoc.endTime) resolvedEndTime = shiftDoc.endTime;
+      const sHour = parseInt((resolvedStartTime || shiftDoc.startTime || '07:00').split(':')[0], 10);
+      if (!startPeriod || (sHour >= 17 && resolvedStartPeriod < 9) || (sHour >= 12 && sHour < 17 && (resolvedStartPeriod < 5 || resolvedStartPeriod >= 9))) {
+        if (sHour >= 17) {
+          resolvedStartPeriod = 9;
+          resolvedPeriodCount = 4;
+        } else if (sHour >= 12) {
+          resolvedStartPeriod = 5;
+          resolvedPeriodCount = 4;
+        } else if (sHour === 8) {
+          resolvedStartPeriod = 1;
+          resolvedPeriodCount = 8;
+        } else {
+          resolvedStartPeriod = 1;
+          resolvedPeriodCount = 4;
+        }
+      }
+    }
+  }
+
+  const resolvedRoomId = (roomId || '').trim() || 'Phòng trực / Văn phòng';
 
   // 1. Kiểm tra chống xung đột lịch
   await detectScheduleConflicts({
     userId,
-    roomId,
+    roomId: roomId ? resolvedRoomId : '',
     weekday,
-    startPeriod,
-    periodCount,
-    startTime,
-    endTime,
+    startPeriod: resolvedStartPeriod,
+    periodCount: resolvedPeriodCount,
+    startTime: resolvedStartTime,
+    endTime: resolvedEndTime,
     weekNumbers,
     academicYear,
     semester,
@@ -337,18 +375,25 @@ const createNewSchedule = async (data, currentUser) => {
   });
 
   // 2. Khởi tạo bản ghi Schedule
+  const finalLat = latitude !== undefined && latitude !== null ? Number(latitude) : (vi_do !== undefined && vi_do !== null ? Number(vi_do) : 20.9752);
+  const finalLng = longitude !== undefined && longitude !== null ? Number(longitude) : (kinh_do !== undefined && kinh_do !== null ? Number(kinh_do) : 105.7628);
+  const finalRadius = radiusMeters !== undefined && radiusMeters !== null ? Number(radiusMeters) : (ban_kinh_met !== undefined && ban_kinh_met !== null ? Number(ban_kinh_met) : 100);
+
   const newSchedule = await Schedule.create({
     userId,
     shiftId: shiftId || null,
-    startTime: startTime || '07:00',
-    endTime: endTime || '09:30',
-    startPeriod: Number(startPeriod) || 1,
-    periodCount: Number(periodCount) || 3,
-    roomId,
+    startTime: resolvedStartTime,
+    endTime: resolvedEndTime,
+    startPeriod: resolvedStartPeriod,
+    periodCount: resolvedPeriodCount,
+    roomId: resolvedRoomId,
     subjectId: subjectId || null,
+    latitude: finalLat,
+    longitude: finalLng,
+    radiusMeters: finalRadius,
     weekday: Number(weekday),
     isRecurring: Boolean(isRecurring),
-    startDate: startDate ? new Date(startDate) : new Date('2026-09-01'),
+    startDate: startDate ? new Date(startDate) : new Date('2026-01-15'),
     endDate: endDate ? new Date(endDate) : new Date('2026-12-31'),
     scheduleType,
     makeupDate: makeupDate ? new Date(makeupDate) : null,
@@ -365,7 +410,7 @@ const createNewSchedule = async (data, currentUser) => {
     action: 'CREATE_SCHEDULE',
     targetId: newSchedule._id.toString(),
     targetType: 'Schedule',
-    details: { roomId, weekday, startPeriod, scheduleType },
+    details: { roomId: resolvedRoomId, weekday, startPeriod: resolvedStartPeriod, scheduleType },
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   return newSchedule;
@@ -473,23 +518,36 @@ const addScheduleException = async ({ scheduleId, date, reason, status = 'NGHI',
 };
 
 /**
- * 12. Lấy lịch làm việc hôm nay của người dùng
+ * 12. Lấy lịch làm việc hôm nay của người dùng (hoặc toàn trường / khoa với Admin / Trưởng khoa)
  */
 const fetchTodaySchedules = async ({ userId, date, currentUser }) => {
   const targetDate = date ? new Date(date) : new Date();
   const currentWeekday = targetDate.getDay();
+  const userRole = (currentUser?.role || '').toLowerCase();
 
   const query = {
-    userId: userId || currentUser.id || currentUser._id,
     weekday: currentWeekday,
     startDate: { $lte: targetDate },
     endDate: { $gte: targetDate },
     isActive: { $ne: false },
   };
 
+  if (userId) {
+    query.userId = userId;
+  } else if (userRole === 'giangvien' || userRole === 'nhanvien' || userRole === 'giang_vien' || userRole === 'nhan_vien') {
+    query.userId = currentUser.id || currentUser._id;
+  } else if (userRole === 'truongkhoa' || userRole === 'truong_khoa') {
+    const departmentIds = await getDeanDepartmentIds(currentUser);
+    const scopedUserIds = await User.find({
+      departmentId: { $in: departmentIds },
+    }).distinct('_id');
+    query.userId = { $in: scopedUserIds };
+  }
+
   return Schedule.find(query)
-    .populate('shiftId', 'name startTime endTime')
-    .populate('subjectId', 'name code credits')
+    .populate('userId', 'fullName email staffCode role departmentId avatar facePhoto ho_ten ma_can_bo ms_can_bo')
+    .populate('shiftId', 'name startTime endTime ten_ca gio_bat_dau gio_ket_thuc lateThresholdMinutes nguong_di_muon_phut')
+    .populate('subjectId', 'name code credits ten_mon ma_mon so_tin_chi phong_ban_id')
     .sort({ startPeriod: 1, startTime: 1 })
     .lean();
 };

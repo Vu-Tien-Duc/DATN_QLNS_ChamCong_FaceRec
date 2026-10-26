@@ -108,7 +108,14 @@ const getAttendanceHistory = async ({
 
   const [records, total] = await Promise.all([
     AttendanceLog.find(query)
-      .populate('userId', 'fullName email staffCode role departmentId')
+      .populate({
+        path: 'userId',
+        select: 'fullName email staffCode role primaryRole roles departmentId don_vi_chinh_id avatar position',
+        populate: {
+          path: 'don_vi_chinh_id',
+          select: 'ten_phong_ban name loai_don_vi',
+        },
+      })
       .populate('shiftId', 'name startTime endTime')
       .populate('scheduleId', 'roomId subjectId')
       .populate({

@@ -21,7 +21,6 @@ import {
   MapPin,
   List,
   LayoutGrid,
-  AlignJustify,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -45,6 +44,10 @@ import {
   GenderType,
 } from '../types';
 import { useAuthStore } from '../store/useAuthStore';
+import { normalizeRoleKey, hasRole } from '../utils/rbac';
+import { UserAvatar } from '../components/ui/UserAvatar';
+import { DepartmentSelect, getDeptCategory } from '../components/ui/DepartmentSelect';
+import { Portal } from '../components/ui/Portal';
 
 // =============================================================================
 // HẰNG SỐ VÀ BẢNG ÁNH XẠ CHUẨN ĐẠI HỌC (CSDL v2.5)
@@ -112,14 +115,7 @@ const formatNameAndTitle = (rawName = '') => {
   return { name: rawName.trim(), title: '' };
 };
 
-const normalizeRoleKey = (role?: string): string => {
-  if (!role) return 'giangvien';
-  const r = role.toLowerCase().replace(/_/g, '');
-  if (r === 'adminit' || r === 'itadmin' || r === 'tccb' || r === 'ketoan') return 'admin';
-  if (r === 'photruongkhoa') return 'phokhoa';
-  if (r === 'chuyenvien') return 'nhanvien';
-  return r;
-};
+
 
 const getRoleMeta = (role?: string) => {
   const key = normalizeRoleKey(role);
@@ -144,24 +140,69 @@ const getAcademicPrefix = (u: UserProfile): string => {
 };
 
 const getDepartmentName = (u: UserProfile, departments: DepartmentItem[]): string => {
-  if (u.departmentName) return u.departmentName;
-  if (u.departmentId && typeof u.departmentId === 'object' && 'name' in u.departmentId) {
-    return u.departmentId.name;
+  if (u.departmentName && u.departmentName.trim()) return u.departmentName;
+
+  const rawDept = u.departmentId || (u as any).don_vi_chinh_id || (u as any).don_vi_id;
+
+  if (rawDept && typeof rawDept === 'object') {
+    if ('name' in rawDept && rawDept.name) {
+      return String(rawDept.name);
+    }
+    if ('ten_phong_ban' in rawDept && (rawDept as any).ten_phong_ban) {
+      return String((rawDept as any).ten_phong_ban);
+    }
+    if ('_id' in rawDept && rawDept._id) {
+      const found = departments.find((d) => String(d._id) === String(rawDept._id));
+      if (found) return found.name || (found as any).ten_phong_ban || '';
+    }
   }
-  if (typeof u.departmentId === 'string') {
-    const found = departments.find((d) => d._id === u.departmentId);
-    if (found) return found.name;
+
+  if (rawDept) {
+    const idStr = String(rawDept);
+    const found = departments.find((d) => String(d._id) === idStr);
+    if (found) return found.name || (found as any).ten_phong_ban || '';
   }
+
+  // Tra cứu theo danh sách vai trò nếu có
+  if (Array.isArray(u.roles) && u.roles.length > 0) {
+    const primaryRoleObj = u.roles[0];
+    const roleDeptId = primaryRoleObj?.departmentId || (primaryRoleObj as any)?.don_vi_id;
+    if (roleDeptId) {
+      const idStr = typeof roleDeptId === 'object' && '_id' in roleDeptId ? String(roleDeptId._id) : String(roleDeptId);
+      const found = departments.find((d) => String(d._id) === idStr);
+      if (found) return found.name || (found as any).ten_phong_ban || '';
+    }
+  }
+
   return 'Chưa phân đơn vị';
 };
 
 const getDepartmentIdValue = (u: UserProfile): string => {
-  if (!u.departmentId) return '';
-  if (typeof u.departmentId === 'object' && '_id' in u.departmentId) {
-    return u.departmentId._id;
+  const rawDept = u.departmentId || (u as any).don_vi_chinh_id || (u as any).don_vi_id;
+  if (rawDept) {
+    if (typeof rawDept === 'object' && '_id' in rawDept) {
+      return String(rawDept._id);
+    }
+    return String(rawDept);
   }
-  return String(u.departmentId);
+  // Tra cứu theo danh sách vai trò nếu có
+  if (Array.isArray(u.roles) && u.roles.length > 0) {
+    const primaryRoleObj = u.roles[0];
+    const roleDeptId = primaryRoleObj?.departmentId || (primaryRoleObj as any)?.don_vi_id;
+    if (roleDeptId) {
+      return typeof roleDeptId === 'object' && '_id' in roleDeptId ? String(roleDeptId._id) : String(roleDeptId);
+    }
+  }
+  return '';
 };
+
+const isBghDept = (d?: DepartmentItem | null): boolean => {
+  if (!d) return false;
+  const name = (d.name || (d as any).ten_phong_ban || '').toLowerCase();
+  const rawType = String(d.type || (d as any).loai_don_vi || '').toLowerCase();
+  return name.includes('giám hiệu') || name.includes('ban giám hiệu') || name === 'bgh' || rawType === 'bgh';
+};
+
 
 const getAvatarGradient = (role?: string) => {
   const key = normalizeRoleKey(role);
@@ -211,99 +252,26 @@ const StaffAvatar: React.FC<StaffAvatarProps> = ({
   canUpload = false,
   onQuickUpload,
 }) => {
-  const rawSrc = user.avatar || user.facePhoto || null;
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const imgError = Boolean(rawSrc && failedSrc === rawSrc);
-  const initials = getInitials(user.fullName);
-  const gradient = getAvatarGradient(user.role);
-
-  const sizeClasses = {
-    sm: 'w-7 h-7 rounded-lg text-[10px]',
-    md: 'w-9 h-9 rounded-xl text-xs',
-    lg: 'w-11 h-11 rounded-2xl text-sm',
-    xl: 'w-16 h-16 rounded-2xl text-lg',
-  }[size];
+  const statusColor =
+    user.isActive === false
+      ? 'bg-rose-500'
+      : user.isFaceRegistered
+        ? 'bg-emerald-500'
+        : 'bg-amber-400';
 
   return (
-    <div className="relative group/avatar shrink-0">
-      <div
-        className={`${sizeClasses} bg-gradient-to-tr ${gradient} text-white flex items-center justify-center font-bold shadow-2xs overflow-hidden ring-2 ring-white dark:ring-slate-900 relative select-none`}
-      >
-        {rawSrc && !imgError ? (
-          <img
-            src={rawSrc}
-            alt={user.fullName}
-            className="w-full h-full object-cover"
-            onError={() => setFailedSrc(rawSrc)}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center relative">
-            {/* Họa tiết portrait nền tinh tế */}
-            <svg
-              viewBox="0 0 40 40"
-              className="absolute inset-0 w-full h-full opacity-20 text-white"
-              fill="currentColor"
-            >
-              <circle cx="20" cy="14" r="7" />
-              <path d="M7 36c0-7.18 5.82-13 13-13s13 5.82 13 13H7z" />
-            </svg>
-            <span className="relative z-10 tracking-tight font-extrabold drop-shadow-2xs">
-              {initials}
-            </span>
-          </div>
-        )}
-
-        {/* Nút bấm tải ảnh nhanh khi rê chuột vào Avatar (dành cho Admin) */}
-        {canUpload && onQuickUpload && (
-          <>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                fileInputRef.current?.click();
-              }}
-              className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
-              title="Nhấn để tải lên / đổi ảnh đại diện (Avatar)"
-            >
-              <Camera className="w-3.5 h-3.5" />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  onQuickUpload(user, file);
-                  e.target.value = '';
-                }
-              }}
-            />
-          </>
-        )}
-      </div>
-
-      {/* Chấm trạng thái hoạt động / FaceID */}
-      <span
-        className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${
-          user.isActive === false
-            ? 'bg-rose-500'
-            : user.isFaceRegistered
-              ? 'bg-emerald-500'
-              : 'bg-amber-400'
-        }`}
-        title={
-          user.isActive === false
-            ? 'Tài khoản đang khóa'
-            : user.isFaceRegistered
-              ? 'Đã xác thực sinh trắc học Face ID'
-              : 'Đang hoạt động (Chưa đăng ký Face ID)'
-        }
-      />
-    </div>
+    <UserAvatar
+      user={user}
+      name={user.fullName}
+      avatarUrl={user.avatar}
+      staffCode={user.staffCode || user._id}
+      size={size}
+      shape="rounded"
+      showStatusDot={true}
+      statusColor={statusColor}
+      canUpload={canUpload}
+      onQuickUpload={onQuickUpload ? (file) => onQuickUpload(user, file) : undefined}
+    />
   );
 };
 
@@ -316,8 +284,27 @@ export const Users: React.FC = () => {
   const { user: currentUser } = useAuthStore();
 
   const viewerRole = normalizeRoleKey(currentUser?.role);
-  const canCreateOrDelete = viewerRole === 'admin' || viewerRole === 'bgh';
-  const canEdit = canCreateOrDelete || viewerRole === 'truongkhoa';
+  const canCreateOrDelete = hasRole(currentUser, ['admin', 'bgh', 'tccb']);
+  const canEdit = hasRole(currentUser, ['admin', 'bgh', 'tccb', 'truongkhoa']);
+
+  // Kiểm tra phân cấp quyền khóa/vô hiệu hóa tài khoản (Peer & Hierarchy Protection)
+  const canManageUserStatus = useCallback(
+    (targetEmp: UserProfile) => {
+      if (!canCreateOrDelete) return false;
+      const currentId = String(currentUser?._id || (currentUser as any)?.id || '');
+      const targetId = String(targetEmp._id || '');
+      if (currentId && targetId && currentId === targetId) return false; // Không tự khóa chính mình
+
+      const targetRole = normalizeRoleKey(targetEmp.role);
+      // 1. Đối tượng là BGH: Chỉ BGH mới có quyền khóa/mở khóa
+      if (targetRole === 'bgh') return viewerRole === 'bgh';
+      // 2. Đối tượng là Admin: Admin không được khóa Admin cùng cấp (Chỉ BGH mới có quyền)
+      if (targetRole === 'admin') return viewerRole === 'bgh';
+
+      return true;
+    },
+    [canCreateOrDelete, currentUser, viewerRole]
+  );
 
   // State dữ liệu
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -331,10 +318,10 @@ export const Users: React.FC = () => {
   const [filterTab, setFilterTab] = useState<'all' | 'giangvien' | 'leadership' | 'hanhchinh' | 'face_yes' | 'face_no'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
 
-  // Chế độ hiển thị (4 chế độ chuẩn giống FaceRegistrationPage)
-  const [viewMode, setViewMode] = useState<'table' | 'grid' | 'compact' | 'department'>(() => {
+  // Chế độ hiển thị (3 chế độ: Bảng, Thẻ lưới, Theo Khoa)
+  const [viewMode, setViewMode] = useState<'table' | 'grid' | 'department'>(() => {
     const saved = localStorage.getItem('users_list_view_mode');
-    if (saved === 'table' || saved === 'grid' || saved === 'compact' || saved === 'department') {
+    if (saved === 'table' || saved === 'grid' || saved === 'department') {
       return saved;
     }
     return 'table';
@@ -379,7 +366,7 @@ export const Users: React.FC = () => {
     isActive: true,
   });
 
-  const handleSetViewMode = (mode: 'table' | 'grid' | 'compact' | 'department') => {
+  const handleSetViewMode = (mode: 'table' | 'grid' | 'department') => {
     setViewMode(mode);
     setCurrentPage(1);
     localStorage.setItem('users_list_view_mode', mode);
@@ -395,25 +382,29 @@ export const Users: React.FC = () => {
   const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
-      const [usersRes, deptsRes] = await Promise.all([
+      const [usersRes, deptsRes] = await Promise.allSettled([
         userApi.getUsers({ page: 1, limit: 200 }),
         userApi.getDepartments(),
       ]);
 
-      if (usersRes.data) {
-        const list = Array.isArray(usersRes.data)
-          ? usersRes.data
-          : Array.isArray(usersRes.data.users)
-            ? usersRes.data.users
+      if (usersRes.status === 'fulfilled' && usersRes.value?.data) {
+        const raw = usersRes.value.data;
+        const list = Array.isArray(raw)
+          ? raw
+          : Array.isArray((raw as any).users)
+            ? (raw as any).users
             : [];
         setUsers(list);
+      } else if (usersRes.status === 'rejected') {
+        const err = usersRes.reason;
+        toast.error(err?.response?.data?.message || 'Không thể tải danh sách cán bộ, giảng viên.');
       }
 
-      if (deptsRes.data && Array.isArray(deptsRes.data)) {
-        setDepartments(deptsRes.data);
+      if (deptsRes.status === 'fulfilled' && deptsRes.value?.data && Array.isArray(deptsRes.value.data)) {
+        setDepartments(deptsRes.value.data);
       }
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Không thể tải danh sách cán bộ, giảng viên.');
+      toast.error(error?.response?.data?.message || 'Không thể tải dữ liệu cán bộ.');
     } finally {
       setLoading(false);
     }
@@ -464,7 +455,7 @@ export const Users: React.FC = () => {
         const q = searchTerm.toLowerCase().trim();
         const matchName = (u.fullName || '').toLowerCase().includes(q);
         const matchEmail = (u.email || '').toLowerCase().includes(q);
-        const matchCode = (u.staffCode || u.employeeCode || '').toLowerCase().includes(q);
+        const matchCode = (u.staffCode || '').toLowerCase().includes(q);
         const matchPhone = (u.phoneNumber || '').toLowerCase().includes(q);
         if (!matchName && !matchEmail && !matchCode && !matchPhone) return false;
       }
@@ -488,7 +479,37 @@ export const Users: React.FC = () => {
       // 3. Lọc theo Khoa / Phòng ban
       if (departmentFilter !== 'ALL') {
         const deptId = getDepartmentIdValue(u);
-        if (deptId !== departmentFilter) return false;
+        const selectedDept = departments.find((d) => String(d._id) === String(departmentFilter));
+        const isBghFilter = selectedDept ? isBghDept(selectedDept) : false;
+
+        if (isBghFilter) {
+          const isUserBgh = normalizeRoleKey(u.role) === 'bgh' || deptId === departmentFilter;
+          if (!isUserBgh) return false;
+        } else {
+          // 3.1 Khớp trực tiếp đơn vị chính
+          const matchesDirect = deptId === departmentFilter;
+
+          // 3.2 Khớp đơn vị cấp cha (khi lọc theo Khoa cha mà cán bộ thuộc Bộ môn con)
+          const userDept = departments.find((d) => String(d._id) === String(deptId));
+          const userParentId = userDept?.parentId
+            ? typeof userDept.parentId === 'object' && userDept.parentId !== null && '_id' in userDept.parentId
+              ? String((userDept.parentId as any)._id)
+              : String(userDept.parentId)
+            : '';
+          const matchesParent = Boolean(userParentId && userParentId === departmentFilter);
+
+          // 3.3 Khớp danh sách vai trò u.roles (nếu có gán đơn vị trực thuộc)
+          const matchesRoles = Array.isArray(u.roles) && u.roles.some((r) => {
+            const rDept = r.departmentId || (r as any).don_vi_id;
+            if (!rDept) return false;
+            const rId = typeof rDept === 'object' && rDept !== null && '_id' in rDept ? String((rDept as any)._id) : String(rDept);
+            return rId === departmentFilter;
+          });
+
+          if (!matchesDirect && !matchesParent && !matchesRoles) {
+            return false;
+          }
+        }
       }
 
       return true;
@@ -519,25 +540,6 @@ export const Users: React.FC = () => {
     const startIndex = (validCurrentPage - 1) * pageSize;
     return filteredUsers.slice(startIndex, startIndex + pageSize);
   }, [filteredUsers, validCurrentPage, pageSize]);
-
-  const paginatedDepartmentGroups = useMemo(() => {
-    const map = new Map<string, UserProfile[]>();
-    paginatedUsers.forEach((emp) => {
-      const deptName = getDepartmentName(emp, departments);
-      if (!map.has(deptName)) map.set(deptName, []);
-      map.get(deptName)!.push(emp);
-    });
-    return Array.from(map.entries()).map(([deptName, members]) => {
-      const fullGroup = departmentGroups.find((g) => g.deptName === deptName);
-      return {
-        deptName,
-        members,
-        total: fullGroup ? fullGroup.total : members.length,
-        registeredCount: fullGroup ? fullGroup.registeredCount : 0,
-        percent: fullGroup ? fullGroup.percent : 0,
-      };
-    });
-  }, [paginatedUsers, departmentGroups, departments]);
 
   // ---------------------------------------------------------------------------
   // XỬ LÝ TẢI LÊN AVATAR NHANH & TRONG MODAL
@@ -595,13 +597,15 @@ export const Users: React.FC = () => {
     const nextIdx = users.length + 1;
     const suggestedCode = `GV${String(nextIdx).padStart(3, '0')}`;
 
+    const initialDeptId = viewerRole === 'truongkhoa' ? (getDepartmentIdValue(currentUser as any) || '') : '';
+
     setFormData({
       fullName: '',
       email: '',
       password: 'password123',
       staffCode: suggestedCode,
       role: 'giangvien',
-      departmentId: departments[0]?._id || '',
+      departmentId: initialDeptId,
       phoneNumber: '',
       position: 'Giảng viên',
       academicRank: 'KHONG',
@@ -630,10 +634,10 @@ export const Users: React.FC = () => {
       fullName: u.fullName || '',
       email: u.email || '',
       password: '',
-      staffCode: u.staffCode || u.employeeCode || '',
+      staffCode: u.staffCode || '',
       role: normalizeRoleKey(u.role),
       departmentId: getDepartmentIdValue(u),
-      phoneNumber: u.phoneNumber || u.phone || '',
+      phoneNumber: u.phoneNumber || '',
       position: typeof u.position === 'string' ? u.position : '',
       academicRank: u.academicRank || 'KHONG',
       degree: u.degree || 'THAC_SI',
@@ -648,11 +652,121 @@ export const Users: React.FC = () => {
       startDate: u.startDate ? String(u.startDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
       address: u.address || '',
       employmentStatus: u.employmentStatus || 'DANG_LAM_VIEC',
-      avatar: u.avatar || u.facePhoto || '',
+      avatar: u.avatar || '',
       isActive: u.isActive !== false,
     });
     setIsFormModalOpen(true);
   };
+
+  // ---------------------------------------------------------------------------
+  // ĐỒNG BỘ THÔNG MINH 2 CHIỀU: ĐƠN VỊ & VAI TRÒ HỆ THỐNG (RBAC)
+  // ---------------------------------------------------------------------------
+  const handleDepartmentChange = (deptId: string) => {
+    const selectedDept = departments.find((d) => String(d._id) === String(deptId));
+    let newRole = formData.role;
+    let newStaffType = formData.staffType;
+    let newPosition = formData.position;
+
+    if (selectedDept) {
+      const cat = getDeptCategory(selectedDept);
+      if (cat === 'bgh') {
+        newRole = 'bgh';
+        newStaffType = 'HANH_CHINH';
+        newPosition = formData.position && !['Giảng viên', 'Chuyên viên'].includes(formData.position) ? formData.position : 'Hiệu trưởng';
+      } else if (cat === 'khoa') {
+        if (['bgh', 'truongbomon', 'admin'].includes(newRole)) {
+          newRole = 'giangvien';
+          newStaffType = 'GIANG_VIEN';
+          newPosition = 'Giảng viên';
+        }
+      } else if (cat === 'bomon') {
+        if (['bgh', 'truongkhoa', 'phokhoa', 'nhanvien', 'admin'].includes(newRole)) {
+          newRole = 'giangvien';
+          newStaffType = 'GIANG_VIEN';
+          newPosition = 'Giảng viên';
+        }
+      } else if (cat === 'phongban') {
+        if (['bgh', 'truongkhoa', 'phokhoa', 'truongbomon', 'giangvien'].includes(newRole)) {
+          newRole = 'nhanvien';
+          newStaffType = 'HANH_CHINH';
+          newPosition = 'Chuyên viên';
+        }
+      }
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      departmentId: deptId,
+      role: newRole,
+      staffType: newStaffType,
+      position: newPosition,
+    }));
+  };
+
+  const handleRoleChange = (newRole: string) => {
+    let newDeptId = formData.departmentId;
+    let newStaffType = newRole === 'nhanvien' || newRole === 'admin' || newRole === 'bgh' ? 'HANH_CHINH' : 'GIANG_VIEN';
+    let newPosition = formData.position;
+
+    const currentDept = departments.find((d) => String(d._id) === String(newDeptId));
+    const currentCat = currentDept ? getDeptCategory(currentDept) : null;
+
+    if (newRole === 'bgh') {
+      const bghDept = departments.find((d) => getDeptCategory(d) === 'bgh');
+      newDeptId = bghDept ? bghDept._id : '';
+      newPosition = 'Lãnh đạo Ban Giám Hiệu';
+    } else if (newRole === 'admin') {
+      const adminDept = departments.find(
+        (d) =>
+          (d.name || '').toLowerCase().includes('quản trị') ||
+          (d.name || '').toLowerCase().includes('hành chính')
+      ) || departments.find((d) => getDeptCategory(d) === 'phongban');
+      newDeptId = adminDept ? adminDept._id : '';
+      newPosition = 'Quản trị viên hệ thống';
+    } else if (newRole === 'truongkhoa' || newRole === 'phokhoa') {
+      if (currentCat !== 'khoa') {
+        const firstKhoa = departments.find((d) => getDeptCategory(d) === 'khoa');
+        newDeptId = firstKhoa ? firstKhoa._id : '';
+      }
+      newPosition = newRole === 'truongkhoa' ? 'Trưởng Khoa' : 'Phó Trưởng Khoa';
+    } else if (newRole === 'truongbomon') {
+      if (currentCat !== 'bomon') {
+        const firstBomon = departments.find((d) => getDeptCategory(d) === 'bomon');
+        newDeptId = firstBomon ? firstBomon._id : '';
+      }
+      newPosition = 'Trưởng Bộ Môn';
+    } else if (newRole === 'giangvien') {
+      if (currentCat === 'bgh' || currentCat === 'phongban') {
+        const firstKhoa = departments.find((d) => getDeptCategory(d) === 'khoa');
+        newDeptId = firstKhoa ? firstKhoa._id : '';
+      }
+      newPosition = 'Giảng viên';
+    } else if (newRole === 'nhanvien') {
+      if (currentCat === 'bgh' || currentCat === 'bomon' || currentCat === 'khoa') {
+        const firstPhong = departments.find((d) => getDeptCategory(d) === 'phongban');
+        newDeptId = firstPhong ? firstPhong._id : '';
+      }
+      newPosition = 'Chuyên viên';
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      role: newRole,
+      departmentId: newDeptId,
+      staffType: newStaffType as any,
+      position: newPosition,
+    }));
+  };
+
+  const availableRoleOptions = useMemo(() => {
+    // Trưởng khoa chỉ được chọn phân quyền cán bộ/giảng viên thuộc khoa
+    if (viewerRole === 'truongkhoa') {
+      return ROLE_OPTIONS.filter((r) => ['giangvien', 'nhanvien'].includes(r.value));
+    }
+    // Admin và Ban Giám Hiệu có quyền chọn bất kỳ vai trò nào
+    return ROLE_OPTIONS;
+  }, [viewerRole]);
+
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -667,6 +781,38 @@ export const Users: React.FC = () => {
     if (!formData.staffCode.trim()) {
       toast.error('Vui lòng nhập mã cán bộ (VD: GV005, CV003).');
       return;
+    }
+    if (!formData.departmentId) {
+      toast.error('Vui lòng chọn Khoa / Bộ môn / Phòng ban trực thuộc.');
+      return;
+    }
+
+    const selectedDept = departments.find((d) => d._id === formData.departmentId);
+    if (selectedDept) {
+      if (formData.role === 'bgh' && !isBghDept(selectedDept)) {
+        toast.error('Cán bộ có vai trò Ban Giám Hiệu (BGH) bắt buộc phải thuộc đơn vị Ban Giám Hiệu.');
+        return;
+      }
+      if (['truongkhoa', 'phokhoa'].includes(formData.role) && selectedDept.type !== 'khoa') {
+        toast.error('Trưởng Khoa / Phó Trưởng Khoa bắt buộc phải thuộc đơn vị cấp Khoa.');
+        return;
+      }
+      if (formData.role === 'truongbomon' && selectedDept.type !== 'bomon') {
+        toast.error('Trưởng Bộ Môn bắt buộc phải thuộc đơn vị cấp Bộ Môn.');
+        return;
+      }
+      if (formData.role === 'giangvien' && selectedDept.type !== 'bomon') {
+        toast.error('Giảng viên bắt buộc phải trực thuộc một Bộ Môn cụ thể.');
+        return;
+      }
+      if (formData.role === 'admin' && (selectedDept.type === 'khoa' || selectedDept.type === 'bomon')) {
+        toast.error('Quản trị viên hệ thống (Admin) phải thuộc Hội Đồng Trường hoặc các Ban chức năng NTU.');
+        return;
+      }
+      if (isBghDept(selectedDept) && !['bgh', 'admin'].includes(formData.role)) {
+        toast.error('Đơn vị Ban Giám Hiệu chỉ dành cho nhân sự thuộc Ban Giám Hiệu hoặc Quản trị viên cấp trường.');
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -852,214 +998,238 @@ export const Users: React.FC = () => {
 
       {/* ── 2. KHUNG QUẢN TRỊ DANH SÁCH CÁN BỘ & GIẢNG VIÊN (CHUẨN GIAO DIỆN) ── */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-xs space-y-4">
-        {/* Header Quản Trị & Cụm Nút Hành Động */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <UsersIcon className="w-5 h-5 text-brand-600 dark:text-brand-400" />
-              Danh Sách Hồ Sơ Cán Bộ & Giảng Viên Đại Học Nguyễn Trãi
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Quản lý biên chế, học hàm/học vị, ngạch lương viên chức, định mức phép năm và ảnh đại diện (Avatar / Face ID).
-            </p>
+        {/* 1. Header Quản Trị & Cụm Nút Hành Động Chính */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-500 via-indigo-600 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-brand-500/20 ring-4 ring-brand-500/10">
+              <UsersIcon className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                  Danh Sách Hồ Sơ Cán Bộ & Giảng Viên
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 border border-brand-200/60 dark:border-brand-800/60">
+                  Đại Học Nguyễn Trãi (NTU)
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                Quản lý biên chế, học hàm/học vị, ngạch lương viên chức và sinh trắc học Face ID 512D
+              </p>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Ô tìm kiếm */}
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
-                placeholder="Tìm tên, mã CB, email, SĐT..."
-                className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchTerm('');
-                    setCurrentPage(1);
-                  }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Lọc theo Khoa / Đơn vị */}
-            <select
-              value={departmentFilter}
-              onChange={(e) => {
-                setDepartmentFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 max-w-[210px] truncate cursor-pointer"
-            >
-              <option value="ALL">Tất cả Khoa / Đơn vị ({departments.length})</option>
-              {departments.map((d) => (
-                <option key={d._id} value={d._id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-
+          <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto">
             <button
               type="button"
               onClick={fetchAllData}
-              className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              title="Làm mới dữ liệu"
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-all shadow-2xs hover:shadow-xs cursor-pointer group"
+              title="Làm mới dữ liệu hồ sơ"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-brand-500' : ''}`} />
+              <RefreshCw className={`w-4 h-4 transition-transform group-hover:rotate-45 ${loading ? 'animate-spin text-brand-600' : ''}`} />
             </button>
 
             {canCreateOrDelete && (
               <button
                 type="button"
                 onClick={handleOpenCreateModal}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 via-indigo-600 to-purple-600 hover:from-brand-700 hover:via-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-brand-500/25 hover:shadow-lg hover:shadow-brand-500/35 transition-all duration-200 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
               >
-                <UserPlus className="w-3.5 h-3.5" />
+                <UserPlus className="w-4 h-4" />
                 <span>Thêm Cán Bộ Mới</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Thanh công cụ: Bộ lọc Tab & Bộ chọn Bố cục hiển thị (Segmented Control) */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2.5">
-          {/* Bộ lọc Tab */}
-          <div className="flex items-center gap-1.5 text-xs overflow-x-auto pb-1 sm:pb-0">
+        {/* 2. Thanh Công Cụ Bộ Lọc & Tìm Kiếm Tích Hợp (Unified Filter & Search Bar) */}
+        <div className="p-3 rounded-2xl bg-slate-50/70 dark:bg-slate-950/40 border border-slate-200/80 dark:border-slate-800/80 space-y-3">
+          {/* Hàng 1: Tìm kiếm, Đơn vị và Chế độ xem */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 flex-1 min-w-0">
+              {/* Ô tìm kiếm */}
+              <div className="relative w-full sm:w-72 lg:w-80">
+                <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Tìm tên cán bộ, mã CB, email, SĐT..."
+                  className="w-full pl-10 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-2xs"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setCurrentPage(1);
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Lọc theo Khoa / Đơn vị (Dropdown Accordion Tinh Gọn) */}
+              <div className="w-full sm:w-72 lg:w-80 shrink-0">
+                <DepartmentSelect
+                  departments={departments}
+                  value={departmentFilter}
+                  onChange={(val) => {
+                    setDepartmentFilter(val || 'ALL');
+                    setFilterTab('all');
+                    setCurrentPage(1);
+                  }}
+                  size="md"
+                  allowAll={true}
+                  allLabel={`Tất cả Khoa / Đơn vị (${departments.length})`}
+                  placeholder="Lọc theo đơn vị..."
+                />
+              </div>
+            </div>
+
+            {/* Bộ chọn Bố Cục Hiển Thị (Segmented Control 3 chế độ) */}
+            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-1 rounded-xl shrink-0 self-start md:self-auto border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleSetViewMode('table')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 font-bold shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+                title="Bố cục 1: Dạng Bảng chi tiết (Table View)"
+              >
+                <List className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Bảng</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetViewMode('grid')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 font-bold shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+                title="Bố cục 2: Dạng Thẻ lưới sinh động (Card Grid)"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Thẻ lưới</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetViewMode('department')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === 'department'
+                    ? 'bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 font-bold shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+                title="Bố cục 3: Dạng Theo Khoa / Đơn vị (Department Groups)"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Theo Khoa</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Hàng 2: Bộ lọc Pill Tabs phân loại cán bộ */}
+          <div className="flex items-center gap-1.5 text-xs overflow-x-auto pt-1 border-t border-slate-200/50 dark:border-slate-800/50 custom-scrollbar">
             <button
               type="button"
               onClick={() => {
                 setFilterTab('all');
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer whitespace-nowrap ${
                 filterTab === 'all'
-                  ? 'bg-brand-50 dark:bg-brand-950/50 text-brand-600 dark:text-brand-400 font-bold shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'bg-brand-600 text-white font-bold shadow-xs'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Tất cả ({stats.total})
+              <span>Tất cả</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] ${filterTab === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                {stats.total}
+              </span>
             </button>
+
             <button
               type="button"
               onClick={() => {
                 setFilterTab('giangvien');
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer whitespace-nowrap ${
                 filterTab === 'giangvien'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-bold shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Khối Giảng dạy ({stats.lecturerCount})
+              <span className={`w-1.5 h-1.5 rounded-full ${filterTab === 'giangvien' ? 'bg-white' : 'bg-emerald-500'}`} />
+              <span>Khối Giảng dạy</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] ${filterTab === 'giangvien' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                {stats.lecturerCount}
+              </span>
             </button>
+
             <button
               type="button"
               onClick={() => {
                 setFilterTab('leadership');
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer whitespace-nowrap ${
                 filterTab === 'leadership'
-                  ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 font-bold shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'bg-purple-600 text-white font-bold shadow-xs'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Lãnh đạo ({stats.leadershipCount})
+              <span className={`w-1.5 h-1.5 rounded-full ${filterTab === 'leadership' ? 'bg-white' : 'bg-purple-500'}`} />
+              <span>Lãnh đạo</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] ${filterTab === 'leadership' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                {stats.leadershipCount}
+              </span>
             </button>
+
             <button
               type="button"
               onClick={() => {
                 setFilterTab('hanhchinh');
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer whitespace-nowrap ${
                 filterTab === 'hanhchinh'
-                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 font-bold shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'bg-amber-600 text-white font-bold shadow-xs'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Khối Hành chính ({stats.adminStaffCount})
+              <span className={`w-1.5 h-1.5 rounded-full ${filterTab === 'hanhchinh' ? 'bg-white' : 'bg-amber-500'}`} />
+              <span>Khối Hành chính</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] ${filterTab === 'hanhchinh' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                {stats.adminStaffCount}
+              </span>
             </button>
+
             <button
               type="button"
               onClick={() => {
                 setFilterTab('face_yes');
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer whitespace-nowrap ${
                 filterTab === 'face_yes'
-                  ? 'bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 font-bold shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'bg-teal-600 text-white font-bold shadow-xs'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Đã có Face ID ({stats.faceRegCount})
-            </button>
-          </div>
-
-          {/* Bộ chọn Bố Cục Hiển Thị (Segmented Control 4 chế độ) */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl shrink-0 self-start sm:self-auto border border-slate-200/60 dark:border-slate-700/60">
-            <button
-              type="button"
-              onClick={() => handleSetViewMode('table')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                viewMode === 'table'
-                  ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-              title="Bố cục 1: Dạng Bảng chi tiết (Table View)"
-            >
-              <List className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Bảng</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSetViewMode('grid')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                viewMode === 'grid'
-                  ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-              title="Bố cục 2: Dạng Thẻ lưới sinh động (Card Grid)"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Thẻ lưới</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSetViewMode('compact')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                viewMode === 'compact'
-                  ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-              title="Bố cục 3: Dạng Tinh gọn siêu tốc (Compact List)"
-            >
-              <AlignJustify className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Tinh gọn</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSetViewMode('department')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                viewMode === 'department'
-                  ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-              title="Bố cục 4: Dạng Theo Khoa / Đơn vị (Department Groups)"
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Theo Khoa</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${filterTab === 'face_yes' ? 'bg-white' : 'bg-teal-500'}`} />
+              <span>Đã có Face ID</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] ${filterTab === 'face_yes' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                {stats.faceRegCount}
+              </span>
             </button>
           </div>
         </div>
@@ -1093,7 +1263,7 @@ export const Users: React.FC = () => {
                   const isRegistered = Boolean(emp.isFaceRegistered);
                   const parsed = formatNameAndTitle(emp.fullName || '');
                   const staffCodeVal =
-                    emp.staffCode || emp.employeeCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
+                    emp.staffCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
                   const deptNameVal = getDepartmentName(emp, departments);
                   const roleMeta = getRoleMeta(emp.role);
                   const academicPrefix = getAcademicPrefix(emp);
@@ -1255,25 +1425,24 @@ export const Users: React.FC = () => {
                           </button>
                         )}
 
-                        {canCreateOrDelete &&
-                          String(emp._id) !== String(currentUser?._id || (currentUser as any)?.id) && (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleActiveStatus(emp)}
-                              className={`p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer ${
-                                emp.isActive === false
-                                  ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-                                  : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-                              }`}
-                              title={emp.isActive === false ? 'Mở khóa tài khoản' : 'Khóa / Vô hiệu hóa tài khoản'}
-                            >
-                              {emp.isActive === false ? (
-                                <Unlock className="w-3.5 h-3.5" />
-                              ) : (
-                                <Lock className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          )}
+                        {canManageUserStatus(emp) && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleActiveStatus(emp)}
+                            className={`p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer ${
+                              emp.isActive === false
+                                ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                                : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                            }`}
+                            title={emp.isActive === false ? 'Mở khóa tài khoản' : 'Khóa / Vô hiệu hóa tài khoản'}
+                          >
+                            {emp.isActive === false ? (
+                              <Unlock className="w-3.5 h-3.5" />
+                            ) : (
+                              <Lock className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1287,7 +1456,7 @@ export const Users: React.FC = () => {
                 const isRegistered = Boolean(emp.isFaceRegistered);
                 const parsed = formatNameAndTitle(emp.fullName || '');
                 const staffCodeVal =
-                  emp.staffCode || emp.employeeCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
+                  emp.staffCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
                 const deptNameVal = getDepartmentName(emp, departments);
                 const roleMeta = getRoleMeta(emp.role);
 
@@ -1391,94 +1560,10 @@ export const Users: React.FC = () => {
                 );
               })}
             </div>
-          ) : viewMode === 'compact' ? (
-            /* ── CHẾ ĐỘ 3: TINH GỌN SIÊU TỐC (COMPACT VIEW) ── */
-            <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
-              {paginatedUsers.map((emp) => {
-                const isRegistered = Boolean(emp.isFaceRegistered);
-                const parsed = formatNameAndTitle(emp.fullName || '');
-                const staffCodeVal =
-                  emp.staffCode || emp.employeeCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
-                const deptNameVal = getDepartmentName(emp, departments);
-                const roleMeta = getRoleMeta(emp.role);
-
-                return (
-                  <div
-                    key={emp._id}
-                    className="px-3.5 py-2.5 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors flex items-center justify-between gap-3 text-xs"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <StaffAvatar
-                        user={emp}
-                        size="sm"
-                        canUpload={canEdit}
-                        onQuickUpload={handleQuickAvatarUpload}
-                      />
-
-                      <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => setDetailUser(emp)}
-                          className="font-bold text-slate-900 dark:text-white hover:text-brand-600 truncate max-w-[180px] sm:max-w-[240px] cursor-pointer"
-                          title={parsed.name}
-                        >
-                          {parsed.name}
-                        </button>
-                        <span className="font-mono text-[10px] font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200/70 shrink-0">
-                          {staffCodeVal}
-                        </span>
-                        <span
-                          className="hidden sm:inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 bg-slate-100/70 dark:bg-slate-800/60 px-2 py-0.5 rounded-md truncate max-w-[200px]"
-                          title={deptNameVal}
-                        >
-                          <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span className="truncate">{deptNameVal}</span>
-                        </span>
-                        <span className={`hidden md:inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${roleMeta.badgeClass}`}>
-                          {roleMeta.label}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 shrink-0 ${
-                          isRegistered
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200'
-                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200'
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${isRegistered ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                        <span className="hidden sm:inline">{isRegistered ? 'Face ID' : 'Chưa ĐK'}</span>
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={() => setDetailUser(emp)}
-                        className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                        title="Xem chi tiết"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditModal(emp)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-slate-800 cursor-pointer"
-                          title="Chỉnh sửa"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           ) : (
-            /* ── CHẾ ĐỘ 4: PHÂN NHÓM THEO KHOA / ĐƠN VỊ (DEPARTMENT GROUPS) ── */
+            /* ── CHẾ ĐỘ 3: PHÂN NHÓM THEO KHOA / ĐƠN VỊ (DEPARTMENT GROUPS) ── */
             <div className="p-3 sm:p-4 space-y-4 bg-slate-50/50 dark:bg-slate-950/20">
-              {paginatedDepartmentGroups.map((group) => {
+              {departmentGroups.map((group) => {
                 const isCollapsed = Boolean(collapsedDepts[group.deptName]);
 
                 return (
@@ -1528,7 +1613,7 @@ export const Users: React.FC = () => {
                           const isRegistered = Boolean(emp.isFaceRegistered);
                           const parsed = formatNameAndTitle(emp.fullName || '');
                           const staffCodeVal =
-                            emp.staffCode || emp.employeeCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
+                            emp.staffCode || (emp._id ? `CB-${emp._id.slice(-4).toUpperCase()}` : '—');
                           const roleMeta = getRoleMeta(emp.role);
 
                           return (
@@ -1723,8 +1808,9 @@ export const Users: React.FC = () => {
 
       {/* ── 4. MODAL THÊM / CẬP NHẬT HỒ SƠ CÁN BỘ (CÓ UPLOAD AVATAR) ──────────── */}
       {isFormModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <Portal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-950/50">
               <div className="flex items-center gap-3">
@@ -1901,18 +1987,17 @@ export const Users: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Khoa / Bộ môn / Phòng ban <span className="text-rose-500">*</span>
+                      Vai trò hệ thống (RBAC) <span className="text-rose-500">*</span>
                     </label>
                     <select
-                      value={formData.departmentId || ''}
-                      onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
+                      value={formData.role}
+                      onChange={(e) => handleRoleChange(e.target.value)}
                       disabled={viewerRole === 'truongkhoa'}
                       className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
-                      <option value="">-- Chọn đơn vị trực thuộc --</option>
-                      {departments.map((d) => (
-                        <option key={d._id} value={d._id}>
-                          {d.name}
+                      {availableRoleOptions.map((r) => (
+                        <option key={r.value} value={r.value}>
+                          {r.label}
                         </option>
                       ))}
                     </select>
@@ -1920,27 +2005,26 @@ export const Users: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Vai trò hệ thống (RBAC) <span className="text-rose-500">*</span>
+                      Khoa / Bộ môn / Phòng ban <span className="text-rose-500">*</span>
                     </label>
-                    <select
-                      value={formData.role}
-                      onChange={(e) => {
-                        const newRole = e.target.value;
-                        setFormData({
-                          ...formData,
-                          role: newRole,
-                          staffType: newRole === 'nhanvien' || newRole === 'admin' ? 'HANH_CHINH' : 'GIANG_VIEN',
-                        });
-                      }}
-                      disabled={viewerRole === 'truongkhoa'}
-                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    >
-                      {ROLE_OPTIONS.map((r) => (
-                        <option key={r.value} value={r.value}>
-                          {r.label}
-                        </option>
-                      ))}
-                    </select>
+                    <DepartmentSelect
+                      departments={departments}
+                      value={formData.departmentId}
+                      onChange={handleDepartmentChange}
+                      role={formData.role}
+                      disabled={viewerRole === 'truongkhoa' || formData.role === 'bgh'}
+                      required
+                    />
+                    {formData.role === 'bgh' && (
+                      <p className="text-[11px] text-purple-600 dark:text-purple-400 mt-1">
+                        * Cán bộ Ban Giám Hiệu (BGH) được tự động cố định tại Hội Đồng Trường & Ban Giám Hiệu.
+                      </p>
+                    )}
+                    {formData.role === 'admin' && (
+                      <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-1">
+                        * Quản trị viên (Admin) có thể thuộc Hội Đồng Trường hoặc các Ban chức năng của NTU.
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -2006,19 +2090,6 @@ export const Users: React.FC = () => {
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Chức danh / Chức vụ hiển thị
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.position || ''}
-                      onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                      placeholder="VD: Trưởng Khoa CNTT, Giảng viên chính..."
-                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    />
                   </div>
 
                   <div>
@@ -2220,18 +2291,20 @@ export const Users: React.FC = () => {
             </form>
           </div>
         </div>
+        </Portal>
       )}
 
       {/* ── 5. DRAWER XEM CHI TIẾT HỒ SƠ CÁN BỘ 360° ────────────────────────── */}
       {detailUser && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/50 backdrop-blur-xs animate-in fade-in duration-150">
+        <Portal>
+          <div className="fixed inset-0 z-[100] flex justify-end bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 w-full max-w-lg h-full shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
-            {/* Banner Hồ sơ */}
-            <div className="relative bg-gradient-to-r from-brand-700 via-brand-600 to-indigo-700 p-6 text-white">
+            {/* Header Hồ sơ phẳng, tối giản, thanh lịch */}
+            <div className="relative bg-slate-900 text-white p-5 border-b border-slate-800">
               <button
                 type="button"
                 onClick={() => setDetailUser(null)}
-                className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2245,17 +2318,17 @@ export const Users: React.FC = () => {
                 />
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded bg-white/20 text-[11px] font-mono font-bold">
-                      {detailUser.staffCode || detailUser.employeeCode || 'CHƯA CẤP MÃ'}
+                    <span className="px-2 py-0.5 rounded bg-white/10 text-[11px] font-mono font-bold text-slate-200">
+                      {detailUser.staffCode || 'CHƯA CẤP MÃ'}
                     </span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-400/20 border border-emerald-300/30 text-[11px] font-semibold">
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[11px] font-semibold">
                       {getRoleMeta(detailUser.role).label}
                     </span>
                   </div>
-                  <h3 className="text-lg font-bold mt-1 leading-snug">
+                  <h3 className="text-base font-bold mt-1 text-white leading-snug">
                     {formatNameAndTitle(detailUser.fullName).name}
                   </h3>
-                  <p className="text-xs text-blue-100/90 mt-0.5">
+                  <p className="text-xs text-slate-400 mt-0.5">
                     {formatNameAndTitle(detailUser.fullName).title ||
                       getDepartmentName(detailUser, departments)}
                   </p>
@@ -2363,6 +2436,22 @@ export const Users: React.FC = () => {
                         : '15/01/2023'}
                     </span>
                   </div>
+                  <div className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+                    <span className="text-slate-400 block mb-0.5">Giới tính & Ngày sinh</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      {detailUser.gender === 'NU' ? 'Nữ' : detailUser.gender === 'KHAC' ? 'Khác' : 'Nam'} •{' '}
+                      {detailUser.dateOfBirth
+                        ? new Date(detailUser.dateOfBirth).toLocaleDateString('vi-VN')
+                        : 'Chưa cập nhật'}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+                    <span className="text-slate-400 block mb-0.5">Trạng thái công tác</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${detailUser.isActive !== false ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      {EMPLOYMENT_STATUS_OPTIONS.find((s) => s.value === detailUser.employmentStatus)?.label || 'Đang làm việc'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -2377,7 +2466,7 @@ export const Users: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
                   <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-                  <span>{detailUser.phoneNumber || detailUser.phone || 'Chưa cập nhật số điện thoại'}</span>
+                  <span>{detailUser.phoneNumber || 'Chưa cập nhật số điện thoại'}</span>
                 </div>
                 <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
                   <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
@@ -2412,6 +2501,7 @@ export const Users: React.FC = () => {
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </div>
   );

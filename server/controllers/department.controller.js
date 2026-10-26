@@ -21,7 +21,7 @@ const handleServiceError = (res, error, next) => {
  */
 const getAllDepartments = async (req, res, next) => {
   try {
-    const { type, parentId, tree = 'true', page, limit } = req.query;
+    const { type, parentId, tree = 'false', page, limit } = req.query;
     const result = await departmentService.getAllDepartments({ type, parentId, tree, page, limit });
 
     if (result.isTree) {

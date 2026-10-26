@@ -269,10 +269,11 @@ const createLeaveRequestDomain = async ({
   activeLeaveSubmissions.add(lockKey);
 
   try {
-    const userRole = (currentUser.role || '').toUpperCase();
-    if (userRole === 'ADMIN') {
+    const userRoleStr = String(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh || '').toUpperCase().replace(/_/g, '');
+    const hasAdminRole = userRoleStr.includes('ADMIN') || (Array.isArray(currentUser.roles) && currentUser.roles.some((r) => String(r.role || r.ma_vai_tro || r).toUpperCase().includes('ADMIN')));
+    if (hasAdminRole) {
       throw new ServiceError(
-        'Quản trị viên (Admin) giữ quyền phê duyệt cao nhất hệ thống, không áp dụng tạo đơn xin nghỉ cá nhân; chỉ có thẩm quyền phê duyệt hoặc từ chối đơn của cán bộ, giảng viên.',
+        'Quản trị viên (Admin) phụ trách quản trị và xét duyệt đơn toàn trường, không áp dụng nộp đơn xin nghỉ phép cá nhân.',
         403,
         'ADMIN_CANNOT_CREATE_LEAVE'
       );
@@ -282,7 +283,20 @@ const createLeaveRequestDomain = async ({
       throw new ServiceError('Vui lòng cung cấp loại đơn (type), lý do (reason), ngày bắt đầu và kết thúc hợp lệ.', 400);
     }
 
-    const validTypes = ['nghi_phep', 'day_bu', 'doi_ca', 'ANNUAL', 'COMPENSATORY', 'SHIFT_CHANGE', 'SICK', 'UNPAID'];
+    const validTypes = [
+      'nghi_phep',
+      'day_bu',
+      'doi_ca',
+      'ANNUAL',
+      'COMPENSATORY',
+      'SHIFT_CHANGE',
+      'SICK',
+      'UNPAID',
+      'PERSONAL',
+      'MATERNITY',
+      'BUSINESS',
+      'OTHER',
+    ];
     if (!validTypes.includes(type)) {
       throw new ServiceError('Loại đơn không hợp lệ. Chỉ chấp nhận: nghi_phep, day_bu, doi_ca.', 400);
     }
@@ -499,7 +513,7 @@ const fetchLeaveRequests = async ({ status, type, userId, currentUser }) => {
     } else {
       query.userId = { $in: facultyUserIds };
     }
-  } else if (['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG', 'HIEU_PHO', 'HIEUPHO'].includes(role)) {
+  } else if (['ADMIN', 'BGH'].includes(role)) {
     if (userId) query.userId = userId;
   }
 
@@ -569,7 +583,7 @@ const fetchLeaveBalance = async (queryUserId, currentUser) => {
         throw new ServiceError('Bạn không có quyền xem số dư ngày phép của nhân sự ngoài khoa.', 403);
       }
       targetUserId = queryUserId;
-    } else if (['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG', 'HIEU_PHO', 'HIEUPHO'].includes(role)) {
+    } else if (['ADMIN', 'BGH'].includes(role)) {
       targetUserId = queryUserId;
     }
   }
@@ -641,7 +655,7 @@ const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
   const status = leaveRequest.status;
 
   // Ban Giám Hiệu & Admin có quyền duyệt toàn quyền mọi cấp
-  const isBGH = ['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG', 'HIEU_PHO', 'HIEUPHO'].includes(role);
+  const isBGH = ['ADMIN', 'BGH'].includes(role);
   if (isBGH) {
     return { allowed: true, approverLevel: currentLevel };
   }
@@ -664,7 +678,7 @@ const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
     }
 
     const applicantRole = (applicant.role || '').toUpperCase();
-    if (['TRUONGKHOA', 'TRUONG_KHOA', 'ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG'].includes(applicantRole)) {
+    if (['TRUONGKHOA', 'TRUONG_KHOA', 'ADMIN', 'BGH'].includes(applicantRole)) {
       return {
         allowed: false,
         message: 'Chỉ Ban Giám Hiệu mới có quyền phê duyệt đơn của Trưởng khoa.',
@@ -1042,7 +1056,7 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
   const applicantId = (request.userId?._id || request.userId).toString();
   const isApplicant = applicantId === currentUserId;
   const role = (currentUser.role || '').toUpperCase();
-  const isAdmin = ['ADMIN', 'HIEU_TRUONG', 'HIEUTRUONG'].includes(role);
+  const isAdmin = ['ADMIN', 'BGH'].includes(role);
 
   if (!isApplicant && !isAdmin) {
     throw new ServiceError('Bạn chỉ có quyền hủy đơn của chính mình.', 403, 'CANCEL_UNAUTHORIZED');

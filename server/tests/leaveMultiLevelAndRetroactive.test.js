@@ -72,10 +72,10 @@ const run = async () => {
   assert.equal(permDeanOnBGH.status, 403);
   assert.equal(permDeanOnBGH.errorCode, 'BGH_APPROVAL_REQUIRED');
 
-  // Hiệu trưởng / Admin duyệt Cấp 2 -> Được phép
+  // BGH / Admin duyệt Cấp 2 -> Được phép
   const rectorUser = {
     id: objectId().toString(),
-    role: 'HIEU_TRUONG',
+    role: 'BGH',
   };
   const permRector = await validateLeaveApprovalPermission(rectorUser, reqPendingBGH);
   assert.equal(permRector.allowed, true);

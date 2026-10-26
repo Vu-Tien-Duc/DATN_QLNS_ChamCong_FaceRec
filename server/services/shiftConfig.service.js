@@ -34,6 +34,7 @@ const createShiftConfig = async (payload = {}) => {
   const startTime = payload.startTime;
   const endTime = payload.endTime;
   const lateThresholdMinutes = payload.lateThresholdMinutes;
+  const isActive = payload.isActive !== undefined ? Boolean(payload.isActive) : true;
 
   if (typeof name !== 'string' || !name.trim() || !startTime || !endTime) {
     throw new ServiceError(
@@ -59,6 +60,8 @@ const createShiftConfig = async (payload = {}) => {
     startTime: startTime.trim(),
     endTime: endTime.trim(),
     lateThresholdMinutes: lateThreshold,
+    isActive,
+    kich_hoat: isActive,
   });
 };
 
@@ -70,6 +73,7 @@ const updateShiftConfig = async (id, data = {}) => {
   const startTime = data.startTime;
   const endTime = data.endTime;
   const lateThresholdMinutes = data.lateThresholdMinutes;
+  const isActive = data.isActive;
 
   if (startTime !== undefined) validateTime(startTime, 'giờ bắt đầu');
   if (endTime !== undefined) validateTime(endTime, 'giờ kết thúc');
@@ -92,6 +96,10 @@ const updateShiftConfig = async (id, data = {}) => {
   if (startTime !== undefined) update.startTime = startTime.trim();
   if (endTime !== undefined) update.endTime = endTime.trim();
   if (lateThresholdMinutes !== undefined) update.lateThresholdMinutes = Number(lateThresholdMinutes);
+  if (isActive !== undefined) {
+    update.isActive = Boolean(isActive);
+    update.kich_hoat = Boolean(isActive);
+  }
 
   const shift = await ShiftConfig.findByIdAndUpdate(id, update, { new: true, runValidators: true });
   if (!shift) throw new ServiceError('Không tìm thấy ca làm việc để cập nhật.', 404, 'SHIFT_001');

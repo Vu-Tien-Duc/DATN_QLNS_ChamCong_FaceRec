@@ -49,7 +49,6 @@ export interface RegistrationStatusResponse {
     userId: string;
     fullName: string;
     email: string;
-    isRegistered: boolean;
     isFaceRegistered: boolean;
     faceRegisteredAt?: string | null;
     facePhoto?: string | null;
@@ -65,7 +64,7 @@ export interface EnrollResponse {
   data?: {
     userId: string;
     fullName: string;
-    anglesRegistered: string[];
+    sampleAngles: string[];
     sampleCount: number;
     facePhoto?: string;
     templateId?: string;

@@ -56,18 +56,18 @@ export const Login: React.FC = () => {
       variant: 'info' as const,
     },
     {
+      role: 'Phó Khoa',
+      name: 'TS. Đặng Tiến Hưng',
+      email: 'phokhoa.cntt@university.edu.vn',
+      tag: 'Phó Trưởng Khoa',
+      variant: 'info' as const,
+    },
+    {
       role: 'Giảng Viên',
       name: 'TS. Trần Thị Bích',
       email: 'giangvien.bich@university.edu.vn',
       tag: 'Kỹ Thuật PM',
       variant: 'success' as const,
-    },
-    {
-      role: 'Trưởng Phòng HC',
-      name: 'ThS. Nguyễn Thị Mai',
-      email: 'admin.hr@university.edu.vn',
-      tag: 'Hành Chính',
-      variant: 'warning' as const,
     },
     {
       role: 'Chuyên Viên',
@@ -76,12 +76,33 @@ export const Login: React.FC = () => {
       tag: 'Đào Tạo',
       variant: 'neutral' as const,
     },
+    {
+      role: 'Kiểm Toán / KT',
+      name: 'Vũ Văn Thành',
+      email: 'nhanvien.thanh@university.edu.vn',
+      tag: 'Khảo Thí',
+      variant: 'neutral' as const,
+    },
+    {
+      role: 'Trưởng Phòng HC',
+      name: 'ThS. Nguyễn Thị Mai',
+      email: 'admin.hr@university.edu.vn',
+      tag: 'Kế Toán / HC',
+      variant: 'warning' as const,
+    },
   ];
 
-  const handleSelectDemo = (demoEmail: string) => {
+  const handleSelectDemo = async (demoEmail: string, autoSubmit = false) => {
     setEmail(demoEmail);
     setPassword('password123');
     setErrorMessage(null);
+
+    if (autoSubmit) {
+      const success = await login({ email: demoEmail, password: 'password123' });
+      if (success) {
+        navigate(from, { replace: true });
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -321,7 +342,7 @@ export const Login: React.FC = () => {
               <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
                 <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                   <span>Tài khoản thử nghiệm nhanh:</span>
-                  <span className="text-[10px] text-slate-400 font-normal">Pass: password123</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Nhấp đúp hoặc nhấp nút để đăng nhập tức thì</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -330,18 +351,35 @@ export const Login: React.FC = () => {
                       key={idx}
                       type="button"
                       onClick={() => handleSelectDemo(acc.email)}
-                      className={`p-2 rounded-xl text-left border transition-all text-xs flex items-center justify-between group ${email === acc.email
-                          ? 'bg-brand-50 dark:bg-brand-950/60 border-brand-300 dark:border-brand-700 text-brand-900 dark:text-brand-200 font-semibold'
+                      onDoubleClick={() => handleSelectDemo(acc.email, true)}
+                      title="Nhấp để điền, nhấp đúp để đăng nhập ngay"
+                      className={`p-2 rounded-xl text-left border transition-all text-xs flex items-center justify-between group cursor-pointer ${
+                        email === acc.email
+                          ? 'bg-brand-50 dark:bg-brand-950/60 border-brand-300 dark:border-brand-700 text-brand-900 dark:text-brand-200 font-semibold shadow-xs'
                           : 'bg-slate-50/70 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-300'
-                        }`}
+                      }`}
                     >
                       <div className="min-w-0 pr-1">
                         <div className="truncate font-medium">{acc.role}</div>
                         <div className="text-[10px] text-slate-400 truncate">{acc.name}</div>
                       </div>
-                      <Badge variant={acc.variant} size="sm">
-                        {email === acc.email ? <Check className="w-3 h-3 text-brand-600" /> : acc.tag}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge variant={acc.variant} size="sm">
+                          {acc.tag}
+                        </Badge>
+                        {email === acc.email && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectDemo(acc.email, true);
+                            }}
+                            className="p-1 rounded-md bg-brand-600 hover:bg-brand-700 text-white shadow-xs"
+                            title="Đăng nhập ngay với tài khoản này"
+                          >
+                            <ArrowRight className="w-3 h-3" />
+                          </span>
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>

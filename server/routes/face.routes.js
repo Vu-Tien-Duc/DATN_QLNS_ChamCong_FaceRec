@@ -13,7 +13,7 @@ const {
   getFaceHealth,
   testFaceRecognition,
 } = require('../controllers/face.controller');
-const { verifyToken, verifyRole } = require('../middlewares/auth.middleware');
+const { verifyToken, verifyRole, getActiveRoles } = require('../middlewares/auth.middleware');
 
 // Memory storage - không ghi ra đĩa, xử lý nhanh
 const upload = multer({
@@ -50,7 +50,7 @@ router.post('/test-recognition', upload.single('image'), testFaceRecognition);
 router.post(
   '/enroll-multi-angle',
   verifyToken,
-  verifyRole(['admin', 'bgh', 'admin_it', 'it_admin']),
+  verifyRole(['admin', 'bgh']),
   upload.fields(angleFields),
   enrollMultiAngleFace
 );
@@ -65,8 +65,8 @@ router.get(
   (req, res, next) => {
     const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
     const targetUserId = req.params.userId;
-    const userRole = (req.user?.role || req.user?.primaryRole || req.user?.vai_tro_chinh || '').toLowerCase();
-    const canManage = ['admin', 'bgh', 'truong_khoa', 'truongkhoa', 'admin_it', 'it_admin', 'tccb'].includes(userRole);
+    const roles = getActiveRoles(req.user);
+    const canManage = roles.has('admin') || roles.has('bgh') || roles.has('truongkhoa') || roles.has('tccb');
 
     if (currentUserId === targetUserId || canManage) {
       return next();
@@ -84,8 +84,8 @@ router.get(
 const canDeleteFace = (req, res, next) => {
   const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
   const targetUserId = req.params.userId;
-  const userRole = (req.user?.role || req.user?.primaryRole || req.user?.vai_tro_chinh || '').toLowerCase();
-  const canManage = ['admin', 'bgh', 'truong_khoa', 'truongkhoa', 'admin_it', 'it_admin', 'tccb'].includes(userRole);
+  const roles = getActiveRoles(req.user);
+  const canManage = roles.has('admin') || roles.has('bgh') || roles.has('truongkhoa') || roles.has('tccb');
 
   if (currentUserId === targetUserId || canManage) {
     return next();

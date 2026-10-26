@@ -1,4 +1,4 @@
-import { apiClient, ApiResponse } from './apiClient';
+import { apiClient, ApiResponse, extractArray } from './apiClient';
 import {
   ScheduleItem,
   ScheduleQueryParams,
@@ -22,21 +22,33 @@ export const scheduleApi = {
   /**
    * Lấy danh sách lịch trình / thời khóa biểu
    */
-  getSchedules: async (params?: ScheduleQueryParams): Promise<ApiResponse<ScheduleListResponse | ScheduleItem[]>> => {
-    const res = await apiClient.get<ApiResponse<ScheduleListResponse | ScheduleItem[]>>('/schedules', {
+  getSchedules: async (params?: ScheduleQueryParams): Promise<ApiResponse<ScheduleListResponse>> => {
+    const res = await apiClient.get<any>('/schedules', {
       params,
     });
-    return res.data;
+    const raw = res.data?.data ?? res.data;
+    if (raw && typeof raw === 'object' && Array.isArray(raw.schedules)) {
+      return res.data;
+    }
+    const list = extractArray<ScheduleItem>(raw);
+    return {
+      ...res.data,
+      data: {
+        schedules: list,
+        pagination: raw?.pagination || { total: list.length, page: 1, limit: list.length || 20, totalPages: 1 },
+      },
+    };
   },
 
   /**
    * Lấy lịch làm việc / giảng dạy hôm nay
    */
   getTodaySchedules: async (params?: { date?: string; userId?: string }): Promise<ApiResponse<ScheduleItem[]>> => {
-    const res = await apiClient.get<ApiResponse<ScheduleItem[]>>('/schedules/today', {
+    const res = await apiClient.get<any>('/schedules/today', {
       params,
     });
-    return res.data;
+    const list = extractArray<ScheduleItem>(res.data?.data ?? res.data);
+    return { ...res.data, data: list };
   },
 
   /**
@@ -94,23 +106,26 @@ export const scheduleApi = {
    * Lấy danh sách ca làm việc phục vụ chọn ca
    */
   getShifts: async (): Promise<ApiResponse<ShiftItem[]>> => {
-    const res = await apiClient.get<ApiResponse<ShiftItem[]>>('/shifts');
-    return res.data;
+    const res = await apiClient.get<any>('/shifts');
+    const list = extractArray<ShiftItem>(res.data?.data ?? res.data);
+    return { ...res.data, data: list };
   },
 
   /**
    * Lấy danh mục môn học
    */
   getSubjects: async (): Promise<ApiResponse<SubjectItem[]>> => {
-    const res = await apiClient.get<ApiResponse<SubjectItem[]>>('/subjects');
-    return res.data;
+    const res = await apiClient.get<any>('/subjects');
+    const list = extractArray<SubjectItem>(res.data?.data ?? res.data);
+    return { ...res.data, data: list };
   },
 
   /**
    * Lấy danh sách cán bộ / giảng viên
    */
   getUsers: async (params?: { role?: string; limit?: number }): Promise<ApiResponse<UserProfile[]>> => {
-    const res = await apiClient.get<ApiResponse<UserProfile[]>>('/users', { params });
-    return res.data;
+    const res = await apiClient.get<any>('/users', { params });
+    const list = extractArray<UserProfile>(res.data?.data ?? res.data);
+    return { ...res.data, data: list };
   },
 };

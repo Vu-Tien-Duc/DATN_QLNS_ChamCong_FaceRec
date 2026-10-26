@@ -22,6 +22,9 @@ import { attendanceApi } from '../../api/attendance.api';
 import { faceApi, DetectPoseResponse } from '../../api/face.api';
 import { audioFeedback } from '../../utils/audioFeedback';
 import { useAuthStore } from '../../store/useAuthStore';
+import { getRoleLabel, isSuperAdmin } from '../../utils/rbac';
+import { cameraManager } from '../../utils/cameraManager';
+import { Portal } from '../ui/Portal';
 
 export interface FaceAttendanceScannerModalProps {
   isOpen: boolean;
@@ -59,16 +62,7 @@ const getRoleBadgeStyle = (roleName: string) => {
 };
 
 const extractRoleName = (roleRaw: any): string => {
-  if (!roleRaw) return 'Cán bộ';
-  const r = String(roleRaw).toLowerCase();
-  if (r === 'admin' || r === 'admin_it') return 'Quản Trị Viên (Admin)';
-  if (r === 'bgh') return 'Ban Giám Hiệu';
-  if (r === 'truong_khoa') return 'Trưởng Khoa';
-  if (r === 'pho_khoa') return 'Phó Khoa';
-  if (r === 'giang_vien') return 'Giảng Viên';
-  if (r === 'ke_toan') return 'Kế Toán';
-  if (r === 'nhan_vien') return 'Nhân Viên';
-  return String(roleRaw);
+  return getRoleLabel(roleRaw);
 };
 
 export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProps> = ({
@@ -182,7 +176,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
         if (isCancelled) return;
 
         if (res.success) {
-          if (res.data.isRegistered === false) {
+          if (res.data.isFaceRegistered === false) {
             setIsNotRegistered(true);
             setErrorMsg('Tài khoản của bạn chưa được đăng ký mẫu khuôn mặt trong hệ thống.');
             setCheckingRegistration(false);
@@ -234,6 +228,16 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
       });
+
+      cameraManager.registerStream(stream);
+
+      // Nếu modal đã bị đóng trong lúc chờ cấp quyền camera
+      if (!isOpen) {
+        stream.getTracks().forEach((t) => t.stop());
+        cameraManager.unregisterStream(stream);
+        return;
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -252,10 +256,17 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
   // Dừng Camera
   const stopCamera = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current.getTracks().forEach((t) => {
+        try {
+          t.stop();
+          t.enabled = false;
+        } catch (_) {}
+      });
+      cameraManager.unregisterStream(streamRef.current);
       streamRef.current = null;
     }
     if (videoRef.current) {
+      videoRef.current.pause();
       videoRef.current.srcObject = null;
     }
     if (animationFrameRef.current) {
@@ -812,12 +823,13 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
   const isCheckIn = activeMode === 'check-in';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+    <Portal>
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
       {/* ══════════════════════════════════════════════════════════════
           POPUP XÁC NHẬN THÔNG TIN & ROLE KÈM FRAME ẢNH & ĐẾM NGƯỢC 15S
          ══════════════════════════════════════════════════════════════ */}
       {successInfo ? (
-        <div className="bg-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-2xl max-w-lg w-full relative overflow-hidden flex flex-col items-center text-center gap-4 max-h-[92vh] overflow-y-auto custom-scrollbar animate-fadeIn">
+        <div className="bg-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-2xl shadow-black/60 ring-1 ring-white/10 max-w-lg w-full relative overflow-hidden flex flex-col items-center text-center gap-4 max-h-[92vh] overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-200">
           {/* Glow trang trí */}
           <div
             className={`absolute top-0 right-0 w-56 h-56 rounded-full blur-3xl pointer-events-none ${
@@ -959,7 +971,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
         /* ══════════════════════════════════════════════════════════════
             GIAO DIỆN QUÉT CAMERA (HUD 3D MESH & LASER SCAN)
            ══════════════════════════════════════════════════════════════ */
-        <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-2xl max-w-xl w-full relative overflow-hidden flex flex-col gap-4 animate-fadeIn">
+        <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-2xl shadow-black/60 ring-1 ring-white/10 max-w-xl w-full relative overflow-hidden flex flex-col gap-4 animate-in zoom-in-95 duration-200">
           {/* Header */}
           <div className="flex items-center justify-between pb-3 border-b border-indigo-500/20 relative z-10">
             <div className="flex items-center gap-3">
@@ -1052,7 +1064,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                 <p className="text-xs text-slate-300 leading-relaxed">
                   Tài khoản của bạn ({authUser?.fullName}) chưa được đăng ký mẫu khuôn mặt 5 góc trên hệ thống.
                 </p>
-                {['admin', 'bgh', 'admin_it', 'it_admin'].includes(authUser?.role || '') ? (
+                {isSuperAdmin(authUser) ? (
                   <p className="text-[11px] text-cyan-200 font-medium bg-cyan-500/10 p-2 rounded-xl border border-cyan-500/20">
                     👉 Bạn có quyền Quản trị viên: Vui lòng truy cập trang "Đăng Ký Face ID" để thu thập mẫu khuôn mặt 5 góc.
                   </p>
@@ -1171,6 +1183,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </Portal>
   );
 };

@@ -235,8 +235,24 @@ const fetchDepartmentStatsMaps = async () => {
   try {
     const Subject = mongoose.models.Subject || mongoose.models.MonHoc || require('../models/subject.model');
     const [userAgg, subjectAgg] = await Promise.all([
-      User.aggregate([{ $match: { don_vi_id: { $ne: null } } }, { $group: { _id: '$don_vi_id', count: { $sum: 1 } } }]),
-      Subject.aggregate([{ $match: { don_vi_id: { $ne: null } } }, { $group: { _id: '$don_vi_id', count: { $sum: 1 } } }]),
+      User.aggregate([
+        {
+          $project: {
+            deptId: { $ifNull: ['$don_vi_chinh_id', '$don_vi_id'] },
+          },
+        },
+        { $match: { deptId: { $ne: null } } },
+        { $group: { _id: '$deptId', count: { $sum: 1 } } },
+      ]),
+      Subject.aggregate([
+        {
+          $project: {
+            deptId: { $ifNull: ['$phong_ban_id', '$don_vi_id'] },
+          },
+        },
+        { $match: { deptId: { $ne: null } } },
+        { $group: { _id: '$deptId', count: { $sum: 1 } } },
+      ]),
     ]);
 
     const userCounts = new Map();
@@ -292,7 +308,7 @@ const buildDepartmentTree = (departments, parentId = null, visited = new Set(), 
 /**
  * Lấy danh sách Khoa / Phòng ban
  */
-const getAllDepartments = async ({ type, parentId, tree = 'true', page, limit }) => {
+const getAllDepartments = async ({ type, parentId, tree = 'false', page, limit }) => {
   const query = {};
 
   if (type) query.type = type;

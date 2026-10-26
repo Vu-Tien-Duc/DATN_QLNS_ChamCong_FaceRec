@@ -34,8 +34,6 @@ const normalizePrimaryRole = (roleInput) => {
     giang_vien: 'giangvien',
     nhan_vien: 'nhanvien',
     chuyen_vien: 'nhanvien',
-    it_admin: 'admin',
-    admin_it: 'admin',
   };
   return map[raw] || raw;
 };
@@ -137,7 +135,14 @@ const fetchUsers = async ({ role, departmentId, isActive, search, page = 1, limi
 
   const [users, total] = await Promise.all([
     User.find(query)
-      .populate('departmentId', 'name code type location')
+      .populate({
+        path: 'don_vi_chinh_id',
+        select: 'ten_phong_ban loai_don_vi don_vi_cha_id',
+      })
+      .populate({
+        path: 'departmentId',
+        select: 'ten_phong_ban loai_don_vi don_vi_cha_id name type',
+      })
       .select('-passwordHash')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -227,7 +232,14 @@ const fetchUserById = async (userId, currentUser) => {
   }
 
   const user = await User.findById(userId)
-    .populate('departmentId', 'name code type location')
+    .populate({
+      path: 'don_vi_chinh_id',
+      select: 'ten_phong_ban loai_don_vi don_vi_cha_id',
+    })
+    .populate({
+      path: 'departmentId',
+      select: 'ten_phong_ban loai_don_vi don_vi_cha_id name type',
+    })
     .select('-passwordHash');
 
   if (!user) {
@@ -235,8 +247,9 @@ const fetchUserById = async (userId, currentUser) => {
   }
 
   // Kiểm tra quyền hạn nếu là Trưởng khoa
+  const isSelf = String(currentUser._id || currentUser.id) === String(userId);
   const viewerRole = (currentUser.role || '').toLowerCase();
-  if (viewerRole === 'truongkhoa') {
+  if (!isSelf && viewerRole === 'truongkhoa') {
     const allowedDeptIds = (await getDeanDepartmentIds(currentUser)).map((id) => String(id));
     const userDeptId = String(user.departmentId?._id || user.departmentId || '');
     if (!allowedDeptIds.includes(userDeptId)) {
@@ -304,6 +317,26 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
   if (finalDeptId) {
     const dept = await Department.findById(finalDeptId);
     if (!dept) throw new ServiceError('Khoa/Phòng ban không tồn tại trên hệ thống.', 400);
+
+    const isBghDept = (dept.name || '').toLowerCase().includes('giám hiệu');
+    if (finalRole === 'bgh' && !isBghDept) {
+      throw new ServiceError('Cán bộ có vai trò Ban Giám Hiệu (BGH) bắt buộc phải thuộc đơn vị Ban Giám Hiệu.', 400);
+    }
+    if (['truongkhoa', 'phokhoa'].includes(finalRole) && dept.type !== 'khoa') {
+      throw new ServiceError('Trưởng Khoa / Phó Trưởng Khoa bắt buộc phải thuộc đơn vị cấp Khoa.', 400);
+    }
+    if (finalRole === 'truongbomon' && dept.type !== 'bomon') {
+      throw new ServiceError('Trưởng Bộ Môn bắt buộc phải thuộc đơn vị cấp Bộ Môn.', 400);
+    }
+    if (finalRole === 'giangvien' && dept.type !== 'bomon') {
+      throw new ServiceError('Giảng viên bắt buộc phải trực thuộc một Bộ Môn cụ thể.', 400);
+    }
+    if (finalRole === 'admin' && (dept.type === 'khoa' || dept.type === 'bomon')) {
+      throw new ServiceError('Quản trị viên hệ thống (Admin) phải thuộc Hội Đồng Trường hoặc các Ban chức năng NTU, không thuộc Khoa/Bộ môn đào tạo.', 400);
+    }
+    if (isBghDept && !['bgh', 'admin'].includes(finalRole)) {
+      throw new ServiceError('Đơn vị Ban Giám Hiệu chỉ dành cho nhân sự thuộc Ban Giám Hiệu hoặc Quản trị viên.', 400);
+    }
   }
 
   const salt = await bcrypt.genSalt(10);
@@ -317,6 +350,7 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
     role: finalRole,
     primaryRole: finalRole,
     departmentId: finalDeptId,
+    don_vi_chinh_id: finalDeptId,
     phoneNumber: phoneNumber || undefined,
     position: position || undefined,
     academicRank: academicRank || 'KHONG',
@@ -370,9 +404,24 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     throw new ServiceError('Không tìm thấy người dùng.', 404);
   }
 
-  // Kiểm tra quyền hạn Trưởng khoa
+  // Kiểm tra quyền hạn
+  const isSelf = String(currentUser._id || currentUser.id) === String(userId);
   const editorRole = (currentUser.role || '').toLowerCase();
-  if (editorRole === 'truongkhoa') {
+  const isElevated = ['admin', 'bgh', 'tccb'].includes(editorRole);
+
+  if (isSelf && !isElevated) {
+    // Cán bộ/Giảng viên tự cập nhật hồ sơ cá nhân: Không được tự nâng quyền, đổi lương, đổi mã CB hay chuyển khoa
+    delete data.role;
+    delete data.departmentId;
+    delete data.staffCode;
+    delete data.salaryCoefficient;
+    delete data.salaryScale;
+    delete data.annualLeaveQuota;
+    delete data.isActive;
+    delete data.roles;
+    delete data.employmentStatus;
+    delete data.startDate;
+  } else if (editorRole === 'truongkhoa') {
     const allowedDeptIds = (await getDeanDepartmentIds(currentUser)).map((id) => String(id));
     const userDeptId = String(user.departmentId?._id || user.departmentId || '');
     if (!allowedDeptIds.includes(userDeptId)) {
@@ -381,6 +430,24 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     // Trưởng khoa không được đổi vai trò hay chuyển khoa của nhân sự
     delete data.role;
     delete data.departmentId;
+  }
+
+  const targetRole = normalizePrimaryRole(user.role || user.primaryRole);
+  const currentRole = normalizePrimaryRole(currentUser.role || currentUser.primaryRole);
+
+  if (!isSelf) {
+    // 1. Bảo vệ cấp trên: Chỉ Ban Giám Hiệu mới có quyền đổi trạng thái kích hoạt hoặc vai trò của BGH
+    if (targetRole === 'bgh' && currentRole !== 'bgh') {
+      if (data.isActive !== undefined || data.role !== undefined) {
+        throw new ServiceError('Chỉ Ban Giám Hiệu mới có quyền thay đổi trạng thái hoặc vai trò của tài khoản Ban Giám Hiệu.', 403);
+      }
+    }
+    // 2. Bảo vệ ngang hàng: Admin không được tự ý đổi trạng thái kích hoạt hoặc vai trò của Admin cùng cấp
+    if (targetRole === 'admin' && currentRole === 'admin') {
+      if (data.isActive !== undefined || data.role !== undefined) {
+        throw new ServiceError('Quản trị viên không thể tự ý thay đổi trạng thái hoặc vai trò của Quản trị viên cùng cấp. Thao tác này cần Ban Giám Hiệu thực hiện.', 403);
+      }
+    }
   }
 
   const {
@@ -433,6 +500,7 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
 
   if (departmentId !== undefined) {
     user.departmentId = departmentId || null;
+    user.don_vi_chinh_id = departmentId || null;
   }
 
   if (role) {
@@ -441,6 +509,32 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     user.primaryRole = normRole;
     if (roles === undefined) {
       user.roles = buildDefaultRolesArray(normRole, user.departmentId);
+    }
+  }
+
+  // Xác thực tính nhất quán giữa vai trò và đơn vị khi cập nhật
+  if (user.departmentId) {
+    const dept = await Department.findById(user.departmentId);
+    if (dept) {
+      const isBghDept = (dept.name || '').toLowerCase().includes('giám hiệu');
+      if (user.role === 'bgh' && !isBghDept) {
+        throw new ServiceError('Cán bộ có vai trò Ban Giám Hiệu (BGH) bắt buộc phải thuộc đơn vị Ban Giám Hiệu.', 400);
+      }
+      if (['truongkhoa', 'phokhoa'].includes(user.role) && dept.type !== 'khoa') {
+        throw new ServiceError('Trưởng Khoa / Phó Trưởng Khoa bắt buộc phải thuộc đơn vị cấp Khoa.', 400);
+      }
+      if (user.role === 'truongbomon' && dept.type !== 'bomon') {
+        throw new ServiceError('Trưởng Bộ Môn bắt buộc phải thuộc đơn vị cấp Bộ Môn.', 400);
+      }
+      if (user.role === 'giangvien' && dept.type !== 'bomon') {
+        throw new ServiceError('Giảng viên bắt buộc phải trực thuộc một Bộ Môn cụ thể.', 400);
+      }
+      if (user.role === 'admin' && (dept.type === 'khoa' || dept.type === 'bomon')) {
+        throw new ServiceError('Quản trị viên hệ thống (Admin) phải thuộc Hội Đồng Trường hoặc các Ban chức năng NTU, không thuộc Khoa/Bộ môn đào tạo.', 400);
+      }
+      if (isBghDept && !['bgh', 'admin'].includes(user.role)) {
+        throw new ServiceError('Đơn vị Ban Giám Hiệu chỉ dành cho nhân sự thuộc Ban Giám Hiệu hoặc Quản trị viên.', 400);
+      }
     }
   }
 
@@ -521,6 +615,19 @@ const softDeleteUser = async (userId, currentUser, ipAddress = null) => {
   const user = await User.findById(userId);
   if (!user) {
     throw new ServiceError('Không tìm thấy người dùng.', 404);
+  }
+
+  const targetRole = normalizePrimaryRole(user.role || user.primaryRole);
+  const currentRole = normalizePrimaryRole(currentUser.role || currentUser.primaryRole);
+
+  // 1. Bảo vệ cấp trên: Tuyệt đối không ai được khóa Ban Giám Hiệu (BGH) ngoại trừ chính cấp BGH
+  if (targetRole === 'bgh' && currentRole !== 'bgh') {
+    throw new ServiceError('Chỉ Lãnh đạo Ban Giám Hiệu mới có quyền vô hiệu hóa tài khoản Ban Giám Hiệu.', 403);
+  }
+
+  // 2. Bảo vệ ngang hàng (Peer Protection): Admin không được tự ý khóa tài khoản Admin khác
+  if (targetRole === 'admin' && currentRole === 'admin') {
+    throw new ServiceError('Quản trị viên không thể tự ý khóa tài khoản Quản trị viên cùng cấp. Thao tác này cần Ban Giám Hiệu thực hiện.', 403);
   }
 
   user.isActive = false;

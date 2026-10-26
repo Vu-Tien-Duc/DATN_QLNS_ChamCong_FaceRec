@@ -75,6 +75,21 @@
   background: #475569;
 }
 
+/* Ẩn hoàn toàn thanh lướt / thanh cuộn nhưng vẫn cuộn chuột bình thường */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none !important; /* IE và Edge */
+  scrollbar-width: none !important; /* Firefox */
+}
+
+
 /* ─── Glassmorphism & Surface Utilities ─────────────── */
 @layer utilities {
   .glass-card {

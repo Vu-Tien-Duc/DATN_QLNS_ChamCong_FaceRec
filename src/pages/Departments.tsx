@@ -10,22 +10,22 @@ import {
   MapPin,
   ChevronRight,
   ChevronDown,
-  ChevronLeft,
   RefreshCw,
   ShieldCheck,
   Layers,
   Network,
-  LayoutGrid,
-  ListFilter,
   UserCheck,
   AlertCircle,
-  Eye,
   X,
   Compass,
   GraduationCap,
   Briefcase,
   FolderTree,
   CheckCircle2,
+  Folder,
+  FolderOpen,
+  CornerDownRight,
+  ExternalLink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
@@ -39,6 +39,9 @@ import {
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { hasRole } from '../utils/rbac';
+import { UserAvatar } from '../components/ui/UserAvatar';
+import { Portal } from '../components/ui/Portal';
 
 // =============================================================================
 // HELPERS & CONSTANTS
@@ -50,8 +53,9 @@ const UNIT_TYPE_META: Record<
     label: string;
     shortLabel: string;
     badgeVariant: 'info' | 'purple' | 'success' | 'neutral';
-    borderClass: string;
-    iconBgClass: string;
+    colorText: string;
+    colorBg: string;
+    colorBorder: string;
     description: string;
   }
 > = {
@@ -59,24 +63,27 @@ const UNIT_TYPE_META: Record<
     label: 'Khoa Đào Tạo',
     shortLabel: 'Khoa',
     badgeVariant: 'info',
-    borderClass: 'border-l-brand-500',
-    iconBgClass: 'bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 border-brand-200/60 dark:border-brand-800/50',
+    colorText: 'text-brand-600 dark:text-brand-400',
+    colorBg: 'bg-brand-50 dark:bg-brand-950/60',
+    colorBorder: 'border-brand-500',
     description: 'Đơn vị chuyên môn cấp trường trực thuộc Ban Giám Hiệu, quản lý các Bộ môn và Giảng viên.',
   },
   bomon: {
     label: 'Bộ Môn Chuyên Môn',
     shortLabel: 'Bộ môn',
     badgeVariant: 'purple',
-    borderClass: 'border-l-indigo-500',
-    iconBgClass: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 border-indigo-200/60 dark:border-indigo-800/50',
+    colorText: 'text-indigo-600 dark:text-indigo-400',
+    colorBg: 'bg-indigo-50 dark:bg-indigo-950/60',
+    colorBorder: 'border-indigo-500',
     description: 'Đơn vị chuyên môn sâu trực thuộc một Khoa đào tạo.',
   },
   phongban: {
     label: 'Phòng Ban Chức Năng',
     shortLabel: 'Phòng ban',
     badgeVariant: 'success',
-    borderClass: 'border-l-emerald-500',
-    iconBgClass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 border-emerald-200/60 dark:border-emerald-800/50',
+    colorText: 'text-emerald-600 dark:text-emerald-400',
+    colorBg: 'bg-emerald-50 dark:bg-emerald-950/60',
+    colorBorder: 'border-emerald-500',
     description: 'Đơn vị hành chính, quản trị, trung tâm phục vụ trực thuộc Ban Giám Hiệu.',
   },
 };
@@ -111,39 +118,32 @@ function splitNameAndTitle(rawName?: string): { cleanName: string; title: string
 }
 
 // =============================================================================
-// MAIN COMPONENT
+// MAIN COMPONENT (SPLIT-VIEW HRM DIRECTORY TREE)
 // =============================================================================
 
 export const Departments: React.FC = () => {
   const { user } = useAuthStore();
-  const userRole = (user?.role || '').toLowerCase();
-  const isAdmin = userRole === 'admin';
-
-  // View Mode: 'tree' (Sơ đồ phân cấp Khoa -> Bộ môn) | 'grid' (Thẻ lưới) | 'table' (Bảng phân trang)
-  const [viewMode, setViewMode] = useState<'tree' | 'grid' | 'table'>('tree');
+  const isAdmin = hasRole(user, ['admin', 'bgh']);
 
   // Data States
   const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Filter States
-  const [searchKeyword, setSearchKeyword] = useState<string>('');
-  const [selectedType, setSelectedType] = useState<'ALL' | DepartmentType>('ALL');
-  const [selectedParentFacultyId, setSelectedParentFacultyId] = useState<string>('');
+  // Tree Filter & Navigation States
+  const [treeSearch, setTreeSearch] = useState<string>('');
+  // selectedNodeId: 'ROOT_BGH' | 'KHU_KHOA' | 'KHU_PHONGBAN' | departmentId
+  const [selectedNodeId, setSelectedNodeId] = useState<string>('ROOT_BGH');
 
-  // Tree Accordion Expanded State (Set of Faculty IDs)
+  // Expanded Folder States in Directory Tree
+  const [isFacultiesFolderOpen, setIsFacultiesFolderOpen] = useState<boolean>(true);
+  const [isFunctionalFolderOpen, setIsFunctionalFolderOpen] = useState<boolean>(true);
   const [expandedFacultyIds, setExpandedFacultyIds] = useState<Record<string, boolean>>({});
-
-  // Table Pagination
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(10);
 
   // Modals State
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
   const [deleteTarget, setDeleteTarget] = useState<DepartmentItem | null>(null);
-  const [selectedDept, setSelectedDept] = useState<DepartmentItem | null>(null);
+  const [editingDept, setEditingDept] = useState<DepartmentItem | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
@@ -184,7 +184,7 @@ export const Departments: React.FC = () => {
       }
       setDepartments(deptList);
 
-      // Expand all faculties by default on first load
+      // Auto-expand all faculties in tree
       const initialExpanded: Record<string, boolean> = {};
       deptList.forEach((d) => {
         if (d.type === 'khoa') {
@@ -214,18 +214,19 @@ export const Departments: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Reset page when filter changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchKeyword, selectedType, selectedParentFacultyId]);
-
   // =============================================================================
-  // COMPUTED DATA & HIERARCHY
+  // COMPUTED HIERARCHY & METRICS
   // =============================================================================
 
-  // List of all Faculties ('khoa') for parent selection and filtering
+  // List of all Faculties ('khoa')
   const faculties = useMemo(
     () => departments.filter((d) => d.type === 'khoa').sort((a, b) => a.name.localeCompare(b.name, 'vi')),
+    [departments]
+  );
+
+  // List of all Functional Departments ('phongban')
+  const functionalDepts = useMemo(
+    () => departments.filter((d) => d.type === 'phongban').sort((a, b) => a.name.localeCompare(b.name, 'vi')),
     [departments]
   );
 
@@ -245,10 +246,38 @@ export const Departments: React.FC = () => {
     return map;
   }, [departments]);
 
-  // Calculate total staff of a department (including child bomon if it's a khoa)
+  // Map of direct members count by department ID from both backend memberCount and allUsers
+  const membersCountByDeptId = useMemo(() => {
+    const map: Record<string, number> = {};
+    departments.forEach((d) => {
+      map[d._id] = d.memberCount || 0;
+    });
+    if (allUsers.length > 0) {
+      const userCountMap: Record<string, number> = {};
+      allUsers.forEach((u) => {
+        const uDeptId = typeof u.departmentId === 'object' ? u.departmentId?._id : u.departmentId;
+        if (uDeptId) {
+          userCountMap[uDeptId] = (userCountMap[uDeptId] || 0) + 1;
+        }
+      });
+      departments.forEach((d) => {
+        map[d._id] = Math.max(d.memberCount || 0, userCountMap[d._id] || 0);
+      });
+    }
+    return map;
+  }, [departments, allUsers]);
+
+  const getDirectMemberCount = useCallback(
+    (dept: DepartmentItem) => {
+      return membersCountByDeptId[dept._id] ?? dept.memberCount ?? 0;
+    },
+    [membersCountByDeptId]
+  );
+
+  // Aggregate stats calculation for a department
   const getAggregateStats = useCallback(
     (dept: DepartmentItem) => {
-      const directMembers = dept.memberCount || 0;
+      const directMembers = getDirectMemberCount(dept);
       const directSubjects = dept.subjectCount || 0;
       if (dept.type !== 'khoa') {
         return {
@@ -259,7 +288,7 @@ export const Departments: React.FC = () => {
         };
       }
       const children = childrenByFacultyId[dept._id] || [];
-      const childMembers = children.reduce((sum, c) => sum + (c.memberCount || 0), 0);
+      const childMembers = children.reduce((sum, c) => sum + getDirectMemberCount(c), 0);
       const childSubjects = children.reduce((sum, c) => sum + (c.subjectCount || 0), 0);
       return {
         directMembers,
@@ -268,84 +297,84 @@ export const Departments: React.FC = () => {
         childCount: children.length,
       };
     },
-    [childrenByFacultyId]
+    [childrenByFacultyId, getDirectMemberCount]
   );
 
-  // Filtered flat list for Grid & Table views
-  const filteredDepartments = useMemo(() => {
-    return departments.filter((d) => {
-      if (selectedType !== 'ALL' && d.type !== selectedType) return false;
-
-      if (selectedParentFacultyId) {
-        const pId = typeof d.parentId === 'object' ? d.parentId?._id : d.parentId;
-        if (d._id !== selectedParentFacultyId && pId !== selectedParentFacultyId) {
-          return false;
-        }
-      }
-
-      if (searchKeyword.trim()) {
-        const kw = searchKeyword.toLowerCase().trim();
-        const nameMatch = d.name?.toLowerCase().includes(kw);
-        const managerName =
-          typeof d.managerId === 'object' ? d.managerId?.fullName?.toLowerCase() || '' : '';
-        const managerCode =
-          typeof d.managerId === 'object' ? d.managerId?.staffCode?.toLowerCase() || '' : '';
-        const parentName =
-          typeof d.parentId === 'object' ? d.parentId?.name?.toLowerCase() || '' : '';
-        return (
-          nameMatch ||
-          managerName.includes(kw) ||
-          managerCode.includes(kw) ||
-          parentName.includes(kw)
-        );
-      }
-
-      return true;
-    });
-  }, [departments, selectedType, selectedParentFacultyId, searchKeyword]);
-
-  // Paginated list for Table view
-  const totalPages = Math.max(1, Math.ceil(filteredDepartments.length / pageSize));
-  const paginatedDepartments = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredDepartments.slice(start, start + pageSize);
-  }, [filteredDepartments, currentPage, pageSize]);
-
-  // KPI Metrics
+  // Global KPIs
   const stats = useMemo(() => {
     const total = departments.length;
-    const khoaCount = departments.filter((d) => d.type === 'khoa').length;
+    const khoaCount = faculties.length;
     const bomonCount = departments.filter((d) => d.type === 'bomon').length;
-    const phongbanCount = departments.filter((d) => d.type === 'phongban').length;
+    const phongbanCount = functionalDepts.length;
     const assignedManagers = departments.filter((d) => Boolean(d.managerId)).length;
-    return { total, khoaCount, bomonCount, phongbanCount, assignedManagers };
-  }, [departments]);
+    const totalCampusStaff = allUsers.length;
+    return { total, khoaCount, bomonCount, phongbanCount, assignedManagers, totalCampusStaff };
+  }, [departments, faculties, functionalDepts, allUsers]);
 
-  // Eligible managers for dropdown (exclude admin per backend rule)
-  const eligibleManagers = useMemo(() => {
-    return allUsers.filter((u) => u.isActive !== false && (u.role || '').toLowerCase() !== 'admin');
-  }, [allUsers]);
+  // Selected Department Item (if selectedNodeId is an actual department)
+  const activeDepartment = useMemo(() => {
+    return departments.find((d) => d._id === selectedNodeId) || null;
+  }, [departments, selectedNodeId]);
 
-  // Members belonging to selectedDept (including child bomon if selectedDept is a khoa)
-  const selectedDeptMembers = useMemo(() => {
-    if (!selectedDept) return [];
+  // Staff members belonging to the activeDepartment
+  const activeDeptMembers = useMemo(() => {
+    if (!activeDepartment) return [];
     const childIds = new Set(
-      (childrenByFacultyId[selectedDept._id] || []).map((c) => c._id)
+      (childrenByFacultyId[activeDepartment._id] || []).map((c) => c._id)
     );
     return allUsers.filter((u) => {
       const uDeptId = typeof u.departmentId === 'object' ? u.departmentId?._id : u.departmentId;
       if (!uDeptId) return false;
-      return uDeptId === selectedDept._id || childIds.has(uDeptId);
+      return uDeptId === activeDepartment._id || childIds.has(uDeptId);
     });
-  }, [selectedDept, allUsers, childrenByFacultyId]);
+  }, [activeDepartment, allUsers, childrenByFacultyId]);
+
+  // Eligible managers for dropdown
+  const eligibleManagers = useMemo(() => {
+    return allUsers.filter((u) => u.isActive !== false && (u.role || '').toLowerCase() !== 'admin');
+  }, [allUsers]);
+
+  // Filtered tree faculties & departments by search
+  const filteredFaculties = useMemo(() => {
+    if (!treeSearch.trim()) return faculties;
+    const kw = treeSearch.toLowerCase().trim();
+    return faculties.filter((f) => {
+      const nameMatch = f.name.toLowerCase().includes(kw);
+      const childMatch = (childrenByFacultyId[f._id] || []).some((c) =>
+        c.name.toLowerCase().includes(kw)
+      );
+      return nameMatch || childMatch;
+    });
+  }, [faculties, treeSearch, childrenByFacultyId]);
+
+  const filteredFunctionalDepts = useMemo(() => {
+    if (!treeSearch.trim()) return functionalDepts;
+    const kw = treeSearch.toLowerCase().trim();
+    return functionalDepts.filter((pb) => pb.name.toLowerCase().includes(kw));
+  }, [functionalDepts, treeSearch]);
+
+  // Expand / Collapse all in tree
+  const handleExpandAll = () => {
+    setIsFacultiesFolderOpen(true);
+    setIsFunctionalFolderOpen(true);
+    const all: Record<string, boolean> = {};
+    faculties.forEach((f) => (all[f._id] = true));
+    setExpandedFacultyIds(all);
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedFacultyIds({});
+    setIsFacultiesFolderOpen(false);
+    setIsFunctionalFolderOpen(false);
+  };
 
   // =============================================================================
-  // MODAL & CRUD HANDLERS
+  // MODAL & CRUD ACTIONS
   // =============================================================================
 
   const openCreateModal = (presetType: DepartmentType = 'khoa', presetParentId = '') => {
     setIsEditing(false);
-    setSelectedDept(null);
+    setEditingDept(null);
     setFormData({
       name: '',
       type: presetType,
@@ -361,7 +390,7 @@ export const Departments: React.FC = () => {
   const openEditModal = (dept: DepartmentItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setIsEditing(true);
-    setSelectedDept(dept);
+    setEditingDept(dept);
 
     const pId = typeof dept.parentId === 'object' ? dept.parentId?._id || '' : dept.parentId || '';
     const mId = typeof dept.managerId === 'object' ? dept.managerId?._id || '' : dept.managerId || '';
@@ -378,11 +407,6 @@ export const Departments: React.FC = () => {
       radiusMeters: dept.radiusMeters || 200,
     });
     setIsFormModalOpen(true);
-  };
-
-  const openDetailModal = (dept: DepartmentItem) => {
-    setSelectedDept(dept);
-    setIsDetailModalOpen(true);
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -415,12 +439,15 @@ export const Departments: React.FC = () => {
         },
       };
 
-      if (isEditing && selectedDept) {
-        await departmentApi.updateDepartment(selectedDept._id, payload);
+      if (isEditing && editingDept) {
+        await departmentApi.updateDepartment(editingDept._id, payload);
         toast.success('Cập nhật đơn vị thành công');
       } else {
-        await departmentApi.createDepartment(payload);
+        const created = await departmentApi.createDepartment(payload);
         toast.success('Thêm mới đơn vị thành công');
+        if (created?.data?._id) {
+          setSelectedNodeId(created.data._id);
+        }
       }
 
       setIsFormModalOpen(false);
@@ -439,10 +466,10 @@ export const Departments: React.FC = () => {
     try {
       await departmentApi.deleteDepartment(deleteTarget._id);
       toast.success(`Đã xóa đơn vị "${deleteTarget.name}"`);
-      setDeleteTarget(null);
-      if (selectedDept?._id === deleteTarget._id) {
-        setIsDetailModalOpen(false);
+      if (selectedNodeId === deleteTarget._id) {
+        setSelectedNodeId('ROOT_BGH');
       }
+      setDeleteTarget(null);
       loadData();
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Không thể xóa đơn vị này';
@@ -453,72 +480,70 @@ export const Departments: React.FC = () => {
   };
 
   // =============================================================================
-  // RENDER HELPERS
+  // UI RENDER HELPERS
   // =============================================================================
 
-  const renderManagerBadge = (dept: DepartmentItem) => {
+  const renderManagerSnippet = (dept: DepartmentItem) => {
     const mgr = typeof dept.managerId === 'object' ? dept.managerId : null;
     if (!mgr) {
       return (
         <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 italic">
-          <UserCheck className="w-3.5 h-3.5 opacity-50" />
-          Chưa bổ nhiệm trưởng đơn vị
+          <UserCheck className="w-3.5 h-3.5 opacity-40" />
+          Chưa bổ nhiệm lãnh đạo
         </span>
       );
     }
     const avatarUrl = resolveAvatarUrl(mgr.avatarUrl);
-    const { cleanName } = splitNameAndTitle(mgr.fullName);
+    const { cleanName, title } = splitNameAndTitle(mgr.fullName);
 
     return (
-      <div className="flex items-center gap-2 min-w-0">
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={cleanName}
-            className="w-7 h-7 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700 flex-shrink-0"
-          />
-        ) : (
-          <div className="w-7 h-7 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-            {getInitials(cleanName)}
-          </div>
-        )}
+      <div className="flex items-center gap-2.5 min-w-0">
+        <UserAvatar
+          user={mgr}
+          name={mgr.fullName}
+          avatarUrl={mgr.avatarUrl}
+          staffCode={mgr.staffCode || mgr._id}
+          size="sm"
+          shape="rounded"
+        />
         <div className="min-w-0">
-          <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+          <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
             {cleanName}
           </p>
-          {mgr.staffCode && (
-            <p className="text-[10px] font-mono text-slate-400 truncate">{mgr.staffCode}</p>
-          )}
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+            {mgr.staffCode ? `Mã: ${mgr.staffCode}` : ''} {title ? `• ${title}` : ''}
+          </p>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="space-y-6 pb-12 animate-fade-in">
+    <div className="space-y-5 pb-12 animate-fade-in">
       {/* =========================================================================
           PAGE HEADER
          ========================================================================= */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20">
-            <Building2 className="w-6 h-6" />
+          <div className="w-10 h-10 rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 flex items-center justify-center flex-shrink-0">
+            <FolderTree className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              Cơ Cấu Tổ Chức: Khoa & Phòng Ban
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+              Quản Lý Cơ Cấu Tổ Chức Phòng Ban (Sơ Đồ Cây)
             </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Quản lý cây phân cấp Khoa đào tạo, Bộ môn trực thuộc, Phòng ban chức năng và tọa độ Geofence chấm công (CSDL v2.5).
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Cây phân cấp cơ cấu đại học: Ban Giám Hiệu ➔ Khối Khoa (Bộ Môn) & Khối Phòng Ban Chức Năng.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
-            leftIcon={<RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
+            leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />}
             onClick={loadData}
           >
             Làm mới
@@ -529,7 +554,7 @@ export const Departments: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
-                leftIcon={<FolderTree className="w-4 h-4 text-indigo-500" />}
+                leftIcon={<Plus className="w-3.5 h-3.5 text-indigo-500" />}
                 onClick={() => openCreateModal('bomon')}
               >
                 Thêm Bộ Môn
@@ -537,7 +562,7 @@ export const Departments: React.FC = () => {
               <Button
                 variant="primary"
                 size="sm"
-                leftIcon={<Plus className="w-4 h-4" />}
+                leftIcon={<Plus className="w-3.5 h-3.5" />}
                 onClick={() => openCreateModal('khoa')}
               >
                 Thêm Khoa / Phòng Ban
@@ -548,882 +573,826 @@ export const Departments: React.FC = () => {
       </div>
 
       {/* =========================================================================
-          EXECUTIVE KPI METRIC CARDS
+          EXECUTIVE KPI STRIP
          ========================================================================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-slate-200/80 dark:border-slate-800/80 hover:shadow-md transition-shadow">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Tổng Đơn Vị Tổ Chức</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.total}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {stats.assignedManagers}/{stats.total} đã bổ nhiệm Trưởng ĐV
-              </p>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card className="border-slate-200/80 dark:border-slate-800/80">
+          <CardContent className="p-3.5 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Tổng Đơn Vị Tổ Chức</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.total}</p>
+              <p className="text-[10px] text-slate-400">{stats.assignedManagers}/{stats.total} đã có Trưởng ĐV</p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 flex items-center justify-center">
-              <Network className="w-6 h-6" />
+            <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 flex items-center justify-center">
+              <Network className="w-4 h-4" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80 dark:border-slate-800/80 hover:shadow-md transition-shadow">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Khoa Đào Tạo (Cấp 1)</p>
-              <p className="text-2xl font-bold text-brand-600 dark:text-brand-400">{stats.khoaCount}</p>
-              <p className="text-xs text-brand-600/80 dark:text-brand-400/80 font-medium">
-                Trực thuộc Ban Giám Hiệu
-              </p>
+        <Card className="border-slate-200/80 dark:border-slate-800/80">
+          <CardContent className="p-3.5 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Khoa Đào Tạo (Cấp 1)</p>
+              <p className="text-xl font-bold text-brand-600 dark:text-brand-400">{stats.khoaCount}</p>
+              <p className="text-[10px] text-brand-500 font-medium">Khối học thuật chuyên môn</p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 flex items-center justify-center">
-              <GraduationCap className="w-6 h-6" />
+            <div className="w-9 h-9 rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 flex items-center justify-center">
+              <GraduationCap className="w-4 h-4" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80 dark:border-slate-800/80 hover:shadow-md transition-shadow">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Bộ Môn Chuyên Môn (Cấp 2)</p>
-              <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{stats.bomonCount}</p>
-              <p className="text-xs text-indigo-500 font-medium">Trực thuộc các Khoa đào tạo</p>
+        <Card className="border-slate-200/80 dark:border-slate-800/80">
+          <CardContent className="p-3.5 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Bộ Môn (Cấp 2)</p>
+              <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400">{stats.bomonCount}</p>
+              <p className="text-[10px] text-indigo-500 font-medium">Trực thuộc các Khoa</p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center">
-              <Layers className="w-6 h-6" />
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center">
+              <Layers className="w-4 h-4" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80 dark:border-slate-800/80 hover:shadow-md transition-shadow">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Phòng Ban Chức Năng</p>
-              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{stats.phongbanCount}</p>
-              <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80 font-medium">
-                Khối Hành chính & Trung tâm
-              </p>
+        <Card className="border-slate-200/80 dark:border-slate-800/80">
+          <CardContent className="p-3.5 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Phòng Ban Chức Năng</p>
+              <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{stats.phongbanCount}</p>
+              <p className="text-[10px] text-emerald-500 font-medium">Khối Quản trị & Trung tâm</p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 flex items-center justify-center">
-              <Briefcase className="w-6 h-6" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 flex items-center justify-center">
+              <Briefcase className="w-4 h-4" />
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* =========================================================================
-          UNIFIED FILTER & VIEW SWITCHER TOOLBAR
+          MAIN 2-COLUMN SPLIT VIEW (ORGANIZATION DIRECTORY TREE)
          ========================================================================= */}
-      <Card className="border-slate-200/80 dark:border-slate-800/80">
-        <CardContent className="p-4 space-y-4">
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-            {/* Search Input */}
-            <div className="relative flex-1 min-w-[240px]">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-                placeholder="Tìm tên Khoa, Bộ môn, Phòng ban, tên Trưởng đơn vị..."
-                className="w-full pl-10 pr-4 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
-              />
-            </div>
-
-            {/* View Mode Switcher */}
-            <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 self-start lg:self-auto">
-              <button
-                type="button"
-                onClick={() => setViewMode('tree')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  viewMode === 'tree'
-                    ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                <FolderTree className="w-3.5 h-3.5" />
-                Sơ Đồ Phân Cấp
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  viewMode === 'grid'
-                    ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                Thẻ Lưới
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  viewMode === 'table'
-                    ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                <ListFilter className="w-3.5 h-3.5" />
-                Dạng Bảng
-              </button>
-            </div>
-          </div>
-
-          {/* Filter Pills & Faculty Filter */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-            <div className="flex flex-wrap items-center gap-2">
-              {(
-                [
-                  { id: 'ALL', label: `Tất cả (${stats.total})` },
-                  { id: 'khoa', label: `Khoa đào tạo (${stats.khoaCount})` },
-                  { id: 'bomon', label: `Bộ môn (${stats.bomonCount})` },
-                  { id: 'phongban', label: `Phòng ban (${stats.phongbanCount})` },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setSelectedType(tab.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                    selectedType === tab.id
-                      ? 'bg-brand-600 text-white shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-500 font-medium">Khoa chủ quản:</span>
-                <select
-                  value={selectedParentFacultyId}
-                  onChange={(e) => setSelectedParentFacultyId(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500"
-                >
-                  <option value="">Tất cả các Khoa</option>
-                  {faculties.map((f) => (
-                    <option key={f._id} value={f._id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {(searchKeyword || selectedType !== 'ALL' || selectedParentFacultyId) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs text-rose-500 hover:text-rose-600"
-                  onClick={() => {
-                    setSearchKeyword('');
-                    setSelectedType('ALL');
-                    setSelectedParentFacultyId('');
-                  }}
-                >
-                  Đặt lại bộ lọc
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* =========================================================================
-          VIEW 1: SƠ ĐỒ CÂY PHÂN CẤP TỔ CHỨC (ORGANIZATION TREE HIERARCHY VIEW)
-         ========================================================================= */}
-      {viewMode === 'tree' && (
-        <div className="space-y-6">
-          {/* SECTION A: KHỐI KHOA ĐÀO TẠO & CÁC BỘ MÔN TRỰC THUỘC */}
-          {(selectedType === 'ALL' || selectedType === 'khoa' || selectedType === 'bomon') && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <GraduationCap className="w-5 h-5 text-brand-600 dark:text-brand-400" />
-                  <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                    Khối Khoa Đào Tạo & Các Bộ Môn Chuyên Môn
-                  </h2>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const all: Record<string, boolean> = {};
-                      faculties.forEach((f) => (all[f._id] = true));
-                      setExpandedFacultyIds(all);
-                    }}
-                    className="text-brand-600 dark:text-brand-400 hover:underline font-medium"
-                  >
-                    Mở rộng tất cả
-                  </button>
-                  <span className="text-slate-300 dark:text-slate-700">|</span>
-                  <button
-                    type="button"
-                    onClick={() => setExpandedFacultyIds({})}
-                    className="text-slate-500 hover:underline font-medium"
-                  >
-                    Thu gọn tất cả
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {faculties
-                  .filter((faculty) => {
-                    if (selectedParentFacultyId && faculty._id !== selectedParentFacultyId) return false;
-                    if (!searchKeyword.trim()) return true;
-                    const kw = searchKeyword.toLowerCase().trim();
-                    const children = childrenByFacultyId[faculty._id] || [];
-                    const selfMatch =
-                      faculty.name.toLowerCase().includes(kw) ||
-                      (typeof faculty.managerId === 'object' &&
-                        faculty.managerId?.fullName?.toLowerCase().includes(kw));
-                    const childMatch = children.some(
-                      (c) =>
-                        c.name.toLowerCase().includes(kw) ||
-                        (typeof c.managerId === 'object' &&
-                          c.managerId?.fullName?.toLowerCase().includes(kw))
-                    );
-                    return selfMatch || childMatch;
-                  })
-                  .map((faculty) => {
-                    const isExpanded = Boolean(expandedFacultyIds[faculty._id]);
-                    const children = childrenByFacultyId[faculty._id] || [];
-                    const agg = getAggregateStats(faculty);
-
-                    return (
-                      <Card
-                        key={faculty._id}
-                        className="border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-2xs hover:shadow-md transition-shadow"
-                      >
-                        {/* Faculty Header Row */}
-                        <div
-                          onClick={() =>
-                            setExpandedFacultyIds((prev) => ({
-                              ...prev,
-                              [faculty._id]: !prev[faculty._id],
-                            }))
-                          }
-                          className="p-4 bg-white dark:bg-slate-900 flex flex-col lg:flex-row lg:items-center justify-between gap-4 cursor-pointer border-l-4 border-l-brand-500 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
-                        >
-                          <div className="flex items-start sm:items-center gap-3 min-w-0">
-                            <button
-                              type="button"
-                              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 mt-0.5 sm:mt-0"
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="w-4 h-4" />
-                              ) : (
-                                <ChevronRight className="w-4 h-4" />
-                              )}
-                            </button>
-
-                            <div className="w-10 h-10 rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 border border-brand-200/60 dark:border-brand-800/50 flex items-center justify-center flex-shrink-0">
-                              <GraduationCap className="w-5 h-5" />
-                            </div>
-
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                                  {faculty.name}
-                                </h3>
-                                <Badge variant="info" size="sm">
-                                  Khoa đào tạo
-                                </Badge>
-                                <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
-                                  {children.length} Bộ môn
-                                </span>
-                              </div>
-
-                              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                                <span className="inline-flex items-center gap-1">
-                                  <UsersIcon className="w-3.5 h-3.5 text-brand-500" />
-                                  <strong className="text-slate-700 dark:text-slate-200">
-                                    {agg.totalMembers}
-                                  </strong>{' '}
-                                  cán bộ, giảng viên
-                                </span>
-                                <span className="inline-flex items-center gap-1">
-                                  <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
-                                  <strong className="text-slate-700 dark:text-slate-200">
-                                    {agg.totalSubjects}
-                                  </strong>{' '}
-                                  học phần
-                                </span>
-                                <span className="inline-flex items-center gap-1">
-                                  <MapPin className="w-3.5 h-3.5 text-emerald-500" />
-                                  Bán kính GPS: <strong>{faculty.radiusMeters || 200}m</strong>
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Right: Dean info & Actions */}
-                          <div
-                            className="flex flex-wrap items-center justify-between lg:justify-end gap-4 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-slate-800"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="min-w-[190px]">{renderManagerBadge(faculty)}</div>
-
-                            <div className="flex items-center gap-1.5">
-                              {isAdmin && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="text-xs py-1 px-2.5"
-                                  leftIcon={<Plus className="w-3.5 h-3.5 text-indigo-500" />}
-                                  onClick={() => openCreateModal('bomon', faculty._id)}
-                                >
-                                  Thêm Bộ môn
-                                </Button>
-                              )}
-                              <button
-                                type="button"
-                                title="Xem chi tiết & danh sách nhân sự"
-                                onClick={() => openDetailModal(faculty)}
-                                className="p-1.5 rounded-lg text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/50 transition-colors"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              {isAdmin && (
-                                <>
-                                  <button
-                                    type="button"
-                                    title="Chỉnh sửa Khoa"
-                                    onClick={(e) => openEditModal(faculty, e)}
-                                    className="p-1.5 rounded-lg text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/50 transition-colors"
-                                  >
-                                    <Edit className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    title="Xóa Khoa"
-                                    onClick={() => setDeleteTarget(faculty)}
-                                    className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Nested Child 'bomon' List */}
-                        {isExpanded && (
-                          <div className="bg-slate-50/70 dark:bg-slate-950/40 border-t border-slate-100 dark:border-slate-800/80 px-4 py-3 pl-8 sm:pl-14">
-                            {children.length === 0 ? (
-                              <div className="py-3 flex items-center justify-between text-xs text-slate-400">
-                                <span>Khoa này hiện chưa có Bộ môn trực thuộc nào.</span>
-                                {isAdmin && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openCreateModal('bomon', faculty._id)}
-                                    className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
-                                  >
-                                    <Plus className="w-3.5 h-3.5" />
-                                    Tạo Bộ môn đầu tiên
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                {children.map((bm) => (
-                                  <div
-                                    key={bm._id}
-                                    onClick={() => openDetailModal(bm)}
-                                    className="group relative p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 border-l-4 border-l-indigo-500 shadow-2xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between gap-2.5"
-                                  >
-                                    <div>
-                                      <div className="flex items-start justify-between gap-2">
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
-                                          Bộ môn chuyên môn
-                                        </span>
-                                        {isAdmin && (
-                                          <div
-                                            className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            <button
-                                              type="button"
-                                              onClick={(e) => openEditModal(bm, e)}
-                                              className="p-1 rounded text-slate-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/40"
-                                            >
-                                              <Edit className="w-3.5 h-3.5" />
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => setDeleteTarget(bm)}
-                                              className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                                            >
-                                              <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
-                                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-1.5">
-                                        {bm.name}
-                                      </h4>
-                                    </div>
-
-                                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
-                                      <div className="min-w-0 flex-1">{renderManagerBadge(bm)}</div>
-                                      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 flex-shrink-0">
-                                        <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
-                                          {bm.memberCount || 0} GV
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </Card>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-
-          {/* SECTION B: KHỐI PHÒNG BAN & TRUNG TÂM CHỨC NĂNG */}
-          {(selectedType === 'ALL' || selectedType === 'phongban') && !selectedParentFacultyId && (
-            <div className="space-y-3 pt-2">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* =======================================================================
+            LEFT COLUMN (35% - 4.5 cols): INTERACTIVE DIRECTORY TREE
+           ======================================================================= */}
+        <div className="lg:col-span-5 space-y-3">
+          <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs overflow-hidden">
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  Khối Phòng Ban Chức Năng & Trung Tâm Trực Thuộc Trường
-                </h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {departments
-                  .filter((d) => {
-                    if (d.type !== 'phongban') return false;
-                    if (!searchKeyword.trim()) return true;
-                    const kw = searchKeyword.toLowerCase().trim();
-                    return (
-                      d.name.toLowerCase().includes(kw) ||
-                      (typeof d.managerId === 'object' &&
-                        d.managerId?.fullName?.toLowerCase().includes(kw))
-                    );
-                  })
-                  .map((pb) => (
-                    <Card
-                      key={pb._id}
-                      onClick={() => openDetailModal(pb)}
-                      className="border-slate-200/80 dark:border-slate-800 border-l-4 border-l-emerald-500 hover:shadow-md transition-all cursor-pointer"
-                    >
-                      <CardContent className="p-4 flex flex-col justify-between h-full gap-4">
-                        <div>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
-                                <Briefcase className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <Badge variant="success" size="sm">
-                                  Phòng ban chức năng
-                                </Badge>
-                                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-1">
-                                  {pb.name}
-                                </h3>
-                              </div>
-                            </div>
-
-                            {isAdmin && (
-                              <div
-                                className="flex items-center gap-1"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={(e) => openEditModal(pb, e)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/40"
-                                >
-                                  <Edit className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteTarget(pb)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                          <div className="min-w-0 flex-1">{renderManagerBadge(pb)}</div>
-                          <div className="flex items-center gap-2 text-xs text-slate-500 flex-shrink-0">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-200">
-                              <UsersIcon className="w-3 h-3 text-emerald-500" />
-                              {pb.memberCount || 0} nhân sự
-                            </span>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* =========================================================================
-          VIEW 2: CHẾ ĐỘ THẺ LƯỚI (CARD GRID VIEW)
-         ========================================================================= */}
-      {viewMode === 'grid' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredDepartments.length === 0 ? (
-            <Card className="col-span-full p-12 text-center text-slate-400">
-              Không tìm thấy đơn vị Khoa / Bộ môn / Phòng ban phù hợp.
-            </Card>
-          ) : (
-            filteredDepartments.map((dept) => {
-              const meta = UNIT_TYPE_META[dept.type] || UNIT_TYPE_META.khoa;
-              const agg = getAggregateStats(dept);
-              const parentName =
-                typeof dept.parentId === 'object' && dept.parentId?.name
-                  ? dept.parentId.name
-                  : 'Trực thuộc Ban Giám Hiệu';
-
-              return (
-                <Card
-                  key={dept._id}
-                  onClick={() => openDetailModal(dept)}
-                  className={`border-slate-200/80 dark:border-slate-800 border-l-4 ${meta.borderClass} hover:shadow-md transition-all cursor-pointer`}
-                >
-                  <CardContent className="p-5 flex flex-col justify-between h-full gap-4">
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="flex items-center gap-2.5">
-                          <div
-                            className={`w-10 h-10 rounded-2xl border flex items-center justify-center flex-shrink-0 ${meta.iconBgClass}`}
-                          >
-                            {dept.type === 'khoa' ? (
-                              <GraduationCap className="w-5 h-5" />
-                            ) : dept.type === 'bomon' ? (
-                              <Layers className="w-5 h-5" />
-                            ) : (
-                              <Briefcase className="w-5 h-5" />
-                            )}
-                          </div>
-                          <div>
-                            <Badge variant={meta.badgeVariant} size="sm">
-                              {meta.label}
-                            </Badge>
-                            <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-[200px]">
-                              {parentName}
-                            </p>
-                          </div>
-                        </div>
-
-                        {isAdmin && (
-                          <div
-                            className="flex items-center gap-1"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              type="button"
-                              onClick={(e) => openEditModal(dept, e)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/40"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteTarget(dept)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 leading-snug">
-                        {dept.name}
-                      </h3>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-200">
-                          <UsersIcon className="w-3.5 h-3.5 text-brand-500" />
-                          {agg.totalMembers} nhân sự
-                        </span>
-                        {dept.type === 'khoa' && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/50 font-semibold text-indigo-700 dark:text-indigo-300">
-                            <FolderTree className="w-3.5 h-3.5" />
-                            {agg.childCount} Bộ môn
-                          </span>
-                        )}
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/50 font-semibold text-emerald-700 dark:text-emerald-300">
-                          <MapPin className="w-3.5 h-3.5" />
-                          {dept.radiusMeters || 200}m
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                      {renderManagerBadge(dept)}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {/* =========================================================================
-          VIEW 3: DẠNG BẢNG DANH SÁCH (ENTERPRISE TABLE VIEW + PAGINATION)
-         ========================================================================= */}
-      {viewMode === 'table' && (
-        <Card className="border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/90 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase tracking-wider text-[11px]">
-                <tr>
-                  <th className="py-3.5 px-4">Tên đơn vị tổ chức</th>
-                  <th className="py-3.5 px-4">Loại đơn vị</th>
-                  <th className="py-3.5 px-4">Đơn vị chủ quản (Cấp trên)</th>
-                  <th className="py-3.5 px-4">Trưởng đơn vị / Phụ trách</th>
-                  <th className="py-3.5 px-4">Quy mô đơn vị</th>
-                  <th className="py-3.5 px-4">Bán kính chấm công GPS</th>
-                  <th className="py-3.5 px-4 text-right">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-700 dark:text-slate-300">
-                {paginatedDepartments.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
-                      Không tìm thấy đơn vị nào phù hợp với bộ lọc.
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedDepartments.map((dept) => {
-                    const meta = UNIT_TYPE_META[dept.type] || UNIT_TYPE_META.khoa;
-                    const agg = getAggregateStats(dept);
-                    const parentName =
-                      typeof dept.parentId === 'object' && dept.parentId?.name
-                        ? dept.parentId.name
-                        : 'Ban Giám Hiệu (Cấp Trường)';
-                    const lat = dept.latitude ?? dept.location?.lat;
-                    const lng = dept.longitude ?? dept.location?.lng;
-
-                    return (
-                      <tr
-                        key={dept._id}
-                        onClick={() => openDetailModal(dept)}
-                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
-                      >
-                        <td className="py-3.5 px-4">
-                          <div className="font-bold text-slate-900 dark:text-slate-100 text-xs">
-                            {dept.name}
-                          </div>
-                          <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                            ID: {dept._id.slice(-8).toUpperCase()}
-                          </div>
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          <Badge variant={meta.badgeVariant} size="sm">
-                            {meta.label}
-                          </Badge>
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          <span className="font-medium text-slate-700 dark:text-slate-300">
-                            {parentName}
-                          </span>
-                        </td>
-
-                        <td className="py-3.5 px-4">{renderManagerBadge(dept)}</td>
-
-                        <td className="py-3.5 px-4">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 font-semibold text-[11px]">
-                              {agg.totalMembers} nhân sự
-                            </span>
-                            {dept.type === 'khoa' && (
-                              <span className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold text-[11px]">
-                                {agg.childCount} Bộ môn
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
-                            <MapPin className="w-3.5 h-3.5" />
-                            <span>{dept.radiusMeters || 200}m</span>
-                          </div>
-                          {lat && lng && (
-                            <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                              {Number(lat).toFixed(4)}, {Number(lng).toFixed(4)}
-                            </div>
-                          )}
-                        </td>
-
-                        <td
-                          className="py-3.5 px-4 text-right"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="inline-flex items-center gap-1">
-                            <button
-                              type="button"
-                              title="Xem chi tiết"
-                              onClick={() => openDetailModal(dept)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/50"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            {isAdmin && (
-                              <>
-                                <button
-                                  type="button"
-                                  title="Chỉnh sửa"
-                                  onClick={(e) => openEditModal(dept, e)}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/50"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Xóa đơn vị"
-                                  onClick={() => setDeleteTarget(dept)}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Full Pagination Bar */}
-          {filteredDepartments.length > 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-xs">
-              <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-                <span>
-                  Hiển thị{' '}
-                  <strong className="text-slate-800 dark:text-slate-200">
-                    {(currentPage - 1) * pageSize + 1}
-                  </strong>{' '}
-                  -{' '}
-                  <strong className="text-slate-800 dark:text-slate-200">
-                    {Math.min(currentPage * pageSize, filteredDepartments.length)}
-                  </strong>{' '}
-                  trên tổng số{' '}
-                  <strong className="text-slate-800 dark:text-slate-200">
-                    {filteredDepartments.length}
-                  </strong>{' '}
-                  đơn vị
+                <FolderTree className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                  Cây Cơ Cấu Tổ Chức
                 </span>
-
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs"
-                >
-                  <option value={10}>10 / trang</option>
-                  <option value={20}>20 / trang</option>
-                  <option value={50}>50 / trang</option>
-                </select>
               </div>
-
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2 text-[11px]">
                 <button
                   type="button"
-                  disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100"
+                  onClick={handleExpandAll}
+                  className="text-brand-600 dark:text-brand-400 hover:underline font-semibold"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  Mở hết
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setCurrentPage(p)}
-                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
-                      currentPage === p
-                        ? 'bg-brand-600 text-white'
-                        : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100'
+                <span className="text-slate-300 dark:text-slate-600">|</span>
+                <button
+                  type="button"
+                  onClick={handleCollapseAll}
+                  className="text-slate-500 hover:underline"
+                >
+                  Thu lại
+                </button>
+              </div>
+            </div>
+
+            {/* Tree Search Box */}
+            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={treeSearch}
+                  onChange={(e) => setTreeSearch(e.target.value)}
+                  placeholder="Lọc nhanh tên đơn vị trong cây..."
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+            </div>
+
+            {/* THE VISUAL TREE NODES */}
+            <div className="p-3 max-h-[640px] overflow-y-auto space-y-1.5 font-sans select-none text-xs">
+              {/* 1. ROOT NODE: BAN GIÁM HIỆU */}
+              <div
+                onClick={() => setSelectedNodeId('ROOT_BGH')}
+                className={`p-2 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                  selectedNodeId === 'ROOT_BGH'
+                    ? 'bg-brand-600 text-white font-bold shadow-xs ring-2 ring-brand-500/20'
+                    : 'bg-slate-100/80 dark:bg-slate-800/70 text-slate-800 dark:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <div
+                    className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      selectedNodeId === 'ROOT_BGH'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-brand-100 dark:bg-brand-950 text-brand-600 dark:text-brand-400'
                     }`}
                   >
-                    {p}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100"
+                    <Building2 className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="truncate">Ban Giám Hiệu • ĐH Nguyễn Trãi</span>
+                </div>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                    selectedNodeId === 'ROOT_BGH'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                  }`}
                 >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                  Root
+                </span>
+              </div>
+
+              {/* TREE TRUNK: 2 MAIN BRANCHES */}
+              <div className="relative pl-5 border-l-2 border-slate-200 dark:border-slate-700 ml-3 pt-1 space-y-2.5">
+                {/* ===============================================================
+                    BRANCH 1: KHỐI KHOA ĐÀO TẠO & CÁC BỘ MÔN
+                   =============================================================== */}
+                <div>
+                  {/* Branch Folder Header */}
+                  <div
+                    onClick={() => {
+                      setIsFacultiesFolderOpen(!isFacultiesFolderOpen);
+                      setSelectedNodeId('KHU_KHOA');
+                    }}
+                    className={`p-2 rounded-xl cursor-pointer flex items-center justify-between transition-colors ${
+                      selectedNodeId === 'KHU_KHOA'
+                        ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/70 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-800'
+                        : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-semibold'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsFacultiesFolderOpen(!isFacultiesFolderOpen);
+                        }}
+                        className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
+                      >
+                        {isFacultiesFolderOpen ? (
+                          <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        )}
+                      </button>
+                      {isFacultiesFolderOpen ? (
+                        <FolderOpen className="w-4 h-4 text-brand-500" />
+                      ) : (
+                        <Folder className="w-4 h-4 text-brand-500" />
+                      )}
+                      <span className="truncate">Khối Khoa Đào Tạo</span>
+                    </div>
+                    <span className="px-1.5 py-0.2 rounded-md bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-300 text-[10px] font-bold">
+                      {filteredFaculties.length} Khoa
+                    </span>
+                  </div>
+
+                  {/* Faculty Children Nodes */}
+                  {isFacultiesFolderOpen && (
+                    <div className="relative pl-4 border-l-2 border-brand-200 dark:border-brand-800/80 ml-3 mt-1 space-y-1.5">
+                      {filteredFaculties.map((faculty) => {
+                        const isExpanded = Boolean(expandedFacultyIds[faculty._id]);
+                        const children = childrenByFacultyId[faculty._id] || [];
+                        const isSelected = selectedNodeId === faculty._id;
+
+                        return (
+                          <div key={faculty._id} className="relative">
+                            {/* Faculty Node Row */}
+                            <div
+                              onClick={() => setSelectedNodeId(faculty._id)}
+                              className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                                isSelected
+                                  ? 'bg-brand-50 text-brand-800 dark:bg-brand-950 dark:text-brand-200 font-bold border border-brand-300 dark:border-brand-700 shadow-2xs'
+                                  : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {children.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedFacultyIds((prev) => ({
+                                        ...prev,
+                                        [faculty._id]: !prev[faculty._id],
+                                      }));
+                                    }}
+                                    className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400"
+                                  >
+                                    {isExpanded ? (
+                                      <ChevronDown className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <ChevronRight className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="w-4 h-4 inline-block" />
+                                )}
+                                <GraduationCap className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 flex-shrink-0" />
+                                <span className="truncate">{faculty.name}</span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-semibold">
+                                  {children.length} BM
+                                </span>
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300 font-semibold">
+                                  {getAggregateStats(faculty).totalMembers} CB/GV
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Bo Mon Children (Leaves of the tree) */}
+                            {isExpanded && children.length > 0 && (
+                              <div className="relative pl-4 border-l-2 border-indigo-200 dark:border-indigo-800/80 ml-3.5 mt-1 space-y-1">
+                                {children.map((bm) => {
+                                  const isBmSelected = selectedNodeId === bm._id;
+                                  return (
+                                    <div
+                                      key={bm._id}
+                                      onClick={() => setSelectedNodeId(bm._id)}
+                                      className={`p-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${
+                                        isBmSelected
+                                          ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200 font-bold border border-indigo-300 dark:border-indigo-700'
+                                          : 'hover:bg-slate-100 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <CornerDownRight className="w-3 h-3 text-indigo-400 flex-shrink-0" />
+                                        <span className="truncate">{bm.name}</span>
+                                      </div>
+                                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold flex-shrink-0">
+                                        {getDirectMemberCount(bm)} GV
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* ===============================================================
+                    BRANCH 2: KHỐI PHÒNG BAN CHỨC NĂNG
+                   =============================================================== */}
+                <div>
+                  {/* Branch Folder Header */}
+                  <div
+                    onClick={() => {
+                      setIsFunctionalFolderOpen(!isFunctionalFolderOpen);
+                      setSelectedNodeId('KHU_PHONGBAN');
+                    }}
+                    className={`p-2 rounded-xl cursor-pointer flex items-center justify-between transition-colors ${
+                      selectedNodeId === 'KHU_PHONGBAN'
+                        ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800'
+                        : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-semibold'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsFunctionalFolderOpen(!isFunctionalFolderOpen);
+                        }}
+                        className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
+                      >
+                        {isFunctionalFolderOpen ? (
+                          <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        )}
+                      </button>
+                      {isFunctionalFolderOpen ? (
+                        <FolderOpen className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <Folder className="w-4 h-4 text-emerald-500" />
+                      )}
+                      <span className="truncate">Khối Phòng Ban Chức Năng</span>
+                    </div>
+                    <span className="px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 text-[10px] font-bold">
+                      {filteredFunctionalDepts.length} Phòng
+                    </span>
+                  </div>
+
+                  {/* Functional Dept Nodes */}
+                  {isFunctionalFolderOpen && (
+                    <div className="relative pl-4 border-l-2 border-emerald-200 dark:border-emerald-800/80 ml-3 mt-1 space-y-1">
+                      {filteredFunctionalDepts.map((pb) => {
+                        const isSelected = selectedNodeId === pb._id;
+                        return (
+                          <div
+                            key={pb._id}
+                            onClick={() => setSelectedNodeId(pb._id)}
+                            className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                              isSelected
+                                ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 font-bold border border-emerald-300 dark:border-emerald-700 shadow-2xs'
+                                : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Briefcase className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                              <span className="truncate">{pb.name}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold flex-shrink-0">
+                              {getDirectMemberCount(pb)} CB
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
+          </Card>
+        </div>
+
+        {/* =======================================================================
+            RIGHT COLUMN (65% - 7 cols): SELECTED DEPARTMENT DETAIL PANEL
+           ======================================================================= */}
+        <div className="lg:col-span-7 space-y-4">
+          {/* CASE A: ROOT BGH IS SELECTED */}
+          {selectedNodeId === 'ROOT_BGH' && (
+            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs">
+              <CardContent className="p-6 space-y-5">
+                <div className="flex items-start justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                      <Building2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
+                        Cơ Quan Điều Hành Trung Tâm (Root)
+                      </span>
+                      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mt-1">
+                        Ban Giám Hiệu • Trường Đại Học Nguyễn Trãi
+                      </h2>
+                      <p className="text-xs text-slate-500">
+                        Điều hành toàn diện các Khoa đào tạo và các Phòng ban chức năng
+                      </p>
+                    </div>
+                  </div>
+
+                  {isAdmin && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<Plus className="w-3.5 h-3.5" />}
+                      onClick={() => openCreateModal('khoa')}
+                    >
+                      Thêm Đơn Vị Mới
+                    </Button>
+                  )}
+                </div>
+
+                {/* Overall Campus Summary */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
+                    <span className="text-[11px] text-slate-500 block">Tổng nhân sự toàn trường:</span>
+                    <p className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-0.5">
+                      {stats.totalCampusStaff} Cán bộ / Giảng viên
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
+                    <span className="text-[11px] text-slate-500 block">Khối đào tạo:</span>
+                    <p className="text-xl font-bold text-brand-600 dark:text-brand-400 mt-0.5">
+                      {stats.khoaCount} Khoa • {stats.bomonCount} Bộ môn
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
+                    <span className="text-[11px] text-slate-500 block">Khối hành chính:</span>
+                    <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      {stats.phongbanCount} Phòng ban chức năng
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-brand-50/50 dark:bg-brand-950/20 border border-brand-200/60 dark:border-brand-800/40 text-xs text-brand-900 dark:text-brand-200 space-y-1.5">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-brand-600" />
+                    Hướng dẫn thao tác cây cơ cấu tổ chức:
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-300">
+                    Nhấp chọn bất kỳ <strong>Khoa đào tạo</strong>, <strong>Bộ môn</strong> hoặc{' '}
+                    <strong>Phòng ban chức năng</strong> ở Cây thư mục bên trái để xem hồ sơ quản lý, danh sách cán bộ giảng viên và cấu hình điểm danh Geofence tương ứng.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           )}
-        </Card>
-      )}
+
+          {/* CASE B: KHỐI KHOA FOLDER IS SELECTED */}
+          {selectedNodeId === 'KHU_KHOA' && (
+            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs">
+              <CardContent className="p-6 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400">
+                      <GraduationCap className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                        Khối Khoa Đào Tạo & Bộ Môn Chuyên Môn
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Tổng cộng {faculties.length} Khoa đào tạo và {stats.bomonCount} Bộ môn trực thuộc
+                      </p>
+                    </div>
+                  </div>
+                  {isAdmin && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<Plus className="w-3.5 h-3.5" />}
+                      onClick={() => openCreateModal('khoa')}
+                    >
+                      Thêm Khoa
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {faculties.map((f) => {
+                    const children = childrenByFacultyId[f._id] || [];
+                    const agg = getAggregateStats(f);
+                    return (
+                      <div
+                        key={f._id}
+                        onClick={() => setSelectedNodeId(f._id)}
+                        className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-brand-500/50 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between gap-2.5"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+                              Khoa Cấp 1
+                            </span>
+                            <span className="text-[10px] font-semibold text-indigo-600">
+                              {children.length} Bộ Môn
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-1.5">
+                            {f.name}
+                          </h4>
+                        </div>
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
+                          <span>{agg.totalMembers} CB/GV</span>
+                          <span className="text-brand-600 font-semibold flex items-center gap-0.5">
+                            Xem chi tiết <ChevronRight className="w-3 h-3" />
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* CASE C: KHỐI PHÒNG BAN FOLDER IS SELECTED */}
+          {selectedNodeId === 'KHU_PHONGBAN' && (
+            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs">
+              <CardContent className="p-6 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
+                      <Briefcase className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                        Khối Phòng Ban Chức Năng
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Tổng cộng {functionalDepts.length} phòng ban chức năng trực thuộc Ban Giám Hiệu
+                      </p>
+                    </div>
+                  </div>
+                  {isAdmin && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<Plus className="w-3.5 h-3.5" />}
+                      onClick={() => openCreateModal('phongban')}
+                    >
+                      Thêm Phòng Ban
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {functionalDepts.map((pb) => (
+                    <div
+                      key={pb._id}
+                      onClick={() => setSelectedNodeId(pb._id)}
+                      className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-500/50 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between gap-2.5"
+                    >
+                      <div>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                          Phòng Ban Cấp 1
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-1.5">
+                          {pb.name}
+                        </h4>
+                      </div>
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>{getDirectMemberCount(pb)} Cán bộ</span>
+                        <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
+                          Xem chi tiết <ChevronRight className="w-3 h-3" />
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* CASE D: AN ACTUAL DEPARTMENT NODE IS SELECTED (KHOA / BOMON / PHONGBAN) */}
+          {activeDepartment && (
+            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs">
+              <CardContent className="p-6 space-y-5">
+                {/* Department Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                        activeDepartment.type === 'khoa'
+                          ? 'bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400'
+                          : activeDepartment.type === 'bomon'
+                          ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400'
+                          : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400'
+                      }`}
+                    >
+                      {activeDepartment.type === 'khoa' ? (
+                        <GraduationCap className="w-6 h-6" />
+                      ) : activeDepartment.type === 'bomon' ? (
+                        <Layers className="w-6 h-6" />
+                      ) : (
+                        <Briefcase className="w-6 h-6" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                          {activeDepartment.name}
+                        </h2>
+                        <Badge
+                          variant={UNIT_TYPE_META[activeDepartment.type]?.badgeVariant || 'info'}
+                          size="sm"
+                        >
+                          {UNIT_TYPE_META[activeDepartment.type]?.label || activeDepartment.type}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {activeDepartment.type === 'bomon'
+                          ? `Trực thuộc: ${
+                              typeof activeDepartment.parentId === 'object'
+                                ? activeDepartment.parentId?.name
+                                : 'Khoa đào tạo'
+                            }`
+                          : 'Đơn vị cấp 1 trực thuộc trực tiếp Ban Giám Hiệu'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons for this unit */}
+                  {isAdmin && (
+                    <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                      {activeDepartment.type === 'khoa' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs py-1 px-2.5"
+                          leftIcon={<Plus className="w-3.5 h-3.5 text-indigo-500" />}
+                          onClick={() => openCreateModal('bomon', activeDepartment._id)}
+                        >
+                          Thêm Bộ Môn
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs py-1 px-2.5"
+                        leftIcon={<Edit className="w-3.5 h-3.5 text-brand-600" />}
+                        onClick={(e) => openEditModal(activeDepartment, e)}
+                      >
+                        Chỉnh sửa
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        className="text-xs py-1 px-2.5"
+                        leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                        onClick={() => setDeleteTarget(activeDepartment)}
+                      >
+                        Xóa
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Info Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {/* Manager / Leader Card */}
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
+                    <span className="text-[11px] text-slate-400 block mb-1.5 font-medium">
+                      {activeDepartment.type === 'khoa'
+                        ? 'Trưởng Khoa phụ trách:'
+                        : activeDepartment.type === 'bomon'
+                        ? 'Trưởng Bộ Môn phụ trách:'
+                        : 'Trưởng Phòng Ban phụ trách:'}
+                    </span>
+                    {renderManagerSnippet(activeDepartment)}
+                  </div>
+
+                  {/* Geofence & Location */}
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
+                    <span className="text-[11px] text-slate-400 block mb-1.5 font-medium">
+                      Tọa độ Geofence & Bán kính chấm công:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Compass className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                      <div>
+                        <p className="font-bold text-slate-800 dark:text-slate-200">
+                          Bán kính hợp lệ: {activeDepartment.radiusMeters || 200}m
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-mono">
+                          Tâm: {activeDepartment.latitude || '21.007051'},{' '}
+                          {activeDepartment.longitude || '105.824812'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-departments (If Active Dept is a Faculty) */}
+                {activeDepartment.type === 'khoa' && (
+                  <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <Layers className="w-4 h-4 text-indigo-500" />
+                        Các Bộ Môn Chuyên Môn Trực Thuộc (
+                        {(childrenByFacultyId[activeDepartment._id] || []).length})
+                      </h4>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => openCreateModal('bomon', activeDepartment._id)}
+                          className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" /> Thêm Bộ môn
+                        </button>
+                      )}
+                    </div>
+
+                    {(childrenByFacultyId[activeDepartment._id] || []).length === 0 ? (
+                      <p className="text-xs text-slate-400 italic py-2">
+                        Khoa này chưa có bộ môn trực thuộc nào.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {(childrenByFacultyId[activeDepartment._id] || []).map((bm) => (
+                          <div
+                            key={bm._id}
+                            onClick={() => setSelectedNodeId(bm._id)}
+                            className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-500 transition-all cursor-pointer flex items-center justify-between text-xs"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
+                                {bm.name}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                {getDirectMemberCount(bm)} Giảng viên
+                              </span>
+                            </div>
+                            <ExternalLink className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Staff / Lecturers Table */}
+                <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <UsersIcon className="w-4 h-4 text-brand-500" />
+                      Danh Sách Cán Bộ, Giảng Viên ({activeDeptMembers.length})
+                    </h4>
+                  </div>
+
+                  {activeDeptMembers.length === 0 ? (
+                    <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 text-center text-slate-400 text-xs">
+                      Chưa có cán bộ hoặc giảng viên nào thuộc đơn vị này.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200/80 dark:border-slate-800 rounded-2xl max-h-64 overflow-y-auto">
+                      {activeDeptMembers.map((member) => {
+                        const avatar = resolveAvatarUrl(member.avatar || member.facePhoto);
+                        const { cleanName, title } = splitNameAndTitle(member.fullName);
+                        return (
+                          <div
+                            key={member._id}
+                            className="p-2.5 flex items-center justify-between gap-3 bg-white dark:bg-slate-900 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 text-xs"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <UserAvatar
+                                user={member}
+                                name={member.fullName}
+                                avatarUrl={member.avatar}
+                                staffCode={member.staffCode || member._id}
+                                size="xs"
+                                shape="rounded"
+                              />
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                                  {cleanName}
+                                </p>
+                                <p className="text-[10px] text-slate-400 truncate">
+                                  {member.staffCode || member.email}
+                                  {title ? ` • ${title}` : ''}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {member.isFaceRegistered ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                  <CheckCircle2 className="w-3 h-3" /> Face ID
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-400">
+                                  Chưa Face
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
 
       {/* =========================================================================
-          MODAL 1: THÊM MỚI / CẬP NHẬT ĐƠN VỊ (KHOA / BỘ MÔN / PHÒNG BAN)
+          MODAL 1: THÊM MỚI / CHỈNH SỬA ĐƠN VỊ TỔ CHỨC
          ========================================================================= */}
       {isFormModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur z-10">
+        <Portal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
+                <div className="p-2.5 rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 border border-brand-200/60 dark:border-brand-800/40">
                   <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                    {isEditing ? 'Chỉnh Sửa Đơn Vị Tổ Chức' : 'Thêm Mới Khoa / Bộ Môn / Phòng Ban'}
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    {isEditing ? 'Chỉnh Sửa Đơn Vị Tổ Chức' : 'Thêm Mới Đơn Vị Vào Cây Cơ Cấu'}
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    Tự động kiểm tra phân cấp cây tổ chức và đồng bộ quyền Trưởng khoa
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Cập nhật vị trí trong cây phân cấp và cấu hình Geofence chấm công
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsFormModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleFormSubmit} className="p-6 space-y-4">
-              {/* Loại đơn vị */}
+            <form onSubmit={handleFormSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Phân loại đơn vị */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
                   Phân loại đơn vị tổ chức <span className="text-rose-500">*</span>
                 </label>
-                <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-3 gap-2">
                   {(
                     [
-                      { id: 'khoa', title: 'Khoa Đào Tạo', sub: 'Cấp 1 (Thuộc Trường)' },
+                      { id: 'khoa', title: 'Khoa Đào Tạo', sub: 'Cấp 1 (Học thuật)' },
                       { id: 'bomon', title: 'Bộ Môn', sub: 'Cấp 2 (Thuộc Khoa)' },
                       { id: 'phongban', title: 'Phòng Ban', sub: 'Cấp 1 (Chức năng)' },
                     ] as const
@@ -1438,7 +1407,7 @@ export const Departments: React.FC = () => {
                           parentId: item.id === 'bomon' ? prev.parentId || faculties[0]?._id || '' : '',
                         }))
                       }
-                      className={`p-3 rounded-2xl border text-left transition-all ${
+                      className={`p-2.5 rounded-2xl border text-left transition-all ${
                         formData.type === item.id
                           ? 'border-brand-600 bg-brand-50/70 dark:bg-brand-950/40 ring-2 ring-brand-500/20'
                           : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
@@ -1465,18 +1434,18 @@ export const Departments: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder={
                     formData.type === 'khoa'
-                      ? 'VD: Khoa Công nghệ Thông tin & Chuyển đổi số'
+                      ? 'VD: Khoa Công nghệ Thông tin & Thiết kế Đồ họa'
                       : formData.type === 'bomon'
                       ? 'VD: Bộ môn Trí tuệ Nhân tạo & Khoa học Dữ liệu'
-                      : 'VD: Phòng Tổ chức - Cán bộ'
+                      : 'VD: Phòng Quản lý Đào tạo'
                   }
-                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                 />
               </div>
 
-              {/* Đơn vị chủ quản (Nếu là Bộ môn thì bắt buộc chọn Khoa) */}
+              {/* Đơn vị cha (nếu là Bộ môn) */}
               {formData.type === 'bomon' ? (
-                <div className="space-y-1.5 p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50">
+                <div className="space-y-1.5 p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50">
                   <label className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
                     Khoa đào tạo chủ quản <span className="text-rose-500">*</span>
                   </label>
@@ -1495,7 +1464,7 @@ export const Departments: React.FC = () => {
                   </select>
                 </div>
               ) : (
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-brand-600 flex-shrink-0" />
                   <span>
                     Đơn vị cấp 1 trực thuộc trực tiếp <strong>Ban Giám Hiệu Nhà Trường</strong> (parentId = null).
@@ -1515,7 +1484,7 @@ export const Departments: React.FC = () => {
                 <select
                   value={formData.managerId}
                   onChange={(e) => setFormData({ ...formData, managerId: e.target.value })}
-                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                 >
                   <option value="">-- Chưa bổ nhiệm / Bổ nhiệm sau --</option>
                   {eligibleManagers.map((u) => (
@@ -1524,20 +1493,14 @@ export const Departments: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                {formData.type === 'khoa' && (
-                  <p className="text-[11px] text-slate-500">
-                    Lưu ý: Khi bổ nhiệm Giảng viên làm Trưởng khoa, hệ thống sẽ tự động đồng bộ vai trò{' '}
-                    <code className="font-mono text-brand-600">truongkhoa</code> cho cán bộ đó.
-                  </p>
-                )}
               </div>
 
-              {/* Tọa độ GPS Geofence & Bán kính điểm danh */}
-              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60 space-y-3">
+              {/* Tọa độ Geofence & Bán kính điểm danh */}
+              <div className="p-3.5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
                     <Compass className="w-4 h-4 text-emerald-500" />
-                    <span>Tọa độ Tâm Geofence & Bán kính Chấm công</span>
+                    <span>Tọa độ Geofence & Bán kính Điểm danh</span>
                   </div>
                   <button
                     type="button"
@@ -1553,7 +1516,7 @@ export const Departments: React.FC = () => {
                             toast.success('Đã lấy tọa độ GPS hiện tại');
                           },
                           () => {
-                            toast.error('Không thể truy cập vị trí trình duyệt');
+                            toast.error('Không thể truy cập GPS trình duyệt');
                           }
                         );
                       }
@@ -1564,10 +1527,10 @@ export const Departments: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <div>
-                    <label className="text-[11px] font-medium text-slate-500 block mb-1">
-                      Vĩ độ (Latitude)
+                    <label className="text-[10px] font-medium text-slate-500 block mb-1">
+                      Vĩ độ (Lat)
                     </label>
                     <input
                       type="number"
@@ -1575,12 +1538,12 @@ export const Departments: React.FC = () => {
                       value={formData.latitude}
                       onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
                       placeholder="21.007051"
-                      className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                      className="w-full px-2.5 py-1.5 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-medium text-slate-500 block mb-1">
-                      Kinh độ (Longitude)
+                    <label className="text-[10px] font-medium text-slate-500 block mb-1">
+                      Kinh độ (Lng)
                     </label>
                     <input
                       type="number"
@@ -1588,12 +1551,12 @@ export const Departments: React.FC = () => {
                       value={formData.longitude}
                       onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
                       placeholder="105.824812"
-                      className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                      className="w-full px-2.5 py-1.5 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-medium text-slate-500 block mb-1">
-                      Bán kính hợp lệ (mét)
+                    <label className="text-[10px] font-medium text-slate-500 block mb-1">
+                      Bán kính (mét)
                     </label>
                     <input
                       type="number"
@@ -1603,13 +1566,13 @@ export const Departments: React.FC = () => {
                       onChange={(e) =>
                         setFormData({ ...formData, radiusMeters: Number(e.target.value) })
                       }
-                      className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                      className="w-full px-2.5 py-1.5 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 shrink-0">
                 <Button
                   type="button"
                   variant="outline"
@@ -1625,261 +1588,51 @@ export const Departments: React.FC = () => {
             </form>
           </div>
         </div>
+        </Portal>
       )}
 
       {/* =========================================================================
-          MODAL 2: CHI TIẾT ĐƠN VỊ & DANH SÁCH CÁN BỘ TRỰC THUỘC
+          MODAL 2: XÁC NHẬN XÓA ĐƠN VỊ
          ========================================================================= */}
-      {isDetailModalOpen && selectedDept && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur z-10">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
-                  <Building2 className="w-5 h-5" />
+      {deleteTarget && (
+        <Portal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-200">
+              <div className="flex items-start gap-3.5">
+                <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 border border-rose-200/60 dark:border-rose-800/40 shrink-0">
+                  <AlertCircle className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                      {selectedDept.name}
-                    </h3>
-                    <Badge
-                      variant={UNIT_TYPE_META[selectedDept.type]?.badgeVariant || 'info'}
-                      size="sm"
-                    >
-                      {UNIT_TYPE_META[selectedDept.type]?.label || selectedDept.type}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    Thông tin cơ cấu tổ chức, bộ môn trực thuộc và danh sách cán bộ, giảng viên
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsDetailModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-5 text-xs">
-              {/* Summary Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60">
-                  <span className="text-[11px] text-slate-400 block mb-1.5">
-                    Người phụ trách / Trưởng đơn vị:
-                  </span>
-                  {renderManagerBadge(selectedDept)}
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60">
-                  <span className="text-[11px] text-slate-400 block mb-1">
-                    Đơn vị chủ quản & Tọa độ Geofence:
-                  </span>
-                  <p className="font-bold text-slate-800 dark:text-slate-100">
-                    {typeof selectedDept.parentId === 'object' && selectedDept.parentId?.name
-                      ? selectedDept.parentId.name
-                      : 'Ban Giám Hiệu (Cấp Trường)'}
-                  </p>
-                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
-                    Bán kính điểm danh: {selectedDept.radiusMeters || 200}m
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    Xác nhận xóa đơn vị tổ chức?
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                    Bạn đang yêu cầu xóa <strong>{deleteTarget.name}</strong>. Hệ thống chỉ cho phép xóa khi đơn vị không còn cán bộ/giảng viên hoặc bộ môn trực thuộc.
                   </p>
                 </div>
               </div>
 
-              {/* Child Bộ Môn if selectedDept is a Khoa */}
-              {selectedDept.type === 'khoa' && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <Layers className="w-4 h-4 text-indigo-500" />
-                      Các Bộ Môn Trực Thuộc ({(childrenByFacultyId[selectedDept._id] || []).length})
-                    </h4>
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsDetailModalOpen(false);
-                          openCreateModal('bomon', selectedDept._id);
-                        }}
-                        className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Thêm Bộ môn
-                      </button>
-                    )}
-                  </div>
-
-                  {(childrenByFacultyId[selectedDept._id] || []).length === 0 ? (
-                    <p className="text-slate-400 italic py-2">Chưa có Bộ môn trực thuộc.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {(childrenByFacultyId[selectedDept._id] || []).map((bm) => (
-                        <div
-                          key={bm._id}
-                          className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between"
-                        >
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            {bm.name}
-                          </span>
-                          <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold">
-                            {bm.memberCount || 0} GV
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Staff / Lecturers List */}
-              <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <UsersIcon className="w-4 h-4 text-brand-500" />
-                  Danh Sách Cán Bộ, Giảng Viên Trực Thuộc ({selectedDeptMembers.length})
-                </h4>
-
-                {selectedDeptMembers.length === 0 ? (
-                  <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 text-center text-slate-400">
-                    Chưa có cán bộ, giảng viên nào thuộc đơn vị này.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200/80 dark:border-slate-800 rounded-2xl max-h-64 overflow-y-auto">
-                    {selectedDeptMembers.map((member) => {
-                      const avatar = resolveAvatarUrl(member.avatar || member.facePhoto);
-                      const { cleanName, title } = splitNameAndTitle(member.fullName);
-                      return (
-                        <div
-                          key={member._id}
-                          className="p-3 flex items-center justify-between gap-3 bg-white dark:bg-slate-900 hover:bg-slate-50/70 dark:hover:bg-slate-800/50"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            {avatar ? (
-                              <img
-                                src={avatar}
-                                alt={cleanName}
-                                className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700 flex-shrink-0"
-                              />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold text-[11px] flex items-center justify-center flex-shrink-0">
-                                {getInitials(cleanName)}
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
-                                {cleanName}
-                              </p>
-                              <p className="text-[11px] text-slate-400 truncate">
-                                {member.staffCode || member.email}
-                                {title ? ` • ${title}` : ''}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            {member.isFaceRegistered ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                                <CheckCircle2 className="w-3 h-3" />
-                                Đã có Face ID
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500">
-                                Chưa ĐK Face
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
-                {isAdmin ? (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      leftIcon={<Edit className="w-3.5 h-3.5" />}
-                      onClick={() => {
-                        setIsDetailModalOpen(false);
-                        openEditModal(selectedDept);
-                      }}
-                    >
-                      Chỉnh sửa
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      leftIcon={<Trash2 className="w-3.5 h-3.5" />}
-                      onClick={() => {
-                        setIsDetailModalOpen(false);
-                        setDeleteTarget(selectedDept);
-                      }}
-                    >
-                      Xóa đơn vị
-                    </Button>
-                  </div>
-                ) : (
-                  <div />
-                )}
+              <div className="flex items-center justify-end gap-2.5 pt-2">
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   size="sm"
-                  onClick={() => setIsDetailModalOpen(false)}
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={submitting}
                 >
-                  Đóng
+                  Hủy bỏ
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleConfirmDelete}
+                  isLoading={submitting}
+                >
+                  Xác nhận xóa
                 </Button>
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODAL 3: XÁC NHẬN XÓA ĐƠN VỊ
-         ========================================================================= */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex-shrink-0">
-                <AlertCircle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  Xác nhận xóa đơn vị tổ chức?
-                </h3>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Bạn đang yêu cầu xóa <strong>{deleteTarget.name}</strong>. Hệ thống chỉ cho phép xóa khi đơn vị không còn cán bộ/giảng viên hoặc bộ môn trực thuộc.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDeleteTarget(null)}
-                disabled={submitting}
-              >
-                Hủy bỏ
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={handleConfirmDelete}
-                isLoading={submitting}
-              >
-                Xác nhận xóa
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Portal>
       )}
     </div>
   );

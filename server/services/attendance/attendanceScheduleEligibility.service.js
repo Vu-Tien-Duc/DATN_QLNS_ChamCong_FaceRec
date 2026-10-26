@@ -7,15 +7,28 @@ const AuditLog = require('../../models/auditLog.model');
 const { processScheduleAttendanceCheck } = require('../cron.service');
 const { getVietnamTime, getVietnamDayRange, timeStringToMinutes } = require('../../utils/attendanceTime.utils');
 
+const mongoose = require('mongoose');
+const { isScheduleActiveOnDate } = require('../../utils/scheduleDate.utils');
+
 /**
  * Đánh giá lịch hôm nay và gọi luồng hiện có để xử lý vắng mặt khi ca đã quá hạn điểm danh.
  */
-const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) => {
+const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null, userObj = null) => {
   const nowVN = getVietnamTime();
   const currentWeekday = nowVN.getDay();
   const currentMinutes = nowVN.getHours() * 60 + nowVN.getMinutes();
   const dayRange = getVietnamDayRange(nowVN);
   const { startOfDay, endOfDay } = dayRange;
+
+  // Lấy thông tin họ tên & vai trò của cán bộ / giảng viên đang chấm công
+  let user = userObj && (userObj.fullName || userObj.ho_ten) ? userObj : null;
+  if (!user && userId && mongoose.isValidObjectId(userId)) {
+    const User = require('../../models/user.model');
+    user = await User.findById(userId).select('fullName ho_ten role vai_tro_chinh').lean();
+  }
+  const userName = user?.fullName || user?.ho_ten || 'Cán bộ';
+  const userRole = (user?.role || user?.vai_tro_chinh || '').toLowerCase();
+  const prefix = userRole === 'giangvien' ? 'Giảng viên' : 'Cán bộ';
 
   const query = {
     userId,
@@ -24,7 +37,8 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) =>
     endDate: { $gte: startOfDay },
   };
 
-  if (specificShiftId) {
+  // Chỉ gán shiftId nếu specificShiftId là một ObjectId hợp lệ (tránh nhận nhầm Date object)
+  if (specificShiftId && mongoose.isValidObjectId(specificShiftId) && !(specificShiftId instanceof Date)) {
     query.shiftId = specificShiftId;
   }
 
@@ -38,7 +52,7 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) =>
     return {
       canCheckIn: false,
       status: 'NO_SCHEDULE',
-      message: 'Hôm nay bạn không có lịch làm việc/giảng dạy trên hệ thống.',
+      message: `${prefix} ${userName} hôm nay không có lịch phân công giảng dạy hoặc ca làm việc nào trên hệ thống.`,
     };
   }
 
@@ -51,6 +65,11 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) =>
   for (const sch of schedules) {
     const shift = sch.shiftId;
     if (!shift) continue;
+
+    // Bỏ qua nếu hôm nay không nằm trong tuần học áp dụng hoặc rơi vào ngoại lệ ngày nghỉ
+    if (!isScheduleActiveOnDate(sch, nowVN)) {
+      continue;
+    }
 
     const shiftStartStr = sch.startTime || shift.startTime;
     const shiftEndStr = sch.endTime || shift.endTime;
@@ -179,7 +198,7 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) =>
       canCheckIn: false,
       status: 'ALREADY_CHECKED_IN',
       existingLog: alreadyCheckedInLog,
-      message: 'Bạn đã thực hiện check-in cho ca làm việc hôm nay rồi.',
+      message: `${prefix} ${userName} đã thực hiện điểm danh vào ca làm việc hôm nay rồi.`,
     };
   }
 
@@ -192,7 +211,7 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) =>
       return {
         canCheckIn: false,
         status: 'SCHEDULE_CANCELLED_LATE',
-        message: `Ca làm việc ${c.shiftName} (${c.startTime}) đã quá hạn check-in (vượt ngưỡng cho phép đi muộn ${thresholdText}) và đã tự động bị hủy lịch / ghi nhận vắng mặt. Ca tiếp theo: ${upcomingSchedule.shiftName} (${upcomingSchedule.startTime})${openTimeText} chưa đến giờ điểm danh.`,
+        message: `Lịch dạy/Ca làm việc ${c.shiftName} (${c.startTime}) của ${prefix} ${userName} đã quá hạn điểm danh (quá ${thresholdText}) và đã tự động ghi nhận vắng mặt. Ca tiếp theo: ${upcomingSchedule.shiftName} (${upcomingSchedule.startTime})${openTimeText} chưa đến giờ điểm danh.`,
         cancelledSchedules,
         upcomingSchedule,
       };
@@ -200,7 +219,7 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) =>
     return {
       canCheckIn: false,
       status: 'SCHEDULE_CANCELLED_LATE',
-      message: `Ca làm việc ${c.shiftName} (${c.startTime} - ${c.endTime}) đã quá hạn check-in (vượt ngưỡng cho phép đi muộn ${thresholdText}) và đã tự động bị hủy lịch / ghi nhận vắng mặt.`,
+      message: `Lịch dạy/Ca làm việc ${c.shiftName} (${c.startTime} - ${c.endTime}) của ${prefix} ${userName} đã quá hạn điểm danh (quá ${thresholdText}) và đã tự động ghi nhận vắng mặt.`,
       cancelledSchedules,
     };
   }
@@ -211,7 +230,7 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) =>
     return {
       canCheckIn: false,
       status: 'TOO_EARLY',
-      message: `Chưa đến giờ điểm danh. Ca làm việc tiếp theo: ${upcomingSchedule.shiftName} (${upcomingSchedule.startTime} - ${upcomingSchedule.endTime})${openTimeText}. Bạn chỉ có thể điểm danh trước giờ bắt đầu tối đa 30 phút.`,
+      message: `Chưa đến giờ điểm danh của ${prefix} ${userName}. Ca làm việc/lịch dạy tiếp theo: ${upcomingSchedule.shiftName} (${upcomingSchedule.startTime} - ${upcomingSchedule.endTime})${openTimeText}. Bạn chỉ có thể điểm danh trước giờ bắt đầu tối đa 30 phút.`,
       upcomingSchedule,
     };
   }
@@ -225,7 +244,7 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) =>
     return {
       canCheckIn: false,
       status: 'SCHEDULE_ABSENT_RECORDED',
-      message: `Ca làm việc ${shiftName} (${lastAbsent.shiftStartStr} - ${lastAbsent.shiftEndStr}) đã quá hạn điểm danh${thresholdText} và đã bị ghi nhận ${statusText}. Bạn không thể thực hiện điểm danh cho ca này nữa.`,
+      message: `Lịch dạy/Ca làm việc ${shiftName} (${lastAbsent.shiftStartStr} - ${lastAbsent.shiftEndStr}) của ${prefix} ${userName} đã quá hạn điểm danh${thresholdText} và đã bị ghi nhận ${statusText}.`,
       absentSchedules,
     };
   }
@@ -234,7 +253,7 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) =>
   return {
     canCheckIn: false,
     status: 'ALL_SCHEDULES_COMPLETED',
-    message: 'Bạn đã hoàn thành tất cả các ca làm việc trong ngày hôm nay.',
+    message: `${prefix} ${userName} đã hoàn thành tất cả các ca làm việc/lịch dạy trong ngày hôm nay.`,
   };
 };
 
@@ -250,4 +269,4 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null) =>
  * @returns {Object} { finalStatus, isEarlyLeave, earlyMinutes }
  */
 
-module.exports = { evaluateUserScheduleForCheckIn };
+module.exports = { evaluateUserScheduleForCheckIn, isScheduleActiveOnDate };

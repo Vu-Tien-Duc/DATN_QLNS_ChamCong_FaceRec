@@ -61,10 +61,10 @@ systemConfigSchema.aliases = {
 // Bảng giá trị cấu hình mặc định tham chiếu chuẩn từ Mục 3 Đặc tả:
 const CAU_HINH_MAC_DINH = {
   HOC_KY: { nam_hoc: '2026-2027', hoc_ky: 1, ngay_bat_dau: '2026-09-07', so_tuan: 18 },
-  GEOFENCE_TRUONG: { ten_co_so: 'Trụ sở chính', toa_do: [105.7826, 21.0378], ban_kinh_met: 150 },
+  GEOFENCE_TRUONG: { ten_co_so: 'Trường Đại học Nguyễn Trãi - 28A Lê Trọng Tấn, Hà Đông', toa_do: [105.7628, 20.9752], ban_kinh_met: 150 },
   DANH_SACH_PHONG_HOC: [
-    { ma_phong: 'A101', toa_do: [105.78261, 21.03781], ban_kinh_met: 30 },
-    { ma_phong: 'B202', toa_do: [105.78270, 21.03790], ban_kinh_met: 30 }
+    { ma_phong: 'A101', toa_do: [105.76281, 20.97521], ban_kinh_met: 30 },
+    { ma_phong: 'B202', toa_do: [105.76290, 20.97530], ban_kinh_met: 30 }
   ],
   LUONG_CO_SO: 2530000,
   GIAM_TRU: { ban_than: 15500000, phu_thuoc: 6200000 },

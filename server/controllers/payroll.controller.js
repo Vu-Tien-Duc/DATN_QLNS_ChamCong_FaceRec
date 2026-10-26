@@ -154,6 +154,17 @@ const getPayrollById = async (req, res, next) => {
  */
 const getMyPayroll = async (req, res, next) => {
   try {
+    const role = String(req.user?.role || req.user?.primaryRole || '').toLowerCase();
+    if (role === 'admin') {
+      return sendError(
+        res,
+        'Tài khoản Quản trị viên IT (Admin) không có phiếu lương cá nhân.',
+        null,
+        403,
+        'ADMIN_NO_PERSONAL_PAYROLL'
+      );
+    }
+
     const now = new Date();
     const month = req.query.month || req.query.thang || (now.getMonth() + 1);
     const year = req.query.year || req.query.nam || now.getFullYear();
