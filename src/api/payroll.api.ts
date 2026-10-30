@@ -79,7 +79,7 @@ export interface PayrollRecord {
   personalIncomeTax?: TaxTncnData;
   thue_tncn?: TaxTncnData;
   netSalary: number;
-  status: 'DU_THAO' | 'CHO_DUYET' | 'DA_DUYET' | 'DA_KHOA' | 'DA_THANH_TOAN' | string;
+  status: 'du_thao' | 'cho_duyet' | 'da_duyet' | 'da_khoa' | 'da_thanh_toan' | string;
   isLocked?: boolean;
   lockedAt?: string;
   createdAt?: string;

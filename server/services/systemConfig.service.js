@@ -171,13 +171,13 @@ const updateConfig = async (key, rawValue, currentUser = null, req = null) => {
   try {
     await AuditLog.create({
       actor: currentUser?._id || currentUser?.id || null,
-      actorType: 'USER',
+      actorType: 'user',
       action: 'UPDATE_SYSTEM_CONFIG',
       targetId: upperKey,
       targetType: 'SystemConfig',
       ipAddress: req?.ip || req?.connection?.remoteAddress || '127.0.0.1',
       userAgent: req?.headers?.['user-agent'] || 'SystemConfigAdmin',
-      status: 'SUCCESS',
+      status: 'success',
       timestamp: new Date(),
       details: {
         key: upperKey,

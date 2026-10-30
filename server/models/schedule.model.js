@@ -3,6 +3,35 @@ require('./user.model');
 require('./shiftConfig.model');
 require('./subject.model');
 
+const exceptionSchema = new mongoose.Schema(
+  {
+    ngay: {
+      type: Date,
+      alias: 'date',
+      required: [true, 'Ngày ngoại lệ (date / ngay) là bắt buộc'],
+    },
+    ly_do: {
+      type: String,
+      alias: 'reason',
+      trim: true,
+      default: '',
+    },
+    trang_thai: {
+      type: String,
+      alias: 'status',
+      enum: ['nghi', 'huy', 'day_bu'],
+      default: 'nghi',
+      set: (v) => v ? String(v).toLowerCase() : v,
+    },
+    ngay_day_bu: {
+      type: Date,
+      alias: 'makeupDate',
+      default: null,
+    },
+  },
+  { _id: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+);
+
 const scheduleSchema = new mongoose.Schema(
   {
     nguoi_dung_id: {
@@ -105,8 +134,9 @@ const scheduleSchema = new mongoose.Schema(
     loai_lich: {
       type: String,
       alias: 'scheduleType',
-      enum: ['CHINH_KHOA', 'DAY_BU'],
-      default: 'CHINH_KHOA',
+      enum: ['chinh_khoa', 'day_bu'],
+      default: 'chinh_khoa',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     ngay_day_bu: {
       type: Date,
@@ -114,17 +144,7 @@ const scheduleSchema = new mongoose.Schema(
       default: null,
     },
     ngoai_le: {
-      type: [
-        {
-          ngay: { type: Date, required: true },
-          ly_do: { type: String, default: '' },
-          trang_thai: {
-            type: String,
-            enum: ['NGHI', 'HUY', 'DAY_BU'],
-            default: 'NGHI',
-          },
-        },
-      ],
+      type: [exceptionSchema],
       alias: 'exceptions',
       default: [],
     },
@@ -141,7 +161,7 @@ const scheduleSchema = new mongoose.Schema(
     hoc_ky: {
       type: Number,
       alias: 'semester',
-      enum: [1, 2, 3],
+      enum: [0, 1, 2, 3],
       default: 1,
     },
   },
@@ -202,12 +222,11 @@ const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 scheduleSchema.plugin(schemaAliasPlugin);
 
 scheduleSchema.pre('validate', async function () {
-  const ShiftConfig = mongoose.models.ShiftConfig || mongoose.models.CaLamViec || require('./shiftConfig.model');
+  const ShiftConfig = mongoose.models.ShiftConfig || require('./shiftConfig.model');
   const targetShiftId = this.ca_id;
   if ((!this.gio_bat_dau || !this.gio_ket_thuc) && targetShiftId) {
     const shift = await ShiftConfig.findById(targetShiftId);
     if (!shift) {
-      this.invalidate('shiftId', 'Không tìm thấy ca làm việc được gán cho lịch');
       this.invalidate('ca_id', 'Không tìm thấy ca làm việc được gán cho lịch');
     } else {
       if (!this.gio_bat_dau) this.gio_bat_dau = shift.gio_bat_dau || shift.startTime;
@@ -216,12 +235,10 @@ scheduleSchema.pre('validate', async function () {
   }
 
   if (this.ngay_bat_dau && this.ngay_ket_thuc && new Date(this.ngay_ket_thuc).getTime() < new Date(this.ngay_bat_dau).getTime()) {
-    this.invalidate('endDate', 'Ngày kết thúc hiệu lực phải lớn hơn hoặc bằng ngày bắt đầu');
     this.invalidate('ngay_ket_thuc', 'Ngày kết thúc hiệu lực phải lớn hơn hoặc bằng ngày bắt đầu');
   }
 
   if (this.gio_bat_dau && this.gio_ket_thuc && this.gio_ket_thuc <= this.gio_bat_dau) {
-    this.invalidate('endTime', 'Giờ kết thúc lịch phải sau giờ bắt đầu; lịch qua đêm chưa được hỗ trợ');
     this.invalidate('gio_ket_thuc', 'Giờ kết thúc lịch phải sau giờ bắt đầu; lịch qua đêm chưa được hỗ trợ');
   }
 });
@@ -234,9 +251,5 @@ scheduleSchema.index({ nam_hoc: 1, hoc_ky: 1, nguoi_dung_id: 1 });
 scheduleSchema.index({ nam_hoc: 1, hoc_ky: 1, phong_hoc: 1 });
 
 const Schedule = mongoose.models.Schedule || mongoose.model('Schedule', scheduleSchema, 'lich_trinh');
-
-if (!mongoose.models.LichTrinh) {
-  mongoose.model('LichTrinh', scheduleSchema, 'lich_trinh');
-}
 
 module.exports = Schedule;

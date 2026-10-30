@@ -23,7 +23,7 @@ const mockAuditDocs = [
     hanh_dong: 'UPDATE_SYSTEM_CONFIG',
     doi_tuong_id: 'CAMPUS_GPS_RADIUS_METERS',
     loai_doi_tuong: 'SystemConfig',
-    ket_qua: 'SUCCESS',
+    ket_qua: 'success',
     dia_chi_ip: '127.0.0.1',
     thong_tin_trinh_duyet: 'Node-TestAgent',
     user_agent: 'Node-TestAgent',
@@ -42,10 +42,10 @@ const mockAuditDocs = [
     hanh_dong: 'LOCK_PAYROLL',
     doi_tuong_id: '6a9d57378cf3a6165de25df1',
     loai_doi_tuong: 'Payroll',
-    ket_qua: 'SUCCESS',
+    ket_qua: 'success',
     dia_chi_ip: '192.168.1.10',
     thoi_diem: new Date('2026-10-16T09:00:00.000Z'),
-    chi_tiet: { month: 10, year: 2026, status: 'DA_KHOA' },
+    chi_tiet: { month: 10, year: 2026, status: 'da_khoa' },
   },
   {
     _id: new mongoose.Types.ObjectId('6a9d57378cf3a6165de25def'),
@@ -53,7 +53,7 @@ const mockAuditDocs = [
     hanh_dong: 'LOGIN_FAILED',
     doi_tuong_id: 'auth_attempt',
     loai_doi_tuong: 'Auth',
-    ket_qua: 'FAILED',
+    ket_qua: 'failed',
     dia_chi_ip: '113.190.22.15',
     thoi_diem: new Date('2026-10-16T09:30:00.000Z'),
     chi_tiet: { reason: 'INVALID_CREDENTIALS', email: 'unknown@university.edu.vn' },
@@ -71,7 +71,7 @@ async function runTests() {
     hanh_dong: 'TEST_ACTION',
     doi_tuong_id: 'TEST_001',
     loai_doi_tuong: 'Test',
-    ket_qua: 'SUCCESS',
+    ket_qua: 'success',
   });
   sampleLog.isNew = false; // Giả lập document đã tồn tại trong DB
 
@@ -116,7 +116,7 @@ async function runTests() {
   try {
     const result = await getAuditLogs({
       action: 'UPDATE_SYSTEM_CONFIG',
-      status: 'SUCCESS',
+      status: 'success',
       keyword: 'GPS',
       page: 1,
       limit: 10,
@@ -126,7 +126,7 @@ async function runTests() {
     assert.strictEqual(result.pagination.page, 1, 'Trang hiện tại phải là 1.');
     assert.strictEqual(result.pagination.limit, 10, 'Giới hạn phải là 10.');
     assert.strictEqual(capturedQuery.action, 'UPDATE_SYSTEM_CONFIG', 'Query phải chứa đúng action.');
-    assert.strictEqual(capturedQuery.status, 'SUCCESS', 'Query phải lọc theo status SUCCESS.');
+    assert.strictEqual(capturedQuery.status, 'success', 'Query phải lọc theo status SUCCESS.');
     assert.ok(capturedQuery.$or, 'Query phải tạo $or regex cho keyword search.');
 
     console.log('✓ Test 2 ĐẠT: getAuditLogs xử lý đúng bộ lọc đa tiêu chí (action, status, keyword, pagination).');
@@ -255,11 +255,11 @@ async function runTests() {
     _id: '507f1f77bcf86cd799439011',
     thoi_diem: new Date('2026-10-17T08:00:00.000Z'),
     nguoi_thuc_hien_id: '60d0fe4f5311236168a109ca',
-    loai_chu_the: 'USER',
+    loai_chu_the: 'user',
     hanh_dong: 'LOGIN',
     loai_doi_tuong: 'User',
     doi_tuong_id: '60d0fe4f5311236168a109ca',
-    ket_qua: 'SUCCESS',
+    ket_qua: 'success',
     chi_tiet: { ip: '192.168.1.10' },
     ma_bam_truoc: GENESIS_HASH,
   };
@@ -273,11 +273,11 @@ async function runTests() {
     _id: '507f1f77bcf86cd799439012',
     thoi_diem: new Date('2026-10-17T08:05:00.000Z'),
     nguoi_thuc_hien_id: '60d0fe4f5311236168a109ca',
-    loai_chu_the: 'USER',
+    loai_chu_the: 'user',
     hanh_dong: 'CHECK_IN_FACE',
     loai_doi_tuong: 'AttendanceLog',
     doi_tuong_id: '60d0fe4f5311236168a109cb',
-    ket_qua: 'SUCCESS',
+    ket_qua: 'success',
     chi_tiet: { liveness: 0.98 },
     ma_bam_truoc: mockLog1.ma_bam_hien_tai,
   };
@@ -288,11 +288,11 @@ async function runTests() {
     _id: '507f1f77bcf86cd799439013',
     thoi_diem: new Date('2026-10-17T17:00:00.000Z'),
     nguoi_thuc_hien_id: '60d0fe4f5311236168a109ca',
-    loai_chu_the: 'USER',
+    loai_chu_the: 'user',
     hanh_dong: 'CHECK_OUT_FACE',
     loai_doi_tuong: 'AttendanceLog',
     doi_tuong_id: '60d0fe4f5311236168a109cb',
-    ket_qua: 'SUCCESS',
+    ket_qua: 'success',
     chi_tiet: { liveness: 0.99 },
     ma_bam_truoc: mockLog2.ma_bam_hien_tai,
   };

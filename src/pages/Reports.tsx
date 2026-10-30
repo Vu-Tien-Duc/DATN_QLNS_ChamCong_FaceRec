@@ -44,6 +44,8 @@ import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { DepartmentSelect } from '../components/ui/DepartmentSelect';
+import * as XLSX from 'xlsx';
 import { departmentApi } from '../api/department.api';
 import { DepartmentItem } from '../types';
 import {
@@ -312,124 +314,172 @@ export const Reports: React.FC = () => {
     try {
       const { overview, attendanceLogs, leaveRequests, staffStats, dailyStats } = exportData;
 
-      // Xây dựng nội dung CSV đa phân đoạn UTF-8 BOM
-      let csv = '\uFEFF';
+      // 1. SHEET 1: BÁO CÁO TỔNG QUAN
+      const overviewRows = [
+        ['BÁO CÁO TỔNG QUAN CHẤM CÔNG VÀ CHUYÊN CẦN'],
+        ['Hệ Thống Quản Lý Nhân Sự & Chấm Công Face Recognition (CSDL v2.5)'],
+        [],
+        ['CHỈ TIÊU BÁO CÁO', 'GIÁ TRỊ'],
+        ['Kỳ báo cáo', overview.period || `Tháng ${selectedMonth}/${selectedYear}`],
+        ['Đơn vị áp dụng', overview.department || 'Toàn Trường'],
+        ['Tổng số nhân sự theo dõi', overview.totalUsers],
+        ['Tổng số lượt ca làm việc / giảng dạy', overview.totalShifts],
+        ['Số ca đúng giờ', overview.onTimeCount],
+        ['Số ca đi muộn', overview.lateCount],
+        ['Số ca về sớm', overview.earlyLeaveCount],
+        ['Số ca vắng mặt không phép', overview.absentCount],
+        ['Số ca nghỉ có phép hợp lệ', overview.excusedAbsenceCount],
+        ['Tỷ lệ chuyên cần chung (%)', `${overview.overallAttendanceRate}%`],
+        ['Tổng số ngày nghỉ phép đã duyệt', `${overview.approvedLeaveDays} ngày`],
+        ['Thời điểm trích xuất dữ liệu', overview.exportedAt || new Date().toLocaleString('vi-VN')],
+      ];
+      const wsOverview = XLSX.utils.aoa_to_sheet(overviewRows);
+      wsOverview['!cols'] = [{ wch: 38 }, { wch: 32 }];
 
-      // PHẦN 1: BÁO CÁO TỔNG QUAN
-      csv += '=== BÁO CÁO TỔNG QUAN CHẤM CÔNG VÀ CHUYÊN CẦN ===\r\n';
-      csv += `Thời gian báo cáo,"${overview.period}"\r\n`;
-      csv += `Đơn vị áp dụng,"${overview.department}"\r\n`;
-      csv += `Tổng số nhân sự,${overview.totalUsers}\r\n`;
-      csv += `Tổng số lượt ca làm việc / giảng dạy,${overview.totalShifts}\r\n`;
-      csv += `Số ca đúng giờ,${overview.onTimeCount}\r\n`;
-      csv += `Số ca đi muộn,${overview.lateCount}\r\n`;
-      csv += `Số ca về sớm,${overview.earlyLeaveCount}\r\n`;
-      csv += `Số ca vắng mặt không phép,${overview.absentCount}\r\n`;
-      csv += `Số ca nghỉ có phép,${overview.excusedAbsenceCount}\r\n`;
-      csv += `Tỷ lệ chuyên cần toàn trường,${overview.overallAttendanceRate}%\r\n`;
-      csv += `Tổng số ngày nghỉ phép đã duyệt,${overview.approvedLeaveDays} ngày\r\n`;
-      csv += `Thời điểm trích xuất,"${overview.exportedAt}"\r\n\r\n`;
+      // 2. SHEET 2: BẢNG TỔNG HỢP CÔNG THEO NHÂN SỰ (Loại trừ Admin kỹ thuật)
+      const cleanStaff = (staffStats || []).filter((s: any) => !isSystemAdminUser(s));
+      const staffRows = cleanStaff.map((s: any, idx: number) => ({
+        'STT': idx + 1,
+        'Mã Cán Bộ': s.employeeId || '',
+        'Họ Và Tên': s.fullName || '',
+        'Email': s.email || '',
+        'Khoa / Đơn Vị': s.departmentName || '',
+        'Chức Vụ / Vai Trò': s.role || '',
+        'Tổng Số Ca': s.totalShifts || 0,
+        'Đúng Giờ': s.onTime || 0,
+        'Đi Muộn': s.late || 0,
+        'Về Sớm': s.early || 0,
+        'Vắng Mặt': s.absent || 0,
+        'Nghỉ Phép': s.excused || 0,
+        'Tỷ Lệ Chuyên Cần (%)': `${s.attendanceRate || 0}%`,
+      }));
+      const wsStaff = XLSX.utils.json_to_sheet(staffRows);
+      wsStaff['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 26 },
+        { wch: 28 },
+        { wch: 26 },
+        { wch: 20 },
+        { wch: 12 },
+        { wch: 10 },
+        { wch: 10 },
+        { wch: 10 },
+        { wch: 10 },
+        { wch: 10 },
+        { wch: 20 },
+      ];
 
-      // PHẦN 2: THỐNG KÊ THEO NHÂN SỰ (Loại trừ Admin IT)
-      csv += '=== SHEET 2: BẢNG TỔNG HỢP CÔNG THEO NHÂN SỰ ===\r\n';
-      csv += 'STT,Mã Cán Bộ,Họ Và Tên,Email,Khoa / Bộ Môn,Vai Trò,Tổng Số Ca,Đúng Giờ,Đi Muộn,Về Sớm,Vắng Mặt,Nghỉ Phép,Tỷ Lệ Chuyên Cần (%)\r\n';
-      const cleanStaff = (staffStats || []).filter((s) => !isSystemAdminUser(s));
-      cleanStaff.forEach((s, idx) => {
-        csv += [
-          idx + 1,
-          `"${s.employeeId}"`,
-          `"${s.fullName}"`,
-          `"${s.email}"`,
-          `"${s.departmentName}"`,
-          `"${s.role}"`,
-          s.totalShifts,
-          s.onTime,
-          s.late,
-          s.early,
-          s.absent,
-          s.excused,
-          `${s.attendanceRate}%`,
-        ].join(',') + '\r\n';
-      });
-      csv += '\r\n';
+      // 3. SHEET 3: CHI TIẾT NHẬT KÝ ĐIỂM DANH FACE ID
+      const logsRows = (attendanceLogs || []).map((l: any, idx: number) => ({
+        'STT': l.stt || idx + 1,
+        'Mã Cán Bộ': l.employeeId || '',
+        'Họ Và Tên': l.fullName || '',
+        'Khoa / Đơn Vị': l.departmentName || '',
+        'Ngày': l.date || '',
+        'Thứ': l.weekday || '',
+        'Ca Làm Việc': l.shiftName || '',
+        'Khung Giờ Chuẩn': l.scheduledTime || '',
+        'Giờ Check-in': l.checkInTime || '',
+        'Giờ Check-out': l.checkOutTime || '',
+        'Trạng Thái': l.status || '',
+        'Độ Lệch Phút': l.lateEarlyMinutes || 0,
+        'Phương Thức': l.method || '',
+        'Tọa Độ GPS': l.gpsCoordinates || '',
+        'Ghi Chú': l.notes || '',
+      }));
+      const wsLogs = XLSX.utils.json_to_sheet(logsRows);
+      wsLogs['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 26 },
+        { wch: 24 },
+        { wch: 14 },
+        { wch: 10 },
+        { wch: 22 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 26 },
+        { wch: 22 },
+      ];
 
-      // PHẦN 3: CHI TIẾT TỪNG LƯỢT QUẸT THẺ
-      csv += '=== SHEET 3: CHI TIẾT NHẬT KÝ ĐIỂM DANH FACE ID ===\r\n';
-      csv += 'STT,Mã Cán Bộ,Họ Và Tên,Khoa / Đơn Vị,Ngày,Thứ,Ca Làm Việc,Khung Giờ,Check-in,Check-out,Trạng Thái,Độ Lệch Phút,Phương Thức,Tọa Độ GPS,Ghi Chú\r\n';
-      attendanceLogs.slice(0, 500).forEach((l) => {
-        csv += [
-          l.stt,
-          `"${l.employeeId}"`,
-          `"${l.fullName}"`,
-          `"${l.departmentName}"`,
-          `"${l.date}"`,
-          `"${l.weekday}"`,
-          `"${l.shiftName}"`,
-          `"${l.scheduledTime}"`,
-          `"${l.checkInTime}"`,
-          `"${l.checkOutTime}"`,
-          `"${l.status}"`,
-          `"${l.lateEarlyMinutes}"`,
-          `"${l.method}"`,
-          `"${l.gpsCoordinates}"`,
-          `"${l.notes || ''}"`,
-        ].join(',') + '\r\n';
-      });
-      csv += '\r\n';
+      // 4. SHEET 4: CHI TIẾT ĐƠN NGHỈ PHÉP VÀ DẠY BÙ
+      const leavesRows = (leaveRequests || []).map((r: any, idx: number) => ({
+        'STT': r.stt || idx + 1,
+        'Mã Đơn': r.requestId || '',
+        'Họ Và Tên': r.fullName || '',
+        'Khoa / Đơn Vị': r.departmentName || '',
+        'Loại Đơn': r.leaveType || '',
+        'Từ Ngày': r.startDate || '',
+        'Đến Ngày': r.endDate || '',
+        'Số Ngày': r.numberOfDays || 0,
+        'Lý Do': r.reason || '',
+        'Trạng Thái': r.status || '',
+        'Người Phê Duyệt': r.approver || '',
+        'Ghi Chú Phê Duyệt': r.approvalNote || '',
+      }));
+      const wsLeaves = XLSX.utils.json_to_sheet(leavesRows);
+      wsLeaves['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 26 },
+        { wch: 24 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 10 },
+        { wch: 32 },
+        { wch: 14 },
+        { wch: 22 },
+        { wch: 26 },
+      ];
 
-      // PHẦN 4: ĐƠN NGHỈ PHÉP
-      csv += '=== SHEET 4: CHI TIẾT ĐƠN NGHỈ PHÉP VÀ DẠY BÙ ===\r\n';
-      csv += 'STT,Mã Đơn,Họ Và Tên,Khoa / Đơn Vị,Loại Đơn,Từ Ngày,Đến Ngày,Số Ngày,Lý Do,Trạng Thái,Người Duyệt,Ghi Chú Phê Duyệt\r\n';
-      leaveRequests.forEach((r) => {
-        csv += [
-          r.stt,
-          `"${r.requestId}"`,
-          `"${r.fullName}"`,
-          `"${r.departmentName}"`,
-          `"${r.leaveType}"`,
-          `"${r.startDate}"`,
-          `"${r.endDate}"`,
-          r.numberOfDays,
-          `"${r.reason}"`,
-          `"${r.status}"`,
-          `"${r.approver}"`,
-          `"${r.approvalNote}"`,
-        ].join(',') + '\r\n';
-      });
-      csv += '\r\n';
+      // 5. SHEET 5: THỐNG KÊ CHUYÊN CẦN THEO TỪNG NGÀY TRONG THÁNG
+      const dailyRows = (dailyStats || []).map((d: any, idx: number) => ({
+        'STT': d.stt || idx + 1,
+        'Ngày': d.date || '',
+        'Thứ': d.weekday || '',
+        'Tổng Ca': d.totalShifts || 0,
+        'Đúng Giờ': d.onTime || 0,
+        'Đi Muộn': d.late || 0,
+        'Về Sớm': d.early || 0,
+        'Vắng Mặt': d.absent || 0,
+        'Nghỉ Phép': d.excused || 0,
+        'Tỷ Lệ Đạt (%)': `${d.attendanceRate || 0}%`,
+      }));
+      const wsDaily = XLSX.utils.json_to_sheet(dailyRows);
+      wsDaily['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 16 },
+      ];
 
-      // PHẦN 5: THỐNG KÊ THEO TỪNG NGÀY
-      csv += '=== SHEET 5: THỐNG KÊ CHUYÊN CẦN THEO TỪNG NGÀY TRONG THÁNG ===\r\n';
-      csv += 'STT,Ngày,Thứ,Tổng Ca,Đúng Giờ,Đi Muộn,Về Sớm,Vắng Mặt,Nghỉ Phép,Tỷ Lệ Đạt (%)\r\n';
-      dailyStats.forEach((d) => {
-        csv += [
-          d.stt,
-          `"${d.date}"`,
-          `"${d.weekday}"`,
-          d.totalShifts,
-          d.onTime,
-          d.late,
-          d.early,
-          d.absent,
-          d.excused,
-          `${d.attendanceRate}%`,
-        ].join(',') + '\r\n';
-      });
+      // TẠO WORKBOOK & ĐÍNH KÈM ĐỦ 5 SHEETS
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, wsOverview, 'Tổng Quan');
+      XLSX.utils.book_append_sheet(wb, wsStaff, 'Tổng Hợp Nhân Sự');
+      XLSX.utils.book_append_sheet(wb, wsLogs, 'Nhật Ký FaceID');
+      XLSX.utils.book_append_sheet(wb, wsLeaves, 'Đơn Phép & Dạy Bù');
+      XLSX.utils.book_append_sheet(wb, wsDaily, 'Chuyên Cần Theo Ngày');
 
-      // Tạo Blob và download
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `Bao_Cao_Tong_Hop_Thang_${selectedMonth}_${selectedYear}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Tự động tải xuống file .xlsx chuẩn Microsoft Excel
+      XLSX.writeFile(wb, `Bao_Cao_Tong_Hop_Thang_${selectedMonth}_${selectedYear}.xlsx`);
 
-      toast.success('Đã xuất báo cáo trích xuất Excel 5 Sheets thành công!');
+      toast.success('Đã xuất báo cáo trích xuất Excel (.xlsx) 5 Sheets thành công!');
     } catch (err) {
-      console.error('Lỗi khi xuất báo cáo:', err);
-      toast.error('Lỗi khi đóng gói tệp báo cáo.');
+      console.error('Lỗi khi xuất báo cáo Excel:', err);
+      toast.error('Lỗi khi đóng gói tệp báo cáo Excel.');
     } finally {
       setIsExporting(false);
     }
@@ -490,21 +540,17 @@ export const Reports: React.FC = () => {
             </select>
           </div>
 
-          {/* Chọn Khoa / Bộ môn */}
-          <div className="flex items-center gap-2">
-            <Building2 className="w-4 h-4 text-slate-400" />
-            <select
+          {/* Chọn Khoa / Bộ môn phân cấp */}
+          <div className="w-full sm:w-auto min-w-[220px] sm:min-w-[270px]">
+            <DepartmentSelect
+              departments={departments}
               value={selectedDeptId}
-              onChange={(e) => setSelectedDeptId(e.target.value)}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-brand-500 max-w-[220px]"
-            >
-              <option value="">-- Toàn Trường (Tất cả khoa) --</option>
-              {departments.map((d) => (
-                <option key={d._id} value={d._id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setSelectedDeptId(val || '')}
+              placeholder="-- Chọn đơn vị trực thuộc --"
+              allLabel="-- Toàn Trường (Tất cả đơn vị) --"
+              allowAll={true}
+              size="sm"
+            />
           </div>
         </div>
 
@@ -539,7 +585,7 @@ export const Reports: React.FC = () => {
             className="bg-brand-600 hover:bg-brand-500 text-white shadow-md text-xs font-medium flex items-center gap-1.5"
           >
             <FileSpreadsheet className={`w-3.5 h-3.5 text-emerald-300 ${isExporting ? 'animate-bounce' : ''}`} />
-            <span>{isExporting ? 'Đang Xuất Excel...' : 'Xuất File Excel (5 Sheets)'}</span>
+            <span>{isExporting ? 'Đang Tạo File Excel...' : 'Xuất File Excel .xlsx (5 Sheets)'}</span>
           </Button>
         </div>
       </div>
@@ -1203,7 +1249,7 @@ export const Reports: React.FC = () => {
                 className="text-xs"
               >
                 <Download className="w-3.5 h-3.5 mr-1.5" />
-                Tải Toàn Bộ Gói Báo Cáo Excel (5 Sheets)
+                Tải Toàn Bộ Gói Báo Cáo Excel .xlsx (5 Sheets)
               </Button>
             </div>
           </div>

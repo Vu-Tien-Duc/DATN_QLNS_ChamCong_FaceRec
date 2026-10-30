@@ -27,7 +27,7 @@ async function runScheduleConflictTests() {
     isRecurring: true,
     startDate: new Date('2026-09-01'),
     endDate: new Date('2026-12-31'),
-    scheduleType: 'CHINH_KHOA',
+    scheduleType: 'chinh_khoa',
     weekNumbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     academicYear: '2026-2027',
     semester: 1,
@@ -35,7 +35,7 @@ async function runScheduleConflictTests() {
       {
         ngay: new Date('2026-09-08'),
         ly_do: 'Giảng viên dự hội nghị khoa học',
-        trang_thai: 'NGHI',
+        trang_thai: 'nghi',
       },
     ],
   });
@@ -43,7 +43,7 @@ async function runScheduleConflictTests() {
   await scheduleDoc.validate();
   assert.strictEqual(scheduleDoc.startPeriod, 1, 'startPeriod đúng');
   assert.strictEqual(scheduleDoc.periodCount, 3, 'periodCount đúng');
-  assert.strictEqual(scheduleDoc.scheduleType, 'CHINH_KHOA', 'scheduleType đúng');
+  assert.strictEqual(scheduleDoc.scheduleType, 'chinh_khoa', 'scheduleType đúng');
   assert.strictEqual(scheduleDoc.weekNumbers.length, 10, 'weekNumbers đúng');
   assert.strictEqual(scheduleDoc.exceptions.length, 1, 'exceptions đúng');
   console.log('✓ Test 1 ĐẠT: Schedule Model lưu trữ chuẩn xác các trường TKB học kỳ theo đặc tả v2.5.');
@@ -95,16 +95,39 @@ async function runScheduleConflictTests() {
 
   // Test 6: Cooldown chống quét lặp 60s
   const cooldownMs = 60 * 1000;
-  const scanTime1 = Date.now() - 30 * 1000; // Quét cách đây 30s
-  const isCooldownActive = (Date.now() - scanTime1) < cooldownMs;
+  const punchTime1 = Date.now() - 30 * 1000; // Quét cách đây 30s
+  const isCooldownActive = (Date.now() - punchTime1) < cooldownMs;
   assert.strictEqual(isCooldownActive, true, 'Lần quét cách 30s phải bị chặn Cooldown 60s');
 
-  const scanTimeOld = Date.now() - 75 * 1000; // Quét cách đây 75s
-  const isCooldownExpired = (Date.now() - scanTimeOld) < cooldownMs;
+  const punchTimeOld = Date.now() - 75 * 1000; // Quét cách đây 75s
+  const isCooldownExpired = (Date.now() - punchTimeOld) < cooldownMs;
   assert.strictEqual(isCooldownExpired, false, 'Lần quét cách 75s đã hết thời gian Cooldown và được phép quét tiếp');
   console.log('✓ Test 6 ĐẠT: Cơ chế Cooldown chống quét lặp 60s hoạt động chính xác.');
 
-  console.log('\n===> TẤT CẢ 6 TEST TRONG SCHEDULECONFLICTANDREALTIME.TEST.JS ĐÃ PASS 100% <===\n');
+  // Test 7: Thêm ngoại lệ qua subdocument alias date, reason, status
+  const schedWithAliasEx = new Schedule({
+    userId: dummyUserId,
+    shiftId: dummyShiftId,
+    startTime: '08:00',
+    endTime: '11:30',
+    weekday: 2,
+    startDate: new Date('2026-09-01'),
+    endDate: new Date('2026-12-31'),
+    exceptions: [
+      {
+        date: new Date('2026-10-15'),
+        reason: 'Nghỉ ốm đột xuất',
+        status: 'nghi',
+      },
+    ],
+  });
+  await schedWithAliasEx.validate();
+  assert.strictEqual(schedWithAliasEx.exceptions.length, 1, 'Lưu đúng 1 ngoại lệ');
+  assert.strictEqual(schedWithAliasEx.exceptions[0].reason, 'Nghỉ ốm đột xuất', 'Alias reason hoạt động chuẩn xác');
+  assert.strictEqual(schedWithAliasEx.ngoai_le[0].ly_do, 'Nghỉ ốm đột xuất', 'Cột CSDL tiếng Việt ly_do khớp 1-1 với alias');
+  console.log('✓ Test 7 ĐẠT: Exception subdocument hỗ trợ chuẩn xác alias date, reason, status và ánh xạ 1-1.');
+
+  console.log('\n===> TẤT CẢ 7 TEST TRONG SCHEDULECONFLICTANDREALTIME.TEST.JS ĐÃ PASS 100% <===\n');
 }
 
 runScheduleConflictTests()

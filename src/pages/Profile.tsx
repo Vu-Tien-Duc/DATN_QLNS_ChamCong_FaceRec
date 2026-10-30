@@ -55,7 +55,7 @@ export const Profile: React.FC = () => {
     email: '',
     address: '',
     dateOfBirth: '',
-    gender: 'NAM',
+    gender: 'nam',
   });
 
   // Form đổi mật khẩu
@@ -77,7 +77,7 @@ export const Profile: React.FC = () => {
         email: user.email || '',
         address: user.address || '',
         dateOfBirth: user.dateOfBirth ? user.dateOfBirth.slice(0, 10) : '',
-        gender: user.gender || 'NAM',
+        gender: user.gender || 'nam',
       });
       setPreviewAvatar(user.avatar || null);
     }
@@ -214,12 +214,29 @@ export const Profile: React.FC = () => {
           tag: 'BGH',
           color: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/60',
         };
-      case 'truongkhoa':
       case 'truong_khoa':
         return {
           label: 'Trưởng Khoa / Đơn Vị',
           tag: 'TRƯỞNG KHOA',
           color: 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/60',
+        };
+      case 'pho_khoa':
+        return {
+          label: 'Phó Trưởng Khoa',
+          tag: 'PHÓ KHOA',
+          color: 'bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/60',
+        };
+      case 'truong_bo_mon':
+        return {
+          label: 'Trưởng Bộ Môn',
+          tag: 'TRƯỞNG BỘ MÔN',
+          color: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60',
+        };
+      case 'pho_bo_mon':
+        return {
+          label: 'Phó Trưởng Bộ Môn',
+          tag: 'PHÓ BỘ MÔN',
+          color: 'bg-teal-500/15 text-teal-700 dark:text-teal-400 border-teal-200 dark:border-teal-800/60',
         };
       case 'tccb':
         return {
@@ -227,12 +244,30 @@ export const Profile: React.FC = () => {
           tag: 'TCCB',
           color: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60',
         };
-      case 'giangvien':
+      case 'dao_tao':
+        return {
+          label: 'Phòng Đào Tạo',
+          tag: 'ĐÀO TẠO',
+          color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/60',
+        };
+      case 'ke_toan':
+        return {
+          label: 'Phòng Kế Toán',
+          tag: 'KẾ TOÁN',
+          color: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60',
+        };
       case 'giang_vien':
         return {
           label: 'Giảng viên Giảng dạy',
           tag: 'GIẢNG VIÊN',
           color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/60',
+        };
+      case 'nhan_vien':
+      case 'chuyen_vien':
+        return {
+          label: 'Chuyên viên / Nhân viên',
+          tag: 'NHÂN VIÊN',
+          color: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/60',
         };
       default:
         return {
@@ -646,9 +681,9 @@ export const Profile: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75 disabled:cursor-not-allowed"
                   >
-                    <option value="NAM">Nam</option>
-                    <option value="NU">Nữ</option>
-                    <option value="KHAC">Khác</option>
+                    <option value="nam">Nam</option>
+                    <option value="nu">Nữ</option>
+                    <option value="khac">Khác</option>
                   </select>
                 </div>
 

@@ -73,7 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const fetchPendingLeave = async () => {
       try {
         const res = await apiClient.get('/leave-requests', {
-          params: { status: 'PENDING' },
+          params: { status: 'pending' },
         });
         const raw = res.data?.data || res.data;
         const list = Array.isArray(raw) ? raw : raw?.items || raw?.leaveRequests || [];
@@ -148,7 +148,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           name: 'Quản Lý Điểm Danh',
           path: '/attendance-manage',
           icon: Layers,
-          roles: ['admin', 'bgh', 'truongkhoa', 'phokhoa', 'tccb'],
+          roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'tccb'],
         },
         {
           name: 'Đơn Nghỉ Phép',
@@ -167,7 +167,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           name: 'Danh Sách Cán Bộ',
           path: '/users',
           icon: Users,
-          roles: ['admin', 'bgh', 'truongkhoa', 'tccb'],
+          roles: ['admin', 'bgh', 'truong_khoa', 'tccb'],
         },
         {
           name: 'Khoa & Phòng Ban',
@@ -178,7 +178,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           name: 'Danh Mục Môn Học',
           path: '/subjects',
           icon: BookOpen,
-          roles: ['admin', 'bgh', 'truongkhoa', 'daotao'],
+          roles: ['admin', 'bgh', 'truong_khoa', 'dao_tao'],
         },
         {
           name: 'Bảng Lương 2026',
@@ -189,7 +189,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           name: 'Báo Cáo & Thống Kê',
           path: '/reports',
           icon: BarChart3,
-          roles: ['admin', 'bgh', 'ketoan', 'truongkhoa'],
+          roles: ['admin', 'bgh', 'ke_toan', 'truong_khoa'],
         },
       ],
     },
@@ -205,13 +205,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           name: 'Ca Làm Việc & Giờ',
           path: '/shifts',
           icon: Clock,
-          roles: ['admin', 'bgh', 'daotao'],
+          roles: ['admin', 'bgh', 'dao_tao'],
         },
         {
           name: 'Nhật Ký Kiểm Toán',
           path: '/audit-logs',
           icon: ShieldCheck,
-          roles: ['admin', 'bgh', 'kiemtoan'],
+          roles: ['admin', 'bgh', 'kiem_toan'],
         },
         {
           name: 'Cấu Hình Tham Số',
@@ -224,7 +224,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const displayRoleTitle =
-    user?.position || getRoleDisplayName(user?.role || (user as any)?.primaryRole || 'giangvien');
+    user?.position || getRoleDisplayName(user?.role || (user as any)?.primaryRole || 'giang_vien');
 
   // ─── Shared inner content (used by both desktop & mobile sidebar) ───────────
   const sidebarContent = (isMobile: boolean) => (

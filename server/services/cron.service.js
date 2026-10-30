@@ -111,16 +111,16 @@ const processScheduleAttendanceCheck = async (schedule, dayRange) => {
   // 2. Kiểm tra xem giảng viên có đơn xin nghỉ phép đã được phê duyệt (APPROVED) trong ngày hôm nay không
   const approvedLeave = await LeaveRequest.findOne({
     userId,
-    status: 'APPROVED',
+    status: 'approved',
     startDate: { $lte: endOfDay },
     endDate: { $gte: startOfDay },
   });
 
-  const finalStatus = approvedLeave ? 'EXCUSED_ABSENCE' : 'ABSENT';
+  const finalStatus = approvedLeave ? 'excused_absence' : 'absent';
   const leaveRequestId = approvedLeave ? approvedLeave._id : null;
 
   // 3. Cơ chế Idempotent (Chống trùng lặp tuyệt đối):
-  // Tạo bản ghi trong attendance_logs với status: 'ABSENT' (hoặc 'EXCUSED_ABSENCE' nếu có phép),
+  // Tạo bản ghi trong attendance_logs với status: 'absent' (hoặc 'excused_absence' nếu có phép),
   // method: 'manual', checkInTime: null, checkOutTime: null
   let newLog;
   try {
@@ -159,7 +159,7 @@ const processScheduleAttendanceCheck = async (schedule, dayRange) => {
   // 4. Gửi email cảnh báo vắng mặt không phép (#21)
   // Đặt khối try/catch bọc gửi mail: Đảm bảo nếu mạng chập chờn hoặc lỗi gửi mail thì không làm gián đoạn tiến trình
   let emailSent = false;
-  if (finalStatus === 'ABSENT' && schedule.userId?.email) {
+  if (finalStatus === 'absent' && schedule.userId?.email) {
     if (isDeliverableEmail(schedule.userId.email)) {
       try {
         await sendAbsentWarningEmail({
@@ -230,7 +230,7 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
         const adminUser = await User.findOne({ role: 'admin' });
         await AuditLog.create({
           actor: adminUser ? adminUser._id : null,
-          actorType: 'SYSTEM',
+          actorType: 'system',
           action: 'CRON_HOLIDAY_SKIPPED',
           targetId: `HOLIDAY_${dayRange.dateStr}`,
           targetType: 'Holiday',
@@ -271,8 +271,8 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
         if (itemResult.action === 'SKIPPED') {
           skippedCount++;
         } else if (itemResult.action === 'CREATED') {
-          if (itemResult.status === 'ABSENT') absentCreatedCount++;
-          else if (itemResult.status === 'EXCUSED_ABSENCE') excusedCreatedCount++;
+          if (itemResult.status === 'absent') absentCreatedCount++;
+          else if (itemResult.status === 'excused_absence') excusedCreatedCount++;
         }
       } catch (err) {
         console.error(`[Cron Service] Lỗi xử lý lịch ${schedule._id}:`, err);
@@ -320,7 +320,7 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
 
       await AuditLog.create({
         actor: actorId,
-        actorType: 'SYSTEM',
+        actorType: 'system',
         action: 'CRON_AUTO_ABSENT',
         targetId: `CRON_${dayRange.dateStr}`,
         targetType: 'AttendanceLog',
@@ -396,9 +396,9 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
           emailSent: true,
         };
 
-        if (log.status === 'ON_TIME') {
+        if (log.status === 'on_time') {
           onTimeList.push(item);
-        } else if (log.status === 'LATE') {
+        } else if (log.status === 'late') {
           let lateMins = 0;
           if (log.checkInTime && shift.startTime) {
             const vnDate = getVietnamTime(log.checkInTime);
@@ -411,7 +411,7 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
           item.lateMinutes = lateMins;
           item.lateTimeFormatted = lateHours > 0 ? `${lateHours}h ${remMins}p` : `${lateMins} phút`;
           lateList.push(item);
-        } else if (log.status === 'EARLY_LEAVE') {
+        } else if (log.status === 'early_leave') {
           let earlyMins = 0;
           if (log.checkOutTime && shift.endTime) {
             const vnDate = getVietnamTime(log.checkOutTime);
@@ -424,9 +424,9 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
           item.earlyMinutes = earlyMins;
           item.earlyTimeFormatted = earlyHours > 0 ? `${earlyHours}h ${remMins}p` : `${earlyMins} phút`;
           earlyList.push(item);
-        } else if (log.status === 'ABSENT') {
+        } else if (log.status === 'absent') {
           absentList.push(item);
-        } else if (log.status === 'EXCUSED_ABSENCE') {
+        } else if (log.status === 'excused_absence') {
           excusedList.push(item);
         }
       }
@@ -542,7 +542,7 @@ const initCronJobs = () => {
         // 0.1 Tự động dọn dẹp mọi bản ghi vắng mặt / nghỉ phép tự động bị tạo sai cho ngày tương lai (nếu có do lỗi múi giờ cũ)
         const todayStr = getVietnamDayRange().dateStr;
         const purgeResult = await AttendanceLog.deleteMany({
-          status: { $in: ['ABSENT', 'EXCUSED_ABSENCE'] },
+          status: { $in: ['absent', 'excused_absence'] },
           method: 'system',
           workDate: { $gt: todayStr },
         });

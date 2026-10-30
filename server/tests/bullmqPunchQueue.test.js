@@ -67,7 +67,7 @@ const runTests = async () => {
   // ---------------------------------------------------------------------------
   console.log('[Test 3] Kiểm tra Fast Ingestion đẩy lượt quẹt thẻ vào hàng đợi...');
   const sampleJobData = {
-    type: 'FACE_AI',
+    type: 'face_ai',
     userId: mockUserId,
     punchTime: new Date(),
     location: { lat: 21.028511, lng: 105.854167 },

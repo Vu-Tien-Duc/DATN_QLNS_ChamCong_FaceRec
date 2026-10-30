@@ -24,7 +24,9 @@ import {
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { Portal } from '../components/ui/Portal';
@@ -245,43 +247,52 @@ export const Shifts: React.FC = () => {
   };
 
   // ===========================================================================
-  // EXPORT CSV
+  // EXPORT EXCEL (.XLSX)
   // ===========================================================================
-  const handleExportCSV = () => {
+  const handleExportExcel = () => {
     if (filteredShifts.length === 0) {
-      toast.error('Không có dữ liệu ca làm việc để xuất');
+      toast.error('Không có dữ liệu ca làm việc để xuất file Excel.');
       return;
     }
 
     try {
-      const headers = ['Mã Ca (ID)', 'Tên ca làm việc', 'Buổi trong ngày', 'Giờ vào', 'Giờ ra', 'Thời lượng', 'Ân hạn trễ (phút)', 'Trạng thái'];
-      const rows = filteredShifts.map((s) => {
+      const dataRows = filteredShifts.map((s, idx) => {
         const period = getShiftPeriodType(s.startTime);
-        return [
-          `"${s._id.slice(-6).toUpperCase()}"`,
-          `"${s.name.replace(/"/g, '""')}"`,
-          `"${period.label}"`,
-          s.startTime,
-          s.endTime,
-          `"${calculateDuration(s.startTime, s.endTime)}"`,
-          s.lateThresholdMinutes || 15,
-          s.isActive ? 'Đang áp dụng' : 'Tạm ngưng',
-        ];
+        return {
+          'STT': idx + 1,
+          'Mã Ca': s._id.slice(-6).toUpperCase(),
+          'Tên Ca Làm Việc': s.name,
+          'Buổi Trong Ngày': period.label,
+          'Giờ Bắt Đầu': s.startTime,
+          'Giờ Kết Thúc': s.endTime,
+          'Thời Lượng': calculateDuration(s.startTime, s.endTime),
+          'Ân Hạn Đi Muộn (Phút)': s.lateThresholdMinutes || 15,
+          'Trạng Thái Áp Dụng': s.isActive ? 'Đang áp dụng' : 'Tạm ngưng',
+        };
       });
 
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `Cau_Hinh_Ca_Lam_Viec_${new Date().toISOString().slice(0, 10)}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success('Đã xuất danh sách ca làm việc thành công!');
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 12 },
+        { wch: 28 },
+        { wch: 18 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 22 },
+        { wch: 18 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Danh Mục Ca Làm Việc');
+
+      const fileName = `Danh_Muc_Ca_Lam_Viec_NTU_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast.success('Đã xuất Danh mục ca làm việc (.xlsx) thành công!');
     } catch (err) {
-      console.error('Lỗi khi xuất file:', err);
-      toast.error('Không thể xuất file ca làm việc');
+      console.error('Lỗi khi xuất file Excel:', err);
+      toast.error('Không thể xuất file ca làm việc.');
     }
   };
 
@@ -488,14 +499,15 @@ export const Shifts: React.FC = () => {
               <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
               <span>Làm Mới</span>
             </button>
-            {/* Export CSV Button */}
+            {/* Export Excel Button */}
             <button
-              onClick={handleExportCSV}
-              className="h-8 px-3 rounded-lg bg-slate-50 hover:bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+              onClick={handleExportExcel}
+              className="h-8 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold border border-emerald-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              title="Xuất danh mục ca làm việc ra file Excel (.xlsx)"
               type="button"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Xuất Excel (.csv)</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Xuất Excel (.xlsx)</span>
             </button>
             {/* Add Shift Button */}
             {canManage && (

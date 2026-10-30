@@ -23,7 +23,7 @@ const run = async () => {
   console.log('--- Bắt đầu kiểm thử nghiệp vụ Leave Request (Nhóm 5) ---');
 
   // 1. Kiểm tra enum loại đơn hợp lệ
-  const validTypes = ['nghi_phep', 'day_bu', 'doi_ca'];
+  const validTypes = ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om', 'viec_rieng'];
   for (const t of validTypes) {
     const doc = new LeaveRequest({
       userId: objectId(),
@@ -31,7 +31,7 @@ const run = async () => {
       reason: 'Xin nghỉ có lý do hợp lệ dài hơn 5 ký tự',
       startDate: new Date('2026-10-20T00:00:00+07:00'),
       endDate: new Date('2026-10-21T00:00:00+07:00'),
-      status: 'PENDING',
+      status: 'pending',
     });
     await doc.validate();
     assert.equal(doc.loai_don, t);
@@ -81,7 +81,7 @@ const run = async () => {
       reason: 'Lý do xin nghỉ hợp lệ',
       startDate: new Date('2026-10-20T00:00:00+07:00'),
       endDate: new Date('2026-10-21T00:00:00+07:00'),
-      status: 'REJECTED',
+      status: 'rejected',
       rejectionReason: '',
     }),
     'rejectionReason'
@@ -94,7 +94,7 @@ const run = async () => {
       reason: 'Lý do xin nghỉ hợp lệ',
       startDate: new Date('2026-10-20T00:00:00+07:00'),
       endDate: new Date('2026-10-21T00:00:00+07:00'),
-      status: 'REJECTED',
+      status: 'rejected',
       rejectionReason: '   ',
     }),
     'rejectionReason'
@@ -108,7 +108,7 @@ const run = async () => {
       reason: 'Lý do xin nghỉ hợp lệ',
       startDate: new Date('2026-10-20T00:00:00+07:00'),
       endDate: new Date('2026-10-21T00:00:00+07:00'),
-      status: 'REJECTED',
+      status: 'rejected',
       rejectionReason: 'r'.repeat(501),
     }),
     'rejectionReason'
@@ -121,7 +121,7 @@ const run = async () => {
     reason: 'Lý do xin nghỉ hợp lệ',
     startDate: new Date('2026-10-20T00:00:00+07:00'),
     endDate: new Date('2026-10-21T00:00:00+07:00'),
-    status: 'REJECTED',
+    status: 'rejected',
     rejectionReason: 'Trùng lịch họp đồng ban chủ nhiệm khoa.',
   });
   await validRejected.validate();

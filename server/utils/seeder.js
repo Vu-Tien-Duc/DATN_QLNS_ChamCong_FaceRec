@@ -69,7 +69,7 @@ const seedData = async () => {
     // =========================================================================
     const boardOfPresidents = await Department.create({
       name: 'Hội Đồng Trường & Ban Giám Hiệu',
-      type: 'phongban',
+      type: 'phong_ban',
       parentId: null,
       location: { lat: 20.9782, lng: 105.7656 },
     });
@@ -79,49 +79,49 @@ const seedData = async () => {
     // =========================================================================
     const hrDept = await Department.create({
       name: 'Ban Quản Trị – Hành Chính',
-      type: 'phongban',
+      type: 'phong_ban',
       parentId: boardOfPresidents._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
 
     const trainingDept = await Department.create({
       name: 'Ban Đào Tạo & Khoa Học Công Nghệ',
-      type: 'phongban',
+      type: 'phong_ban',
       parentId: boardOfPresidents._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
 
     const studentAffairsDept = await Department.create({
       name: 'Ban Công Tác Sinh Viên',
-      type: 'phongban',
+      type: 'phong_ban',
       parentId: boardOfPresidents._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
 
     const qaTestingDept = await Department.create({
       name: 'Ban Khảo Thí & Đảm Bảo Chất Lượng',
-      type: 'phongban',
+      type: 'phong_ban',
       parentId: boardOfPresidents._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
 
     const financeDept = await Department.create({
       name: 'Ban Tài Chính – Kế Toán',
-      type: 'phongban',
+      type: 'phong_ban',
       parentId: boardOfPresidents._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
 
     const admissionDept = await Department.create({
       name: 'Ban Tuyển Sinh & Truyền Thông',
-      type: 'phongban',
+      type: 'phong_ban',
       parentId: boardOfPresidents._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
 
     const intlProjectsDept = await Department.create({
       name: 'Ban Hợp Tác Quốc Tế & Phát Triển Dự Án',
-      type: 'phongban',
+      type: 'phong_ban',
       parentId: boardOfPresidents._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
@@ -139,13 +139,13 @@ const seedData = async () => {
     });
     const seDept = await Department.create({
       name: 'Bộ Môn Kỹ Thuật Phần Mềm & AI',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: itFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
     const isDept = await Department.create({
       name: 'Bộ Môn Mạng Máy Tính & An Toàn Thông Tin',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: itFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
@@ -159,25 +159,25 @@ const seedData = async () => {
     });
     const baDept = await Department.create({
       name: 'Bộ Môn Quản Trị Kinh Doanh & Marketing',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: econFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
     const accDept = await Department.create({
       name: 'Bộ Môn Kế Toán & Kiểm Toán',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: econFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
     await Department.create({
       name: 'Bộ Môn Quan Hệ Công Chúng & Truyền Thông (PR)',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: econFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
     await Department.create({
       name: 'Bộ Môn Quản Trị Du Lịch & Lữ Hành',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: econFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
@@ -191,19 +191,19 @@ const seedData = async () => {
     });
     const graphicDept = await Department.create({
       name: 'Bộ Môn Thiết Kế Đồ Họa',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: designFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
     await Department.create({
       name: 'Bộ Môn Thiết Kế Nội Thất',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: designFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
     const archDept = await Department.create({
       name: 'Bộ Môn Kiến Trúc',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: designFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
@@ -217,25 +217,25 @@ const seedData = async () => {
     });
     const koreanDept = await Department.create({
       name: 'Bộ Môn Ngôn Ngữ & Văn Hóa Hàn Quốc',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: langFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
     const japaneseDept = await Department.create({
       name: 'Bộ Môn Ngôn Ngữ & Văn Hóa Nhật Bản',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: langFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
     await Department.create({
       name: 'Bộ Môn Ngôn Ngữ Anh & Quốc Tế Học',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: langFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
     await Department.create({
       name: 'Bộ Môn Ngôn Ngữ & Văn Hóa Trung Quốc',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: langFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
@@ -249,13 +249,13 @@ const seedData = async () => {
     });
     await Department.create({
       name: 'Bộ Môn Tài Chính Doanh Nghiệp & Fintech',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: financeFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
     await Department.create({
       name: 'Bộ Môn Ngân Hàng Số',
-      type: 'bomon',
+      type: 'bo_mon',
       parentId: financeFaculty._id,
       location: { lat: 20.9782, lng: 105.7656 },
     });
@@ -291,7 +291,7 @@ const seedData = async () => {
       annualLeaveQuota: 18,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'BGH', scope: 'TOAN_TRUONG' }],
+      roles: [{ role: 'bgh', scope: 'toan_truong' }],
     });
     boardOfPresidents.managerId = presidentUser._id;
     await boardOfPresidents.save();
@@ -307,7 +307,7 @@ const seedData = async () => {
       annualLeaveQuota: 15,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }],
+      roles: [{ role: 'admin', scope: 'toan_truong' }],
     });
 
     // Admin 2: Tài khoản dự phòng đại học
@@ -321,7 +321,7 @@ const seedData = async () => {
       annualLeaveQuota: 15,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }],
+      roles: [{ role: 'admin', scope: 'toan_truong' }],
     });
 
     // Admin 2: Trưởng phòng Hành chính - Tổng hợp (HR quản lý nhân sự & báo cáo)
@@ -334,7 +334,7 @@ const seedData = async () => {
       annualLeaveQuota: 15,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }],
+      roles: [{ role: 'admin', scope: 'toan_truong' }],
     });
     hrDept.managerId = hrManager._id;
     await hrDept.save();
@@ -347,12 +347,12 @@ const seedData = async () => {
       fullName: 'PGS. TS. Lê Hoàng Nam (Trưởng Khoa CNTT & CĐS)',
       email: 'truongkhoa.cntt@university.edu.vn',
       passwordHash,
-      role: 'truongkhoa',
+      role: 'truong_khoa',
       departmentId: itFaculty._id,
       annualLeaveQuota: 14,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'TRUONG_KHOA', scope: 'KHOA', departmentId: itFaculty._id }],
+      roles: [{ role: 'truong_khoa', scope: 'khoa', departmentId: itFaculty._id }],
     });
     itFaculty.managerId = itDean._id;
     await itFaculty.save();
@@ -362,15 +362,15 @@ const seedData = async () => {
       fullName: 'TS. Đặng Tiến Hưng (Phó Trưởng Khoa CNTT - Được Ủy Quyền)',
       email: 'phokhoa.cntt@university.edu.vn',
       passwordHash,
-      role: 'phokhoa',
+      role: 'pho_khoa',
       departmentId: itFaculty._id,
       annualLeaveQuota: 14,
       isActive: true,
       isVerified: true,
       roles: [
         {
-          role: 'PHO_TRUONG_KHOA',
-          scope: 'KHOA',
+          role: 'pho_khoa',
+          scope: 'khoa',
           departmentId: itFaculty._id,
           isDelegated: true,
           delegationExpiresAt: new Date('2028-12-31'),
@@ -383,12 +383,12 @@ const seedData = async () => {
       fullName: 'TS. Phạm Hải Đăng (Trưởng Khoa Kinh Tế - QTKD)',
       email: 'truongkhoa.kinhte@university.edu.vn',
       passwordHash,
-      role: 'truongkhoa',
+      role: 'truong_khoa',
       departmentId: econFaculty._id,
       annualLeaveQuota: 14,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'TRUONG_KHOA', scope: 'KHOA', departmentId: econFaculty._id }],
+      roles: [{ role: 'truong_khoa', scope: 'khoa', departmentId: econFaculty._id }],
     });
     econFaculty.managerId = econDean._id;
     await econFaculty.save();
@@ -400,12 +400,12 @@ const seedData = async () => {
       fullName: 'TS. Hoàng Văn Minh (Trưởng Bộ Môn KTPM)',
       email: 'truongbomon.ktpm@university.edu.vn',
       passwordHash,
-      role: 'truongbomon',
+      role: 'truong_bo_mon',
       departmentId: seDept._id,
       annualLeaveQuota: 13,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'TRUONG_BO_MON', scope: 'BO_MON', departmentId: seDept._id }],
+      roles: [{ role: 'truong_bo_mon', scope: 'bo_mon', departmentId: seDept._id }],
     });
     seDept.managerId = headSeDept._id;
     await seDept.save();
@@ -418,12 +418,12 @@ const seedData = async () => {
       fullName: 'TS. Trần Thị Bích (Giảng viên KTPM)',
       email: 'giangvien.bich@university.edu.vn',
       passwordHash,
-      role: 'giangvien',
+      role: 'giang_vien',
       departmentId: seDept._id,
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'GIANG_VIEN', scope: 'KHOA', departmentId: itFaculty._id }],
+      roles: [{ role: 'giang_vien', scope: 'khoa', departmentId: itFaculty._id }],
     });
 
     // GV 2: Giảng viên Bộ môn Hệ thống thông tin (Khoa CNTT)
@@ -431,12 +431,12 @@ const seedData = async () => {
       fullName: 'ThS. Phạm Văn Cường (Giảng viên HTTT)',
       email: 'giangvien.cuong@university.edu.vn',
       passwordHash,
-      role: 'giangvien',
+      role: 'giang_vien',
       departmentId: isDept._id,
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'GIANG_VIEN', scope: 'KHOA', departmentId: itFaculty._id }],
+      roles: [{ role: 'giang_vien', scope: 'khoa', departmentId: itFaculty._id }],
     });
 
     // GV 3: Giảng viên Bộ môn Kế toán (Khoa Kinh tế)
@@ -444,12 +444,12 @@ const seedData = async () => {
       fullName: 'ThS. Hoàng Diệu Linh (Giảng viên Kế Toán)',
       email: 'giangvien.linh@university.edu.vn',
       passwordHash,
-      role: 'giangvien',
+      role: 'giang_vien',
       departmentId: accDept._id,
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'GIANG_VIEN', scope: 'KHOA', departmentId: econFaculty._id }],
+      roles: [{ role: 'giang_vien', scope: 'khoa', departmentId: econFaculty._id }],
     });
 
     // GV 4: Giảng viên Bộ môn Thiết kế đồ họa (Khoa MTUD)
@@ -457,12 +457,12 @@ const seedData = async () => {
       fullName: 'ThS. Nguyễn Trọng An (Giảng viên Đồ Họa)',
       email: 'giangvien.an@university.edu.vn',
       passwordHash,
-      role: 'giangvien',
+      role: 'giang_vien',
       departmentId: graphicDept._id,
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'GIANG_VIEN', scope: 'KHOA', departmentId: designFaculty._id }],
+      roles: [{ role: 'giang_vien', scope: 'khoa', departmentId: designFaculty._id }],
     });
 
     // =========================================================================
@@ -473,12 +473,12 @@ const seedData = async () => {
       fullName: 'Đỗ Thu Hà (Chuyên viên Phòng Đào Tạo)',
       email: 'nhanvien.ha@university.edu.vn',
       passwordHash,
-      role: 'nhanvien',
+      role: 'nhan_vien',
       departmentId: trainingDept._id,
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'DAO_TAO', scope: 'TOAN_TRUONG' }],
+      roles: [{ role: 'dao_tao', scope: 'toan_truong' }],
     });
 
     // Chuyên viên Phòng Khảo thí
@@ -486,31 +486,31 @@ const seedData = async () => {
       fullName: 'Lê Quang Thành (Chuyên viên Phòng Khảo Thí)',
       email: 'nhanvien.thanh@university.edu.vn',
       passwordHash,
-      role: 'nhanvien',
+      role: 'nhan_vien',
       departmentId: qaTestingDept._id,
       annualLeaveQuota: 12,
       isActive: true,
       isVerified: true,
-      roles: [{ role: 'KIEM_TOAN', scope: 'TOAN_TRUONG' }],
+      roles: [{ role: 'kiem_toan', scope: 'toan_truong' }],
     });
 
     // =========================================================================
     // 6. KHỞI TẠO MẪU KHUÔN MẶT ĐA GÓC 512D (FACETEMPLATE - COLLECTION 2)
     // =========================================================================
     const faceUsers = [adminUser, presidentUser, itDean, viceDeanIt, lecturerBich, staffHa];
-    const poses = ['chinh_dien', 'nghieng_trai', 'nghieng_phai', 'ngua_len', 'cui_xuong'];
+    const sampleAngles = ['chinh_dien', 'nghieng_trai', 'nghieng_phai', 'ngua_len', 'cui_xuong'];
 
     for (let uIdx = 0; uIdx < faceUsers.length; uIdx++) {
       const u = faceUsers[uIdx];
-      const descriptors = poses.map((_, pIdx) => generateNormalized512Vector(uIdx * 10 + pIdx + 1));
+      const descriptors = sampleAngles.map((_, pIdx) => generateNormalized512Vector(uIdx * 10 + pIdx + 1));
       const avgVec = generateNormalized512Vector(uIdx * 10 + 99);
 
       await FaceTemplate.create({
         userId: u._id,
         descriptors,
         averageDescriptor: avgVec,
-        sampleAngles: poses,
-        sampleCount: poses.length,
+        sampleAngles,
+        sampleCount: sampleAngles.length,
         embeddingModel: 'buffalo_s',
         consentAgreed: true,
       });
@@ -729,7 +729,7 @@ const seedData = async () => {
       startDate: new Date(now.getFullYear(), now.getMonth(), 1),
       endDate: new Date(now.getFullYear(), now.getMonth(), 3),
       attachmentUrl: 'https://storage.university.edu.vn/attachments/quyet-dinh-hoi-thao.pdf',
-      status: 'APPROVED',
+      status: 'approved',
       approvedBy: itDean._id,
     });
 
@@ -741,7 +741,7 @@ const seedData = async () => {
       startDate: new Date(now.getFullYear(), now.getMonth(), 20),
       endDate: new Date(now.getFullYear(), now.getMonth(), 21),
       attachmentUrl: null,
-      status: 'PENDING',
+      status: 'pending',
     });
 
     // Đơn 2: Đang chờ duyệt (PENDING) của Trưởng khoa Nam (để Admin Ban Giám Hiệu kiểm thử duyệt)
@@ -752,7 +752,7 @@ const seedData = async () => {
       startDate: new Date(now.getFullYear(), now.getMonth(), 25),
       endDate: new Date(now.getFullYear(), now.getMonth(), 27),
       attachmentUrl: null,
-      status: 'PENDING',
+      status: 'pending',
     });
     console.log('✔ Đã tạo 2 đơn nghỉ phép mẫu PENDING (1 của GV Cường cho Trưởng khoa duyệt, 1 của Trưởng khoa cho Admin duyệt). GV Bích nguyên vẹn 12 ngày phép (0 ngày đã dùng).');
 
@@ -772,7 +772,7 @@ const seedData = async () => {
       workDate: yesterdayDateStr,
       checkInTime: yesterday,
       checkOutTime: yesterdayOut,
-      status: 'ON_TIME',
+      status: 'on_time',
       isManualOverride: false,
     });
 
@@ -780,9 +780,9 @@ const seedData = async () => {
       {
         attendanceLogId: seededLog._id,
         userId: lecturerBich._id,
-        punchType: 'CHECK_IN',
+        punchType: 'check_in',
         punchTime: yesterday,
-        method: 'QR_CODE',
+        method: 'qr_code',
         coordinates: { latitude: 21.028511, longitude: 105.854167 },
         deviceId: 'MAY_CHAM_CONG_A2',
         isFraud: false,
@@ -790,9 +790,9 @@ const seedData = async () => {
       {
         attendanceLogId: seededLog._id,
         userId: lecturerBich._id,
-        punchType: 'CHECK_OUT',
+        punchType: 'check_out',
         punchTime: yesterdayOut,
-        method: 'QR_CODE',
+        method: 'qr_code',
         coordinates: { latitude: 21.028511, longitude: 105.854167 },
         deviceId: 'MAY_CHAM_CONG_A2',
         isFraud: false,
@@ -958,12 +958,12 @@ const seedData = async () => {
       {
         key: 'CHUC_VU',
         value: [
-          { positionCode: 'HIEU_TRUONG', allowanceCoefficient: 1.0, quotaReductionRate: 0.8 },
-          { positionCode: 'TRUONG_KHOA', allowanceCoefficient: 0.7, quotaReductionRate: 0.3 },
-          { positionCode: 'PHO_TRUONG_KHOA', allowanceCoefficient: 0.5, quotaReductionRate: 0.2 },
-          { positionCode: 'TRUONG_BO_MON', allowanceCoefficient: 0.5, quotaReductionRate: 0.2 },
-          { positionCode: 'TRUONG_PHONG', allowanceCoefficient: 0.6, quotaReductionRate: 0.0 },
-          { positionCode: 'PHO_TRUONG_PHONG', allowanceCoefficient: 0.4, quotaReductionRate: 0.0 },
+          { positionCode: 'hieu_truong', allowanceCoefficient: 1.0, quotaReductionRate: 0.8 },
+          { positionCode: 'truong_khoa', allowanceCoefficient: 0.7, quotaReductionRate: 0.3 },
+          { positionCode: 'pho_khoa', allowanceCoefficient: 0.5, quotaReductionRate: 0.2 },
+          { positionCode: 'truong_bo_mon', allowanceCoefficient: 0.5, quotaReductionRate: 0.2 },
+          { positionCode: 'truong_phong', allowanceCoefficient: 0.6, quotaReductionRate: 0.0 },
+          { positionCode: 'pho_phong', allowanceCoefficient: 0.4, quotaReductionRate: 0.0 },
         ],
         group: 'CHUC_VU',
         description: 'Bảng hệ số phụ cấp chức vụ và tỷ lệ giảm trừ định mức giảng dạy',
@@ -1099,7 +1099,7 @@ const seedData = async () => {
           taxAmount: 0,
         },
         netSalary: 10203050,
-        status: 'DA_DUYET',
+        status: 'da_duyet',
       },
     ]);
     console.log('✔ Đã khởi tạo phiếu lương mẫu tháng 9/2026 (phieu_luong).');

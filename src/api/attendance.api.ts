@@ -27,7 +27,7 @@ export interface FaceDetectPoseResponse {
 
 export interface AttendancePunchResult {
   success: boolean;
-  action: 'CHECK_IN' | 'CHECK_OUT';
+  action: 'check_in' | 'check_out';
   message: string;
   user: {
     _id: string;
@@ -47,7 +47,7 @@ export interface AttendancePunchResult {
     workDate: string;
     checkInTime?: string;
     checkOutTime?: string;
-    status: 'ON_TIME' | 'LATE' | 'EARLY_LEAVE' | 'ABSENT';
+    status: 'on_time' | 'late' | 'early_leave' | 'absent';
     lateMinutes?: number;
     earlyExitMinutes?: number;
     shiftName?: string;
@@ -57,12 +57,12 @@ export interface AttendancePunchResult {
 export interface AttendancePunchLogItem {
   _id?: string;
   punchTime?: string;
-  punchType: 'CHECK_IN' | 'CHECK_OUT' | string;
+  punchType: 'check_in' | 'check_out' | string;
   method?: string;
   confidenceScore?: number;
   livenessScore?: number;
   faceAngle?: string;
-  isFraudulent?: boolean;
+  isFraud?: boolean;
   fraudReason?: string;
   deviceId?: string;
   clientIp?: string;
@@ -112,11 +112,10 @@ export interface AttendanceHistoryItem {
   workHours?: number;
   actualTeachingPeriods?: number;
   isMissingCheckOut?: boolean;
-  status: 'ON_TIME' | 'LATE' | 'EARLY_LEAVE' | 'ABSENT' | 'EXCUSED_ABSENCE' | string;
+  status: 'on_time' | 'late' | 'early_leave' | 'absent' | 'excused_absence' | string;
   method?: string;
   isManualOverride?: boolean;
   isFraud?: boolean;
-  isFraudulent?: boolean;
   fraudReason?: string;
   capturedImage?: string;
   evidencePhoto?: string;
@@ -170,7 +169,7 @@ export const attendanceApi = {
   async checkInWithFace(
     imageBlob: Blob,
     options?: {
-      actionType?: 'CHECK_IN' | 'CHECK_OUT';
+      actionType?: 'check_in' | 'check_out';
       verifyOnly?: boolean;
       useQueue?: boolean;
       location?: { lat: number; lng: number; accuracy?: number } | null;
@@ -179,7 +178,7 @@ export const attendanceApi = {
   ): Promise<AttendancePunchResult> {
     const formData = new FormData();
     formData.append('image', imageBlob, 'attendance.jpg');
-    formData.append('actionType', options?.actionType || 'CHECK_IN');
+    formData.append('actionType', options?.actionType || 'check_in');
 
     if (options?.location) {
       formData.append('latitude', String(options.location.lat));
@@ -220,14 +219,14 @@ export const attendanceApi = {
   async checkOutWithFace(
     imageBlob: Blob,
     options?: {
-      actionType?: 'CHECK_IN' | 'CHECK_OUT';
+      actionType?: 'check_in' | 'check_out';
       location?: { lat: number; lng: number; accuracy?: number } | null;
       deviceId?: string;
     }
   ): Promise<AttendancePunchResult> {
     const formData = new FormData();
     formData.append('image', imageBlob, 'attendance.jpg');
-    formData.append('actionType', options?.actionType || 'CHECK_OUT');
+    formData.append('actionType', options?.actionType || 'check_out');
 
     if (options?.location) {
       formData.append('latitude', String(options.location.lat));

@@ -78,9 +78,5 @@ refreshTokenSchema.index({ ma_ho: 1 }, { sparse: true });
 
 const RefreshToken = mongoose.models.RefreshToken || mongoose.model('RefreshToken', refreshTokenSchema, 'ma_lam_moi');
 
-if (!mongoose.models.MaLamMoi) {
-  mongoose.model('MaLamMoi', refreshTokenSchema, 'ma_lam_moi');
-}
-
 module.exports = RefreshToken;
 

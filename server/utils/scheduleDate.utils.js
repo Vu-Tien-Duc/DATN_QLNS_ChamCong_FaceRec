@@ -20,7 +20,7 @@ const isScheduleActiveOnDate = (schedule, date = new Date()) => {
       if (!d) return false;
       const exVn = getVietnamTime(d);
       const exTime = new Date(Date.UTC(exVn.getFullYear(), exVn.getMonth(), exVn.getDate())).getTime();
-      return exTime === checkTime && ['NGHI', 'HUY'].includes(ex.trang_thai || ex.status);
+      return exTime === checkTime && ['nghi', 'huy'].includes(ex.trang_thai || ex.status);
     });
     if (isExcluded) return false;
   }

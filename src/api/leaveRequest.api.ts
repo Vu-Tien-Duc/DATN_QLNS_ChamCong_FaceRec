@@ -1,22 +1,19 @@
 import { apiClient } from './apiClient';
 
 export type BackendLeaveType =
-  | 'ANNUAL'
-  | 'SICK'
-  | 'COMPENSATORY'
-  | 'SHIFT_CHANGE'
-  | 'UNPAID'
   | 'nghi_phep'
   | 'day_bu'
-  | 'doi_ca';
+  | 'doi_ca'
+  | 'nghi_om'
+  | 'viec_rieng';
 
 export type BackendLeaveStatus =
-  | 'PENDING'
-  | 'PENDING_DEAN'
-  | 'PENDING_BGH'
-  | 'APPROVED'
-  | 'REJECTED'
-  | 'CANCELLED';
+  | 'pending'
+  | 'pending_dean'
+  | 'pending_bgh'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled';
 
 export interface ApprovalHistoryItem {
   cap: number;
@@ -28,7 +25,7 @@ export interface ApprovalHistoryItem {
     avatar?: string;
   };
   vai_tro?: string;
-  hanh_dong: 'APPROVED' | 'REJECTED';
+  hanh_dong: 'approved' | 'rejected';
   ghi_chu?: string;
   thoi_gian: string;
 }

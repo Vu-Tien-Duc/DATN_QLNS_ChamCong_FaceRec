@@ -7,14 +7,18 @@
  * - Hồi tố & Hoàn tác công tự động với ACID Transaction (Attendance Retroactive Sync & Rollback).
  */
 const mongoose = require('mongoose');
+const path = require('path');
+const crypto = require('crypto');
+const minioStorage = require('../config/minio');
 const LeaveRequest = require('../models/leaveRequest.model');
 const AttendanceLog = require('../models/attendanceLog.model');
 const Schedule = require('../models/schedule.model');
 const User = require('../models/user.model');
 const PunchLog = require('../models/punchLog.model');
 const AuditLog = require('../models/auditLog.model');
-const { sendLeaveApprovedEmail, sendLeaveRejectedEmail } = require('./email.service');
 const { getDeanScopedUserIds, isUserInDeanScope } = require('../utils/deanScope');
+const { normalizeRole, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES } = require('../utils/roleUtils');
+const { sendLeaveApprovedEmail, sendLeaveRejectedEmail } = require('./email.service');
 
 class ServiceError extends Error {
   constructor(message, statusCode = 400, errorCode = null, data = null) {
@@ -84,104 +88,50 @@ const calculateLeaveDays = (startDate, endDate, isHalfDay = false) => {
 };
 
 /**
- * Thống kê số ngày phép năm bằng MongoDB Aggregation Pipeline
+ * Thống kê số ngày phép năm của người dùng
  */
 const getLeaveStatsByYear = async (userId, year, { session } = {}) => {
-  const yearStart = new Date(year, 0, 1);
-  const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+  const targetYear = Number(year) || new Date().getFullYear();
+  const yearStart = new Date(targetYear, 0, 1);
+  const yearEnd = new Date(targetYear, 11, 31, 23, 59, 59, 999);
 
-  let aggregation = LeaveRequest.aggregate([
-    {
-      $match: {
-        userId: new mongoose.Types.ObjectId(userId),
-        status: { $in: ['APPROVED', 'PENDING', 'PENDING_DEAN', 'PENDING_BGH'] },
-        startDate: { $lte: yearEnd },
-        endDate: { $gte: yearStart },
-      },
-    },
-    {
-      $project: {
-        type: '$type',
-        status: '$status',
-        effectiveStart: { $max: [{ $ifNull: ['$startDate', '$ngay_bat_dau'] }, yearStart] },
-        effectiveEnd: { $min: [{ $ifNull: ['$endDate', '$ngay_ket_thuc'] }, yearEnd] },
-      },
-    },
-    {
-      $project: {
-        type: 1,
-        status: 1,
-        leaveDays: {
-          $add: [
-            {
-              $round: [
-                {
-                  $divide: [{ $subtract: ['$effectiveEnd', '$effectiveStart'] }, 86400000],
-                },
-                0,
-              ],
-            },
-            1,
-          ],
-        },
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        daysUsed: {
-          $sum: {
-            $cond: [
-              { $and: [{ $eq: ['$status', 'APPROVED'] }, { $eq: ['$type', 'nghi_phep'] }] },
-              '$leaveDays',
-              0,
-            ],
-          },
-        },
-        pendingDays: {
-          $sum: {
-            $cond: [
-              { $in: ['$status', ['PENDING', 'PENDING_DEAN', 'PENDING_BGH']] },
-              '$leaveDays',
-              0,
-            ],
-          },
-        },
-        pendingAnnualLeaveDays: {
-          $sum: {
-            $cond: [
-              {
-                $and: [
-                  { $in: ['$status', ['PENDING', 'PENDING_DEAN', 'PENDING_BGH']] },
-                  { $eq: ['$type', 'nghi_phep'] },
-                ],
-              },
-              '$leaveDays',
-              0,
-            ],
-          },
-        },
-        pendingRequestsCount: {
-          $sum: {
-            $cond: [
-              { $in: ['$status', ['PENDING', 'PENDING_DEAN', 'PENDING_BGH']] },
-              1,
-              0,
-            ],
-          },
-        },
-      },
-    },
-  ]);
+  const query = LeaveRequest.find({
+    userId,
+    status: { $in: ['approved', 'pending', 'pending_dean', 'pending_bgh'] },
+    startDate: { $lte: yearEnd },
+    endDate: { $gte: yearStart },
+  });
+  if (session) query.session(session);
+  const requests = await query;
 
-  if (session) aggregation = aggregation.session(session);
-  const [stats] = await aggregation;
+  let daysUsed = 0;
+  let pendingDays = 0;
+  let pendingAnnualLeaveDays = 0;
+  let pendingRequestsCount = 0;
+
+  for (const req of requests) {
+    const isAnnualLeave = req.type === 'nghi_phep';
+    const days = Number(req.totalDays ?? 1);
+    const status = String(req.status || '').toLowerCase();
+
+    if (status === 'approved') {
+      if (isAnnualLeave) {
+        daysUsed += days;
+      }
+    } else if (['pending', 'pending_dean', 'pending_bgh'].includes(status)) {
+      pendingDays += days;
+      pendingRequestsCount += 1;
+      if (isAnnualLeave) {
+        pendingAnnualLeaveDays += days;
+      }
+    }
+  }
 
   return {
-    daysUsed: stats?.daysUsed || 0,
-    pendingDays: stats?.pendingDays || 0,
-    pendingAnnualLeaveDays: stats?.pendingAnnualLeaveDays || 0,
-    pendingRequestsCount: stats?.pendingRequestsCount || 0,
+    daysUsed,
+    pendingDays,
+    pendingAnnualLeaveDays,
+    pendingRequestsCount,
   };
 };
 
@@ -269,8 +219,8 @@ const createLeaveRequestDomain = async ({
   activeLeaveSubmissions.add(lockKey);
 
   try {
-    const userRoleStr = String(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh || '').toUpperCase().replace(/_/g, '');
-    const hasAdminRole = userRoleStr.includes('ADMIN') || (Array.isArray(currentUser.roles) && currentUser.roles.some((r) => String(r.role || r.ma_vai_tro || r).toUpperCase().includes('ADMIN')));
+    const userRole = normalizeRole(currentUser?.role || currentUser?.primaryRole || currentUser?.vai_tro_chinh);
+    const hasAdminRole = userRole === 'admin' || (Array.isArray(currentUser?.roles) && currentUser.roles.some((r) => normalizeRole(r.role || r.ma_vai_tro || r) === 'admin'));
     if (hasAdminRole) {
       throw new ServiceError(
         'Quản trị viên (Admin) phụ trách quản trị và xét duyệt đơn toàn trường, không áp dụng nộp đơn xin nghỉ phép cá nhân.',
@@ -283,26 +233,15 @@ const createLeaveRequestDomain = async ({
       throw new ServiceError('Vui lòng cung cấp loại đơn (type), lý do (reason), ngày bắt đầu và kết thúc hợp lệ.', 400);
     }
 
-    const validTypes = [
-      'nghi_phep',
-      'day_bu',
-      'doi_ca',
-      'ANNUAL',
-      'COMPENSATORY',
-      'SHIFT_CHANGE',
-      'SICK',
-      'UNPAID',
-      'PERSONAL',
-      'MATERNITY',
-      'BUSINESS',
-      'OTHER',
-    ];
-    if (!validTypes.includes(type)) {
-      throw new ServiceError('Loại đơn không hợp lệ. Chỉ chấp nhận: nghi_phep, day_bu, doi_ca.', 400);
+    // Chuẩn hóa loại đơn về định dạng canonical chữ thường duy nhất
+    const canonicalType = (type || '').trim().toLowerCase();
+    const validCanonicalTypes = ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om', 'viec_rieng'];
+    if (!validCanonicalTypes.includes(canonicalType)) {
+      throw new ServiceError('Loại đơn không hợp lệ. Chỉ chấp nhận: nghi_phep, day_bu, doi_ca, nghi_om, viec_rieng.', 400);
     }
 
     const start = new Date(startDate);
-    const end = new Date(endDate);
+    const end = Boolean(isHalfDay) ? new Date(startDate) : new Date(endDate);
 
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       throw new ServiceError('Ngày bắt đầu hoặc ngày kết thúc không hợp lệ.', 400);
@@ -320,7 +259,7 @@ const createLeaveRequestDomain = async ({
 
     let parsedMakeupDate = null;
     let validScheduleId = null;
-    if (type === 'day_bu') {
+    if (canonicalType === 'day_bu') {
       if (!scheduleId || !mongoose.Types.ObjectId.isValid(scheduleId)) {
         throw new ServiceError('Đơn đăng ký dạy bù bắt buộc phải chọn lịch trình giảng dạy (scheduleId).', 400);
       }
@@ -342,7 +281,18 @@ const createLeaveRequestDomain = async ({
 
     let finalAttachmentUrl = typeof attachmentUrl === 'string' ? attachmentUrl.trim() : null;
     if (file) {
-      finalAttachmentUrl = `/uploads/${file.filename}`;
+      if (file.buffer && file.buffer.length > 0) {
+        const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
+        const filename = `leave-${crypto.randomUUID()}${ext}`;
+        const objectKey = `attachments/${filename}`;
+        await minioStorage.putObject(objectKey, file.buffer, file.mimetype || 'image/png', {
+          originalName: encodeURIComponent(file.originalname || 'minh-chung'),
+          uploadedBy: String(userId),
+        });
+        finalAttachmentUrl = `/uploads/${filename}`;
+      } else if (file.filename) {
+        finalAttachmentUrl = `/uploads/${file.filename}`;
+      }
     }
 
     const serverCalculatedDays = calculateLeaveDays(start, end, Boolean(isHalfDay));
@@ -352,23 +302,27 @@ const createLeaveRequestDomain = async ({
     // - Giảng viên / Nhân viên nộp đơn:
     //   + Nghỉ > 3 ngày: Bắt buộc duyệt 2 cấp (Cấp 1: Khoa -> Cấp 2: BGH).
     //   + Nghỉ <= 3 ngày: Duyệt 1 cấp tại Khoa.
-    const isLeadership = ['TRUONG_KHOA', 'PHO_TRUONG_KHOA', 'TRUONGKHOA', 'PHOKHOA'].includes(userRole);
+    const isLeadership = ['truong_khoa', 'pho_khoa'].includes(userRole)
+      || (Array.isArray(currentUser?.roles) && currentUser.roles.some((r) => {
+        const rName = normalizeRole(r.role || r.ma_vai_tro || r);
+        return ['truong_khoa', 'pho_khoa'].includes(rName);
+      }));
     let requiredLevels = 1;
     let currentLevel = 1;
-    let initialStatus = 'PENDING';
+    let initialStatus = 'pending';
 
     if (isLeadership) {
       requiredLevels = 1;
       currentLevel = 2; // Cấp BGH
-      initialStatus = 'PENDING_BGH';
+      initialStatus = 'pending_bgh';
     } else if (serverCalculatedDays > 3) {
       requiredLevels = 2;
       currentLevel = 1; // Bắt đầu từ Cấp 1 (Khoa)
-      initialStatus = 'PENDING';
+      initialStatus = 'pending';
     } else {
       requiredLevels = 1;
       currentLevel = 1;
-      initialStatus = 'PENDING';
+      initialStatus = 'pending';
     }
 
     const leaveRequest = await runLeaveRequestTransaction(async (session) => {
@@ -385,7 +339,7 @@ const createLeaveRequestDomain = async ({
 
       const overlapQuery = LeaveRequest.findOne({
         userId,
-        status: { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH', 'APPROVED'] },
+        status: { $in: ['pending', 'pending_dean', 'pending_bgh', 'approved'] },
         startDate: { $lte: end },
         endDate: { $gte: start },
       });
@@ -393,7 +347,7 @@ const createLeaveRequestDomain = async ({
       const overlappingLeave = await overlapQuery;
 
       if (overlappingLeave) {
-        const statusDesc = overlappingLeave.status === 'APPROVED' ? 'đã được phê duyệt' : 'đang chờ xét duyệt';
+        const statusDesc = overlappingLeave.status === 'approved' ? 'đã được phê duyệt' : 'đang chờ xét duyệt';
         const startFormatted = new Date(overlappingLeave.startDate).toLocaleDateString('vi-VN');
         const endFormatted = new Date(overlappingLeave.endDate).toLocaleDateString('vi-VN');
         throw new ServiceError(
@@ -403,7 +357,7 @@ const createLeaveRequestDomain = async ({
         );
       }
 
-      if (type === 'nghi_phep') {
+      if (canonicalType === 'nghi_phep') {
         const currentYear = new Date().getFullYear();
         const yearStart = new Date(currentYear, 0, 1);
         const yearEnd = new Date(currentYear, 11, 31, 23, 59, 59, 999);
@@ -440,7 +394,7 @@ const createLeaveRequestDomain = async ({
         [
           {
             userId,
-            type,
+            type: canonicalType,
             reason: normalizedReason,
             startDate: start,
             endDate: end,
@@ -449,10 +403,10 @@ const createLeaveRequestDomain = async ({
             makeupDate: parsedMakeupDate,
             attachmentUrl: finalAttachmentUrl,
             status: initialStatus,
-            so_cap_duyet: requiredLevels,
-            cap_duyet_hien_tai: currentLevel,
-            phien_ban: 1,
-            lich_su_duyet: [],
+            requiredLevels,
+            currentLevel,
+            version: 1,
+            approvalHistory: [],
           },
         ],
         createOptions
@@ -484,13 +438,15 @@ const fetchLeaveRequests = async ({ status, type, userId, currentUser }) => {
   const query = {};
 
   if (status && typeof status === 'string') {
-    if (status === 'PENDING') {
-      query.status = { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH'] };
+    if (status === 'pending') {
+      query.status = { $in: ['pending', 'pending_dean', 'pending_bgh'] };
     } else {
       query.status = status;
     }
   }
-  if (type && typeof type === 'string') query.type = type;
+  if (type && typeof type === 'string' && type.trim() && type !== 'all') {
+    query.type = type.trim().toLowerCase();
+  }
 
   if (userId) {
     if (typeof userId !== 'string' || !mongoose.Types.ObjectId.isValid(userId)) {
@@ -498,12 +454,12 @@ const fetchLeaveRequests = async ({ status, type, userId, currentUser }) => {
     }
   }
 
-  const role = (currentUser.role || '').toUpperCase();
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
   const currentUserId = currentUser.id || currentUser._id;
 
-  if (['GIANGVIEN', 'GIANG_VIEN', 'NHANVIEN', 'NHAN_VIEN', 'CHUYEN_VIEN'].includes(role)) {
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(role)) {
     query.userId = currentUserId;
-  } else if (['TRUONGKHOA', 'TRUONG_KHOA', 'PHOKHOA', 'PHO_TRUONG_KHOA'].includes(role)) {
+  } else if (UNIT_LEADER_ROLES.includes(role)) {
     const facultyUserIds = await getDeanScopedUserIds(currentUser);
     if (userId) {
       if (!facultyUserIds.includes(userId.toString())) {
@@ -513,14 +469,21 @@ const fetchLeaveRequests = async ({ status, type, userId, currentUser }) => {
     } else {
       query.userId = { $in: facultyUserIds };
     }
-  } else if (['ADMIN', 'BGH'].includes(role)) {
+  } else if (['admin', 'bgh', 'tccb'].includes(role)) {
     if (userId) query.userId = userId;
   }
 
   const requests = await LeaveRequest.find(query)
-    .populate('userId', 'fullName email role departmentId avatar')
-    .populate('approvedBy', 'fullName email role avatar')
-    .populate('lich_su_duyet.nguoi_duyet', 'fullName email role avatar')
+    .populate({
+      path: 'userId',
+      select: 'fullName email role staffCode departmentId avatar',
+      populate: {
+        path: 'departmentId',
+        select: 'name code',
+      },
+    })
+    .populate('approvedBy', 'fullName email role avatar staffCode')
+    .populate('lich_su_duyet.nguoi_duyet_id', 'fullName email role avatar staffCode')
     .sort({ createdAt: -1 });
 
   return requests;
@@ -535,23 +498,30 @@ const fetchLeaveRequestById = async (id, currentUser) => {
   }
 
   const request = await LeaveRequest.findById(id)
-    .populate('userId', 'fullName email role departmentId avatar')
-    .populate('approvedBy', 'fullName email role avatar')
-    .populate('lich_su_duyet.nguoi_duyet', 'fullName email role avatar');
+    .populate({
+      path: 'userId',
+      select: 'fullName email role staffCode departmentId avatar',
+      populate: {
+        path: 'departmentId',
+        select: 'name code',
+      },
+    })
+    .populate('approvedBy', 'fullName email role avatar staffCode')
+    .populate('lich_su_duyet.nguoi_duyet_id', 'fullName email role avatar staffCode');
 
   if (!request) {
     throw new ServiceError('Không tìm thấy đơn xin.', 404);
   }
 
-  const role = (currentUser.role || '').toUpperCase();
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
   const currentUserId = (currentUser.id || currentUser._id).toString();
   const applicantId = (request.userId?._id || request.userId).toString();
 
-  if (['GIANGVIEN', 'GIANG_VIEN', 'NHANVIEN', 'NHAN_VIEN'].includes(role)) {
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(role)) {
     if (applicantId !== currentUserId) {
       throw new ServiceError('Bạn không có quyền xem đơn này.', 403);
     }
-  } else if (['TRUONGKHOA', 'TRUONG_KHOA', 'PHOKHOA', 'PHO_TRUONG_KHOA'].includes(role)) {
+  } else if (['truong_khoa', 'pho_khoa'].includes(role)) {
     const inScope = await isUserInDeanScope(currentUser, request.userId._id || request.userId);
     if (!inScope && applicantId !== currentUserId) {
       throw new ServiceError('Bạn không có quyền xem đơn của nhân sự ngoài khoa.', 403);
@@ -564,7 +534,8 @@ const fetchLeaveRequestById = async (id, currentUser) => {
 /**
  * 4. Xem số dư ngày phép
  */
-const fetchLeaveBalance = async (queryUserId, currentUser) => {
+const fetchLeaveBalance = async (queryUserId, currentUser, year) => {
+  const currentYear = Number(year) || new Date().getFullYear();
   const currentUserId = (currentUser.id || currentUser._id).toString();
   let targetUserId = currentUserId;
 
@@ -573,17 +544,17 @@ const fetchLeaveBalance = async (queryUserId, currentUser) => {
       throw new ServiceError('Mã người dùng (userId) không hợp lệ.', 400);
     }
 
-    const role = (currentUser.role || '').toUpperCase();
-    if (['GIANGVIEN', 'GIANG_VIEN', 'NHANVIEN', 'NHAN_VIEN'].includes(role)) {
+    const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
+    if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(role)) {
       throw new ServiceError('Bạn chỉ có quyền tra cứu số dư ngày phép của chính mình.', 403);
     }
-    if (['TRUONGKHOA', 'TRUONG_KHOA', 'PHOKHOA', 'PHO_TRUONG_KHOA'].includes(role)) {
+    if (['truong_khoa', 'pho_khoa'].includes(role)) {
       const inScope = await isUserInDeanScope(currentUser, queryUserId);
       if (!inScope) {
         throw new ServiceError('Bạn không có quyền xem số dư ngày phép của nhân sự ngoài khoa.', 403);
       }
       targetUserId = queryUserId;
-    } else if (['ADMIN', 'BGH'].includes(role)) {
+    } else if (['admin', 'bgh'].includes(role)) {
       targetUserId = queryUserId;
     }
   }
@@ -593,10 +564,9 @@ const fetchLeaveBalance = async (queryUserId, currentUser) => {
     throw new ServiceError('Không tìm thấy người dùng.', 404);
   }
 
-  const currentYear = new Date().getFullYear();
-  const userRole = (user.role || '').toUpperCase();
+  const userRole = normalizeRole(user.role || user.primaryRole || user.vai_tro_chinh);
 
-  if (userRole === 'ADMIN') {
+  if (userRole === 'admin') {
     return {
       userId: targetUserId,
       year: currentYear,
@@ -650,18 +620,18 @@ const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
     };
   }
 
-  const role = (currentUser.role || '').toUpperCase();
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
   const currentLevel = leaveRequest.currentLevel || 1;
   const status = leaveRequest.status;
 
   // Ban Giám Hiệu & Admin có quyền duyệt toàn quyền mọi cấp
-  const isBGH = ['ADMIN', 'BGH'].includes(role);
+  const isBGH = ['admin', 'bgh'].includes(role);
   if (isBGH) {
     return { allowed: true, approverLevel: currentLevel };
   }
 
   // Đang ở cấp 2 (PENDING_BGH): Chỉ BGH và Admin được duyệt
-  if (status === 'PENDING_BGH' || currentLevel === 2) {
+  if (status === 'pending_bgh' || currentLevel === 2) {
     return {
       allowed: false,
       message: 'Đơn này đang ở Cấp 2, chỉ Ban Giám Hiệu hoặc Quản trị viên mới có quyền phê duyệt.',
@@ -671,14 +641,14 @@ const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
   }
 
   // Cấp 1 (Khoa): Trưởng khoa hoặc Phó trưởng khoa được ủy quyền
-  if (['TRUONGKHOA', 'TRUONG_KHOA', 'PHOKHOA', 'PHO_TRUONG_KHOA'].includes(role)) {
-    const applicant = await User.findById(applicantId).select('role departmentId');
+  if (['truong_khoa', 'pho_khoa'].includes(role)) {
+    const applicant = await User.findById(applicantId).select('role primaryRole vai_tro_chinh departmentId');
     if (!applicant) {
       return { allowed: false, message: 'Người nộp đơn không tồn tại trên hệ thống.', status: 404 };
     }
 
-    const applicantRole = (applicant.role || '').toUpperCase();
-    if (['TRUONGKHOA', 'TRUONG_KHOA', 'ADMIN', 'BGH'].includes(applicantRole)) {
+    const applicantRole = normalizeRole(applicant.role || applicant.primaryRole || applicant.vai_tro_chinh);
+    if (['truong_khoa', 'admin', 'bgh'].includes(applicantRole)) {
       return {
         allowed: false,
         message: 'Chỉ Ban Giám Hiệu mới có quyền phê duyệt đơn của Trưởng khoa.',
@@ -687,7 +657,7 @@ const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
       };
     }
 
-    if (['PHOKHOA', 'PHO_TRUONG_KHOA'].includes(role)) {
+    if (role === 'pho_khoa') {
       if (!currentUser.isAuthorized && !currentUser.duoc_uy_quyen) {
         return {
           allowed: false,
@@ -728,7 +698,7 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
   }
 
   const currentStatus = request.status;
-  if (!['PENDING', 'PENDING_DEAN', 'PENDING_BGH'].includes(currentStatus)) {
+  if (!['pending', 'pending_dean', 'pending_bgh'].includes(currentStatus)) {
     throw new ServiceError(`Đơn đã được xử lý với trạng thái ${currentStatus}.`, 400, 'LEAVE_ALREADY_PROCESSED');
   }
 
@@ -780,24 +750,25 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
   // Xác định trạng thái tiếp theo:
   // - Nếu đơn yêu cầu 2 cấp và đang ở cấp 1 -> Chuyển sang PENDING_BGH, cap_duyet_hien_tai = 2
   // - Nếu đơn ở cấp cuối (cấp 1/1 hoặc cấp 2/2) -> Chuyển sang APPROVED
-  let nextStatus = 'APPROVED';
+  let nextStatus = 'approved';
   let nextLevel = currentLevel;
   const isFinalApproval = currentLevel >= requiredLevels;
 
   if (!isFinalApproval) {
-    nextStatus = 'PENDING_BGH';
+    nextStatus = 'pending_bgh';
     nextLevel = currentLevel + 1;
   } else {
-    nextStatus = 'APPROVED';
+    nextStatus = 'approved';
   }
 
   const approvalStep = {
-    step: currentLevel,
-    approverId: currentUserId,
-    role: currentUser.role || '',
-    action: 'APPROVED',
-    note: cleanNote,
-    timestamp: new Date(),
+    cap: currentLevel,
+    nguoi_duyet: currentUserId,
+    nguoi_duyet_id: currentUserId,
+    vai_tro: currentUser.role || '',
+    hanh_dong: 'approved',
+    ghi_chu: cleanNote,
+    thoi_gian: new Date(),
   };
 
   const updatedRequest = await runLeaveRequestTransaction(async (session) => {
@@ -808,19 +779,19 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
     const updated = await LeaveRequest.findOneAndUpdate(
       {
         _id: id,
-        status: { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH'] },
+        status: { $in: ['pending', 'pending_dean', 'pending_bgh'] },
         version: targetVersion,
       },
       {
         $set: {
           status: nextStatus,
           currentLevel: nextLevel,
-          approverId: currentUserId,
+          approvedBy: currentUserId,
           approvalNote: cleanNote,
-          rejectReason: null,
+          rejectionReason: null,
         },
         $inc: { version: 1 },
-        $push: { approvalHistory: approvalStep },
+        $push: { lich_su_duyet: approvalStep },
       },
       updateOptions
     );
@@ -844,7 +815,7 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
               exceptions: {
                 date: updated.makeupDate,
                 reason: `Dạy bù theo đơn nghỉ phép #${updated._id}`,
-                status: 'DAY_BU',
+                status: 'day_bu',
               },
             },
           },
@@ -876,7 +847,7 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
               },
               update: {
                 $set: {
-                  status: 'EXCUSED_ABSENCE',
+                  status: 'excused_absence',
                   leaveRequestId: updated._id,
                   isExcused: true,
                   note: 'Nghỉ phép có đơn được duyệt (Hồi tố)',
@@ -885,7 +856,7 @@ const approveLeaveRequestDomain = async ({ id, approvalNote, expectedVersion, cu
                 },
                 $setOnInsert: {
                   shiftId: sch.shiftId,
-                  method: 'SYSTEM_AUTO',
+                  method: 'system_auto',
                   deviceId: 'SYSTEM_LEAVE_RETROACTIVE',
                 },
               },
@@ -948,7 +919,7 @@ const rejectLeaveRequestDomain = async ({ id, rejectionReason, expectedVersion, 
   }
 
   const currentStatus = request.status;
-  if (!['PENDING', 'PENDING_DEAN', 'PENDING_BGH'].includes(currentStatus)) {
+  if (!['pending', 'pending_dean', 'pending_bgh'].includes(currentStatus)) {
     throw new ServiceError(`Đơn đã được xử lý với trạng thái ${currentStatus}.`, 400, 'LEAVE_ALREADY_PROCESSED');
   }
 
@@ -971,12 +942,13 @@ const rejectLeaveRequestDomain = async ({ id, rejectionReason, expectedVersion, 
   const currentUserId = currentUser.id || currentUser._id;
   const currentLevel = Number(request.currentLevel || 1);
   const rejectionStep = {
-    step: currentLevel,
-    approverId: currentUserId,
-    role: currentUser.role || '',
-    action: 'REJECTED',
-    note: rejectionReason.trim(),
-    timestamp: new Date(),
+    cap: currentLevel,
+    nguoi_duyet: currentUserId,
+    nguoi_duyet_id: currentUserId,
+    vai_tro: currentUser.role || '',
+    hanh_dong: 'rejected',
+    ghi_chu: rejectionReason.trim(),
+    thoi_gian: new Date(),
   };
 
   const updatedRequest = await runLeaveRequestTransaction(async (session) => {
@@ -986,17 +958,17 @@ const rejectLeaveRequestDomain = async ({ id, rejectionReason, expectedVersion, 
     const updated = await LeaveRequest.findOneAndUpdate(
       {
         _id: id,
-        status: { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH'] },
+        status: { $in: ['pending', 'pending_dean', 'pending_bgh'] },
         version: targetVersion,
       },
       {
         $set: {
-          status: 'REJECTED',
-          approverId: currentUserId,
-          rejectReason: rejectionReason.trim(),
+          status: 'rejected',
+          approvedBy: currentUserId,
+          rejectionReason: rejectionReason.trim(),
         },
         $inc: { version: 1 },
-        $push: { approvalHistory: rejectionStep },
+        $push: { lich_su_duyet: rejectionStep },
       },
       updateOptions
     );
@@ -1055,19 +1027,19 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
   const currentUserId = (currentUser.id || currentUser._id).toString();
   const applicantId = (request.userId?._id || request.userId).toString();
   const isApplicant = applicantId === currentUserId;
-  const role = (currentUser.role || '').toUpperCase();
-  const isAdmin = ['ADMIN', 'BGH'].includes(role);
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
+  const isAdmin = ['admin', 'bgh'].includes(role);
 
   if (!isApplicant && !isAdmin) {
     throw new ServiceError('Bạn chỉ có quyền hủy đơn của chính mình.', 403, 'CANCEL_UNAUTHORIZED');
   }
 
   const currentStatus = request.status;
-  if (['CANCELLED', 'REJECTED'].includes(currentStatus)) {
+  if (['cancelled', 'rejected'].includes(currentStatus)) {
     throw new ServiceError(`Đơn đã ở trạng thái ${currentStatus}, không thể hủy.`, 400);
   }
 
-  if (currentStatus === 'APPROVED') {
+  if (currentStatus === 'approved') {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const leaveStart = new Date(request.startDate);
@@ -1100,11 +1072,11 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
     const updated = await LeaveRequest.findOneAndUpdate(
       {
         _id: id,
-        status: { $in: ['PENDING', 'PENDING_DEAN', 'PENDING_BGH', 'APPROVED'] },
+        status: { $in: ['pending', 'pending_dean', 'pending_bgh', 'approved'] },
         version: targetVersion,
       },
       {
-        $set: { status: 'CANCELLED' },
+        $set: { status: 'cancelled' },
         $inc: { version: 1 },
       },
       updateOptions
@@ -1141,7 +1113,7 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
             { _id: log._id },
             {
               $set: {
-                status: 'ABSENT',
+                status: 'absent',
                 isExcused: false,
                 leaveRequestId: null,
                 note: 'Đơn nghỉ phép đã bị hủy (Hoàn tác công)',
@@ -1156,7 +1128,7 @@ const cancelLeaveRequestDomain = async ({ id, expectedVersion, currentUser, ip }
           { _id: log._id },
           {
             $set: {
-              status: log.lateMinutes > 0 ? 'LATE' : 'ON_TIME',
+              status: log.lateMinutes > 0 ? 'late' : 'on_time',
               isExcused: false,
               leaveRequestId: null,
               note: 'Phục hồi tính công từ lượt quẹt thực tế sau khi hủy đơn',

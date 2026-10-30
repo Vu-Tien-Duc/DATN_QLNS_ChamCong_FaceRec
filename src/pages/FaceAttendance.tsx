@@ -47,7 +47,7 @@ export const FaceAttendance: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   // Chế độ & Tính năng tự động
-  const [actionType, setActionType] = useState<'CHECK_IN' | 'CHECK_OUT'>('CHECK_IN');
+  const [actionType, setActionType] = useState<'check_in' | 'check_out'>('check_in');
   const [isAutoScan, setIsAutoScan] = useState<boolean>(true);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(audioFeedback.getIsMuted());
@@ -245,19 +245,33 @@ export const FaceAttendance: React.FC = () => {
 
         setCapturedPreview(capture.dataUrl);
 
-        // Tọa độ GPS khuôn viên trường ĐH Nguyễn Trãi
-        const coords = { lat: 21.028511, lng: 105.854167 };
+        // Tọa độ GPS: ưu tiên lấy định vị thực tế từ trình duyệt, fallback về tọa độ khuôn viên trường ĐH Nguyễn Trãi
+        let coords = { lat: 21.028511, lng: 105.854167 };
+        if (typeof navigator !== 'undefined' && navigator.geolocation) {
+          try {
+            const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                timeout: 2500,
+                enableHighAccuracy: true,
+                maximumAge: 60000,
+              });
+            });
+            coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          } catch {
+            // Giữ tọa độ chuẩn khuôn viên trường nếu trình duyệt chặn quyền hoặc timeout
+          }
+        }
 
         let res: AttendancePunchResult;
-        if (actionType === 'CHECK_OUT') {
+        if (actionType === 'check_out') {
           res = await attendanceApi.checkOutWithFace(capture.blob, {
-            actionType: 'CHECK_OUT',
+            actionType: 'check_out',
             location: coords,
             deviceId: 'STATION_CAMERA_01',
           });
         } else {
           res = await attendanceApi.checkInWithFace(capture.blob, {
-            actionType: 'CHECK_IN',
+            actionType: 'check_in',
             location: coords,
             deviceId: 'STATION_CAMERA_01',
           });
@@ -279,7 +293,7 @@ export const FaceAttendance: React.FC = () => {
             type: 'success',
             message: `Điểm danh thành công: ${res.user?.fullName || 'Cán bộ'}`,
             detail: `Độ tin cậy: ${((res.similarity ?? 0.95) * 100).toFixed(1)}% • ${
-              res.record?.status === 'ON_TIME' ? 'Đúng giờ' : 'Ghi nhận'
+              res.record?.status === 'on_time' ? 'Đúng giờ' : 'Ghi nhận'
             }`,
           });
 
@@ -456,9 +470,9 @@ export const FaceAttendance: React.FC = () => {
               <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80">
                 <button
                   type="button"
-                  onClick={() => setActionType('CHECK_IN')}
+                  onClick={() => setActionType('check_in')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    actionType === 'CHECK_IN'
+                    actionType === 'check_in'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
@@ -468,9 +482,9 @@ export const FaceAttendance: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActionType('CHECK_OUT')}
+                  onClick={() => setActionType('check_out')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    actionType === 'CHECK_OUT'
+                    actionType === 'check_out'
                       ? 'bg-amber-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
@@ -663,7 +677,7 @@ export const FaceAttendance: React.FC = () => {
                 <span>
                   {isProcessing
                     ? 'Đang Nhận Diện...'
-                    : actionType === 'CHECK_IN'
+                    : actionType === 'check_in'
                     ? 'Điểm Danh Ngay (Phím Space)'
                     : 'Tan Ca Ngay (Phím Space)'}
                 </span>
@@ -727,7 +741,7 @@ export const FaceAttendance: React.FC = () => {
                   </p>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                      {lastResult.record?.status === 'ON_TIME' ? 'ĐÚNG GIỜ' : 'GHI NHẬN'}
+                      {lastResult.record?.status === 'on_time' ? 'ĐÚNG GIỜ' : 'GHI NHẬN'}
                     </span>
                     <span className="text-[10px] text-slate-400 font-medium">
                       Độ tin cậy: {((lastResult.similarity ?? 0.95) * 100).toFixed(1)}%
@@ -802,7 +816,7 @@ export const FaceAttendance: React.FC = () => {
                         minute: '2-digit',
                       })
                     : '--:--';
-                  const isOnTime = item.status === 'ON_TIME';
+                  const isOnTime = item.status === 'on_time';
 
                   return (
                     <div
@@ -851,7 +865,7 @@ export const FaceAttendance: React.FC = () => {
       {/* Modal Trình Quét AI Face ID (HUD 3D Laser & Popup Xác Nhận Nhân Sự) */}
       <FaceAttendanceScannerModal
         isOpen={isScannerModalOpen}
-        mode={actionType === 'CHECK_IN' ? 'check-in' : 'check-out'}
+        mode={actionType === 'check_in' ? 'check-in' : 'check-out'}
         onClose={() => {
           setIsScannerModalOpen(false);
           startCamera();

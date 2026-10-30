@@ -82,7 +82,7 @@ const updateAttendanceByAdmin = async ({
   // Ghi Audit Log toàn diện
   AuditLog.create({
     actor: actorId,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'ADMIN_OVERRIDE_ATTENDANCE',
     targetId: log._id.toString(),
     targetType: 'AttendanceLog',

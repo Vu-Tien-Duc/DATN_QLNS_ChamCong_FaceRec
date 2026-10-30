@@ -138,7 +138,7 @@ const { uploadFaceImage } = require('../middlewares/faceImageUpload.middleware')
  *         status:
  *           type: string
  *           enum: [ON_TIME, LATE, EARLY_LEAVE, ABSENT, EXCUSED_ABSENCE]
- *           example: "ON_TIME"
+ *           example: "on_time"
  *         method:
  *           type: string
  *           example: "qr"
@@ -656,6 +656,6 @@ router.get('/:id', getAttendanceById);
  *         description: Không tìm thấy bản ghi chấm công
  */
 router.put('/:id', authorizeRoles('admin'), updateAttendanceByAdmin);
-router.put('/:id/adjust', authorizeRoles('admin', 'bgh', 'truongkhoa'), updateAttendanceByAdmin);
+router.put('/:id/adjust', authorizeRoles('admin', 'bgh', 'truong_khoa'), updateAttendanceByAdmin);
 
 module.exports = router;

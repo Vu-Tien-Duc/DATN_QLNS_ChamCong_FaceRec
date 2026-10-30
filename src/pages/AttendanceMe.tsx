@@ -29,7 +29,9 @@ import {
   FileCheck,
   CalendarRange,
   Zap,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
@@ -133,35 +135,35 @@ const STATUS_CONFIG: Record<
   string,
   { label: string; badgeCls: string; dotColor: string; bgSoft: string; icon: any }
 > = {
-  ON_TIME: {
+  on_time: {
     label: 'Đúng Giờ',
     badgeCls: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
     dotColor: 'bg-emerald-500',
     bgSoft: 'bg-emerald-50 dark:bg-emerald-950/30',
     icon: CheckCircle2,
   },
-  LATE: {
+  late: {
     label: 'Đi Muộn',
     badgeCls: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
     dotColor: 'bg-amber-500',
     bgSoft: 'bg-amber-50 dark:bg-amber-950/30',
     icon: Clock,
   },
-  EARLY_LEAVE: {
+  early_leave: {
     label: 'Về Sớm',
     badgeCls: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800',
     dotColor: 'bg-orange-500',
     bgSoft: 'bg-orange-50 dark:bg-orange-950/30',
     icon: AlertCircle,
   },
-  EXCUSED_ABSENCE: {
+  excused_absence: {
     label: 'Nghỉ Có Phép',
     badgeCls: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800',
     dotColor: 'bg-blue-500',
     bgSoft: 'bg-blue-50 dark:bg-blue-950/30',
     icon: FileCheck,
   },
-  ABSENT: {
+  absent: {
     label: 'Vắng Mặt',
     badgeCls: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800',
     dotColor: 'bg-rose-500',
@@ -171,15 +173,15 @@ const STATUS_CONFIG: Record<
 };
 
 const METHOD_CONFIG: Record<string, { label: string; icon: any; color: string; bg: string }> = {
-  FACE_AI: { label: 'FaceID AI', icon: ScanFace, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' },
+  face_ai: { label: 'FaceID AI', icon: ScanFace, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' },
   FACE: { label: 'FaceID AI', icon: ScanFace, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' },
-  QR_CODE: { label: 'Mã QR TOTP', icon: QrCode, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' },
+  qr_code: { label: 'Mã QR TOTP', icon: QrCode, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' },
   QR: { label: 'Mã QR TOTP', icon: QrCode, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' },
-  GPS_MOBILE: { label: 'GPS Mobile', icon: MapPin, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800' },
+  gps_mobile: { label: 'GPS Mobile', icon: MapPin, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800' },
   GPS: { label: 'GPS Mobile', icon: MapPin, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800' },
-  THU_CONG_ADMIN: { label: 'Quản trị sửa', icon: Laptop, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800' },
+  thu_cong_admin: { label: 'Quản trị sửa', icon: Laptop, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800' },
   MANUAL: { label: 'Cổng Web', icon: Smartphone, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800' },
-  SYSTEM_AUTO: { label: 'Tự động', icon: Zap, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700' },
+  system_auto: { label: 'Tự động', icon: Zap, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700' },
   SYSTEM: { label: 'Tự động', icon: Zap, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700' },
 };
 
@@ -338,7 +340,7 @@ export const AttendanceMe: React.FC = () => {
 
     return records.filter((r) => {
       // Nếu là bản ghi vắng mặt không có check-in, chỉ giữ 1 bản ghi duy nhất cho mỗi ca trong ngày
-      if (!r.checkInTime && r.status === 'ABSENT') {
+      if (!r.checkInTime && r.status === 'absent') {
         const key = `${r.workDate}_${r.shiftId?._id || r.shiftId?.name || ''}`;
         if (seenAbsentKeys.has(key)) {
           return false;
@@ -390,15 +392,15 @@ export const AttendanceMe: React.FC = () => {
     let fraudCount = 0;
 
     records.forEach((r) => {
-      if (r.status === 'ON_TIME') onTimeCount++;
-      else if (r.status === 'LATE') {
+      if (r.status === 'on_time') onTimeCount++;
+      else if (r.status === 'late') {
         lateCount++;
         totalLateMinutes += r.lateMinutes || 0;
-      } else if (r.status === 'EARLY_LEAVE') earlyLeaveCount++;
-      else if (r.status === 'EXCUSED_ABSENCE') excusedCount++;
-      else if (r.status === 'ABSENT') absentCount++;
+      } else if (r.status === 'early_leave') earlyLeaveCount++;
+      else if (r.status === 'excused_absence') excusedCount++;
+      else if (r.status === 'absent') absentCount++;
 
-      if (r.isFraud || r.isFraudulent) fraudCount++;
+      if (r.isFraud) fraudCount++;
 
       if (r.workHours) totalWorkHours += r.workHours;
       else if (r.workDurationMinutes) totalWorkHours += r.workDurationMinutes / 60;
@@ -484,65 +486,69 @@ export const AttendanceMe: React.FC = () => {
     }
   };
 
-  // Xuất file CSV báo cáo công tháng
-  const handleExportCSV = () => {
+  // Xuất file Excel (.xlsx) báo cáo bảng công cá nhân chuẩn hóa
+  const handleExportExcel = () => {
     if (!records.length) {
       toast.error('Không có dữ liệu chấm công để xuất file.');
       return;
     }
 
-    const headers = [
-      'STT',
-      'Ngày Công',
-      'Ca Làm Việc',
-      'Giảng Đường',
-      'Giờ Vào (Check-In)',
-      'Giờ Ra (Check-Out)',
-      'Đi Muộn (Phút)',
-      'Về Sớm (Phút)',
-      'Số Giờ Công',
-      'Số Tiết Dạy',
-      'Trạng Thái',
-      'Phương Thức',
-      'Ghi Chú',
-    ];
+    try {
+      const dataRows = records.map((r, idx) => {
+        const shiftName = r.shiftId?.name || '—';
+        const room = r.scheduleId?.roomId || '—';
+        const checkIn = r.checkInTime ? formatTimeVN(r.checkInTime) : '—';
+        const checkOut = r.checkOutTime ? formatTimeVN(r.checkOutTime) : '—';
+        const statusLabel = STATUS_CONFIG[r.status]?.label || r.status;
+        const methodLabel = METHOD_CONFIG[r.method || '']?.label || r.method || '—';
 
-    const rows = records.map((r, idx) => {
-      const shiftName = r.shiftId?.name || '—';
-      const room = r.scheduleId?.roomId || '—';
-      const checkIn = r.checkInTime ? formatTimeVN(r.checkInTime) : '—';
-      const checkOut = r.checkOutTime ? formatTimeVN(r.checkOutTime) : '—';
-      const statusLabel = STATUS_CONFIG[r.status]?.label || r.status;
-      const methodLabel = METHOD_CONFIG[r.method || '']?.label || r.method || '—';
+        return {
+          'STT': idx + 1,
+          'Ngày Công': r.workDate,
+          'Thứ': formatWeekdayShort(r.workDate),
+          'Ca Làm Việc': shiftName,
+          'Giảng Đường / Phòng': room,
+          'Giờ Vào (Check-In)': checkIn,
+          'Giờ Ra (Check-Out)': checkOut,
+          'Đi Muộn (Phút)': r.lateMinutes || 0,
+          'Về Sớm (Phút)': r.earlyExitMinutes || 0,
+          'Số Giờ Công': r.workHours || 0,
+          'Số Tiết Dạy': r.actualTeachingPeriods || 0,
+          'Trạng Thái': statusLabel,
+          'Phương Thức': methodLabel,
+          'Ghi Chú': r.isFraud ? 'Phát hiện gian lận vị trí' : '',
+        };
+      });
 
-      return [
-        idx + 1,
-        r.workDate,
-        `"${shiftName}"`,
-        `"${room}"`,
-        checkIn,
-        checkOut,
-        r.lateMinutes || 0,
-        r.earlyExitMinutes || 0,
-        r.workHours || 0,
-        r.actualTeachingPeriods || 0,
-        `"${statusLabel}"`,
-        `"${methodLabel}"`,
-        r.isFraud ? '"Phát hiện gian lận"' : '""',
-      ].join(',');
-    });
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 8 },
+        { wch: 22 },
+        { wch: 20 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 24 },
+      ];
 
-    // UTF-8 BOM chống lỗi font tiếng Việt trong Excel
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `Bang_Cham_Cong_${user?.fullName || 'Ca_Nhan'}_T${selectedMonth}_${selectedYear}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Xuất file CSV thành công!');
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `Tháng ${selectedMonth}-${selectedYear}`);
+
+      const cleanUserName = (user?.fullName || 'Ca_Nhan').replace(/[^a-zA-Z0-9_À-ỹ]/g, '_');
+      const fileName = `Bang_Cham_Cong_${cleanUserName}_T${selectedMonth}_${selectedYear}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast.success('Đã xuất Bảng công cá nhân (.xlsx) thành công!');
+    } catch (err) {
+      console.error('Lỗi khi xuất bảng công Excel:', err);
+      toast.error('Lỗi khi đóng gói tệp Excel.');
+    }
   };
 
   // In bảng công
@@ -920,11 +926,11 @@ export const AttendanceMe: React.FC = () => {
             className="form-input py-1.5 text-xs rounded-xl w-auto"
           >
             <option value="ALL">Tất cả trạng thái</option>
-            <option value="ON_TIME">Đúng giờ</option>
-            <option value="LATE">Đi muộn</option>
-            <option value="EARLY_LEAVE">Về sớm</option>
-            <option value="EXCUSED_ABSENCE">Nghỉ có phép</option>
-            <option value="ABSENT">Vắng mặt</option>
+            <option value="on_time">Đúng giờ</option>
+            <option value="late">Đi muộn</option>
+            <option value="early_leave">Về sớm</option>
+            <option value="excused_absence">Nghỉ có phép</option>
+            <option value="absent">Vắng mặt</option>
           </select>
 
           {/* Lọc Phương thức */}
@@ -966,13 +972,14 @@ export const AttendanceMe: React.FC = () => {
             </button>
           </div>
 
-          {/* Nút xuất CSV & In */}
+          {/* Nút xuất Excel & In */}
           <button
-            onClick={handleExportCSV}
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-            title="Xuất bảng công CSV"
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-xs font-bold transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+            title="Xuất bảng công cá nhân ra file Excel (.xlsx)"
           >
-            <Download className="w-4 h-4" />
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden sm:inline">Xuất Excel (.xlsx)</span>
           </button>
           <button
             onClick={handlePrint}
@@ -1037,7 +1044,7 @@ export const AttendanceMe: React.FC = () => {
                   </tr>
                 ) : (
                   filteredRecords.map((r, idx) => {
-                    const statusCfg = STATUS_CONFIG[r.status] || STATUS_CONFIG.ON_TIME;
+                    const statusCfg = STATUS_CONFIG[r.status] || STATUS_CONFIG.on_time;
                     const methodKey = r.method || '';
                     const methodCfg =
                       METHOD_CONFIG[methodKey] ||
@@ -1273,7 +1280,7 @@ export const AttendanceMe: React.FC = () => {
             {calendarDays.map((cell, idx) => {
               const hasRecords = cell.records.length > 0;
               const primaryRecord = cell.records[0];
-              const statusCfg = primaryRecord ? STATUS_CONFIG[primaryRecord.status] || STATUS_CONFIG.ON_TIME : null;
+              const statusCfg = primaryRecord ? STATUS_CONFIG[primaryRecord.status] || STATUS_CONFIG.on_time : null;
 
               return (
                 <div
@@ -1373,7 +1380,7 @@ export const AttendanceMe: React.FC = () => {
             </div>
 
             {/* Cảnh báo vi phạm gian lận nếu có */}
-            {(selectedLog.isFraud || selectedLog.isFraudulent) && (
+            {selectedLog.isFraud && (
               <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-start gap-3 text-rose-800 dark:text-rose-200">
                 <ShieldAlert className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
                 <div>
@@ -1430,19 +1437,19 @@ export const AttendanceMe: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <span
                           className={`px-2 py-1 rounded-lg font-black uppercase text-[10px] tracking-wider ${
-                            p.punchType === 'CHECK_IN'
+                            p.punchType === 'check_in'
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               : 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300'
                           }`}
                         >
-                          {p.punchType === 'CHECK_IN' ? 'VÀO CA' : 'TAN CA'}
+                          {p.punchType === 'check_in' ? 'VÀO CA' : 'TAN CA'}
                         </span>
                         <div>
                           <p className="font-mono font-bold text-slate-800 dark:text-slate-200">
                             {formatTimeVN(p.punchTime)}
                           </p>
                           <p className="text-[11px] text-slate-400 mt-0.5">
-                            Phương thức: {p.method || 'FACE_AI'} • Thiết bị: {p.deviceId || 'TERMINAL_DEFAULT'}
+                            Phương thức: {p.method || 'face_ai'} • Thiết bị: {p.deviceId || 'TERMINAL_DEFAULT'}
                           </p>
                         </div>
                       </div>

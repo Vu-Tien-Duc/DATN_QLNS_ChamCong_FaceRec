@@ -109,19 +109,19 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   };
 
   const user = await User.findOne(query)
-    .select('+passwordHash +mat_khau_ma_hoa')
+    .select('+passwordHash')
     .populate('departmentId', 'name code type location');
 
   if (!user) {
     throw new ServiceError('Tài khoản hoặc mật khẩu không chính xác.', 401);
   }
 
-  const isUserActive = user.isActive !== false && user.kich_hoat !== false;
+  const isUserActive = user.isActive !== false;
   if (!isUserActive) {
     throw new ServiceError('Tài khoản của bạn đã bị vô hiệu hóa hoặc tạm khóa. Vui lòng liên hệ phòng Tổ chức Cán bộ.', 403);
   }
 
-  const targetPasswordHash = user.passwordHash || user.mat_khau_ma_hoa;
+  const targetPasswordHash = user.passwordHash;
   const isMatch = targetPasswordHash ? await bcrypt.compare(password, targetPasswordHash) : false;
   if (!isMatch) {
     throw new ServiceError('Tài khoản hoặc mật khẩu không chính xác.', 401);
@@ -152,7 +152,7 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   // Ghi Audit Log
   AuditLog.create({
     actor: user._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'LOGIN',
     targetId: user._id.toString(),
     targetType: 'User',
@@ -164,10 +164,7 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   let faceTemplate = null;
   try {
     faceTemplate = await FaceTemplate.findOne({
-      $or: [
-        { nguoi_dung_id: user._id },
-        { userId: user._id },
-      ],
+      userId: user._id,
     }).select('ngay_dang_ky so_luong_mau').lean();
   } catch (_) {}
 
@@ -214,7 +211,7 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
 
   // 2. Tìm bản ghi Refresh Token trong Database
   const tokenDoc = await RefreshToken.findOne({
-    $or: [{ chuoi_token: incomingHash }, { token: incomingHash }, { tokenHash: incomingHash }],
+    token: incomingHash,
   });
 
   if (!tokenDoc) {
@@ -225,7 +222,7 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
   const userId = tokenDoc.userId || tokenDoc.nguoi_dung_id;
 
   // 3. PHÁT HIỆN REPLAY ATTACK: Token này đã bị sử dụng hoặc đã bị thu hồi trước đó
-  const isUsed = tokenDoc.isUsed || tokenDoc.da_su_dung;
+  const isUsed = tokenDoc.isUsed;
   if (isUsed) {
     const elapsedMs = tokenDoc.usedAt
       ? Date.now() - new Date(tokenDoc.usedAt).getTime()
@@ -262,7 +259,7 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
     if (mongoose.connection && mongoose.connection.readyState === 1) {
       AuditLog.create({
         actor: userId,
-        actorType: 'USER',
+        actorType: 'user',
         action: 'REPLAY_ATTACK_DETECTED',
         targetId: String(userId),
         targetType: 'User',
@@ -350,8 +347,8 @@ const logout = async ({ refreshTokenString, accessTokenString, userId }) => {
   if (refreshTokenString) {
     const hashed = hashToken(refreshTokenString);
     await RefreshToken.updateMany(
-      { $or: [{ chuoi_token: hashed }, { tokenHash: hashed }] },
-      { $set: { isUsed: true, da_su_dung: true } }
+      { token: hashed },
+      { $set: { isUsed: true } }
     );
   }
 
@@ -359,7 +356,7 @@ const logout = async ({ refreshTokenString, accessTokenString, userId }) => {
   if (userId) {
     AuditLog.create({
       actor: userId,
-      actorType: 'USER',
+      actorType: 'user',
       action: 'LOGOUT',
       targetId: String(userId),
       targetType: 'User',
@@ -384,7 +381,7 @@ const getMe = async (userId) => {
 
   const FaceTemplate = require('../models/faceTemplate.model');
   const template = await FaceTemplate.findOne({
-    $or: [{ nguoi_dung_id: user._id }, { userId: user._id }],
+    userId: user._id,
   }).select('ngay_dang_ky so_luong_mau').lean();
 
   const userObj = user.toObject ? user.toObject() : user;
@@ -431,12 +428,12 @@ const changePassword = async ({ userId, currentPassword, oldPassword, newPasswor
   // Hủy tất cả refresh token cũ của user
   await RefreshToken.updateMany(
     { userId: user._id },
-    { $set: { isUsed: true, da_su_dung: true } }
+    { $set: { isUsed: true } }
   );
 
   AuditLog.create({
     actor: user._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'CHANGE_PASSWORD',
     targetId: user._id.toString(),
     targetType: 'User',
@@ -494,7 +491,7 @@ const updateAvatar = async ({ userId, avatarUrl, imageBuffer, file, ipAddress })
 
   AuditLog.create({
     actor: user._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'UPDATE_AVATAR',
     targetId: user._id.toString(),
     targetType: 'User',
@@ -525,7 +522,7 @@ const forgotPassword = async ({ email, ipAddress }) => {
     throw new ServiceError('Không tìm thấy tài khoản với email này trong hệ thống.', 404);
   }
 
-  if (user.kich_hoat === false || user.trang_thai_lam_viec === 'DA_NGHI_VIEC') {
+  if (user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
     throw new ServiceError('Tài khoản đã bị vô hiệu hóa hoặc đã nghỉ việc. Vui lòng liên hệ Phòng Tổ chức cán bộ.', 403);
   }
 
@@ -547,7 +544,7 @@ const forgotPassword = async ({ email, ipAddress }) => {
   // 3. Cập nhật đầy đủ cả 5 trường OTP trong Schema nguoi_dung
   user.ma_otp = hashedOtp;
   user.otp_het_han_luc = new Date(Date.now() + 10 * 60 * 1000); // 10 phút hiệu lực
-  user.loai_otp = 'FORGOT_PASSWORD';
+  user.loai_otp = 'forgot_password';
   user.so_lan_thu_otp = 0;
   user.otp_gui_luc = new Date();
   await user.save();
@@ -582,7 +579,7 @@ const forgotPassword = async ({ email, ipAddress }) => {
   // 5. Ghi Audit Log vết kiểm toán
   AuditLog.create({
     actor: user._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'FORGOT_PASSWORD_REQUESTED',
     targetId: user._id.toString(),
     targetType: 'User',
@@ -624,7 +621,7 @@ const resetPassword = async ({ email, otp, newPassword, ipAddress }) => {
   }
 
   // 1. Kiểm tra loại OTP
-  if (user.loai_otp !== 'FORGOT_PASSWORD' || !user.ma_otp) {
+  if (user.loai_otp !== 'forgot_password' || !user.ma_otp) {
     throw new ServiceError('Không có yêu cầu đặt lại mật khẩu nào đang chờ xử lý.', 400);
   }
 
@@ -674,14 +671,14 @@ const resetPassword = async ({ email, otp, newPassword, ipAddress }) => {
 
   // 6. Thu hồi toàn bộ Refresh Tokens của user trong cơ sở dữ liệu
   await RefreshToken.updateMany(
-    { nguoi_dung_id: user._id, da_su_dung: false },
-    { da_su_dung: true, thoi_diem_su_dung: new Date() }
+    { userId: user._id, isUsed: false },
+    { isUsed: true, usedAt: new Date() }
   );
 
   // 7. Ghi Audit Log kiểm toán
   AuditLog.create({
     actor: user._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'PASSWORD_RESET_SUCCESS',
     targetId: user._id.toString(),
     targetType: 'User',

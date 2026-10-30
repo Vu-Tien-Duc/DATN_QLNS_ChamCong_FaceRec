@@ -11,12 +11,12 @@ const computeLogHash = (doc, previousHash) => {
   const timeStr = doc.thoi_diem ? new Date(doc.thoi_diem).toISOString() : new Date().toISOString();
   const actor = doc.nguoi_thuc_hien_id || doc.actor || doc.actorId || doc.userId;
   const actorStr = actor ? String(actor) : '';
-  const actorTypeStr = doc.loai_chu_the || doc.actorType || 'USER';
+  const actorTypeStr = doc.loai_chu_the || doc.actorType || 'user';
   const actionStr = doc.hanh_dong || doc.action || '';
   const targetTypeStr = doc.loai_doi_tuong || doc.targetType || '';
   const targetId = doc.doi_tuong_id || doc.targetId;
   const targetIdStr = targetId ? String(targetId) : '';
-  const statusStr = doc.ket_qua || doc.status || 'SUCCESS';
+  const statusStr = doc.ket_qua || doc.status || 'success';
   const detailsStr = doc.chi_tiet || doc.details ? JSON.stringify(doc.chi_tiet || doc.details) : '';
 
   const rawString = [
@@ -45,8 +45,9 @@ const auditLogSchema = new mongoose.Schema(
     loai_chu_the: {
       type: String,
       alias: 'actorType',
-      enum: ['USER', 'SYSTEM'],
-      default: 'USER',
+      enum: ['user', 'system'],
+      default: 'user',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     hanh_dong: {
       type: String,
@@ -78,8 +79,9 @@ const auditLogSchema = new mongoose.Schema(
     ket_qua: {
       type: String,
       alias: 'status',
-      enum: ['SUCCESS', 'FAILED'],
-      default: 'SUCCESS',
+      enum: ['success', 'failed'],
+      default: 'success',
+      set: (v) => v ? String(v).toLowerCase() : v,
       index: true,
     },
     thoi_diem: {
@@ -286,9 +288,5 @@ auditLogSchema.statics.computeLogHash = computeLogHash;
 auditLogSchema.statics.GENESIS_HASH = GENESIS_HASH;
 
 const AuditLog = mongoose.models.AuditLog || mongoose.model('AuditLog', auditLogSchema, 'nhat_ky_kiem_toan');
-
-if (!mongoose.models.NhatKyKiemToan) {
-  mongoose.model('NhatKyKiemToan', auditLogSchema, 'nhat_ky_kiem_toan');
-}
 
 module.exports = AuditLog;

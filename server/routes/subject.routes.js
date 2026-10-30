@@ -16,8 +16,8 @@ router.get('/', getSubjects);
 router.get('/:id', getSubjectById);
 
 // Admin, BGH, Đào tạo và Trưởng khoa có quyền tạo và chỉnh sửa môn học
-router.post('/', authorizeRoles('admin', 'bgh', 'daotao', 'truongkhoa'), createSubject);
-router.put('/:id', authorizeRoles('admin', 'bgh', 'daotao', 'truongkhoa'), updateSubject);
+router.post('/', authorizeRoles('admin', 'bgh', 'dao_tao', 'truong_khoa', 'pho_khoa'), createSubject);
+router.put('/:id', authorizeRoles('admin', 'bgh', 'dao_tao', 'truong_khoa', 'pho_khoa'), updateSubject);
 
 // Admin và BGH có quyền xóa môn học
 router.delete('/:id', authorizeRoles('admin', 'bgh'), deleteSubject);

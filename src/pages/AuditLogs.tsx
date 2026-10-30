@@ -27,7 +27,9 @@ import {
   Activity,
   X,
   Sparkles,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
@@ -117,7 +119,7 @@ export const AuditLogs: React.FC = () => {
 
   // Filter States
   const [keyword, setKeyword] = useState<string>('');
-  const [selectedStatus, setSelectedStatus] = useState<string>(''); // '', 'SUCCESS', 'FAILED'
+  const [selectedStatus, setSelectedStatus] = useState<string>(''); // '', 'success', 'failed'
   const [selectedTargetType, setSelectedTargetType] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
@@ -207,8 +209,8 @@ export const AuditLogs: React.FC = () => {
     let failedCount = 0;
 
     logs.forEach((log) => {
-      if (log.status === 'SUCCESS') successCount++;
-      else if (log.status === 'FAILED') failedCount++;
+      if (log.status === 'success') successCount++;
+      else if (log.status === 'failed') failedCount++;
     });
 
     const pageCount = logs.length || 1;
@@ -223,62 +225,70 @@ export const AuditLogs: React.FC = () => {
   }, [logs, totalRecords]);
 
   // =============================================================================
-  // EXPORT CSV
+  // EXPORT EXCEL (.XLSX)
   // =============================================================================
 
-  const handleExportCSV = () => {
+  const handleExportExcel = () => {
     if (logs.length === 0) {
-      toast.error('Không có dữ liệu nhật ký kiểm toán để xuất file.');
+      toast.error('Không có dữ liệu nhật ký kiểm toán để xuất file Excel.');
       return;
     }
 
-    const headers = [
-      'STT',
-      'Thời Điểm',
-      'Hành Động',
-      'Người Thực Hiện (Actor)',
-      'Loại Chủ Thể',
-      'Loại Đối Tượng',
-      'ID Đối Tượng',
-      'Địa Chỉ IP',
-      'Kết Quả',
-      'Mã Băm Hiện Tại (SHA-256)',
-      'Mã Băm Trước Đó',
-      'Chi Tiết / Payload',
-    ];
+    try {
+      const dataRows = logs.map((l, idx) => {
+        const actorName =
+          typeof l.actor === 'object' && l.actor
+            ? (l.actor as any).fullName || (l.actor as any).name || '--'
+            : l.actorType === 'system'
+            ? 'HỆ THỐNG (SYSTEM)'
+            : '--';
+        const actorCode = typeof l.actor === 'object' && l.actor ? (l.actor as any).staffCode || '--' : '--';
+        const detailsStr = l.details ? JSON.stringify(l.details) : '';
 
-    const rows = logs.map((l, idx) => {
-      const actorName =
-        typeof l.actor === 'object' && l.actor ? l.actor.fullName : l.actorType === 'SYSTEM' ? 'HỆ THỐNG' : '--';
-      const detailsStr = l.details ? JSON.stringify(l.details).replace(/"/g, '""') : '';
+        return {
+          'STT': idx + 1,
+          'Thời Điểm': formatDateTimeVN(l.timestamp),
+          'Hành Động': l.action,
+          'Người Thực Hiện': actorName,
+          'Mã Cán Bộ': actorCode,
+          'Loại Chủ Thể': l.actorType || 'user',
+          'Loại Đối Tượng': l.targetType,
+          'ID Đối Tượng': l.targetId,
+          'Địa Chỉ IP': l.ipAddress || '--',
+          'Kết Quả': l.status === 'success' ? 'Thành công' : 'Thất bại',
+          'Mã Băm SHA-256 Hiện Tại': l.currentHash || '--',
+          'Mã Băm Trước Đó': l.previousHash || '--',
+          'Chi Tiết Thay Đổi': detailsStr,
+        };
+      });
 
-      return [
-        idx + 1,
-        `"${formatDateTimeVN(l.timestamp)}"`,
-        `"${l.action}"`,
-        `"${actorName}"`,
-        l.actorType || 'USER',
-        `"${l.targetType}"`,
-        `"${l.targetId}"`,
-        `"${l.ipAddress || '--'}"`,
-        l.status,
-        `"${l.currentHash || '--'}"`,
-        `"${l.previousHash || '--'}"`,
-        `"${detailsStr}"`,
-      ].join(',');
-    });
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 22 },
+        { wch: 26 },
+        { wch: 26 },
+        { wch: 14 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 24 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 35 },
+        { wch: 35 },
+        { wch: 40 },
+      ];
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `Nhat_Ky_Kiem_Toan_AuditLogs_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success('Xuất file nhật ký kiểm toán thành công!');
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Nhật Ký Kiểm Toán');
+
+      const fileName = `Nhat_Ky_Kiem_Toan_AuditLogs_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast.success('Đã xuất Nhật ký kiểm toán (.xlsx) thành công!');
+    } catch (err) {
+      console.error('Lỗi khi xuất file Excel:', err);
+      toast.error('Không thể xuất file nhật ký kiểm toán.');
+    }
   };
 
   // =============================================================================
@@ -414,12 +424,13 @@ export const AuditLogs: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleExportCSV}
+              onClick={handleExportExcel}
               disabled={logs.length === 0}
-              className="flex items-center gap-1.5 text-slate-700 dark:text-slate-200"
+              className="flex items-center gap-1.5 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 font-semibold"
+              title="Xuất nhật ký kiểm toán ra file Excel (.xlsx)"
             >
-              <Download className="w-4 h-4" />
-              <span>Xuất Excel (.csv)</span>
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Xuất Excel (.xlsx)</span>
             </Button>
 
             <Button
@@ -497,8 +508,8 @@ export const AuditLogs: React.FC = () => {
                 className="w-full bg-transparent text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
               >
                 <option value="">Tất cả kết quả</option>
-                <option value="SUCCESS">Thành công (SUCCESS)</option>
-                <option value="FAILED">Thất bại (FAILED)</option>
+                <option value="success">Thành công (SUCCESS)</option>
+                <option value="failed">Thất bại (FAILED)</option>
               </select>
             </div>
           </div>
@@ -632,7 +643,7 @@ export const AuditLogs: React.FC = () => {
                   const actorName =
                     typeof log.actor === 'object' && log.actor
                       ? log.actor.fullName
-                      : log.actorType === 'SYSTEM'
+                      : log.actorType === 'system'
                       ? 'HỆ THỐNG'
                       : 'Ẩn danh / Không xác định';
                   const actorRole = typeof log.actor === 'object' && log.actor ? log.actor.role : log.actorType;
@@ -654,7 +665,7 @@ export const AuditLogs: React.FC = () => {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs shrink-0">
-                            {log.actorType === 'SYSTEM' ? (
+                            {log.actorType === 'system' ? (
                               <Server className="w-3.5 h-3.5 text-indigo-500" />
                             ) : (
                               <User className="w-3.5 h-3.5 text-slate-500" />
@@ -665,7 +676,7 @@ export const AuditLogs: React.FC = () => {
                               {actorName}
                             </div>
                             <div className="text-[10px] text-slate-400 uppercase tracking-wider">
-                              {actorRole || 'SYSTEM'}
+                              {actorRole || 'system'}
                             </div>
                           </div>
                         </div>
@@ -701,7 +712,7 @@ export const AuditLogs: React.FC = () => {
 
                       {/* Kết quả */}
                       <td className="py-3 px-4 text-center">
-                        {log.status === 'SUCCESS' ? (
+                        {log.status === 'success' ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                             SUCCESS
@@ -828,7 +839,7 @@ export const AuditLogs: React.FC = () => {
                     Sự Kiện Kiểm Toán #{selectedLog._id.slice(-8)}
                     <span
                       className={`text-xs px-2 py-0.5 rounded font-semibold ${
-                        selectedLog.status === 'SUCCESS'
+                        selectedLog.status === 'success'
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
                           : 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
                       }`}
@@ -876,7 +887,7 @@ export const AuditLogs: React.FC = () => {
                   <span className="font-bold text-slate-900 dark:text-white mt-0.5 block truncate">
                     {typeof selectedLog.actor === 'object' && selectedLog.actor
                       ? selectedLog.actor.fullName
-                      : selectedLog.actorType || 'SYSTEM'}
+                      : selectedLog.actorType || 'system'}
                   </span>
                 </div>
               </div>

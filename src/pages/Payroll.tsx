@@ -33,6 +33,8 @@ import {
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { departmentApi } from '../api/department.api';
+import * as XLSX from 'xlsx';
+import { DepartmentSelect, DepartmentItem } from '../components/ui/DepartmentSelect';
 import { Portal } from '../components/ui/Portal';
 import {
   payrollApi,
@@ -42,6 +44,33 @@ import {
 } from '../api/payroll.api';
 import { hasRole, isAdmin } from '../utils/rbac';
 import { UserAvatar } from '../components/ui/UserAvatar';
+
+// =============================================================================
+// PRINT STYLES FOR PAYSLIP
+// =============================================================================
+const printStyles = `
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-payslip, #printable-payslip * {
+    visibility: visible;
+  }
+  #printable-payslip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+`;
 
 // =============================================================================
 // HELPER FUNCTIONS & FORMATTERS
@@ -108,27 +137,27 @@ const STATUS_CONFIG: Record<
   string,
   { label: string; badgeCls: string; dotColor: string }
 > = {
-  DU_THAO: {
+  du_thao: {
     label: 'Dự Thảo',
     badgeCls: 'bg-slate-100 text-slate-700 border border-slate-200',
     dotColor: 'bg-amber-500',
   },
-  CHO_DUYET: {
+  cho_duyet: {
     label: 'Chờ Duyệt',
     badgeCls: 'bg-amber-50 text-amber-700 border border-amber-200',
     dotColor: 'bg-amber-500',
   },
-  DA_DUYET: {
+  da_duyet: {
     label: 'Đã Duyệt',
     badgeCls: 'bg-blue-50 text-blue-700 border border-blue-200',
     dotColor: 'bg-blue-500',
   },
-  DA_KHOA: {
+  da_khoa: {
     label: 'Đã Khóa Sổ',
     badgeCls: 'bg-purple-50 text-purple-700 border border-purple-200',
     dotColor: 'bg-purple-500',
   },
-  DA_THANH_TOAN: {
+  da_thanh_toan: {
     label: 'Đã Chi Trả',
     badgeCls: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
     dotColor: 'bg-emerald-500',
@@ -142,11 +171,11 @@ export const Payroll: React.FC = () => {
   const isSystemAdmin = useMemo(() => isAdmin(user), [user]);
 
   const canManagePayroll = useMemo(() => {
-    return hasRole(user, ['admin', 'bgh', 'ketoan', 'truongkhoa']);
+    return hasRole(user, ['admin', 'bgh', 'ke_toan', 'truong_khoa']);
   }, [user]);
 
   const canGeneratePayroll = useMemo(() => {
-    return hasRole(user, ['admin', 'bgh', 'ketoan']);
+    return hasRole(user, ['admin', 'bgh', 'ke_toan']);
   }, [user]);
 
   const canLockOrUnlock = useMemo(() => {
@@ -180,7 +209,7 @@ export const Payroll: React.FC = () => {
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
   const [myPayroll, setMyPayroll] = useState<PayrollRecord | null>(null);
   const [summary, setSummary] = useState<PayrollSummaryData | null>(null);
-  const [departments, setDepartments] = useState<Array<{ _id: string; name: string }>>([]);
+  const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Pagination
@@ -294,31 +323,15 @@ export const Payroll: React.FC = () => {
     setCurrentPage(1);
   };
 
-  // Export CSV / Excel
-  const handleExportCSV = () => {
+  // Xuất file Excel (.xlsx) bảng lương tài chính chuẩn hóa
+  const handleExportExcel = () => {
     if (filteredPayrolls.length === 0) {
-      toast.error('Không có dữ liệu bảng lương để xuất.');
+      toast.error('Không có dữ liệu bảng lương để xuất file Excel.');
       return;
     }
 
     try {
-      const headers = [
-        'STT',
-        'Mã Nhân Viên',
-        'Họ và Tên',
-        'Đơn Vị / Khoa',
-        'Hệ Số Lương',
-        'Lương Chính (đ)',
-        'Tổng Phụ Cấp (đ)',
-        'Thù Lao Vượt Giờ (đ)',
-        'Thu Nhập GROSS (đ)',
-        'Bảo Hiểm (10.5%)',
-        'Thuế TNCN (đ)',
-        'Thực Lĩnh NET (đ)',
-        'Trạng Thái',
-      ];
-
-      const rows = filteredPayrolls.map((p, idx) => {
+      const dataRows = filteredPayrolls.map((p, idx) => {
         const u = p.userId || ({} as any);
         const deptName =
           typeof u.departmentId === 'object' && u.departmentId
@@ -326,41 +339,68 @@ export const Payroll: React.FC = () => {
             : '—';
         const ins = getInsuranceDetail(p);
         const tax = getTaxAmount(p);
+        const positionAllowance = p.positionAllowance || 0;
+        const seniorityAllowance = p.seniorityAllowance || 0;
+        const vocationalAllowance = p.vocationalAllowance || 0;
+        const otherAllowance = (p as any).otherAllowance || (p as any).phu_cap_khac || 0;
+        const totalAllowance = positionAllowance + seniorityAllowance + vocationalAllowance + otherAllowance;
+        const overQuota = p.teachingHours?.overQuotaRemuneration || 0;
 
-        return [
-          idx + 1,
-          `"${u.staffCode || ''}"`,
-          `"${u.fullName || ''}"`,
-          `"${deptName}"`,
-          p.salaryCoefficient || 2.34,
-          p.primarySalary || 0,
-          (p.positionAllowance || 0) + (p.seniorityAllowance || 0) + (p.vocationalAllowance || 0),
-          p.teachingHours?.overQuotaRemuneration || 0,
-          p.grossIncome || 0,
-          ins.total || 0,
-          tax,
-          p.netSalary || 0,
-          `"${STATUS_CONFIG[p.status]?.label || p.status}"`,
-        ];
+        return {
+          'STT': idx + 1,
+          'Mã Cán Bộ': u.staffCode || '--',
+          'Họ Và Tên': u.fullName || '--',
+          'Khoa / Đơn Vị': deptName,
+          'Chức Vụ': u.position || '--',
+          'Học Vị': u.degree || '--',
+          'Ngạch Lương': u.salaryScale || '--',
+          'Hệ Số Lương': p.salaryCoefficient || 2.34,
+          'Lương Cơ Bản': p.primarySalary || 0,
+          'Tổng Phụ Cấp': totalAllowance,
+          'Thù Lao Vượt Giờ': overQuota,
+          'Tổng Thu Nhập (Gross)': p.grossIncome || 0,
+          'BHXH (8%)': ins.bhxh || 0,
+          'BHYT (1.5%)': ins.bhyt || 0,
+          'BHTN (1%)': ins.bhtn || 0,
+          'Tổng Bảo Hiểm (10.5%)': ins.total || 0,
+          'Thuế TNCN': tax,
+          'Thực Lĩnh (Net)': p.netSalary || 0,
+          'Trạng Thái': STATUS_CONFIG[p.status]?.label || p.status,
+        };
       });
 
-      const csvContent =
-        '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute(
-        'download',
-        `Bang_Luong_T${selectedMonth}_${selectedYear}.csv`
-      );
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success('Đã xuất file bảng lương thành công!');
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 26 },
+        { wch: 26 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 18 },
+        { wch: 22 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 20 },
+        { wch: 16 },
+        { wch: 20 },
+        { wch: 16 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `Bảng Lương T${selectedMonth}_${selectedYear}`);
+
+      const fileName = `Bang_Luong_NTU_T${selectedMonth}_${selectedYear}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast.success('Đã xuất Bảng lương (.xlsx) thành công!');
     } catch (err) {
-      console.error('Lỗi khi xuất file:', err);
-      toast.error('Không thể xuất file bảng lương');
+      console.error('Lỗi khi xuất bảng lương Excel:', err);
+      toast.error('Lỗi khi đóng gói tệp Excel.');
     }
   };
 
@@ -447,39 +487,40 @@ export const Payroll: React.FC = () => {
 
   return (
     <div className="space-y-4" data-purpose="payroll-management-dashboard">
+      <style>{printStyles}</style>
       {/* =========================================================================
           TOP CONTEXT HEADER BAR (Matching code.html)
          ========================================================================= */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-col gap-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-base font-bold text-slate-800 tracking-tight">
+            <h1 className="text-base font-bold text-slate-800 dark:text-slate-100 tracking-tight">
               Quản Lý Bảng Lương &amp; Phiếu Lương
             </h1>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800">
               Nghị Định 73/2024/NĐ-CP
             </span>
           </div>
-          <p className="text-xs text-slate-500 truncate max-w-3xl">
+          <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-3xl">
             Tính lương tự động, phụ cấp chức vụ, thâm niên nhà giáo, thù lao vượt giờ giảng dạy và khấu trừ thuế TNCN lũy tiến 5 bậc.
           </p>
         </div>
 
         {/* Reference Badges on Right */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 font-medium shadow-xs">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 font-medium shadow-xs">
             <span className="text-slate-400 font-mono text-[11px]">Lương cơ sở:</span>
-            <span className="font-mono font-bold text-slate-900">2.340.000 đ</span>
+            <span className="font-mono font-bold text-slate-900 dark:text-slate-100">2.340.000 đ</span>
           </div>
           {summary?.isLocked ? (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 text-xs font-semibold shadow-xs">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-semibold shadow-xs">
               <Lock className="w-3.5 h-3.5" />
               <span>Đã Khóa Sổ</span>
             </div>
           ) : (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold shadow-xs">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-semibold shadow-xs">
               <FileText className="w-3.5 h-3.5" />
-              <span>Số Dự Thảo (Chưa Khóa)</span>
+              <span>Sổ Dự Thảo (Chưa Khóa)</span>
             </div>
           )}
         </div>
@@ -494,14 +535,14 @@ export const Payroll: React.FC = () => {
             onClick={() => setActiveTab('all-payrolls')}
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'all-payrolls'
-                ? 'bg-white text-indigo-700 shadow-xs border border-indigo-200'
-                : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 border border-transparent'
+                ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-indigo-200 dark:border-indigo-800'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700 border border-transparent'
             }`}
             type="button"
           >
             <CreditCard className="w-4 h-4" />
             <span>Bảng Lương Toàn Trường / Khoa</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-700 font-mono text-[10px] font-bold border border-indigo-200/60">
+            <span className="px-1.5 py-0.2 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono text-[10px] font-bold border border-indigo-200/60 dark:border-indigo-800">
               {payrolls.length}
             </span>
           </button>
@@ -512,8 +553,8 @@ export const Payroll: React.FC = () => {
             onClick={() => setActiveTab('my-payroll')}
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'my-payroll'
-                ? 'bg-white text-indigo-700 shadow-xs border border-indigo-200'
-                : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 border border-transparent'
+                ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-indigo-200 dark:border-indigo-800'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700 border border-transparent'
             }`}
             type="button"
           >
@@ -524,88 +565,88 @@ export const Payroll: React.FC = () => {
       </div>
 
       {/* =========================================================================
-          4 COMPACT FINANCIAL KPI CARDS (Matching code.html)
+          4 COMPACT FINANCIAL KPI CARDS (Dark Mode Enabled)
          ========================================================================= */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* Card 1: NET Salary */}
-        <div className="relative bg-white rounded-xl p-3 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 hover:shadow-sm transition-shadow">
+        <div className="relative bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 dark:border-slate-800 hover:shadow-sm transition-shadow">
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500"></div>
-          <div className="flex items-center justify-between pl-1.5">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500">
+          <div className="flex items-center justify-between pl-2">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500 dark:text-slate-400">
               Quỹ Lương Thực Chi (NET)
             </span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/70 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="pl-1.5 mt-1.5 flex items-baseline justify-between">
-            <div className="font-mono text-lg font-bold text-emerald-700">
+          <div className="pl-2 mt-2 flex items-baseline justify-between">
+            <div className="font-mono text-lg font-bold text-emerald-700 dark:text-emerald-400">
               {formatVND(totalNet)}
             </div>
-            <span className="text-[11px] text-slate-400 font-medium">
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
               {payrolls.length} cán bộ
             </span>
           </div>
         </div>
 
         {/* Card 2: GROSS Income */}
-        <div className="relative bg-white rounded-xl p-3 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 hover:shadow-sm transition-shadow">
+        <div className="relative bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 dark:border-slate-800 hover:shadow-sm transition-shadow">
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-600"></div>
-          <div className="flex items-center justify-between pl-1.5">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500">
+          <div className="flex items-center justify-between pl-2">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500 dark:text-slate-400">
               Tổng Thu Nhập GROSS
             </span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/70 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="pl-1.5 mt-1.5 flex items-baseline justify-between">
-            <div className="font-mono text-lg font-bold text-slate-900">
+          <div className="pl-2 mt-2 flex items-baseline justify-between">
+            <div className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
               {formatVND(totalGross)}
             </div>
-            <span className="font-mono text-[11px] text-indigo-600 font-bold">
+            <span className="font-mono text-[11px] text-indigo-600 dark:text-indigo-400 font-bold">
               T{selectedMonth}/{selectedYear}
             </span>
           </div>
         </div>
 
         {/* Card 3: Overtime Remuneration */}
-        <div className="relative bg-white rounded-xl p-3 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 hover:shadow-sm transition-shadow">
+        <div className="relative bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 dark:border-slate-800 hover:shadow-sm transition-shadow">
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></div>
-          <div className="flex items-center justify-between pl-1.5">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500">
+          <div className="flex items-center justify-between pl-2">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500 dark:text-slate-400">
               Thù Lao Vượt Giờ Dạy
             </span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/70 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
               <BookOpen className="w-4 h-4" />
             </div>
           </div>
-          <div className="pl-1.5 mt-1.5 flex items-baseline justify-between">
-            <div className="font-mono text-lg font-bold text-amber-700">
+          <div className="pl-2 mt-2 flex items-baseline justify-between">
+            <div className="font-mono text-lg font-bold text-amber-700 dark:text-amber-400">
               {formatVND(totalOvertime)}
             </div>
-            <span className="font-mono text-[11px] text-slate-400 font-normal">
-              120k đ/giờ
+            <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 font-normal">
+              120k đ/tiết
             </span>
           </div>
         </div>
 
         {/* Card 4: Taxes & Insurance Deductions */}
-        <div className="relative bg-white rounded-xl p-3 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 hover:shadow-sm transition-shadow">
+        <div className="relative bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 dark:border-slate-800 hover:shadow-sm transition-shadow">
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-500"></div>
-          <div className="flex items-center justify-between pl-1.5">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500">
+          <div className="flex items-center justify-between pl-2">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500 dark:text-slate-400">
               Thuế TNCN &amp; BHXH (10.5%)
             </span>
-            <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/70 flex items-center justify-center text-purple-600 dark:text-purple-400 shrink-0">
               <Scale className="w-4 h-4" />
             </div>
           </div>
-          <div className="pl-1.5 mt-1.5 flex items-baseline justify-between">
-            <div className="font-mono text-lg font-bold text-purple-700">
+          <div className="pl-2 mt-2 flex items-baseline justify-between">
+            <div className="font-mono text-lg font-bold text-purple-700 dark:text-purple-400">
               {formatVND(totalDeductions)}
             </div>
-            <span className="font-mono text-[10px] text-slate-400 font-normal">
+            <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500 font-normal">
               BH: {formatVND(summary?.totalInsurance || 0)}
             </span>
           </div>
@@ -618,27 +659,27 @@ export const Payroll: React.FC = () => {
       {activeTab === 'all-payrolls' && (
         <div className="space-y-4">
           {/* Filter & Action Toolbar */}
-          <div className="bg-white rounded-2xl p-3 border border-slate-200/90 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-3 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-3">
             {/* Left Filters */}
             <div className="flex items-center gap-2 flex-wrap flex-1">
               {/* Month Navigator */}
-              <div className="flex items-center bg-slate-50 rounded-xl p-0.5 border border-slate-200 h-8">
+              <div className="flex items-center bg-slate-50 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 h-8">
                 <button
                   onClick={handlePrevMonth}
-                  className="w-6 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 hover:bg-white transition-colors cursor-pointer"
+                  className="w-6 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
                   type="button"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <div className="px-2 font-mono text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                <div className="px-2 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>
                     Tháng {selectedMonth} / {selectedYear}
                   </span>
                 </div>
                 <button
                   onClick={handleNextMonth}
-                  className="w-6 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 hover:bg-white transition-colors cursor-pointer"
+                  className="w-6 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
                   type="button"
                 >
                   <ChevronRight className="w-4 h-4" />
@@ -647,7 +688,7 @@ export const Payroll: React.FC = () => {
 
               <button
                 onClick={handleCurrentMonth}
-                className="px-2.5 h-8 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium transition-colors border border-slate-200 cursor-pointer"
+                className="px-2.5 h-8 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer"
                 type="button"
               >
                 Tháng Hiện Tại
@@ -664,29 +705,26 @@ export const Payroll: React.FC = () => {
                     setSearchKeyword(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full h-8 pl-8 pr-2 bg-slate-50 rounded-xl text-slate-800 text-xs placeholder:text-slate-400 border border-slate-200 focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500 transition-all"
+                  className="w-full h-8 pl-8 pr-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-800 dark:text-slate-100 text-xs placeholder:text-slate-400 border border-slate-200 dark:border-slate-700 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-indigo-500 transition-all"
                   placeholder="Tìm tên, mã nhân viên..."
                   type="text"
                 />
               </div>
 
-              {/* Faculty / Department Select Dropdown */}
-              <div className="relative">
-                <select
+              {/* Faculty / Department Select Dropdown Phân Cấp */}
+              <div className="w-56">
+                <DepartmentSelect
+                  departments={departments}
                   value={selectedDepartment}
-                  onChange={(e) => {
-                    setSelectedDepartment(e.target.value);
+                  onChange={(deptId) => {
+                    setSelectedDepartment(deptId);
                     setCurrentPage(1);
                   }}
-                  className="h-8 pl-2.5 pr-7 bg-slate-50 rounded-xl text-slate-700 text-xs font-medium appearance-none border border-slate-200 focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                >
-                  <option value="ALL">Tất cả đơn vị / khoa</option>
-                  {departments.map((dept) => (
-                    <option key={dept._id} value={dept._id}>
-                      {dept.name}
-                    </option>
-                  ))}
-                </select>
+                  allowAll={true}
+                  allLabel="Tất cả đơn vị / khoa"
+                  placeholder="Chọn đơn vị / khoa..."
+                  size="sm"
+                />
               </div>
 
               {/* Status Select Dropdown */}
@@ -697,19 +735,19 @@ export const Payroll: React.FC = () => {
                     setSelectedStatus(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="h-8 pl-2.5 pr-7 bg-slate-50 rounded-xl text-slate-700 text-xs font-medium appearance-none border border-slate-200 focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                  className="h-8 pl-2.5 pr-7 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-700 dark:text-slate-200 text-xs font-medium appearance-none border border-slate-200 dark:border-slate-700 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                 >
                   <option value="ALL">Tất cả trạng thái</option>
-                  <option value="DU_THAO">Dự thảo</option>
-                  <option value="DA_KHOA">Đã khóa sổ</option>
-                  <option value="DA_THANH_TOAN">Đã chi trả</option>
+                  <option value="du_thao">Dự thảo</option>
+                  <option value="da_khoa">Đã khóa sổ</option>
+                  <option value="da_thanh_toan">Đã chi trả</option>
                 </select>
               </div>
 
               {/* Refresh Button */}
               <button
                 onClick={fetchData}
-                className="w-8 h-8 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors cursor-pointer"
                 title="Làm mới dữ liệu"
                 type="button"
               >
@@ -735,8 +773,8 @@ export const Payroll: React.FC = () => {
                   onClick={handleToggleLockPayroll}
                   className={`h-8 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border ${
                     summary?.isLocked
-                      ? 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
-                      : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                      ? 'bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                      : 'bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                   }`}
                   type="button"
                 >
@@ -746,18 +784,19 @@ export const Payroll: React.FC = () => {
               )}
 
               <button
-                onClick={handleExportCSV}
-                className="h-8 px-3 rounded-xl bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-200 cursor-pointer"
+                onClick={handleExportExcel}
+                className="h-8 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-colors border border-emerald-200 dark:border-emerald-800 cursor-pointer shadow-2xs"
+                title="Xuất bảng lương toàn trường ra file Excel (.xlsx)"
                 type="button"
               >
-                <Download className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Xuất Excel</span>
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Xuất Excel (.xlsx)</span>
               </button>
             </div>
           </div>
 
           {/* Main Data Table Container (Strict Zero-Horizontal-Scroll 10 Cột) */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col">
             <div className="w-full overflow-hidden">
               <table className="w-full table-fixed text-left border-collapse">
                 <colgroup>
@@ -773,7 +812,7 @@ export const Payroll: React.FC = () => {
                   <col style={{ width: '5%' }} />
                 </colgroup>
                 <thead>
-                  <tr className="bg-slate-50/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider select-none border-b border-slate-200">
+                  <tr className="bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-wider select-none border-b border-slate-200 dark:border-slate-800">
                     <th className="py-2.5 px-2 text-center">#</th>
                     <th className="py-2.5 px-2.5 truncate">Cán Bộ / Giảng Viên</th>
                     <th className="py-2.5 px-2.5 truncate">Lương Chính (Hệ Số)</th>
@@ -786,7 +825,7 @@ export const Payroll: React.FC = () => {
                     <th className="py-2.5 px-2 text-center">Chi Tiết</th>
                   </tr>
                 </thead>
-                <tbody className="text-xs divide-y divide-slate-100">
+                <tbody className="text-xs divide-y divide-slate-100 dark:divide-slate-800">
                   {isLoading ? (
                     <tr>
                       <td colSpan={10} className="py-12 text-center text-slate-400">
@@ -826,12 +865,12 @@ export const Payroll: React.FC = () => {
                         (p.positionAllowance || 0) +
                         (p.seniorityAllowance || 0) +
                         (p.vocationalAllowance || 0);
-                      const statusInfo = STATUS_CONFIG[p.status] || STATUS_CONFIG.DU_THAO;
+                      const statusInfo = STATUS_CONFIG[p.status] || STATUS_CONFIG.du_thao;
 
                       return (
                         <tr
                           key={p._id}
-                          className="hover:bg-indigo-50/20 transition-colors whitespace-nowrap group"
+                          className="hover:bg-indigo-50/20 dark:hover:bg-slate-800/40 transition-colors whitespace-nowrap group"
                         >
                           {/* STT */}
                           <td className="py-2.5 px-2 text-center font-mono text-slate-400">
@@ -850,7 +889,7 @@ export const Payroll: React.FC = () => {
                                 shape="rounded"
                               />
                               <div className="min-w-0 truncate">
-                                <span className="font-bold text-slate-900 group-hover:text-indigo-900 truncate block">
+                                <span className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-900 dark:group-hover:text-indigo-300 truncate block">
                                   {u.fullName || '—'}
                                 </span>
                                 <span className="font-mono text-[10px] text-slate-400 block truncate">
@@ -926,14 +965,14 @@ export const Payroll: React.FC = () => {
             </div>
 
             {/* Bottom Pagination & Counter Footer */}
-            <div className="bg-slate-50/80 px-4 py-2.5 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+            <div className="bg-slate-50/80 dark:bg-slate-900 px-4 py-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
               <div>
                 Hiển thị{' '}
-                <strong className="text-slate-800">
+                <strong className="text-slate-800 dark:text-slate-200">
                   {filteredPayrolls.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} -{' '}
                   {Math.min(currentPage * pageSize, filteredPayrolls.length)}
                 </strong>{' '}
-                trên tổng số <strong className="text-slate-800">{filteredPayrolls.length}</strong> cán bộ giảng viên
+                trên tổng số <strong className="text-slate-800 dark:text-slate-200">{filteredPayrolls.length}</strong> cán bộ giảng viên
               </div>
               <div className="flex items-center gap-1 font-mono">
                 <button
@@ -941,8 +980,8 @@ export const Payroll: React.FC = () => {
                   onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                   className={`w-7 h-7 flex items-center justify-center rounded-lg border transition-colors ${
                     currentPage <= 1
-                      ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
-                      : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-100 cursor-pointer'
+                      ? 'border-slate-200 dark:border-slate-800 text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer'
                   }`}
                   type="button"
                 >
@@ -956,8 +995,8 @@ export const Payroll: React.FC = () => {
                   onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                   className={`w-7 h-7 flex items-center justify-center rounded-lg border transition-colors ${
                     currentPage >= totalPages
-                      ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
-                      : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-100 cursor-pointer'
+                      ? 'border-slate-200 dark:border-slate-800 text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer'
                   }`}
                   type="button"
                 >
@@ -1062,10 +1101,10 @@ export const Payroll: React.FC = () => {
                 <div className="mt-2">
                   <span
                     className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                      (STATUS_CONFIG[myPayroll.status] || STATUS_CONFIG.DU_THAO).badgeCls
+                      (STATUS_CONFIG[myPayroll.status] || STATUS_CONFIG.du_thao).badgeCls
                     }`}
                   >
-                    <span>{(STATUS_CONFIG[myPayroll.status] || STATUS_CONFIG.DU_THAO).label}</span>
+                    <span>{(STATUS_CONFIG[myPayroll.status] || STATUS_CONFIG.du_thao).label}</span>
                   </span>
                 </div>
               </div>
@@ -1084,7 +1123,7 @@ export const Payroll: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5">Hệ số lương:</span>
-                  <span className="font-mono font-bold text-slate-800">{myPayroll.salaryCoefficient}</span>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{myPayroll.salaryCoefficient}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5">Mức lương cơ sở:</span>
@@ -1099,7 +1138,7 @@ export const Payroll: React.FC = () => {
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-50">
                   <span className="text-slate-600">Lương chính theo hệ số:</span>
-                  <span className="font-mono font-bold text-slate-900">{formatVND(myPayroll.primarySalary)}</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(myPayroll.primarySalary)}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-50">
                   <span className="text-slate-600">Phụ cấp chức vụ:</span>
@@ -1196,7 +1235,7 @@ export const Payroll: React.FC = () => {
 
             {/* Content Body */}
             <div className="p-6 space-y-4 overflow-y-auto text-xs">
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex items-center justify-between">
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
                   <UserAvatar
                     name={selectedPayrollDetail.userId?.fullName}
@@ -1206,99 +1245,106 @@ export const Payroll: React.FC = () => {
                     shape="rounded"
                   />
                   <div className="min-w-0">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Cán bộ / Giảng viên</span>
-                    <span className="text-sm font-bold text-slate-900 truncate block">
+                    <span className="text-slate-400 dark:text-slate-500 block text-[10px] uppercase font-bold">Cán bộ / Giảng viên</span>
+                    <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate block">
                       {selectedPayrollDetail.userId?.fullName}
                     </span>
-                    <span className="text-slate-400 block text-[11px] font-mono mt-0.5">
-                      {selectedPayrollDetail.userId?.staffCode || '—'}
+                    <span className="text-slate-400 dark:text-slate-500 block text-[11px] font-mono mt-0.5">
+                      Mã: {selectedPayrollDetail.userId?.staffCode || '—'}
                     </span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Trạng thái</span>
+                  <span className="text-slate-400 dark:text-slate-500 block text-[10px] uppercase font-bold">Trạng thái</span>
                   <span
                     className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      (STATUS_CONFIG[selectedPayrollDetail.status] || STATUS_CONFIG.DU_THAO).badgeCls
+                      (STATUS_CONFIG[selectedPayrollDetail.status] || STATUS_CONFIG.du_thao).badgeCls
                     }`}
                   >
-                    <span>{(STATUS_CONFIG[selectedPayrollDetail.status] || STATUS_CONFIG.DU_THAO).label}</span>
+                    <span>{(STATUS_CONFIG[selectedPayrollDetail.status] || STATUS_CONFIG.du_thao).label}</span>
                   </span>
                 </div>
               </div>
 
               {/* Thu nhập */}
               <div className="space-y-2">
-                <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b pb-1">
+                <div className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider text-[11px] border-b border-slate-200 dark:border-slate-800 pb-1">
                   1. Thu Nhập Chịu Thuế (Gross)
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-600">Lương chính (HS: {selectedPayrollDetail.salaryCoefficient}):</span>
-                  <span className="font-mono font-bold text-slate-900">{formatVND(selectedPayrollDetail.primarySalary)}</span>
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <div className="flex justify-between py-1.5">
+                    <span className="text-slate-600 dark:text-slate-400">Lương chính (Hệ số: {selectedPayrollDetail.salaryCoefficient}):</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(selectedPayrollDetail.primarySalary)}</span>
+                  </div>
+                  <div className="flex justify-between py-1.5">
+                    <span className="text-slate-600 dark:text-slate-400">Phụ cấp chức vụ lãnh đạo:</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(selectedPayrollDetail.positionAllowance)}</span>
+                  </div>
+                  <div className="flex justify-between py-1.5">
+                    <span className="text-slate-600 dark:text-slate-400">Phụ cấp thâm niên nghề giáo:</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(selectedPayrollDetail.seniorityAllowance)}</span>
+                  </div>
+                  <div className="flex justify-between py-1.5">
+                    <span className="text-slate-600 dark:text-slate-400">Phụ cấp ưu đãi nhà giáo (30%):</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(selectedPayrollDetail.vocationalAllowance)}</span>
+                  </div>
+                  <div className="flex justify-between py-1.5">
+                    <span className="text-slate-600 dark:text-slate-400">
+                      Vượt giờ giảng dạy ({selectedPayrollDetail.teachingHours?.overQuotaHours || 0} giờ × 120.000 đ):
+                    </span>
+                    <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
+                      +{formatVND(selectedPayrollDetail.teachingHours?.overQuotaRemuneration)}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-600">Phụ cấp chức vụ:</span>
-                  <span className="font-mono font-bold text-slate-900">{formatVND(selectedPayrollDetail.positionAllowance)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-600">Phụ cấp thâm niên nghề giáo:</span>
-                  <span className="font-mono font-bold text-slate-900">{formatVND(selectedPayrollDetail.seniorityAllowance)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-600">Phụ cấp ưu đãi nhà giáo:</span>
-                  <span className="font-mono font-bold text-slate-900">{formatVND(selectedPayrollDetail.vocationalAllowance)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-600">
-                    Vượt giờ giảng dạy ({selectedPayrollDetail.teachingHours?.overQuotaHours || 0} giờ):
-                  </span>
-                  <span className="font-mono font-bold text-amber-700">
-                    +{formatVND(selectedPayrollDetail.teachingHours?.overQuotaRemuneration)}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5 bg-slate-50 px-2 rounded-lg font-bold">
-                  <span className="text-slate-800">TỔNG THU NHẬP GROSS:</span>
-                  <span className="font-mono text-indigo-700">{formatVND(selectedPayrollDetail.grossIncome)}</span>
+                <div className="flex justify-between py-2 px-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl font-bold border border-slate-200/80 dark:border-slate-700/60">
+                  <span className="text-slate-800 dark:text-slate-200">TỔNG THU NHẬP GROSS:</span>
+                  <span className="font-mono text-indigo-700 dark:text-indigo-400 text-sm">{formatVND(selectedPayrollDetail.grossIncome)}</span>
                 </div>
               </div>
 
               {/* Khấu trừ */}
               <div className="space-y-2">
-                <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b pb-1">
+                <div className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider text-[11px] border-b border-slate-200 dark:border-slate-800 pb-1">
                   2. Khấu Trừ Bảo Hiểm &amp; Thuế
                 </div>
                 {(() => {
                   const ins = getInsuranceDetail(selectedPayrollDetail);
                   const tax = getTaxAmount(selectedPayrollDetail);
                   return (
-                    <>
-                      <div className="flex justify-between py-1 border-b border-slate-50">
-                        <span className="text-slate-600">Bảo hiểm xã hội (BHXH 8%):</span>
-                        <span className="font-mono font-bold text-rose-600">-{formatVND(ins.bhxh)}</span>
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                      <div className="flex justify-between py-1.5">
+                        <span className="text-slate-600 dark:text-slate-400">Bảo hiểm xã hội (BHXH 8%):</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(ins.bhxh)}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-50">
-                        <span className="text-slate-600">Bảo hiểm y tế (BHYT 1.5%):</span>
-                        <span className="font-mono font-bold text-rose-600">-{formatVND(ins.bhyt)}</span>
+                      <div className="flex justify-between py-1.5">
+                        <span className="text-slate-600 dark:text-slate-400">Bảo hiểm y tế (BHYT 1.5%):</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(ins.bhyt)}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-50">
-                        <span className="text-slate-600">Bảo hiểm thất nghiệp (BHTN 1%):</span>
-                        <span className="font-mono font-bold text-rose-600">-{formatVND(ins.bhtn)}</span>
+                      <div className="flex justify-between py-1.5">
+                        <span className="text-slate-600 dark:text-slate-400">Bảo hiểm thất nghiệp (BHTN 1%):</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(ins.bhtn)}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-50">
-                        <span className="text-slate-600">Thuế thu nhập cá nhân:</span>
-                        <span className="font-mono font-bold text-rose-600">-{formatVND(tax)}</span>
+                      <div className="flex justify-between py-1.5">
+                        <span className="text-slate-600 dark:text-slate-400">Thuế thu nhập cá nhân (Thuế TNCN lũy tiến 5 bậc):</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(tax)}</span>
                       </div>
-                    </>
+                    </div>
                   );
                 })()}
               </div>
 
               {/* Thực lĩnh NET */}
-              <div className="pt-3 border-t-2 border-slate-200 flex items-center justify-between text-sm bg-emerald-50/70 p-3.5 rounded-xl border border-emerald-200/60">
-                <span className="font-bold text-slate-800 uppercase">THỰC LĨNH CHUYỂN KHOẢN (NET):</span>
-                <span className="font-mono font-bold text-emerald-700 text-base">
-                  {formatVND(selectedPayrollDetail.netSalary)}
-                </span>
+              <div className="pt-2">
+                <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/60 flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-emerald-800 dark:text-emerald-300 uppercase text-xs block">THỰC LĨNH CHUYỂN KHOẢN (NET):</span>
+                    <span className="text-[11px] text-slate-400">Thanh toán qua tài khoản ngân hàng</span>
+                  </div>
+                  <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 text-xl">
+                    {formatVND(selectedPayrollDetail.netSalary)}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1379,18 +1425,17 @@ export const Payroll: React.FC = () => {
 
               <div>
                 <label className="block text-slate-700 font-semibold mb-1">Phạm vi tính lương</label>
-                <select
-                  value={selectedDepartment}
-                  onChange={(e) => setSelectedDepartment(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium"
-                >
-                  <option value="ALL">Toàn Trường (Tất cả khoa / phòng ban)</option>
-                  {departments.map((d) => (
-                    <option key={d._id} value={d._id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full">
+                  <DepartmentSelect
+                    departments={departments}
+                    value={selectedDepartment}
+                    onChange={(deptId) => setSelectedDepartment(deptId)}
+                    allowAll={true}
+                    allLabel="Toàn Trường (Tất cả khoa / phòng ban)"
+                    placeholder="Chọn phạm vi đơn vị..."
+                    size="md"
+                  />
+                </div>
               </div>
 
               <div className="p-3 bg-amber-50/70 border border-amber-200/60 rounded-xl text-[11px] text-amber-800">

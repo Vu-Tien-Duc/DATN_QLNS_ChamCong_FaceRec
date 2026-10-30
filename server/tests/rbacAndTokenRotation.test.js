@@ -14,8 +14,8 @@ async function runRbacTests() {
 
   // Test 1: Giảng viên
   const giangVien = {
-    role: 'giangvien',
-    roles: [{ role: 'GIANG_VIEN', scope: 'KHOA' }]
+    role: 'giang_vien',
+    roles: [{ role: 'giang_vien', scope: 'khoa' }]
   };
   assert.strictEqual(hasPermission(giangVien, PERMISSIONS.CONG_XEM_BAN_THAN), true);
   assert.strictEqual(hasPermission(giangVien, PERMISSIONS.DON_TU_TAO), true);
@@ -26,8 +26,8 @@ async function runRbacTests() {
 
   // Test 2: Trưởng khoa
   const truongKhoa = {
-    role: 'truongkhoa',
-    roles: [{ role: 'TRUONG_KHOA', scope: 'KHOA' }]
+    role: 'truong_khoa',
+    roles: [{ role: 'truong_khoa', scope: 'khoa' }]
   };
   assert.strictEqual(hasPermission(truongKhoa, PERMISSIONS.DON_TU_DUYET_CAP_1), true);
   assert.strictEqual(hasPermission(truongKhoa, PERMISSIONS.CONG_XEM_DON_VI), true);
@@ -37,8 +37,8 @@ async function runRbacTests() {
 
   // Test 3: Phó trưởng khoa chưa ủy quyền
   const phoKhoaChuaUyQuyen = {
-    role: 'truongkhoa',
-    roles: [{ role: 'PHO_TRUONG_KHOA', scope: 'KHOA', isDelegated: false }]
+    role: 'pho_khoa',
+    roles: [{ role: 'pho_khoa', scope: 'khoa', isDelegated: false }]
   };
   assert.strictEqual(hasPermission(phoKhoaChuaUyQuyen, PERMISSIONS.CONG_XEM_DON_VI), true);
   assert.strictEqual(hasPermission(phoKhoaChuaUyQuyen, PERMISSIONS.DON_TU_DUYET_CAP_1), false);
@@ -46,8 +46,8 @@ async function runRbacTests() {
 
   // Test 4: Phó trưởng khoa được ủy quyền
   const phoKhoaDuocUyQuyen = {
-    role: 'truongkhoa',
-    roles: [{ role: 'PHO_TRUONG_KHOA', scope: 'KHOA', isDelegated: true }]
+    role: 'pho_khoa',
+    roles: [{ role: 'pho_khoa', scope: 'khoa', isDelegated: true }]
   };
   assert.strictEqual(hasPermission(phoKhoaDuocUyQuyen, PERMISSIONS.CONG_XEM_DON_VI), true);
   assert.strictEqual(hasPermission(phoKhoaDuocUyQuyen, PERMISSIONS.DON_TU_DUYET_CAP_1), true);
@@ -55,10 +55,10 @@ async function runRbacTests() {
 
   // Test 5: Nhiệm kỳ hết hạn
   const cuuTruongKhoa = {
-    role: 'giangvien',
+    role: 'giang_vien',
     roles: [
-      { role: 'TRUONG_KHOA', scope: 'KHOA', startDate: new Date('2020-01-01'), endDate: new Date('2024-01-01') },
-      { role: 'GIANG_VIEN', scope: 'KHOA', startDate: new Date('2024-01-02'), endDate: null }
+      { role: 'truong_khoa', scope: 'khoa', startDate: new Date('2020-01-01'), endDate: new Date('2024-01-01') },
+      { role: 'giang_vien', scope: 'khoa', startDate: new Date('2024-01-02'), endDate: null }
     ]
   };
   assert.strictEqual(hasPermission(cuuTruongKhoa, PERMISSIONS.DON_TU_DUYET_CAP_1), false);
@@ -68,11 +68,11 @@ async function runRbacTests() {
   // Test 6: BGH và Admin
   const admin = {
     role: 'admin',
-    roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }]
+    roles: [{ role: 'admin', scope: 'toan_truong' }]
   };
   const bgh = {
-    role: 'admin',
-    roles: [{ role: 'BGH', scope: 'TOAN_TRUONG' }]
+    role: 'bgh',
+    roles: [{ role: 'bgh', scope: 'toan_truong' }]
   };
   assert.strictEqual(hasPermission(admin, PERMISSIONS.NHAN_SU_QUAN_LY), true);
   assert.strictEqual(hasPermission(admin, PERMISSIONS.HE_THONG_CAU_HINH), true);
@@ -145,7 +145,7 @@ async function runRbacTests() {
   RefreshToken.create = async () => ({ _id: 'new-ref-id' });
   User.findById = async () => ({
     _id: userId,
-    role: 'giangvien',
+    role: 'giang_vien',
     email: 'test@example.com',
     isActive: true,
     phien_ban_token: 1,
@@ -212,7 +212,7 @@ async function runRbacTests() {
     email: 'giangvien.test@uni.edu.vn',
     ho_ten: 'TS. Nguyễn Văn A',
     kich_hoat: true,
-    trang_thai_lam_viec: 'DANG_LAM_VIEC',
+    trang_thai_lam_viec: 'dang_lam_viec',
     ma_otp: null,
     otp_het_han_luc: null,
     loai_otp: null,
@@ -233,7 +233,7 @@ async function runRbacTests() {
   // Test 12: Yêu cầu OTP thành công & kiểm tra 5 trường
   process.env.NODE_ENV = 'test';
   const resOtp = await forgotPassword({ email: 'giangvien.test@uni.edu.vn' });
-  assert.strictEqual(mockUserOtp.loai_otp, 'FORGOT_PASSWORD');
+  assert.strictEqual(mockUserOtp.loai_otp, 'forgot_password');
   assert.ok(mockUserOtp.ma_otp, 'ma_otp phải được sinh và băm');
   assert.ok(mockUserOtp.otp_het_han_luc > new Date(), 'otp_het_han_luc phải ở tương lai 10 phút');
   assert.strictEqual(mockUserOtp.so_lan_thu_otp, 0, 'so_lan_thu_otp khởi tạo là 0');

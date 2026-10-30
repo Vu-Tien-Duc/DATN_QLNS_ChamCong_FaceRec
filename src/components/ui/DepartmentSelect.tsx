@@ -11,6 +11,7 @@ import {
   Building,
   Layers,
 } from 'lucide-react';
+import { normalizeRoleKey } from '../../utils/rbac';
 
 export interface DepartmentItem {
   _id: string;
@@ -36,7 +37,7 @@ export interface DepartmentSelectProps {
   allLabel?: string;
 }
 
-export const getDeptCategory = (d?: DepartmentItem | any): 'bgh' | 'khoa' | 'bomon' | 'phongban' => {
+export const getDeptCategory = (d?: DepartmentItem | any): 'bgh' | 'khoa' | 'bo_mon' | 'bomon' | 'phong_ban' | 'phongban' => {
   if (!d) return 'khoa';
   const name = String(d.name || d.ten_phong_ban || '').toLowerCase().trim();
   const rawType = String(d.type || d.loai_don_vi || '').toLowerCase().trim();
@@ -48,8 +49,8 @@ export const getDeptCategory = (d?: DepartmentItem | any): 'bgh' | 'khoa' | 'bom
 
   // 2. Ưu tiên loại đơn vị chuẩn từ CSDL
   if (rawType === 'khoa') return 'khoa';
-  if (rawType === 'bomon') return 'bomon';
-  if (rawType === 'phongban') return 'phongban';
+  if (rawType === 'bo_mon' || rawType === 'bomon') return 'bo_mon';
+  if (rawType === 'phong_ban' || rawType === 'phongban') return 'phong_ban';
 
   // 3. Nhận diện các đơn vị khối phòng ban, ban chức năng (tránh nhầm lẫn "Khoa học công nghệ")
   if (
@@ -61,7 +62,7 @@ export const getDeptCategory = (d?: DepartmentItem | any): 'bgh' | 'khoa' | 'bom
     name.startsWith('viện ') ||
     name.startsWith('vien ')
   ) {
-    return 'phongban';
+    return 'phong_ban';
   }
 
   // 4. Nhận diện Bộ môn
@@ -73,7 +74,7 @@ export const getDeptCategory = (d?: DepartmentItem | any): 'bgh' | 'khoa' | 'bom
     name.includes('bộ môn ') ||
     name.includes('bo mon ')
   ) {
-    return 'bomon';
+    return 'bo_mon';
   }
 
   // 5. Nhận diện Khoa (phải bắt đầu bằng "khoa " hoặc "khoa:", không dùng name.includes('khoa') tránh dính "khoa học công nghệ")
@@ -81,7 +82,7 @@ export const getDeptCategory = (d?: DepartmentItem | any): 'bgh' | 'khoa' | 'bom
     return 'khoa';
   }
 
-  return 'phongban';
+  return 'phong_ban';
 };
 
 const getParentId = (d: DepartmentItem): string => {
@@ -148,7 +149,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
 
   // Tự động mở rộng Khoa cha nếu đơn vị đang chọn là một Bộ môn con
   useEffect(() => {
-    if (selectedDept && getDeptCategory(selectedDept) === 'bomon') {
+    if (selectedDept && getDeptCategory(selectedDept) === 'bo_mon') {
       const parentId = getParentId(selectedDept);
       if (parentId) {
         setExpandedKhoas((prev) => ({ ...prev, [parentId]: true }));
@@ -162,17 +163,17 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
   // Lọc danh sách theo vai trò RBAC và từ khóa tìm kiếm
   const filteredTree = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const r = (role || '').trim().toLowerCase();
+    const r = normalizeRoleKey(role);
 
     const allKhoa = departments.filter((d) => getDeptCategory(d) === 'khoa');
-    const allBomon = departments.filter((d) => getDeptCategory(d) === 'bomon');
-    const allPhong = departments.filter((d) => getDeptCategory(d) === 'phongban');
+    const allBomon = departments.filter((d) => getDeptCategory(d) === 'bo_mon');
+    const allPhong = departments.filter((d) => getDeptCategory(d) === 'phong_ban');
     const allBgh = departments.filter((d) => getDeptCategory(d) === 'bgh');
 
-    const isNhanVien = r === 'nhanvien';
-    const isGiangVien = r === 'giangvien';
-    const isTruongKhoa = r === 'truongkhoa' || r === 'phokhoa';
-    const isTruongBoMon = r === 'truongbomon';
+    const isNhanVien = r === 'nhan_vien' || r === 'chuyen_vien';
+    const isGiangVien = r === 'giang_vien';
+    const isTruongKhoa = r === 'truong_khoa' || r === 'pho_khoa';
+    const isTruongBoMon = r === 'truong_bo_mon' || r === 'pho_bo_mon';
     const isBGH = r === 'bgh';
     const isAdmin = r === 'admin';
 
@@ -188,7 +189,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
 
     // 2. Nhóm Các Khoa & Bộ Môn:
     // CHỈ hiển thị khi role là Giảng viên, Trưởng khoa, Phó khoa, Trưởng bộ môn hoặc chưa chọn role.
-    // TUYỆT ĐỐI ẨN HOÀN TOÀN khi role là 'nhanvien' (Chuyên viên hành chính), 'bgh', 'admin'!
+    // TUYỆT ĐỐI ẨN HOÀN TOÀN khi role là 'nhan_vien' (Chuyên viên hành chính), 'bgh', 'admin'!
     const allowKhoaAndBomon = isGiangVien || isTruongKhoa || isTruongBoMon || r === '';
 
     const khoaGroups: Array<{
@@ -242,7 +243,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
       : [];
 
     // 4. Nhóm Phòng Ban Chức Năng:
-    // CHỈ hiển thị khi role là Chuyên viên hành chính ('nhanvien'), Admin ('admin') hoặc chưa chọn role.
+    // CHỈ hiển thị khi role là Chuyên viên hành chính ('nhan_vien'), Admin ('admin') hoặc chưa chọn role.
     // TUYỆT ĐỐI ẨN khi role là Giảng viên, Trưởng khoa, Trưởng bộ môn, BGH!
     const allowPhong = isNhanVien || isAdmin || r === '';
     const phongList = allowPhong
@@ -306,8 +307,8 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
               <span className={`${size === 'sm' ? 'text-xs' : 'text-sm'} shrink-0`}>
                 {selectedCategory === 'bgh' && '⭐'}
                 {selectedCategory === 'khoa' && '🏛️'}
-                {selectedCategory === 'bomon' && '📚'}
-                {selectedCategory === 'phongban' && '🏢'}
+                {selectedCategory === 'bo_mon' && '📚'}
+                {selectedCategory === 'phong_ban' && '🏢'}
               </span>
               <span className={`font-medium text-slate-900 dark:text-white truncate ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
                 {selectedDept.name}

@@ -56,9 +56,9 @@ const faceRecognizeAttendance = async (req, res, next) => {
     const requestedAction =
       req.body?.actionType ||
       (req.originalUrl?.includes('checkout') || req.path?.includes('checkout')
-        ? 'CHECK_OUT'
+        ? 'check_out'
         : req.originalUrl?.includes('checkin') || req.path?.includes('checkin')
-        ? 'CHECK_IN'
+        ? 'check_in'
         : null);
 
     const result = await processFaceAttendance({
@@ -186,7 +186,7 @@ const getMyAttendanceHistory = async (req, res, next) => {
   try {
     const { status, from, to, page, limit, method, isFraud } = req.query;
     const result = await fetchAttendanceHistory({
-      role: 'giangvien', // Ép buộc xem cá nhân
+      role: 'giang_vien', // Ép buộc xem cá nhân
       userId: req.user.id,
       currentUserId: req.user.id,
       status,

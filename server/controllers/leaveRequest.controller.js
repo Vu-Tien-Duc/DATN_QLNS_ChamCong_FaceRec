@@ -90,7 +90,7 @@ const getLeaveRequestById = async (req, res, next) => {
  */
 const getLeaveBalance = async (req, res, next) => {
   try {
-    const balance = await fetchLeaveBalance(req.query.userId, req.user);
+    const balance = await fetchLeaveBalance(req.query.userId, req.user, req.query.year);
     return sendSuccess(res, balance.message, balance);
   } catch (error) {
     handleServiceError(res, error, next);

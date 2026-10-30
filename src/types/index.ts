@@ -3,44 +3,44 @@
 // =============================================================================
 
 export type RoleType =
-  | 'ADMIN'
-  | 'BGH'
-  | 'TRUONG_KHOA'
-  | 'PHO_KHOA'
-  | 'TRUONG_BO_MON'
-  | 'GIANG_VIEN'
-  | 'NHAN_VIEN'
-  | 'KE_TOAN'
-  | 'QUAN_LY_XE';
-
-export type UserRoleLegacy =
   | 'admin'
   | 'bgh'
+  | 'tccb'
+  | 'dao_tao'
+  | 'ke_toan'
+  | 'kiem_toan'
   | 'truong_khoa'
   | 'pho_khoa'
+  | 'truong_bo_mon'
+  | 'pho_bo_mon'
+  | 'truong_phong'
+  | 'pho_phong'
   | 'giang_vien'
+  | 'chuyen_vien'
   | 'nhan_vien'
-  | 'ke_toan';
+  | 'quan_ly_xe';
+
+export type UserRoleLegacy = RoleType;
 
 export interface UserRoleItem {
   role: RoleType | string;
-  scope: 'TOAN_TRUONG' | 'KHOA' | 'BO_MON' | 'PHONG_BAN';
+  scope: 'toan_truong' | 'khoa' | 'bo_mon' | 'phong_ban';
   departmentId?: string;
   startDate?: string;
   endDate?: string;
 }
 
-export type AcademicRankType = 'GIAO_SU' | 'PHO_GIAO_SU' | 'KHONG';
-export type DegreeType = 'TIEN_SI' | 'THAC_SI' | 'CU_NHAN' | 'KY_SU' | 'KHAC';
-export type StaffType = 'GIANG_VIEN' | 'HANH_CHINH';
+export type AcademicRankType = 'giao_su' | 'pho_giao_su' | 'khong';
+export type DegreeType = 'tien_si' | 'thac_si' | 'cu_nhan' | 'ky_su' | 'khac';
+export type StaffType = 'giang_vien' | 'hanh_chinh';
 export type ContractType =
-  | 'TOAN_THOI_GIAN'
-  | 'BAN_THOI_GIAN'
-  | 'THU_VIEC'
-  | 'KHONG_XAC_DINH_THOI_HAN'
-  | 'XAC_DINH_THOI_HAN';
-export type EmploymentStatusType = 'DANG_LAM_VIEC' | 'DA_NGHI_VIEC' | 'TAM_HOAN';
-export type GenderType = 'NAM' | 'NU' | 'KHAC';
+  | 'toan_thoi_gian'
+  | 'ban_thoi_gian'
+  | 'thu_viec'
+  | 'khong_xac_dinh_thoi_han'
+  | 'xac_dinh_thoi_han';
+export type EmploymentStatusType = 'dang_lam_viec' | 'da_nghi_viec' | 'tam_hoan';
+export type GenderType = 'nam' | 'nu' | 'khac';
 
 export interface UserProfile {
   _id: string;
@@ -121,7 +121,7 @@ export type UpdateUserPayload = Partial<CreateUserPayload> & {
   isActive?: boolean;
 };
 
-export type DepartmentType = 'khoa' | 'bomon' | 'phongban';
+export type DepartmentType = 'khoa' | 'bo_mon' | 'bomon' | 'phong_ban' | 'phongban' | (string & {});
 
 export interface DepartmentManagerRef {
   _id: string;
@@ -179,14 +179,14 @@ export interface CreateDepartmentPayload {
 export type UpdateDepartmentPayload = Partial<CreateDepartmentPayload>;
 
 export type AttendanceStatus =
-  | 'ON_TIME'
-  | 'LATE'
-  | 'EARLY_LEAVE'
-  | 'ABSENT'
-  | 'EXCUSED_ABSENCE'
+  | 'on_time'
+  | 'late'
+  | 'early_leave'
+  | 'absent'
+  | 'excused_absence'
   | 'HOLIDAY';
 
-export type CheckInMethod = 'FACE_RECOGNITION' | 'GPS' | 'QR_CODE' | 'MANUAL';
+export type CheckInMethod = 'FACE_RECOGNITION' | 'GPS' | 'qr_code' | 'MANUAL';
 
 export interface AttendanceToday {
   _id?: string;
@@ -201,8 +201,8 @@ export interface AttendanceToday {
   isApproved?: boolean;
 }
 
-export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
-export type LeaveType = 'ANNUAL' | 'SICK' | 'MATERNITY' | 'UNPAID' | 'BUSINESS';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type LeaveType = 'nghi_phep' | 'day_bu' | 'doi_ca' | 'nghi_om' | 'viec_rieng';
 
 export interface LeaveRequestItem {
   _id: string;
@@ -242,8 +242,8 @@ export interface NavigationItem {
 // TYPES THỜI KHÓA BIỂU & PHÂN CÔNG GIẢNG DẠY (SCHEDULE - CSDL v2.5)
 // =============================================================================
 
-export type ScheduleType = 'CHINH_KHOA' | 'DAY_BU';
-export type ScheduleExceptionStatus = 'NGHI' | 'HUY' | 'DAY_BU';
+export type ScheduleType = 'chinh_khoa' | 'day_bu';
+export type ScheduleExceptionStatus = 'nghi' | 'huy' | 'day_bu';
 
 export interface ScheduleExceptionItem {
   _id?: string;

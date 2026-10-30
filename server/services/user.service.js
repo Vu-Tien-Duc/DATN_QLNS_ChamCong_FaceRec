@@ -19,66 +19,28 @@ const {
   removeFaceDescriptorForUser,
 } = require('./faceTemplate.service');
 const { getDeanDepartmentIds } = require('../utils/deanScope');
+const { ROLES, ALL_ROLES, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES, normalizeRole } = require('../utils/roleUtils');
 
-const ADMIN_ROLE = 'admin';
+const ADMIN_ROLE = ROLES.ADMIN;
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
-const normalizePrimaryRole = (roleInput) => {
-  const raw = String(roleInput || 'giangvien').trim().toLowerCase();
-  const map = {
-    truong_khoa: 'truongkhoa',
-    pho_khoa: 'phokhoa',
-    pho_truong_khoa: 'phokhoa',
-    truong_bo_mon: 'truongbomon',
-    pho_bo_mon: 'phobomon',
-    giang_vien: 'giangvien',
-    nhan_vien: 'nhanvien',
-    chuyen_vien: 'nhanvien',
-  };
-  return map[raw] || raw;
-};
-
 const buildDefaultRolesArray = (roleStr, departmentId = null) => {
-  const norm = normalizePrimaryRole(roleStr);
-  let rbacRole = 'GIANG_VIEN';
-  let scope = departmentId ? 'KHOA' : 'TOAN_TRUONG';
+  const norm = normalizeRole(roleStr);
+  let scope = departmentId ? 'khoa' : 'toan_truong';
 
-  if (norm === 'admin') {
-    rbacRole = 'ADMIN';
-    scope = 'TOAN_TRUONG';
-  } else if (norm === 'bgh') {
-    rbacRole = 'BGH';
-    scope = 'TOAN_TRUONG';
-  } else if (norm === 'tccb') {
-    rbacRole = 'TCCB';
-    scope = 'TOAN_TRUONG';
-  } else if (norm === 'dao_tao') {
-    rbacRole = 'DAO_TAO';
-    scope = 'TOAN_TRUONG';
-  } else if (norm === 'ke_toan') {
-    rbacRole = 'KE_TOAN';
-    scope = 'TOAN_TRUONG';
-  } else if (norm === 'kiem_toan') {
-    rbacRole = 'KIEM_TOAN';
-    scope = 'TOAN_TRUONG';
-  } else if (norm === 'truongkhoa') {
-    rbacRole = 'TRUONG_KHOA';
-    scope = 'KHOA';
-  } else if (norm === 'phokhoa') {
-    rbacRole = 'PHO_TRUONG_KHOA';
-    scope = 'KHOA';
-  } else if (norm === 'truongbomon') {
-    rbacRole = 'TRUONG_BO_MON';
-    scope = 'BO_MON';
-  } else if (norm === 'nhanvien') {
-    rbacRole = 'CHUYEN_VIEN';
-    scope = departmentId ? 'PHONG_BAN' : 'TOAN_TRUONG';
+  if (GLOBAL_ADMIN_ROLES.includes(norm) || ['dao_tao'].includes(norm)) {
+    scope = 'toan_truong';
+  } else if (['truong_khoa', 'pho_khoa'].includes(norm)) {
+    scope = 'khoa';
+  } else if (['truong_bo_mon', 'pho_bo_mon'].includes(norm)) {
+    scope = 'bo_mon';
+  } else if (['truong_phong', 'pho_phong', 'chuyen_vien', 'nhan_vien'].includes(norm)) {
+    scope = departmentId ? 'phong_ban' : 'toan_truong';
   } else {
-    rbacRole = 'GIANG_VIEN';
-    scope = departmentId ? 'KHOA' : 'TOAN_TRUONG';
+    scope = departmentId ? 'khoa' : 'toan_truong';
   }
 
-  return [{ role: rbacRole, scope, departmentId: departmentId || null }];
+  return [{ role: norm, scope, departmentId: departmentId || null }];
 };
 
 class ServiceError extends Error {
@@ -97,23 +59,31 @@ class ServiceError extends Error {
 const fetchUsers = async ({ role, departmentId, isActive, search, page = 1, limit = 20, currentUser }) => {
   const query = {};
 
-  // Giới hạn phạm vi quyền Trưởng khoa
-  const userRole = (currentUser.role || '').toLowerCase();
-  if (userRole === 'truongkhoa') {
-    if (!currentUser.departmentId) {
-      throw new ServiceError('Tài khoản Trưởng khoa chưa được gán mã khoa trực thuộc.', 403);
-    }
+  // Giới hạn phạm vi quyền Trưởng khoa / Lãnh đạo đơn vị
+  const userRole = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
+  if (UNIT_LEADER_ROLES.includes(userRole)) {
     const departmentIds = await getDeanDepartmentIds(currentUser);
-    query.departmentId = { $in: departmentIds };
+    if (!departmentIds.length) {
+      throw new ServiceError('Tài khoản Lãnh đạo đơn vị chưa được gán mã khoa / phòng ban trực thuộc.', 403);
+    }
+    query.$or = [
+      { don_vi_chinh_id: { $in: departmentIds } },
+      { departmentId: { $in: departmentIds } },
+      { 'danh_sach_vai_tro.don_vi_id': { $in: departmentIds } },
+    ];
   } else if (departmentId) {
     const validId = typeof departmentId === 'string' && mongoose.isValidObjectId(departmentId)
       ? new mongoose.Types.ObjectId(departmentId)
       : departmentId;
-    query.departmentId = validId;
+    query.$or = [
+      { don_vi_chinh_id: validId },
+      { departmentId: validId },
+      { 'danh_sach_vai_tro.don_vi_id': validId },
+    ];
   }
 
   if (role) {
-    query.primaryRole = normalizePrimaryRole(role);
+    query.primaryRole = normalizeRole(role);
   }
 
   if (isActive !== undefined && isActive !== '') {
@@ -154,12 +124,12 @@ const fetchUsers = async ({ role, departmentId, isActive, search, page = 1, limi
   const FaceTemplate = require('../models/faceTemplate.model');
   const userIds = users.map((u) => u._id);
   const templates = await FaceTemplate.find({
-    $or: [{ nguoi_dung_id: { $in: userIds } }, { userId: { $in: userIds } }],
-  }).select('nguoi_dung_id userId ngay_dang_ky so_luong_mau').lean();
+    userId: { $in: userIds },
+  }).select('userId ngay_dang_ky so_luong_mau').lean();
 
   const templateMap = new Map();
   for (const t of templates) {
-    const uid = (t.nguoi_dung_id || t.userId)?.toString();
+    const uid = t.userId?.toString();
     if (uid) templateMap.set(uid, t);
   }
 
@@ -167,40 +137,37 @@ const fetchUsers = async ({ role, departmentId, isActive, search, page = 1, limi
     const t = templateMap.get(u._id.toString());
     const isFaceReg =
       Boolean(t) ||
-      Boolean(u.da_dang_ky_face) ||
       Boolean(u.isFaceRegistered);
 
     const deptObj =
       u.departmentId && typeof u.departmentId === 'object'
         ? u.departmentId
-        : u.don_vi_chinh_id && typeof u.don_vi_chinh_id === 'object'
-          ? u.don_vi_chinh_id
-          : null;
+        : null;
 
-    const departmentName = deptObj ? (deptObj.name || deptObj.ten_phong_ban || '') : '';
-    const staffCode = u.staffCode || u.ma_can_bo || '';
-    const roleVal = u.role || u.primaryRole || u.vai_tro_chinh || 'giangvien';
-    const avatarVal = u.anh_dai_dien || u.avatar || u.anh_khuon_mat || u.facePhoto || null;
-    const facePhotoVal = u.anh_khuon_mat || u.facePhoto || null;
+    const departmentName = deptObj?.name || '';
+    const staffCode = u.staffCode || '';
+    const roleVal = normalizeRole(u.role);
+    const avatarVal = u.avatar || u.facePhoto || null;
+    const facePhotoVal = u.facePhoto || null;
 
     return {
       ...u,
-      fullName: u.fullName || u.ho_ten || '',
+      fullName: u.fullName || '',
       role: roleVal,
       primaryRole: roleVal,
       staffCode,
-      phoneNumber: u.phoneNumber || u.so_dien_thoai || '',
-      position: u.position || u.chuc_vu || '',
-      academicRank: u.academicRank || u.hoc_ham || 'KHONG',
-      degree: u.degree || u.hoc_vi || 'CU_NHAN',
-      staffType: u.staffType || u.loai_nhan_su || 'GIANG_VIEN',
-      contractType: u.contractType || u.loai_hop_dong || 'TOAN_THOI_GIAN',
-      salaryScale: u.salaryScale || u.ngach_luong || 'V.07.01.03',
-      salaryCoefficient: u.salaryCoefficient ?? u.he_so_luong ?? 2.34,
-      dependentsCount: u.dependentsCount ?? u.so_nguoi_phu_thuoc ?? 0,
+      phoneNumber: u.phoneNumber || '',
+      position: u.position || '',
+      academicRank: u.academicRank || 'khong',
+      degree: u.degree || 'cu_nhan',
+      staffType: u.staffType || 'giang_vien',
+      contractType: u.contractType || 'toan_thoi_gian',
+      salaryScale: u.salaryScale || 'V.07.01.03',
+      salaryCoefficient: u.salaryCoefficient ?? 2.34,
+      dependentsCount: u.dependentsCount ?? 0,
       annualLeaveQuota: u.annualLeaveQuota ?? u.so_ngay_phep_nam ?? 12,
-      gender: u.gender || u.gioi_tinh || 'NAM',
-      employmentStatus: u.employmentStatus || u.trang_thai_lam_viec || 'DANG_LAM_VIEC',
+      gender: u.gender || u.gioi_tinh || 'nam',
+      employmentStatus: u.employmentStatus || u.trang_thai_lam_viec || 'dang_lam_viec',
       isActive: u.isActive ?? u.kich_hoat ?? true,
       departmentId: deptObj || u.departmentId || u.don_vi_chinh_id || null,
       departmentName,
@@ -248,8 +215,8 @@ const fetchUserById = async (userId, currentUser) => {
 
   // Kiểm tra quyền hạn nếu là Trưởng khoa
   const isSelf = String(currentUser._id || currentUser.id) === String(userId);
-  const viewerRole = (currentUser.role || '').toLowerCase();
-  if (!isSelf && viewerRole === 'truongkhoa') {
+  const viewerRole = normalizeRole(currentUser.role || currentUser.primaryRole);
+  if (!isSelf && viewerRole === 'truong_khoa') {
     const allowedDeptIds = (await getDeanDepartmentIds(currentUser)).map((id) => String(id));
     const userDeptId = String(user.departmentId?._id || user.departmentId || '');
     if (!allowedDeptIds.includes(userDeptId)) {
@@ -293,7 +260,7 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
   const finalName = (fullName || '').trim();
   const finalEmail = (email || '').trim().toLowerCase();
   const finalStaffCode = (staffCode || '').trim().toUpperCase();
-  const finalRole = normalizePrimaryRole(role || 'giangvien');
+  const finalRole = normalizeRole(role || 'giang_vien');
   const finalDeptId = departmentId || null;
 
   if (!finalName) throw new ServiceError('Họ tên không được để trống.', 400);
@@ -322,16 +289,16 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
     if (finalRole === 'bgh' && !isBghDept) {
       throw new ServiceError('Cán bộ có vai trò Ban Giám Hiệu (BGH) bắt buộc phải thuộc đơn vị Ban Giám Hiệu.', 400);
     }
-    if (['truongkhoa', 'phokhoa'].includes(finalRole) && dept.type !== 'khoa') {
+    if (['truong_khoa', 'pho_khoa'].includes(finalRole) && dept.type !== 'khoa') {
       throw new ServiceError('Trưởng Khoa / Phó Trưởng Khoa bắt buộc phải thuộc đơn vị cấp Khoa.', 400);
     }
-    if (finalRole === 'truongbomon' && dept.type !== 'bomon') {
+    if (['truong_bo_mon', 'pho_bo_mon'].includes(finalRole) && dept.type !== 'bo_mon' && dept.type !== 'bomon') {
       throw new ServiceError('Trưởng Bộ Môn bắt buộc phải thuộc đơn vị cấp Bộ Môn.', 400);
     }
-    if (finalRole === 'giangvien' && dept.type !== 'bomon') {
+    if (finalRole === 'giang_vien' && dept.type !== 'bo_mon' && dept.type !== 'bomon') {
       throw new ServiceError('Giảng viên bắt buộc phải trực thuộc một Bộ Môn cụ thể.', 400);
     }
-    if (finalRole === 'admin' && (dept.type === 'khoa' || dept.type === 'bomon')) {
+    if (finalRole === 'admin' && (dept.type === 'khoa' || dept.type === 'bo_mon' || dept.type === 'bomon')) {
       throw new ServiceError('Quản trị viên hệ thống (Admin) phải thuộc Hội Đồng Trường hoặc các Ban chức năng NTU, không thuộc Khoa/Bộ môn đào tạo.', 400);
     }
     if (isBghDept && !['bgh', 'admin'].includes(finalRole)) {
@@ -353,19 +320,19 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
     don_vi_chinh_id: finalDeptId,
     phoneNumber: phoneNumber || undefined,
     position: position || undefined,
-    academicRank: academicRank || 'KHONG',
-    degree: degree || 'CU_NHAN',
-    staffType: staffType || (finalRole === 'giangvien' ? 'GIANG_VIEN' : 'HANH_CHINH'),
-    contractType: contractType || 'TOAN_THOI_GIAN',
+    academicRank: academicRank || 'khong',
+    degree: degree || 'cu_nhan',
+    staffType: staffType || (finalRole === 'giang_vien' ? 'giang_vien' : 'hanh_chinh'),
+    contractType: contractType || 'toan_thoi_gian',
     salaryScale: salaryScale || 'V.07.01.03',
     salaryCoefficient: salaryCoefficient !== undefined ? Number(salaryCoefficient) : 2.34,
     dependentsCount: dependentsCount !== undefined ? Number(dependentsCount) : 0,
     annualLeaveQuota: annualLeaveQuota !== undefined ? Number(annualLeaveQuota) : 12,
-    gender: gender || 'NAM',
+    gender: gender || 'nam',
     dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
     startDate: startDate ? new Date(startDate) : new Date(),
     address: address || '',
-    employmentStatus: employmentStatus || 'DANG_LAM_VIEC',
+    employmentStatus: employmentStatus || 'dang_lam_viec',
     avatar: avatar || null,
     roles: Array.isArray(roles) && roles.length > 0 ? roles : buildDefaultRolesArray(finalRole, finalDeptId),
     isActive: true,
@@ -375,7 +342,7 @@ const createNewUser = async (data, currentUser, ipAddress = null) => {
 
   AuditLog.create({
     actor: currentUser._id || currentUser.id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'CREATE_USER',
     targetId: newUser._id.toString(),
     targetType: 'User',
@@ -406,8 +373,8 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
 
   // Kiểm tra quyền hạn
   const isSelf = String(currentUser._id || currentUser.id) === String(userId);
-  const editorRole = (currentUser.role || '').toLowerCase();
-  const isElevated = ['admin', 'bgh', 'tccb'].includes(editorRole);
+  const editorRole = normalizeRole(currentUser.role || currentUser.primaryRole);
+  const isElevated = GLOBAL_ADMIN_ROLES.includes(editorRole);
 
   if (isSelf && !isElevated) {
     // Cán bộ/Giảng viên tự cập nhật hồ sơ cá nhân: Không được tự nâng quyền, đổi lương, đổi mã CB hay chuyển khoa
@@ -421,7 +388,7 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     delete data.roles;
     delete data.employmentStatus;
     delete data.startDate;
-  } else if (editorRole === 'truongkhoa') {
+  } else if (editorRole === 'truong_khoa') {
     const allowedDeptIds = (await getDeanDepartmentIds(currentUser)).map((id) => String(id));
     const userDeptId = String(user.departmentId?._id || user.departmentId || '');
     if (!allowedDeptIds.includes(userDeptId)) {
@@ -432,8 +399,8 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     delete data.departmentId;
   }
 
-  const targetRole = normalizePrimaryRole(user.role || user.primaryRole);
-  const currentRole = normalizePrimaryRole(currentUser.role || currentUser.primaryRole);
+  const targetRole = normalizeRole(user.role || user.primaryRole);
+  const currentRole = normalizeRole(currentUser.role || currentUser.primaryRole);
 
   if (!isSelf) {
     // 1. Bảo vệ cấp trên: Chỉ Ban Giám Hiệu mới có quyền đổi trạng thái kích hoạt hoặc vai trò của BGH
@@ -504,9 +471,10 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
   }
 
   if (role) {
-    const normRole = normalizePrimaryRole(role);
+    const normRole = normalizeRole(role);
     user.role = normRole;
     user.primaryRole = normRole;
+    user.vai_tro_chinh = normRole;
     if (roles === undefined) {
       user.roles = buildDefaultRolesArray(normRole, user.departmentId);
     }
@@ -517,22 +485,23 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
     const dept = await Department.findById(user.departmentId);
     if (dept) {
       const isBghDept = (dept.name || '').toLowerCase().includes('giám hiệu');
-      if (user.role === 'bgh' && !isBghDept) {
+      const uRole = normalizeRole(user.role);
+      if (uRole === 'bgh' && !isBghDept) {
         throw new ServiceError('Cán bộ có vai trò Ban Giám Hiệu (BGH) bắt buộc phải thuộc đơn vị Ban Giám Hiệu.', 400);
       }
-      if (['truongkhoa', 'phokhoa'].includes(user.role) && dept.type !== 'khoa') {
+      if (['truong_khoa', 'pho_khoa'].includes(uRole) && dept.type !== 'khoa') {
         throw new ServiceError('Trưởng Khoa / Phó Trưởng Khoa bắt buộc phải thuộc đơn vị cấp Khoa.', 400);
       }
-      if (user.role === 'truongbomon' && dept.type !== 'bomon') {
+      if (['truong_bo_mon', 'pho_bo_mon'].includes(uRole) && dept.type !== 'bo_mon' && dept.type !== 'bomon') {
         throw new ServiceError('Trưởng Bộ Môn bắt buộc phải thuộc đơn vị cấp Bộ Môn.', 400);
       }
-      if (user.role === 'giangvien' && dept.type !== 'bomon') {
+      if (uRole === 'giang_vien' && dept.type !== 'bo_mon' && dept.type !== 'bomon') {
         throw new ServiceError('Giảng viên bắt buộc phải trực thuộc một Bộ Môn cụ thể.', 400);
       }
-      if (user.role === 'admin' && (dept.type === 'khoa' || dept.type === 'bomon')) {
+      if (uRole === 'admin' && (dept.type === 'khoa' || dept.type === 'bo_mon' || dept.type === 'bomon')) {
         throw new ServiceError('Quản trị viên hệ thống (Admin) phải thuộc Hội Đồng Trường hoặc các Ban chức năng NTU, không thuộc Khoa/Bộ môn đào tạo.', 400);
       }
-      if (isBghDept && !['bgh', 'admin'].includes(user.role)) {
+      if (isBghDept && !['bgh', 'admin'].includes(uRole)) {
         throw new ServiceError('Đơn vị Ban Giám Hiệu chỉ dành cho nhân sự thuộc Ban Giám Hiệu hoặc Quản trị viên.', 400);
       }
     }
@@ -584,7 +553,7 @@ const updateExistingUser = async (userId, data, currentUser, ipAddress = null) =
 
   AuditLog.create({
     actor: currentUser._id || currentUser.id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'UPDATE_USER',
     targetId: user._id.toString(),
     targetType: 'User',
@@ -637,12 +606,12 @@ const softDeleteUser = async (userId, currentUser, ipAddress = null) => {
   // Hủy toàn bộ refresh token trong DB
   await RefreshToken.updateMany(
     { userId: user._id },
-    { $set: { isUsed: true, da_su_dung: true } }
+    { $set: { isUsed: true } }
   );
 
   AuditLog.create({
     actor: currentUser._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'SOFT_DELETE_USER',
     targetId: user._id.toString(),
     targetType: 'User',

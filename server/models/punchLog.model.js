@@ -36,14 +36,14 @@ const punchLogSchema = new mongoose.Schema(
     loai_quet: {
       type: String,
       alias: 'punchType',
-      enum: ['CHECK_IN', 'CHECK_OUT'],
+      enum: ['check_in', 'check_out'],
       required: [true, 'Loại lượt quét (punchType / loai_quet) là bắt buộc'],
       index: true,
       set: function (val) {
         if (!val) return val;
-        const v = String(val).toUpperCase();
-        if (v === 'VAO' || v === 'IN' || v === 'CHECKIN') return 'CHECK_IN';
-        if (v === 'RA' || v === 'OUT' || v === 'CHECKOUT') return 'CHECK_OUT';
+        const v = String(val).toLowerCase();
+        if (v === 'vao' || v === 'in' || v === 'checkin') return 'check_in';
+        if (v === 'ra' || v === 'out' || v === 'checkout') return 'check_out';
         return v;
       },
     },
@@ -56,18 +56,18 @@ const punchLogSchema = new mongoose.Schema(
     phuong_thuc: {
       type: String,
       alias: 'method',
-      enum: ['FACE_AI', 'QR_CODE', 'GPS_MOBILE', 'THU_CONG_ADMIN', 'SYSTEM_AUTO', 'FACE', 'QR', 'GPS', 'MANUAL', 'SYSTEM', 'ADMIN_OVERRIDE'],
+      enum: ['face_ai', 'qr_code', 'gps_mobile', 'thu_cong_admin', 'system_auto'],
       required: [true, 'Phương thức quét (method / phuong_thuc) là bắt buộc'],
-      default: 'FACE_AI',
+      default: 'face_ai',
       set: function (val) {
         if (!val) return val;
-        const v = String(val).toUpperCase();
+        const v = String(val).toLowerCase();
         const map = {
-          FACE: 'FACE_AI',
-          QR: 'QR_CODE',
-          GPS: 'GPS_MOBILE',
-          MANUAL: 'THU_CONG_ADMIN',
-          SYSTEM: 'SYSTEM_AUTO',
+          face: 'face_ai',
+          qr: 'qr_code',
+          gps: 'gps_mobile',
+          manual: 'thu_cong_admin',
+          system: 'system_auto',
         };
         return map[v] || v;
       },
@@ -143,7 +143,7 @@ const punchLogSchema = new mongoose.Schema(
     },
     co_gian_lan: {
       type: Boolean,
-      alias: 'isFraudulent',
+      alias: 'isFraud',
       default: false,
       index: true,
     },
@@ -185,8 +185,9 @@ const punchLogSchema = new mongoose.Schema(
     trang_thai: {
       type: String,
       alias: 'status',
-      enum: ['THANH_CONG', 'THAT_BAI'],
-      default: 'THANH_CONG',
+      enum: ['thanh_cong', 'that_bai'],
+      default: 'thanh_cong',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     ly_do_that_bai: {
       type: String,
@@ -253,7 +254,7 @@ punchLogSchema.aliases = {
   isMockLocation: 'vi_tri_gia_lap',
   distanceMeters: 'khoang_cach_met',
   deviceId: 'thiet_bi_id',
-  isFraudulent: 'co_gian_lan',
+  isFraud: 'co_gian_lan',
   fraudReason: 'ly_do_gian_lan',
   clientIp: 'dia_chi_ip',
   isCampusNetwork: 'mang_noi_bo_truong',
@@ -272,7 +273,6 @@ punchLogSchema.plugin(schemaAliasPlugin);
 punchLogSchema.pre('validate', function () {
   const score = this.do_tin_cay_ai;
   if (score !== undefined && score !== null && (score < 0 || score > 1)) {
-    this.invalidate('confidenceScore', 'Độ tin cậy AI phải nằm trong khoảng từ 0 đến 1');
     this.invalidate('do_tin_cay_ai', 'Độ tin cậy AI phải nằm trong khoảng từ 0 đến 1');
   }
 });
@@ -282,14 +282,6 @@ punchLogSchema.index({ cham_cong_id: 1, loai_quet: 1 });
 punchLogSchema.index({ nguoi_dung_id: 1, thoi_gian_quet: -1 });
 
 const PunchLog = mongoose.models.PunchLog || mongoose.model('PunchLog', punchLogSchema, 'luot_quet_cham_cong');
-
-if (!mongoose.models.LuotQuet) {
-  mongoose.model('LuotQuet', punchLogSchema, 'luot_quet_cham_cong');
-}
-
-if (!mongoose.models.LuotQuetChamCong) {
-  mongoose.model('LuotQuetChamCong', punchLogSchema, 'luot_quet_cham_cong');
-}
 
 module.exports = PunchLog;
 

@@ -10,8 +10,9 @@ const mongoose = require('mongoose');
 const AttendanceLog = require('../../models/attendanceLog.model');
 const PunchLog = require('../../models/punchLog.model');
 const User = require('../../models/user.model');
-const { getDeanScopedUserIds } = require('../../utils/deanScope');
+const { getDeanScopedUserIds, isUserInDeanScope } = require('../../utils/deanScope');
 const { ServiceError, buildAttendanceDateFilter } = require('../../utils/attendanceTime.utils');
+const { normalizeRole, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES } = require('../../utils/roleUtils');
 
 /**
  * 1. Tổng hợp số liệu chấm công cá nhân theo kỳ / tháng
@@ -26,15 +27,15 @@ const getAttendanceSummaryByUser = async (userId, startDate, endDate) => {
   const records = await AttendanceLog.find(query)
     .populate('shiftId', 'name startTime endTime')
     .populate('scheduleId', 'roomId weekday')
-    .sort({ checkInTime: -1, date: -1 });
+    .sort({ checkInTime: -1, workDate: -1 });
 
   const summary = {
     totalRecords: records.length,
-    onTimeCount: records.filter((r) => r.status === 'ON_TIME').length,
-    lateCount: records.filter((r) => r.status === 'LATE').length,
-    earlyLeaveCount: records.filter((r) => r.status === 'EARLY_LEAVE').length,
-    absentCount: records.filter((r) => r.status === 'ABSENT').length,
-    excusedCount: records.filter((r) => r.status === 'EXCUSED_ABSENCE').length,
+    onTimeCount: records.filter((r) => r.status === 'on_time').length,
+    lateCount: records.filter((r) => r.status === 'late').length,
+    earlyLeaveCount: records.filter((r) => r.status === 'early_leave').length,
+    absentCount: records.filter((r) => r.status === 'absent').length,
+    excusedCount: records.filter((r) => r.status === 'excused_absence').length,
     fraudCount: records.filter((r) => r.isFraud === true).length,
     records,
   };
@@ -60,12 +61,12 @@ const getAttendanceHistory = async ({
   currentUser,
 }) => {
   const query = {};
-  const userRole = (role || currentUser?.role || '').toLowerCase();
+  const userRole = normalizeRole(role || currentUser?.role || currentUser?.vai_tro_chinh);
 
   // 1. Phân quyền truy cập
-  if (userRole === 'giangvien' || userRole === 'nhanvien') {
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(userRole)) {
     query.userId = currentUserId || currentUser?._id;
-  } else if (userRole === 'truongkhoa') {
+  } else if (UNIT_LEADER_ROLES.includes(userRole)) {
     const facultyUserIds = await getDeanScopedUserIds(currentUser);
     if (!facultyUserIds.length) {
       throw new ServiceError('Tài khoản Trưởng khoa chưa được gán khoa quản lý hoặc khoa chưa có nhân sự.', 400);
@@ -92,7 +93,7 @@ const getAttendanceHistory = async ({
   // 2. Bộ lọc trạng thái & điều kiện
   if (status) query.status = status;
   if (method) {
-    query.method = method.toUpperCase();
+    query.method = method.toLowerCase();
   }
   if (isFraud !== undefined) {
     query.isFraud = isFraud === 'true' || isFraud === true;
@@ -120,9 +121,9 @@ const getAttendanceHistory = async ({
       .populate('scheduleId', 'roomId subjectId')
       .populate({
         path: 'punchLogIds',
-        select: 'punchTime punchType method confidenceScore livenessScore isFraudulent fraudReason deviceId location clientIp',
+        select: 'punchTime punchType method confidenceScore livenessScore isFraud fraudReason deviceId location clientIp',
       })
-      .sort({ date: -1, checkInTime: -1 })
+      .sort({ workDate: -1, checkInTime: -1 })
       .skip(skip)
       .limit(limitNum)
       .lean(),
@@ -196,8 +197,9 @@ const getAttendanceEvidence = async ({ id, currentUser }) => {
   // Phân quyền: Admin xem mọi bản ghi, Trưởng khoa xem trong khoa, Cán bộ xem chính mình
   const ownerId = log.userId?.toString() || log.userId;
   if (currentUser) {
-    if (currentUser.role !== 'admin') {
-      if (currentUser.role === 'truongkhoa') {
+    const curRole = normalizeRole(currentUser.role || currentUser.vai_tro_chinh);
+    if (!GLOBAL_ADMIN_ROLES.includes(curRole)) {
+      if (UNIT_LEADER_ROLES.includes(curRole)) {
         const inScope = await isUserInDeanScope(currentUser, ownerId);
         if (!inScope) {
           throw new ServiceError('Bạn không có quyền xem ảnh minh chứng điểm danh của cán bộ ngoài khoa.', 403);

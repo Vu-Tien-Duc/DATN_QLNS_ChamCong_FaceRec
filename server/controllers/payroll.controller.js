@@ -30,9 +30,9 @@ const handleServiceError = (res, error, next) => {
  */
 const generatePayroll = async (req, res, next) => {
   try {
-    const month = req.body?.month || req.body?.thang;
-    const year = req.body?.year || req.body?.nam;
-    const departmentId = req.body?.departmentId || req.body?.phong_ban_id;
+    const month = req.body?.month;
+    const year = req.body?.year;
+    const departmentId = req.body?.departmentId;
     if (!month || !year) {
       return sendError(res, 'Tháng (month) và năm (year) là bắt buộc.', null, 400);
     }
@@ -54,8 +54,8 @@ const generatePayroll = async (req, res, next) => {
  */
 const lockPayroll = async (req, res, next) => {
   try {
-    let month = req.body?.month || req.body?.thang;
-    let year = req.body?.year || req.body?.nam;
+    let month = req.body?.month;
+    let year = req.body?.year;
     if (req.params?.id && (!month || !year)) {
       const p = await fetchPayrollById(req.params.id, req.user);
       if (p) {
@@ -84,9 +84,9 @@ const lockPayroll = async (req, res, next) => {
  */
 const unlockPayroll = async (req, res, next) => {
   try {
-    let month = req.body?.month || req.body?.thang;
-    let year = req.body?.year || req.body?.nam;
-    let reason = req.body?.reason || req.body?.ly_do || 'Mở khóa bảng lương theo yêu cầu điều chỉnh.';
+    let month = req.body?.month;
+    let year = req.body?.year;
+    let reason = req.body?.reason || 'Mở khóa bảng lương theo yêu cầu điều chỉnh.';
     if (req.params?.id && (!month || !year)) {
       const p = await fetchPayrollById(req.params.id, req.user);
       if (p) {
@@ -116,11 +116,11 @@ const unlockPayroll = async (req, res, next) => {
  */
 const getPayrolls = async (req, res, next) => {
   try {
-    const month = req.query.month || req.query.thang;
-    const year = req.query.year || req.query.nam;
-    const departmentId = req.query.departmentId || req.query.phong_ban_id;
+    const month = req.query.month;
+    const year = req.query.year;
+    const departmentId = req.query.departmentId;
     const status = req.query.status;
-    const userId = req.query.userId || req.query.nguoi_dung_id;
+    const userId = req.query.userId;
     const payrolls = await fetchPayrolls({
       month,
       year,
@@ -166,8 +166,8 @@ const getMyPayroll = async (req, res, next) => {
     }
 
     const now = new Date();
-    const month = req.query.month || req.query.thang || (now.getMonth() + 1);
-    const year = req.query.year || req.query.nam || now.getFullYear();
+    const month = req.query.month || (now.getMonth() + 1);
+    const year = req.query.year || now.getFullYear();
     const payrolls = await fetchPayrolls({
       month,
       year,
@@ -188,8 +188,8 @@ const getMyPayroll = async (req, res, next) => {
 const getPayrollSummary = async (req, res, next) => {
   try {
     const now = new Date();
-    const month = Number(req.query.month || req.query.thang || (now.getMonth() + 1));
-    const year = Number(req.query.year || req.query.nam || now.getFullYear());
+    const month = Number(req.query.month || (now.getMonth() + 1));
+    const year = Number(req.query.year || now.getFullYear());
     const payrolls = await fetchPayrolls({
       month,
       year,
@@ -202,7 +202,7 @@ const getPayrollSummary = async (req, res, next) => {
     let totalOvertimePay = 0;
     for (const p of payrolls) {
       totalNetSalary += Number(p.netSalary || 0);
-      totalGrossSalary += Number(p.grossIncome || p.tong_thu_nhap || 0);
+      totalGrossSalary += Number(p.grossIncome || 0);
       totalTax += Number(p.personalIncomeTax || 0);
       totalInsurance += Number(p.socialInsuranceDeduction || 0);
       totalOvertimePay += Number(p.overtimePay || 0);
@@ -216,7 +216,7 @@ const getPayrollSummary = async (req, res, next) => {
       totalTax,
       totalInsurance,
       totalOvertimePay,
-      isLocked: payrolls.some((p) => p.status === 'DA_KHOA' || p.isLocked),
+      isLocked: payrolls.some((p) => p.status === 'da_khoa' || p.isLocked),
     });
   } catch (error) {
     handleServiceError(res, error, next);
@@ -229,9 +229,9 @@ const getPayrollSummary = async (req, res, next) => {
  */
 const exportPayrollExcel = async (req, res, next) => {
   try {
-    const month = req.query.month || req.query.thang;
-    const year = req.query.year || req.query.nam;
-    const departmentId = req.query.departmentId || req.query.phong_ban_id;
+    const month = req.query.month;
+    const year = req.query.year;
+    const departmentId = req.query.departmentId;
     if (!month || !year) {
       return sendError(res, 'Tháng (month) và năm (year) là bắt buộc.', null, 400);
     }

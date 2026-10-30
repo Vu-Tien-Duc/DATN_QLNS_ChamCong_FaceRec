@@ -26,6 +26,12 @@ import {
   FolderOpen,
   CornerDownRight,
   ExternalLink,
+  Mail,
+  Phone,
+  Filter,
+  User,
+  ArrowRight,
+  ScanFace,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
@@ -68,6 +74,15 @@ const UNIT_TYPE_META: Record<
     colorBorder: 'border-brand-500',
     description: 'Đơn vị chuyên môn cấp trường trực thuộc Ban Giám Hiệu, quản lý các Bộ môn và Giảng viên.',
   },
+  bo_mon: {
+    label: 'Bộ Môn Chuyên Môn',
+    shortLabel: 'Bộ môn',
+    badgeVariant: 'purple',
+    colorText: 'text-indigo-600 dark:text-indigo-400',
+    colorBg: 'bg-indigo-50 dark:bg-indigo-950/60',
+    colorBorder: 'border-indigo-500',
+    description: 'Đơn vị chuyên môn sâu trực thuộc một Khoa đào tạo.',
+  },
   bomon: {
     label: 'Bộ Môn Chuyên Môn',
     shortLabel: 'Bộ môn',
@@ -76,6 +91,15 @@ const UNIT_TYPE_META: Record<
     colorBg: 'bg-indigo-50 dark:bg-indigo-950/60',
     colorBorder: 'border-indigo-500',
     description: 'Đơn vị chuyên môn sâu trực thuộc một Khoa đào tạo.',
+  },
+  phong_ban: {
+    label: 'Phòng Ban Chức Năng',
+    shortLabel: 'Phòng ban',
+    badgeVariant: 'success',
+    colorText: 'text-emerald-600 dark:text-emerald-400',
+    colorBg: 'bg-emerald-50 dark:bg-emerald-950/60',
+    colorBorder: 'border-emerald-500',
+    description: 'Đơn vị hành chính, quản trị, trung tâm phục vụ trực thuộc Ban Giám Hiệu.',
   },
   phongban: {
     label: 'Phòng Ban Chức Năng',
@@ -134,6 +158,10 @@ export const Departments: React.FC = () => {
   const [treeSearch, setTreeSearch] = useState<string>('');
   // selectedNodeId: 'ROOT_BGH' | 'KHU_KHOA' | 'KHU_PHONGBAN' | departmentId
   const [selectedNodeId, setSelectedNodeId] = useState<string>('ROOT_BGH');
+
+  // Staff search & filter within selected unit
+  const [staffSearchQuery, setStaffSearchQuery] = useState<string>('');
+  const [staffFaceFilter, setStaffFaceFilter] = useState<'all' | 'registered' | 'unregistered'>('all');
 
   // Expanded Folder States in Directory Tree
   const [isFacultiesFolderOpen, setIsFacultiesFolderOpen] = useState<boolean>(true);
@@ -224,17 +252,17 @@ export const Departments: React.FC = () => {
     [departments]
   );
 
-  // List of all Functional Departments ('phongban')
+  // List of all Functional Departments ('phong_ban')
   const functionalDepts = useMemo(
-    () => departments.filter((d) => d.type === 'phongban').sort((a, b) => a.name.localeCompare(b.name, 'vi')),
+    () => departments.filter((d) => d.type === 'phong_ban' || d.type === 'phongban').sort((a, b) => a.name.localeCompare(b.name, 'vi')),
     [departments]
   );
 
-  // Map of child 'bomon' by parent 'khoa' ID
+  // Map of child 'bo_mon' by parent 'khoa' ID
   const childrenByFacultyId = useMemo(() => {
     const map: Record<string, DepartmentItem[]> = {};
     departments.forEach((d) => {
-      if (d.type === 'bomon' && d.parentId) {
+      if ((d.type === 'bo_mon' || d.type === 'bomon') && d.parentId) {
         const pId = typeof d.parentId === 'object' ? d.parentId._id : d.parentId;
         if (pId) {
           if (!map[pId]) map[pId] = [];
@@ -304,7 +332,7 @@ export const Departments: React.FC = () => {
   const stats = useMemo(() => {
     const total = departments.length;
     const khoaCount = faculties.length;
-    const bomonCount = departments.filter((d) => d.type === 'bomon').length;
+    const bomonCount = departments.filter((d) => d.type === 'bo_mon' || d.type === 'bomon').length;
     const phongbanCount = functionalDepts.length;
     const assignedManagers = departments.filter((d) => Boolean(d.managerId)).length;
     const totalCampusStaff = allUsers.length;
@@ -328,6 +356,28 @@ export const Departments: React.FC = () => {
       return uDeptId === activeDepartment._id || childIds.has(uDeptId);
     });
   }, [activeDepartment, allUsers, childrenByFacultyId]);
+
+  // Filtered staff members based on search and Face ID filter
+  const filteredDeptMembers = useMemo(() => {
+    return activeDeptMembers.filter((member) => {
+      if (staffFaceFilter === 'registered' && !member.isFaceRegistered) return false;
+      if (staffFaceFilter === 'unregistered' && member.isFaceRegistered) return false;
+      if (staffSearchQuery.trim()) {
+        const q = staffSearchQuery.toLowerCase().trim();
+        const name = (member.fullName || '').toLowerCase();
+        const code = (member.staffCode || '').toLowerCase();
+        const email = (member.email || '').toLowerCase();
+        return name.includes(q) || code.includes(q) || email.includes(q);
+      }
+      return true;
+    });
+  }, [activeDeptMembers, staffSearchQuery, staffFaceFilter]);
+
+  // Reset staff filters when selecting another node
+  useEffect(() => {
+    setStaffSearchQuery('');
+    setStaffFaceFilter('all');
+  }, [selectedNodeId]);
 
   // Eligible managers for dropdown
   const eligibleManagers = useMemo(() => {
@@ -378,7 +428,7 @@ export const Departments: React.FC = () => {
     setFormData({
       name: '',
       type: presetType,
-      parentId: presetType === 'bomon' ? presetParentId || faculties[0]?._id || '' : '',
+      parentId: (presetType === 'bo_mon' || presetType === 'bomon') ? presetParentId || faculties[0]?._id || '' : '',
       managerId: '',
       latitude: '21.007051',
       longitude: '105.824812',
@@ -415,7 +465,7 @@ export const Departments: React.FC = () => {
       toast.error('Vui lòng nhập tên đơn vị');
       return;
     }
-    if (formData.type === 'bomon' && !formData.parentId) {
+    if ((formData.type === 'bo_mon' || formData.type === 'bomon') && !formData.parentId) {
       toast.error('Bộ môn bắt buộc phải trực thuộc một Khoa đào tạo');
       return;
     }
@@ -428,7 +478,7 @@ export const Departments: React.FC = () => {
       const payload = {
         name: formData.name.trim(),
         type: formData.type,
-        parentId: formData.type === 'bomon' ? formData.parentId : null,
+        parentId: (formData.type === 'bo_mon' || formData.type === 'bomon') ? formData.parentId : null,
         managerId: formData.managerId || null,
         latitude: latNum,
         longitude: lngNum,
@@ -555,7 +605,7 @@ export const Departments: React.FC = () => {
                 variant="outline"
                 size="sm"
                 leftIcon={<Plus className="w-3.5 h-3.5 text-indigo-500" />}
-                onClick={() => openCreateModal('bomon')}
+                onClick={() => openCreateModal('bo_mon')}
               >
                 Thêm Bộ Môn
               </Button>
@@ -634,59 +684,62 @@ export const Departments: React.FC = () => {
          ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* =======================================================================
-            LEFT COLUMN (35% - 4.5 cols): INTERACTIVE DIRECTORY TREE
+            LEFT COLUMN (33% - 4 cols): INTERACTIVE DIRECTORY TREE (STICKY)
            ======================================================================= */}
-        <div className="lg:col-span-5 space-y-3">
-          <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs overflow-hidden">
-            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+        <div className="lg:col-span-4 xl:col-span-4 space-y-3 lg:sticky lg:top-4 self-start">
+          <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs overflow-hidden rounded-2xl">
+            {/* Tree Navigation Header */}
+            <div className="px-3.5 py-3 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <FolderTree className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                <div className="w-6 h-6 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center">
+                  <FolderTree className="w-3.5 h-3.5" />
+                </div>
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                  Cây Cơ Cấu Tổ Chức
+                  Cơ Cấu Tổ Chức
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-[11px]">
+              <div className="flex items-center gap-1.5 text-[11px]">
                 <button
                   type="button"
                   onClick={handleExpandAll}
-                  className="text-brand-600 dark:text-brand-400 hover:underline font-semibold"
+                  className="px-1.5 py-0.5 rounded text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/60 font-semibold transition-colors"
                 >
                   Mở hết
                 </button>
-                <span className="text-slate-300 dark:text-slate-600">|</span>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
                 <button
                   type="button"
                   onClick={handleCollapseAll}
-                  className="text-slate-500 hover:underline"
+                  className="px-1.5 py-0.5 rounded text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
-                  Thu lại
+                  Thu gọn
                 </button>
               </div>
             </div>
 
             {/* Tree Search Box */}
-            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="p-2.5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <input
                   type="text"
                   value={treeSearch}
                   onChange={(e) => setTreeSearch(e.target.value)}
-                  placeholder="Lọc nhanh tên đơn vị trong cây..."
-                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  placeholder="Lọc tên đơn vị trong sơ đồ..."
+                  className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1.5 focus:ring-brand-500 transition-all"
                 />
               </div>
             </div>
 
             {/* THE VISUAL TREE NODES */}
-            <div className="p-3 max-h-[640px] overflow-y-auto space-y-1.5 font-sans select-none text-xs">
+            <div className="p-2.5 max-h-[calc(100vh-280px)] min-h-[460px] overflow-y-auto space-y-1 font-sans select-none text-xs">
               {/* 1. ROOT NODE: BAN GIÁM HIỆU */}
               <div
                 onClick={() => setSelectedNodeId('ROOT_BGH')}
                 className={`p-2 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
                   selectedNodeId === 'ROOT_BGH'
                     ? 'bg-brand-600 text-white font-bold shadow-xs ring-2 ring-brand-500/20'
-                    : 'bg-slate-100/80 dark:bg-slate-800/70 text-slate-800 dark:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700'
+                    : 'bg-slate-100/70 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -699,7 +752,7 @@ export const Departments: React.FC = () => {
                   >
                     <Building2 className="w-3.5 h-3.5" />
                   </div>
-                  <span className="truncate">Ban Giám Hiệu • ĐH Nguyễn Trãi</span>
+                  <span className="truncate">Ban Giám Hiệu • ĐHNT</span>
                 </div>
                 <span
                   className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
@@ -713,20 +766,17 @@ export const Departments: React.FC = () => {
               </div>
 
               {/* TREE TRUNK: 2 MAIN BRANCHES */}
-              <div className="relative pl-5 border-l-2 border-slate-200 dark:border-slate-700 ml-3 pt-1 space-y-2.5">
-                {/* ===============================================================
-                    BRANCH 1: KHỐI KHOA ĐÀO TẠO & CÁC BỘ MÔN
-                   =============================================================== */}
+              <div className="relative pl-3 border-l-2 border-slate-200/80 dark:border-slate-700/60 ml-3 pt-1 space-y-2">
+                {/* BRANCH 1: KHỐI KHOA ĐÀO TẠO & CÁC BỘ MÔN */}
                 <div>
-                  {/* Branch Folder Header */}
                   <div
                     onClick={() => {
                       setIsFacultiesFolderOpen(!isFacultiesFolderOpen);
                       setSelectedNodeId('KHU_KHOA');
                     }}
-                    className={`p-2 rounded-xl cursor-pointer flex items-center justify-between transition-colors ${
+                    className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
                       selectedNodeId === 'KHU_KHOA'
-                        ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/70 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-800'
+                        ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/70 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-800 shadow-2xs'
                         : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-semibold'
                     }`}
                   >
@@ -737,42 +787,41 @@ export const Departments: React.FC = () => {
                           e.stopPropagation();
                           setIsFacultiesFolderOpen(!isFacultiesFolderOpen);
                         }}
-                        className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
+                        className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400"
                       >
                         {isFacultiesFolderOpen ? (
-                          <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                          <ChevronDown className="w-3.5 h-3.5" />
                         ) : (
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                          <ChevronRight className="w-3.5 h-3.5" />
                         )}
                       </button>
                       {isFacultiesFolderOpen ? (
-                        <FolderOpen className="w-4 h-4 text-brand-500" />
+                        <FolderOpen className="w-4 h-4 text-brand-500 shrink-0" />
                       ) : (
-                        <Folder className="w-4 h-4 text-brand-500" />
+                        <Folder className="w-4 h-4 text-brand-500 shrink-0" />
                       )}
                       <span className="truncate">Khối Khoa Đào Tạo</span>
                     </div>
-                    <span className="px-1.5 py-0.2 rounded-md bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-300 text-[10px] font-bold">
-                      {filteredFaculties.length} Khoa
+                    <span className="px-1.5 py-0.5 rounded bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-300 text-[10px] font-bold shrink-0">
+                      {filteredFaculties.length}
                     </span>
                   </div>
 
-                  {/* Faculty Children Nodes */}
                   {isFacultiesFolderOpen && (
-                    <div className="relative pl-4 border-l-2 border-brand-200 dark:border-brand-800/80 ml-3 mt-1 space-y-1.5">
+                    <div className="relative pl-2.5 border-l-2 border-brand-200/80 dark:border-brand-800/60 ml-2 mt-1 space-y-1">
                       {filteredFaculties.map((faculty) => {
                         const isExpanded = Boolean(expandedFacultyIds[faculty._id]);
                         const children = childrenByFacultyId[faculty._id] || [];
                         const isSelected = selectedNodeId === faculty._id;
+                        const agg = getAggregateStats(faculty);
 
                         return (
                           <div key={faculty._id} className="relative">
-                            {/* Faculty Node Row */}
                             <div
                               onClick={() => setSelectedNodeId(faculty._id)}
                               className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
                                 isSelected
-                                  ? 'bg-brand-50 text-brand-800 dark:bg-brand-950 dark:text-brand-200 font-bold border border-brand-300 dark:border-brand-700 shadow-2xs'
+                                  ? 'bg-brand-50 text-brand-800 dark:bg-brand-950 dark:text-brand-200 font-bold border-l-[3px] border-l-brand-600 border border-brand-200 dark:border-brand-700 shadow-2xs'
                                   : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
                               }`}
                             >
@@ -790,31 +839,33 @@ export const Departments: React.FC = () => {
                                     className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400"
                                   >
                                     {isExpanded ? (
-                                      <ChevronDown className="w-3.5 h-3.5" />
+                                      <ChevronDown className="w-3 h-3" />
                                     ) : (
-                                      <ChevronRight className="w-3.5 h-3.5" />
+                                      <ChevronRight className="w-3 h-3" />
                                     )}
                                   </button>
                                 ) : (
-                                  <span className="w-4 h-4 inline-block" />
+                                  <span className="w-3.5 h-3.5 inline-block" />
                                 )}
-                                <GraduationCap className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 flex-shrink-0" />
+                                <GraduationCap className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />
                                 <span className="truncate">{faculty.name}</span>
                               </div>
 
-                              <div className="flex items-center gap-1.5 flex-shrink-0">
-                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-semibold">
-                                  {children.length} BM
-                                </span>
-                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300 font-semibold">
-                                  {getAggregateStats(faculty).totalMembers} CB/GV
+                              <div className="flex items-center gap-1 shrink-0">
+                                {children.length > 0 && (
+                                  <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-semibold">
+                                    {children.length} BM
+                                  </span>
+                                )}
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 font-semibold">
+                                  {agg.totalMembers} CB
                                 </span>
                               </div>
                             </div>
 
-                            {/* Bo Mon Children (Leaves of the tree) */}
+                            {/* Bo Mon Children */}
                             {isExpanded && children.length > 0 && (
-                              <div className="relative pl-4 border-l-2 border-indigo-200 dark:border-indigo-800/80 ml-3.5 mt-1 space-y-1">
+                              <div className="relative pl-2.5 border-l-2 border-indigo-200/80 dark:border-indigo-800/60 ml-2 mt-0.5 space-y-0.5">
                                 {children.map((bm) => {
                                   const isBmSelected = selectedNodeId === bm._id;
                                   return (
@@ -823,15 +874,15 @@ export const Departments: React.FC = () => {
                                       onClick={() => setSelectedNodeId(bm._id)}
                                       className={`p-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${
                                         isBmSelected
-                                          ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200 font-bold border border-indigo-300 dark:border-indigo-700'
+                                          ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200 font-bold border-l-[3px] border-l-indigo-600 border border-indigo-200 dark:border-indigo-700 shadow-2xs'
                                           : 'hover:bg-slate-100 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400'
                                       }`}
                                     >
                                       <div className="flex items-center gap-1.5 min-w-0">
-                                        <CornerDownRight className="w-3 h-3 text-indigo-400 flex-shrink-0" />
+                                        <CornerDownRight className="w-3 h-3 text-indigo-400 shrink-0" />
                                         <span className="truncate">{bm.name}</span>
                                       </div>
-                                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold flex-shrink-0">
+                                      <span className="text-[9px] text-slate-400 font-semibold shrink-0">
                                         {getDirectMemberCount(bm)} GV
                                       </span>
                                     </div>
@@ -846,19 +897,16 @@ export const Departments: React.FC = () => {
                   )}
                 </div>
 
-                {/* ===============================================================
-                    BRANCH 2: KHỐI PHÒNG BAN CHỨC NĂNG
-                   =============================================================== */}
+                {/* BRANCH 2: KHỐI PHÒNG BAN CHỨC NĂNG */}
                 <div>
-                  {/* Branch Folder Header */}
                   <div
                     onClick={() => {
                       setIsFunctionalFolderOpen(!isFunctionalFolderOpen);
                       setSelectedNodeId('KHU_PHONGBAN');
                     }}
-                    className={`p-2 rounded-xl cursor-pointer flex items-center justify-between transition-colors ${
+                    className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
                       selectedNodeId === 'KHU_PHONGBAN'
-                        ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800'
+                        ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 shadow-2xs'
                         : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-semibold'
                     }`}
                   >
@@ -869,29 +917,28 @@ export const Departments: React.FC = () => {
                           e.stopPropagation();
                           setIsFunctionalFolderOpen(!isFunctionalFolderOpen);
                         }}
-                        className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
+                        className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400"
                       >
                         {isFunctionalFolderOpen ? (
-                          <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                          <ChevronDown className="w-3.5 h-3.5" />
                         ) : (
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                          <ChevronRight className="w-3.5 h-3.5" />
                         )}
                       </button>
                       {isFunctionalFolderOpen ? (
-                        <FolderOpen className="w-4 h-4 text-emerald-500" />
+                        <FolderOpen className="w-4 h-4 text-emerald-500 shrink-0" />
                       ) : (
-                        <Folder className="w-4 h-4 text-emerald-500" />
+                        <Folder className="w-4 h-4 text-emerald-500 shrink-0" />
                       )}
                       <span className="truncate">Khối Phòng Ban Chức Năng</span>
                     </div>
-                    <span className="px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 text-[10px] font-bold">
-                      {filteredFunctionalDepts.length} Phòng
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 text-[10px] font-bold shrink-0">
+                      {filteredFunctionalDepts.length}
                     </span>
                   </div>
 
-                  {/* Functional Dept Nodes */}
                   {isFunctionalFolderOpen && (
-                    <div className="relative pl-4 border-l-2 border-emerald-200 dark:border-emerald-800/80 ml-3 mt-1 space-y-1">
+                    <div className="relative pl-2.5 border-l-2 border-emerald-200/80 dark:border-emerald-800/60 ml-2 mt-1 space-y-1">
                       {filteredFunctionalDepts.map((pb) => {
                         const isSelected = selectedNodeId === pb._id;
                         return (
@@ -900,15 +947,15 @@ export const Departments: React.FC = () => {
                             onClick={() => setSelectedNodeId(pb._id)}
                             className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
                               isSelected
-                                ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 font-bold border border-emerald-300 dark:border-emerald-700 shadow-2xs'
+                                ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 font-bold border-l-[3px] border-l-emerald-600 border border-emerald-200 dark:border-emerald-700 shadow-2xs'
                                 : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
                             }`}
                           >
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <Briefcase className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                              <Briefcase className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                               <span className="truncate">{pb.name}</span>
                             </div>
-                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold flex-shrink-0">
+                            <span className="text-[9px] text-slate-400 font-semibold shrink-0">
                               {getDirectMemberCount(pb)} CB
                             </span>
                           </div>
@@ -923,27 +970,29 @@ export const Departments: React.FC = () => {
         </div>
 
         {/* =======================================================================
-            RIGHT COLUMN (65% - 7 cols): SELECTED DEPARTMENT DETAIL PANEL
+            RIGHT COLUMN (67% - 8 cols): SELECTED DEPARTMENT DETAIL PANEL & STAFF DIRECTORY
            ======================================================================= */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className="lg:col-span-8 xl:col-span-8 space-y-4">
           {/* CASE A: ROOT BGH IS SELECTED */}
           {selectedNodeId === 'ROOT_BGH' && (
-            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs">
-              <CardContent className="p-6 space-y-5">
-                <div className="flex items-start justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs rounded-2xl">
+              <CardContent className="p-6 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
                   <div className="flex items-center gap-3.5">
-                    <div className="w-12 h-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-                      <Building2 className="w-6 h-6" />
+                    <div className="w-13 h-13 rounded-2xl bg-brand-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm ring-4 ring-brand-500/10">
+                      <Building2 className="w-7 h-7" />
                     </div>
                     <div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
-                        Cơ Quan Điều Hành Trung Tâm (Root)
-                      </span>
-                      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mt-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300 border border-brand-200/80 dark:border-brand-800">
+                          Trụ Sở Điều Hành Cao Nhất (Root)
+                        </span>
+                      </div>
+                      <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-1">
                         Ban Giám Hiệu • Trường Đại Học Nguyễn Trãi
                       </h2>
-                      <p className="text-xs text-slate-500">
-                        Điều hành toàn diện các Khoa đào tạo và các Phòng ban chức năng
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Trung tâm quản trị toàn diện: Khối Khoa Đào Tạo, Bộ Môn Chuyên Môn và các Phòng Ban Chức Năng.
                       </p>
                     </div>
                   </div>
@@ -961,35 +1010,34 @@ export const Departments: React.FC = () => {
                 </div>
 
                 {/* Overall Campus Summary */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
-                    <span className="text-[11px] text-slate-500 block">Tổng nhân sự toàn trường:</span>
-                    <p className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-0.5">
-                      {stats.totalCampusStaff} Cán bộ / Giảng viên
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60 space-y-1">
+                    <span className="text-[11px] font-medium text-slate-500 block">Tổng nhân sự toàn trường:</span>
+                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                      {stats.totalCampusStaff} <span className="text-xs font-normal text-slate-500">cán bộ / GV</span>
                     </p>
                   </div>
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
-                    <span className="text-[11px] text-slate-500 block">Khối đào tạo:</span>
-                    <p className="text-xl font-bold text-brand-600 dark:text-brand-400 mt-0.5">
-                      {stats.khoaCount} Khoa • {stats.bomonCount} Bộ môn
+                  <div className="p-4 rounded-2xl bg-brand-50/40 dark:bg-brand-950/20 border border-brand-200/60 dark:border-brand-800/40 space-y-1">
+                    <span className="text-[11px] font-medium text-brand-600 dark:text-brand-400 block">Khối đào tạo học thuật:</span>
+                    <p className="text-2xl font-bold text-brand-700 dark:text-brand-300">
+                      {stats.khoaCount} <span className="text-xs font-normal text-slate-500">Khoa</span> • {stats.bomonCount} <span className="text-xs font-normal text-slate-500">Bộ môn</span>
                     </p>
                   </div>
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
-                    <span className="text-[11px] text-slate-500 block">Khối hành chính:</span>
-                    <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                      {stats.phongbanCount} Phòng ban chức năng
+                  <div className="p-4 rounded-2xl bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/40 space-y-1">
+                    <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 block">Khối hành chính & dịch vụ:</span>
+                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                      {stats.phongbanCount} <span className="text-xs font-normal text-slate-500">Phòng ban</span>
                     </p>
                   </div>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-brand-50/50 dark:bg-brand-950/20 border border-brand-200/60 dark:border-brand-800/40 text-xs text-brand-900 dark:text-brand-200 space-y-1.5">
-                  <p className="font-bold flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-brand-600" />
-                    Hướng dẫn thao tác cây cơ cấu tổ chức:
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+                  <p className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                    Hướng dẫn quản trị cơ cấu tổ chức:
                   </p>
-                  <p className="text-slate-600 dark:text-slate-300">
-                    Nhấp chọn bất kỳ <strong>Khoa đào tạo</strong>, <strong>Bộ môn</strong> hoặc{' '}
-                    <strong>Phòng ban chức năng</strong> ở Cây thư mục bên trái để xem hồ sơ quản lý, danh sách cán bộ giảng viên và cấu hình điểm danh Geofence tương ứng.
+                  <p className="leading-relaxed text-slate-600 dark:text-slate-400">
+                    Bấm chọn bất kỳ <strong>Khoa đào tạo</strong>, <strong>Bộ môn</strong> hoặc <strong>Phòng ban chức năng</strong> ở Cây sơ đồ bên trái để xem chi tiết hồ sơ quản lý, danh sách cán bộ trực thuộc và cấu hình bán kính GPS Geofence điểm danh tương ứng.
                   </p>
                 </div>
               </CardContent>
@@ -998,12 +1046,12 @@ export const Departments: React.FC = () => {
 
           {/* CASE B: KHỐI KHOA FOLDER IS SELECTED */}
           {selectedNodeId === 'KHU_KHOA' && (
-            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400">
-                      <GraduationCap className="w-5 h-5" />
+            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs rounded-2xl">
+              <CardContent className="p-6 space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400 ring-4 ring-brand-500/10">
+                      <GraduationCap className="w-6 h-6" />
                     </div>
                     <div>
                       <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
@@ -1021,12 +1069,12 @@ export const Departments: React.FC = () => {
                       leftIcon={<Plus className="w-3.5 h-3.5" />}
                       onClick={() => openCreateModal('khoa')}
                     >
-                      Thêm Khoa
+                      Thêm Khoa Mới
                     </Button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {faculties.map((f) => {
                     const children = childrenByFacultyId[f._id] || [];
                     const agg = getAggregateStats(f);
@@ -1034,25 +1082,25 @@ export const Departments: React.FC = () => {
                       <div
                         key={f._id}
                         onClick={() => setSelectedNodeId(f._id)}
-                        className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-brand-500/50 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between gap-2.5"
+                        className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-brand-500/50 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between gap-3 group"
                       >
                         <div>
                           <div className="flex items-center justify-between">
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
                               Khoa Cấp 1
                             </span>
-                            <span className="text-[10px] font-semibold text-indigo-600">
+                            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
                               {children.length} Bộ Môn
                             </span>
                           </div>
-                          <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-1.5">
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-2 group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
                             {f.name}
                           </h4>
                         </div>
-                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
-                          <span>{agg.totalMembers} CB/GV</span>
-                          <span className="text-brand-600 font-semibold flex items-center gap-0.5">
-                            Xem chi tiết <ChevronRight className="w-3 h-3" />
+                        <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+                          <span>{agg.totalMembers} Cán bộ / GV</span>
+                          <span className="text-brand-600 dark:text-brand-400 font-semibold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                            Xem chi tiết <ChevronRight className="w-3.5 h-3.5" />
                           </span>
                         </div>
                       </div>
@@ -1065,19 +1113,19 @@ export const Departments: React.FC = () => {
 
           {/* CASE C: KHỐI PHÒNG BAN FOLDER IS SELECTED */}
           {selectedNodeId === 'KHU_PHONGBAN' && (
-            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
-                      <Briefcase className="w-5 h-5" />
+            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs rounded-2xl">
+              <CardContent className="p-6 space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 ring-4 ring-emerald-500/10">
+                      <Briefcase className="w-6 h-6" />
                     </div>
                     <div>
                       <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
                         Khối Phòng Ban Chức Năng
                       </h3>
                       <p className="text-xs text-slate-500">
-                        Tổng cộng {functionalDepts.length} phòng ban chức năng trực thuộc Ban Giám Hiệu
+                        Tổng cộng {functionalDepts.length} phòng ban chức năng điều hành
                       </p>
                     </div>
                   </div>
@@ -1086,32 +1134,32 @@ export const Departments: React.FC = () => {
                       variant="primary"
                       size="sm"
                       leftIcon={<Plus className="w-3.5 h-3.5" />}
-                      onClick={() => openCreateModal('phongban')}
+                      onClick={() => openCreateModal('phong_ban')}
                     >
                       Thêm Phòng Ban
                     </Button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {functionalDepts.map((pb) => (
                     <div
                       key={pb._id}
                       onClick={() => setSelectedNodeId(pb._id)}
-                      className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-500/50 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between gap-2.5"
+                      className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-500/50 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between gap-3 group"
                     >
                       <div>
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                           Phòng Ban Cấp 1
                         </span>
-                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-1.5">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-2 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                           {pb.name}
                         </h4>
                       </div>
-                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
+                      <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
                         <span>{getDirectMemberCount(pb)} Cán bộ</span>
-                        <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
-                          Xem chi tiết <ChevronRight className="w-3 h-3" />
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                          Xem chi tiết <ChevronRight className="w-3.5 h-3.5" />
                         </span>
                       </div>
                     </div>
@@ -1123,232 +1171,453 @@ export const Departments: React.FC = () => {
 
           {/* CASE D: AN ACTUAL DEPARTMENT NODE IS SELECTED (KHOA / BOMON / PHONGBAN) */}
           {activeDepartment && (
-            <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs">
-              <CardContent className="p-6 space-y-5">
-                {/* Department Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${
-                        activeDepartment.type === 'khoa'
-                          ? 'bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400'
-                          : activeDepartment.type === 'bomon'
-                          ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400'
-                          : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400'
-                      }`}
+            <div className="space-y-4">
+              {/* Unit Hero Header */}
+              <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs rounded-2xl overflow-hidden">
+                <CardContent className="p-5 sm:p-6 space-y-4">
+                  {/* Breadcrumb path */}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedNodeId('ROOT_BGH')}
+                      className="hover:text-brand-600 dark:hover:text-brand-400 hover:underline"
                     >
-                      {activeDepartment.type === 'khoa' ? (
-                        <GraduationCap className="w-6 h-6" />
-                      ) : activeDepartment.type === 'bomon' ? (
-                        <Layers className="w-6 h-6" />
-                      ) : (
-                        <Briefcase className="w-6 h-6" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                          {activeDepartment.name}
-                        </h2>
-                        <Badge
-                          variant={UNIT_TYPE_META[activeDepartment.type]?.badgeVariant || 'info'}
-                          size="sm"
+                      ĐHNT
+                    </button>
+                    <span>/</span>
+                    {activeDepartment.type === 'bo_mon' || activeDepartment.type === 'bomon' ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const pId = typeof activeDepartment.parentId === 'object' ? activeDepartment.parentId?._id : activeDepartment.parentId;
+                            if (pId) setSelectedNodeId(pId);
+                          }}
+                          className="hover:text-brand-600 dark:hover:text-brand-400 hover:underline truncate max-w-[160px]"
                         >
-                          {UNIT_TYPE_META[activeDepartment.type]?.label || activeDepartment.type}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {activeDepartment.type === 'bomon'
-                          ? `Trực thuộc: ${
-                              typeof activeDepartment.parentId === 'object'
-                                ? activeDepartment.parentId?.name
-                                : 'Khoa đào tạo'
-                            }`
-                          : 'Đơn vị cấp 1 trực thuộc trực tiếp Ban Giám Hiệu'}
-                      </p>
-                    </div>
+                          {typeof activeDepartment.parentId === 'object' ? activeDepartment.parentId?.name : 'Khoa Quản Lý'}
+                        </button>
+                        <span>/</span>
+                        <span className="text-slate-700 dark:text-slate-300 font-semibold truncate max-w-[200px]">
+                          {activeDepartment.name}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-slate-700 dark:text-slate-300 font-semibold truncate">
+                        {activeDepartment.name}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Action Buttons for this unit */}
-                  {isAdmin && (
-                    <div className="flex items-center gap-1.5 self-start sm:self-auto">
-                      {activeDepartment.type === 'khoa' && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                      <div
+                        className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm ${
+                          activeDepartment.type === 'khoa'
+                            ? 'bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400 ring-4 ring-brand-500/10'
+                            : (activeDepartment.type === 'bo_mon' || activeDepartment.type === 'bomon')
+                            ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400 ring-4 ring-indigo-500/10'
+                            : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 ring-4 ring-emerald-500/10'
+                        }`}
+                      >
+                        {activeDepartment.type === 'khoa' ? (
+                          <GraduationCap className="w-6 h-6" />
+                        ) : (activeDepartment.type === 'bo_mon' || activeDepartment.type === 'bomon') ? (
+                          <Layers className="w-6 h-6" />
+                        ) : (
+                          <Briefcase className="w-6 h-6" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
+                            {activeDepartment.name}
+                          </h2>
+                          <Badge
+                            variant={UNIT_TYPE_META[activeDepartment.type]?.badgeVariant || 'info'}
+                            size="sm"
+                          >
+                            {UNIT_TYPE_META[activeDepartment.type]?.label || activeDepartment.type}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {activeDepartment.type === 'bomon'
+                            ? `Trực thuộc: ${
+                                typeof activeDepartment.parentId === 'object'
+                                  ? activeDepartment.parentId?.name
+                                  : 'Khoa đào tạo'
+                              }`
+                            : 'Đơn vị cấp 1 trực thuộc Ban Giám Hiệu'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons for this unit */}
+                    {isAdmin && (
+                      <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                        {activeDepartment.type === 'khoa' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            leftIcon={<Plus className="w-3.5 h-3.5 text-indigo-500" />}
+                            onClick={() => openCreateModal('bo_mon', activeDepartment._id)}
+                          >
+                            Thêm Bộ Môn
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
-                          className="text-xs py-1 px-2.5"
-                          leftIcon={<Plus className="w-3.5 h-3.5 text-indigo-500" />}
-                          onClick={() => openCreateModal('bomon', activeDepartment._id)}
+                          className="text-xs"
+                          leftIcon={<Edit className="w-3.5 h-3.5 text-brand-600" />}
+                          onClick={(e) => openEditModal(activeDepartment, e)}
                         >
-                          Thêm Bộ Môn
+                          Sửa
                         </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-xs py-1 px-2.5"
-                        leftIcon={<Edit className="w-3.5 h-3.5 text-brand-600" />}
-                        onClick={(e) => openEditModal(activeDepartment, e)}
-                      >
-                        Chỉnh sửa
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        className="text-xs py-1 px-2.5"
-                        leftIcon={<Trash2 className="w-3.5 h-3.5" />}
-                        onClick={() => setDeleteTarget(activeDepartment)}
-                      >
-                        Xóa
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Info Summary Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  {/* Manager / Leader Card */}
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
-                    <span className="text-[11px] text-slate-400 block mb-1.5 font-medium">
-                      {activeDepartment.type === 'khoa'
-                        ? 'Trưởng Khoa phụ trách:'
-                        : activeDepartment.type === 'bomon'
-                        ? 'Trưởng Bộ Môn phụ trách:'
-                        : 'Trưởng Phòng Ban phụ trách:'}
-                    </span>
-                    {renderManagerSnippet(activeDepartment)}
-                  </div>
-
-                  {/* Geofence & Location */}
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
-                    <span className="text-[11px] text-slate-400 block mb-1.5 font-medium">
-                      Tọa độ Geofence & Bán kính chấm công:
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Compass className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                      <div>
-                        <p className="font-bold text-slate-800 dark:text-slate-200">
-                          Bán kính hợp lệ: {activeDepartment.radiusMeters || 200}m
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-mono">
-                          Tâm: {activeDepartment.latitude || '21.007051'},{' '}
-                          {activeDepartment.longitude || '105.824812'}
-                        </p>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          className="text-xs"
+                          leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                          onClick={() => setDeleteTarget(activeDepartment)}
+                        >
+                          Xóa
+                        </Button>
                       </div>
-                    </div>
+                    )}
                   </div>
-                </div>
+                </CardContent>
+              </Card>
 
-                {/* Sub-departments (If Active Dept is a Faculty) */}
-                {activeDepartment.type === 'khoa' && (
-                  <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {/* Two Column Info Cards: Leader & Geofence GPS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {/* 1. Leader / Manager Card */}
+                <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs rounded-2xl">
+                  <CardContent className="p-4 sm:p-5 space-y-3">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <UserCheck className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                        {activeDepartment.type === 'khoa'
+                          ? 'Trưởng Khoa Phụ Trách'
+                          : activeDepartment.type === 'bomon'
+                          ? 'Trưởng Bộ Môn Phụ Trách'
+                          : 'Trưởng Phòng Ban'}
+                      </span>
+                    </div>
+
+                    {typeof activeDepartment.managerId === 'object' && activeDepartment.managerId ? (
+                      (() => {
+                        const mgr = activeDepartment.managerId as any;
+                        const { cleanName, title } = splitNameAndTitle(mgr.fullName);
+                        return (
+                          <div className="flex items-center gap-3.5 pt-1">
+                            <UserAvatar
+                              user={mgr}
+                              name={mgr.fullName}
+                              avatarUrl={mgr.avatarUrl}
+                              staffCode={mgr.staffCode || mgr._id}
+                              size="md"
+                              shape="rounded"
+                            />
+                            <div className="min-w-0 space-y-0.5">
+                              <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                                {cleanName}
+                              </h4>
+                              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                {mgr.staffCode && (
+                                  <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded text-[11px] font-semibold">
+                                    {mgr.staffCode}
+                                  </span>
+                                )}
+                                {title && <span className="truncate">{title}</span>}
+                              </div>
+                              {mgr.email && (
+                                <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
+                                  <Mail className="w-3 h-3 shrink-0" /> {mgr.email}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="py-3 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                        <span className="text-xs text-slate-400 italic flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 opacity-50" />
+                          Chưa bổ nhiệm lãnh đạo
+                        </span>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={(e) => openEditModal(activeDepartment, e)}
+                            className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline"
+                          >
+                            Bổ nhiệm ngay
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* 2. Geofence & Location Card */}
+                <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs rounded-2xl">
+                  <CardContent className="p-4 sm:p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Compass className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        Tọa Độ Geofence Điểm Danh
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800">
+                        Bán kính: {activeDepartment.radiusMeters || 200}m
+                      </span>
+                    </div>
+
+                    <div className="pt-1 space-y-1.5">
+                      <div className="flex items-center gap-2 text-xs">
+                        <MapPin className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <span className="font-mono text-slate-700 dark:text-slate-300 font-semibold">
+                          {activeDepartment.latitude || '21.007051'}, {activeDepartment.longitude || '105.824812'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Cán bộ, giảng viên phải nằm trong phạm vi <strong>{activeDepartment.radiusMeters || 200} mét</strong> quanh tọa độ trên để chấm công Face ID hợp lệ.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Sub-departments (If Active Dept is a Faculty) */}
+              {activeDepartment.type === 'khoa' && (
+                <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs rounded-2xl">
+                  <CardContent className="p-5 space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
                         <Layers className="w-4 h-4 text-indigo-500" />
-                        Các Bộ Môn Chuyên Môn Trực Thuộc (
-                        {(childrenByFacultyId[activeDepartment._id] || []).length})
+                        Bộ Môn Chuyên Môn Trực Thuộc ({(childrenByFacultyId[activeDepartment._id] || []).length})
                       </h4>
                       {isAdmin && (
                         <button
                           type="button"
-                          onClick={() => openCreateModal('bomon', activeDepartment._id)}
+                          onClick={() => openCreateModal('bo_mon', activeDepartment._id)}
                           className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
                         >
-                          <Plus className="w-3 h-3" /> Thêm Bộ môn
+                          <Plus className="w-3.5 h-3.5" /> Thêm Bộ môn
                         </button>
                       )}
                     </div>
 
                     {(childrenByFacultyId[activeDepartment._id] || []).length === 0 ? (
-                      <p className="text-xs text-slate-400 italic py-2">
+                      <p className="text-xs text-slate-400 italic py-3 text-center bg-slate-50/50 dark:bg-slate-800/30 rounded-xl">
                         Khoa này chưa có bộ môn trực thuộc nào.
                       </p>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                         {(childrenByFacultyId[activeDepartment._id] || []).map((bm) => (
                           <div
                             key={bm._id}
                             onClick={() => setSelectedNodeId(bm._id)}
-                            className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-500 transition-all cursor-pointer flex items-center justify-between text-xs"
+                            className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-500/60 hover:shadow-2xs transition-all cursor-pointer flex flex-col justify-between gap-2 group"
                           >
                             <div className="min-w-0">
-                              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
+                              <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate block group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                                 {bm.name}
                               </span>
-                              <span className="text-[10px] text-slate-400">
+                              <span className="text-[11px] text-slate-400 mt-0.5 block">
                                 {getDirectMemberCount(bm)} Giảng viên
                               </span>
                             </div>
-                            <ExternalLink className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                            <div className="flex items-center justify-end text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-0.5 transition-transform">
+                              Chi tiết <ChevronRight className="w-3 h-3" />
+                            </div>
                           </div>
                         ))}
                       </div>
                     )}
-                  </div>
-                )}
+                  </CardContent>
+                </Card>
+              )}
 
-                {/* Staff / Lecturers Table */}
-                <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <UsersIcon className="w-4 h-4 text-brand-500" />
-                      Danh Sách Cán Bộ, Giảng Viên ({activeDeptMembers.length})
-                    </h4>
+              {/* Staff / Lecturers Directory Table */}
+              <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs rounded-2xl overflow-hidden">
+                <CardContent className="p-5 space-y-4">
+                  {/* Staff Table Header & Filters */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400 flex items-center justify-center">
+                        <UsersIcon className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                          Danh Sách Cán Bộ & Giảng Viên
+                        </h4>
+                        <p className="text-[11px] text-slate-400">
+                          Hiển thị {filteredDeptMembers.length} trên tổng số {activeDeptMembers.length} nhân sự
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Search Staff Input */}
+                      <div className="relative min-w-[200px]">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <input
+                          type="text"
+                          value={staffSearchQuery}
+                          onChange={(e) => setStaffSearchQuery(e.target.value)}
+                          placeholder="Tìm tên, mã, email..."
+                          className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1.5 focus:ring-brand-500 transition-all"
+                        />
+                      </div>
+
+                      {/* Face Filter Segmented Control */}
+                      <div className="inline-flex items-center p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setStaffFaceFilter('all')}
+                          className={`px-2 py-1 rounded-lg font-medium transition-all ${
+                            staffFaceFilter === 'all'
+                              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs font-semibold'
+                              : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                          }`}
+                        >
+                          Tất cả
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setStaffFaceFilter('registered')}
+                          className={`px-2 py-1 rounded-lg font-medium transition-all ${
+                            staffFaceFilter === 'registered'
+                              ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-2xs font-semibold'
+                              : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                          }`}
+                        >
+                          Đã Face ID
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setStaffFaceFilter('unregistered')}
+                          className={`px-2 py-1 rounded-lg font-medium transition-all ${
+                            staffFaceFilter === 'unregistered'
+                              ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 shadow-2xs font-semibold'
+                              : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                          }`}
+                        >
+                          Chưa có
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  {activeDeptMembers.length === 0 ? (
-                    <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 text-center text-slate-400 text-xs">
-                      Chưa có cán bộ hoặc giảng viên nào thuộc đơn vị này.
+                  {/* Staff Table / List */}
+                  {filteredDeptMembers.length === 0 ? (
+                    <div className="p-8 rounded-2xl bg-slate-50/60 dark:bg-slate-800/30 text-center space-y-2">
+                      <UsersIcon className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
+                      <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                        {activeDeptMembers.length === 0
+                          ? 'Đơn vị này hiện chưa có cán bộ hoặc giảng viên nào được chỉ định.'
+                          : 'Không tìm thấy cán bộ nào phù hợp với bộ lọc hiện tại.'}
+                      </p>
+                      {activeDeptMembers.length > 0 && staffSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStaffSearchQuery('');
+                            setStaffFaceFilter('all');
+                          }}
+                          className="text-xs text-brand-600 dark:text-brand-400 font-semibold hover:underline"
+                        >
+                          Xóa bộ lọc tìm kiếm
+                        </button>
+                      )}
                     </div>
                   ) : (
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200/80 dark:border-slate-800 rounded-2xl max-h-64 overflow-y-auto">
-                      {activeDeptMembers.map((member) => {
-                        const avatar = resolveAvatarUrl(member.avatar || member.facePhoto);
-                        const { cleanName, title } = splitNameAndTitle(member.fullName);
-                        return (
-                          <div
-                            key={member._id}
-                            className="p-2.5 flex items-center justify-between gap-3 bg-white dark:bg-slate-900 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 text-xs"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <UserAvatar
-                                user={member}
-                                name={member.fullName}
-                                avatarUrl={member.avatar}
-                                staffCode={member.staffCode || member._id}
-                                size="xs"
-                                shape="rounded"
-                              />
-                              <div className="min-w-0">
-                                <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
-                                  {cleanName}
-                                </p>
-                                <p className="text-[10px] text-slate-400 truncate">
-                                  {member.staffCode || member.email}
-                                  {title ? ` • ${title}` : ''}
-                                </p>
-                              </div>
-                            </div>
+                    <div className="border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden max-h-[460px] overflow-y-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-sm">
+                            <th className="py-2.5 px-3.5">Cán Bộ / Giảng Viên</th>
+                            <th className="py-2.5 px-3.5 hidden sm:table-cell">Mã CB / Liên Hệ</th>
+                            <th className="py-2.5 px-3.5 hidden md:table-cell">Chức Vụ / Vai Trò</th>
+                            <th className="py-2.5 px-3.5 text-right">Face ID</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                          {filteredDeptMembers.map((member) => {
+                            const { cleanName, title } = splitNameAndTitle(member.fullName);
+                            return (
+                              <tr
+                                key={member._id}
+                                className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                              >
+                                <td className="py-2.5 px-3.5">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <UserAvatar
+                                      user={member}
+                                      name={member.fullName}
+                                      avatarUrl={member.avatar}
+                                      staffCode={member.staffCode || member._id}
+                                      size="sm"
+                                      shape="rounded"
+                                    />
+                                    <div className="min-w-0">
+                                      <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                                        {cleanName}
+                                      </p>
+                                      {title && (
+                                        <p className="text-[10px] text-slate-400 truncate">
+                                          {title}
+                                        </p>
+                                      )}
+                                      <div className="sm:hidden text-[10px] text-slate-400 mt-0.5 font-mono">
+                                        {member.staffCode || member.email}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
 
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              {member.isFaceRegistered ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                                  <CheckCircle2 className="w-3 h-3" /> Face ID
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-400">
-                                  Chưa Face
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                                <td className="py-2.5 px-3.5 hidden sm:table-cell">
+                                  <div className="space-y-0.5">
+                                    <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                      {member.staffCode || '—'}
+                                    </span>
+                                    {member.email && (
+                                      <p className="text-[11px] text-slate-400 truncate max-w-[180px]">
+                                        {member.email}
+                                      </p>
+                                    )}
+                                  </div>
+                                </td>
+
+                                <td className="py-2.5 px-3.5 hidden md:table-cell">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                    {member.role || 'Cán bộ'}
+                                  </span>
+                                </td>
+
+                                <td className="py-2.5 px-3.5 text-right">
+                                  {member.isFaceRegistered ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Face ID
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-400">
+                                      Chưa có
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   )}
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           )}
         </div>
       </div>
@@ -1393,8 +1662,8 @@ export const Departments: React.FC = () => {
                   {(
                     [
                       { id: 'khoa', title: 'Khoa Đào Tạo', sub: 'Cấp 1 (Học thuật)' },
-                      { id: 'bomon', title: 'Bộ Môn', sub: 'Cấp 2 (Thuộc Khoa)' },
-                      { id: 'phongban', title: 'Phòng Ban', sub: 'Cấp 1 (Chức năng)' },
+                      { id: 'bo_mon', title: 'Bộ Môn', sub: 'Cấp 2 (Thuộc Khoa)' },
+                      { id: 'phong_ban', title: 'Phòng Ban', sub: 'Cấp 1 (Chức năng)' },
                     ] as const
                   ).map((item) => (
                     <button
@@ -1404,7 +1673,7 @@ export const Departments: React.FC = () => {
                         setFormData((prev) => ({
                           ...prev,
                           type: item.id,
-                          parentId: item.id === 'bomon' ? prev.parentId || faculties[0]?._id || '' : '',
+                          parentId: item.id === 'bo_mon' ? prev.parentId || faculties[0]?._id || '' : '',
                         }))
                       }
                       className={`p-2.5 rounded-2xl border text-left transition-all ${
@@ -1435,7 +1704,7 @@ export const Departments: React.FC = () => {
                   placeholder={
                     formData.type === 'khoa'
                       ? 'VD: Khoa Công nghệ Thông tin & Thiết kế Đồ họa'
-                      : formData.type === 'bomon'
+                      : (formData.type === 'bo_mon' || formData.type === 'bomon')
                       ? 'VD: Bộ môn Trí tuệ Nhân tạo & Khoa học Dữ liệu'
                       : 'VD: Phòng Quản lý Đào tạo'
                   }
@@ -1444,7 +1713,7 @@ export const Departments: React.FC = () => {
               </div>
 
               {/* Đơn vị cha (nếu là Bộ môn) */}
-              {formData.type === 'bomon' ? (
+              {(formData.type === 'bo_mon' || formData.type === 'bomon') ? (
                 <div className="space-y-1.5 p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50">
                   <label className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
                     Khoa đào tạo chủ quản <span className="text-rose-500">*</span>
@@ -1477,7 +1746,7 @@ export const Departments: React.FC = () => {
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
                   {formData.type === 'khoa'
                     ? 'Trưởng Khoa phụ trách'
-                    : formData.type === 'bomon'
+                    : (formData.type === 'bo_mon' || formData.type === 'bomon')
                     ? 'Trưởng Bộ môn phụ trách'
                     : 'Trưởng Phòng ban phụ trách'}
                 </label>

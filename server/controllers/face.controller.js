@@ -100,8 +100,8 @@ const enrollMultiAngleFace = async (req, res) => {
       });
     }
 
-    const employeeId = req.body.employee_id || req.body.userId || req.user?._id?.toString();
-    const fullName = req.body.full_name || req.body.fullName;
+    const employeeId = req.body.employee_id;
+    const fullName = req.body.full_name;
     const force = req.body.force === true || req.body.force === 'true';
 
     if (!employeeId) {
@@ -187,7 +187,7 @@ const enrollMultiAngleFace = async (req, res) => {
     const result = await registerFaceDescriptorForUser({
       id: targetUser._id,
       descriptors: allVectors,
-      poses: recordedPoses,
+      sampleAngles: recordedPoses,
       force,
       currentUser: req.user,
       ip: req.ip,
@@ -206,8 +206,8 @@ const enrollMultiAngleFace = async (req, res) => {
         ).catch(() => {});
 
         // Đặt tên file chuẩn Enterprise: face-<MãCánBộ>-<TênKhôngDấu>.jpg
-        const staffCode = (targetUser.staffCode || targetUser.ma_can_bo || targetUser.ma_nhan_vien || targetUser._id.toString()).replace(/[^a-zA-Z0-9_-]/g, '_');
-        let cleanName = (targetUser.fullName || targetUser.ho_ten || 'can-bo')
+        const staffCode = (targetUser.staffCode || targetUser._id.toString()).replace(/[^a-zA-Z0-9_-]/g, '_');
+        let cleanName = (targetUser.fullName || 'can-bo')
           .replace(/\(.*?\)/g, '')
           .replace(/^(ThS|TS|PGS|GS|Ths|Ts)\.?\s+/i, '')
           .trim()
@@ -280,25 +280,25 @@ const getRegistrationStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng.' });
     }
 
-    // Tra cứu FaceTemplate cả 2 tên trường nguoi_dung_id và userId
+    // Tra cứu FaceTemplate
     const template = await FaceTemplate.findOne({
-      $or: [{ nguoi_dung_id: user._id }, { userId: user._id }],
+      userId: user._id,
     });
 
     const hasValidTemplate = Boolean(
       template &&
-      ((Array.isArray(template.descriptors) && template.descriptors.length > 0) ||
-       (Array.isArray(template.vector_dac_trung) && template.vector_dac_trung.length > 0))
+      Array.isArray(template.descriptors) &&
+      template.descriptors.length > 0
     );
 
     const isRegistered = hasValidTemplate;
 
     // Tự động đồng bộ cờ da_dang_ky_face trên User cho khớp chính xác với thực tế có FaceTemplate hay không
-    if (user.da_dang_ky_face !== isRegistered || user.isFaceRegistered !== isRegistered) {
+    if (user.isFaceRegistered !== isRegistered) {
       await User.findByIdAndUpdate(user._id, {
         $set: {
           da_dang_ky_face: isRegistered,
-          ngay_dang_ky_face: isRegistered ? (template.ngay_dang_ky || template.registeredAt || new Date()) : null,
+          ngay_dang_ky_face: isRegistered ? (template.registeredAt || new Date()) : null,
         },
       });
     }
@@ -307,17 +307,14 @@ const getRegistrationStatus = async (req, res) => {
       success: true,
       data: {
         userId: user._id,
-        fullName: user.ho_ten || user.fullName,
+        fullName: user.fullName,
         email: user.email,
         isFaceRegistered: isRegistered,
         faceRegisteredAt: isRegistered
-          ? (template?.ngay_dang_ky ||
-             template?.registeredAt ||
-             user.ngay_dang_ky_face ||
-             user.faceRegisteredAt)
+          ? (template?.registeredAt || user.faceRegisteredAt || null)
           : null,
-        facePhoto: isRegistered ? (user.anh_khuon_mat || user.facePhoto) : null,
-        sampleCount: isRegistered ? (template?.so_luong_mau || template?.sampleCount || 0) : 0,
+        facePhoto: isRegistered ? user.facePhoto : null,
+        sampleCount: isRegistered ? (template?.sampleCount || 0) : 0,
         sampleAngles: isRegistered ? (template?.cac_goc_chup || template?.sampleAngles || []) : [],
         embeddingModel: template?.mo_hinh_ai || template?.embeddingModel || 'buffalo_s',
       },
@@ -341,7 +338,8 @@ const deleteFaceData = async (req, res) => {
       userRoles.has('admin') ||
       userRoles.has('bgh') ||
       userRoles.has('tccb') ||
-      userRoles.has('truongkhoa');
+      userRoles.has('truong_khoa') ||
+      userRoles.has('pho_khoa');
 
     if (!isSelf && !isAuthorizedManager) {
       return res.status(403).json({

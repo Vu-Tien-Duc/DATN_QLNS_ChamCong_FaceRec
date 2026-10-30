@@ -13,10 +13,10 @@ const departmentSchema = new mongoose.Schema(
       type: String,
       alias: 'type',
       enum: {
-        values: ['khoa', 'bomon', 'phongban'],
-        message: 'Loại đơn vị không hợp lệ ({VALUE}). Chấp nhận: khoa, bomon, phongban',
+        values: ['khoa', 'bo_mon', 'phong_ban'],
+        message: 'Loại đơn vị không hợp lệ ({VALUE}). Chấp nhận: khoa, bo_mon, phong_ban',
       },
-      required: [true, 'Loại đơn vị (khoa, bomon, phongban) là bắt buộc'],
+      required: [true, 'Loại đơn vị (khoa, bo_mon, phong_ban) là bắt buộc'],
     },
     don_vi_cha_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -106,9 +106,5 @@ departmentSchema.index({ truong_don_vi_id: 1 });
 departmentSchema.index({ loai_don_vi: 1 });
 
 const Department = mongoose.models.Department || mongoose.model('Department', departmentSchema, 'phong_ban');
-
-if (!mongoose.models.PhongBan) {
-  mongoose.model('PhongBan', departmentSchema, 'phong_ban');
-}
 
 module.exports = Department;

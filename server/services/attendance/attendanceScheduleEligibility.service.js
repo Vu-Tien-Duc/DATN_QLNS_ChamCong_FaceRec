@@ -24,11 +24,11 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null, us
   let user = userObj && (userObj.fullName || userObj.ho_ten) ? userObj : null;
   if (!user && userId && mongoose.isValidObjectId(userId)) {
     const User = require('../../models/user.model');
-    user = await User.findById(userId).select('fullName ho_ten role vai_tro_chinh').lean();
+    user = await User.findById(userId).select('fullName role');
   }
-  const userName = user?.fullName || user?.ho_ten || 'Cán bộ';
-  const userRole = (user?.role || user?.vai_tro_chinh || '').toLowerCase();
-  const prefix = userRole === 'giangvien' ? 'Giảng viên' : 'Cán bộ';
+  const userName = user?.fullName || 'Cán bộ';
+  const userRole = (user?.role || '').toLowerCase();
+  const prefix = userRole === 'giang_vien' ? 'Giảng viên' : 'Cán bộ';
 
   const query = {
     userId,
@@ -87,7 +87,7 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null, us
     });
 
     if (existingLog) {
-      if (existingLog.status === 'ABSENT' || existingLog.status === 'EXCUSED_ABSENCE') {
+      if (existingLog.status === 'absent' || existingLog.status === 'excused_absence') {
         // Ca này đã bị hủy/đánh vắng trước đó -> Lưu vết để thông báo đúng, không báo nhầm "hoàn thành ca"
         absentSchedules.push({
           schedule: sch,
@@ -166,8 +166,8 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null, us
 
     // Tình huống C: Hợp lệ để check-in!
     // Trong vòng 30 phút trước ca hoặc muộn trong ngưỡng cho phép của ca
-    const status = currentMinutes > startMinutes ? 'LATE' : 'ON_TIME';
-    const lateMinutes = status === 'LATE' ? currentMinutes - startMinutes : 0;
+    const status = currentMinutes > startMinutes ? 'late' : 'on_time';
+    const lateMinutes = status === 'late' ? currentMinutes - startMinutes : 0;
 
     eligibleSchedule = {
       schedule: sch,
@@ -239,7 +239,7 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null, us
   if (absentSchedules.length > 0) {
     const lastAbsent = absentSchedules[absentSchedules.length - 1];
     const shiftName = lastAbsent.shift?.name || 'Ca làm việc';
-    const statusText = lastAbsent.status === 'EXCUSED_ABSENCE' ? 'nghỉ có phép' : 'vắng mặt (do quá hạn điểm danh)';
+    const statusText = lastAbsent.status === 'excused_absence' ? 'nghỉ có phép' : 'vắng mặt (do quá hạn điểm danh)';
     const thresholdText = lastAbsent.lateThreshold ? ` (quá ${lastAbsent.lateThreshold} phút)` : '';
     return {
       canCheckIn: false,
@@ -265,7 +265,7 @@ const evaluateUserScheduleForCheckIn = async (userId, specificShiftId = null, us
  *   + Nếu trạng thái ban đầu là LATE -> Giữ nguyên LATE
  * @param {Date} checkOutTime 
  * @param {Object} shiftConfig 
- * @param {String} initialStatus - 'ON_TIME' | 'LATE'
+ * @param {String} initialStatus - 'on_time' | 'late'
  * @returns {Object} { finalStatus, isEarlyLeave, earlyMinutes }
  */
 

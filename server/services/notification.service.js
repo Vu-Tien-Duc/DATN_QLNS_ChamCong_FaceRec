@@ -7,6 +7,7 @@ const Schedule = require('../models/schedule.model');
 const User = require('../models/user.model');
 const { getDeanScopedUserIds } = require('../utils/deanScope');
 const { getVietnamTime, getVietnamDayRange } = require('../utils/attendanceTime.utils');
+const { normalizeRole, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES } = require('../utils/roleUtils');
 
 const formatDateTimeVN = (date) =>
   date
@@ -63,7 +64,7 @@ const getNotifications = async ({ userId, lastReadAt: lastReadAtInput }) => {
         link: '/attendance/history',
       });
     } else if (attendance.checkInTime) {
-      const isLate = attendance.status === 'LATE';
+      const isLate = attendance.status === 'late';
       notifications.push({
         id: `att-in-${attendance._id}`,
         title: `Điểm danh thành công (${isLate ? 'Đến muộn' : 'Đúng giờ'}): ${shiftName}`,
@@ -73,7 +74,7 @@ const getNotifications = async ({ userId, lastReadAt: lastReadAtInput }) => {
         timestamp: attendance.checkInTime,
         link: '/attendance/history',
       });
-    } else if (attendance.status === 'ABSENT') {
+    } else if (attendance.status === 'absent') {
       notifications.push({
         id: `att-absent-${attendance._id}`,
         title: `Cảnh báo vắng mặt: ${shiftName}`,
@@ -86,11 +87,12 @@ const getNotifications = async ({ userId, lastReadAt: lastReadAtInput }) => {
     }
   });
 
-  if (user.role === 'giangvien' || user.role === 'nhanvien') {
+  const uRole = normalizeRole(user.role || user.vai_tro_chinh);
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(uRole)) {
     const requests = await LeaveRequest.find({ userId: user._id }).sort({ updatedAt: -1 }).limit(3).lean();
     requests.forEach((leave) => {
       const date = `từ ${formatDateVN(leave.startDate)} đến ${formatDateVN(leave.endDate)}`;
-      if (leave.status === 'APPROVED') {
+      if (leave.status === 'approved') {
         notifications.push({
           id: `leave-${leave._id}`,
           title: 'Đơn xin nghỉ phép đã được duyệt',
@@ -100,7 +102,7 @@ const getNotifications = async ({ userId, lastReadAt: lastReadAtInput }) => {
           timestamp: leave.updatedAt || leave.createdAt,
           link: '/leave/my-requests',
         });
-      } else if (leave.status === 'REJECTED') {
+      } else if (leave.status === 'rejected') {
         notifications.push({
           id: `leave-${leave._id}`,
           title: 'Đơn xin nghỉ phép bị từ chối',
@@ -110,7 +112,7 @@ const getNotifications = async ({ userId, lastReadAt: lastReadAtInput }) => {
           timestamp: leave.updatedAt || leave.createdAt,
           link: '/leave/my-requests',
         });
-      } else if (leave.status === 'PENDING') {
+      } else if (leave.status === 'pending') {
         notifications.push({
           id: `leave-${leave._id}`,
           title: 'Đơn xin nghỉ phép đang chờ duyệt',
@@ -122,9 +124,9 @@ const getNotifications = async ({ userId, lastReadAt: lastReadAtInput }) => {
         });
       }
     });
-  } else if (user.role === 'truongkhoa' || user.role === 'admin') {
-    const pendingQuery = { status: 'PENDING' };
-    if (user.role === 'truongkhoa') {
+  } else if (UNIT_LEADER_ROLES.includes(uRole) || GLOBAL_ADMIN_ROLES.includes(uRole)) {
+    const pendingQuery = { status: 'pending' };
+    if (UNIT_LEADER_ROLES.includes(uRole)) {
       pendingQuery.userId = { $in: await getDeanScopedUserIds(user) };
     }
     const pendingLeaves = await LeaveRequest.find(pendingQuery)

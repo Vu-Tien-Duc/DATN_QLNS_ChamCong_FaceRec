@@ -25,7 +25,9 @@ import {
   Sparkles,
   Info,
   ShieldAlert,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
@@ -303,6 +305,55 @@ export const Settings: React.FC = () => {
       toast.error(err.response?.data?.message || 'Không thể lưu thay đổi cấu hình.');
     } finally {
       setIsBulkSaving(false);
+    }
+  };
+
+  // Xuất cấu hình hệ thống ra file Excel (.xlsx) chuẩn hóa phục vụ bàn giao và kiểm toán
+  const handleExportExcel = () => {
+    if (configs.length === 0) {
+      toast.error('Không có dữ liệu cấu hình để xuất file Excel.');
+      return;
+    }
+
+    try {
+      const dataRows = configs.map((c, idx) => {
+        const val = draftValues[c.key] !== undefined ? draftValues[c.key] : c.value;
+        const groupMeta = GROUP_METAS[c.group] || GROUP_METAS.SYSTEM;
+        const valString = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '');
+
+        return {
+          'STT': idx + 1,
+          'Mã Cấu Hình': c.key,
+          'Nhóm Tham Số': groupMeta.label,
+          'Mô Tả / Ý Nghĩa': c.description || '--',
+          'Giá Trị Thiết Lập': valString,
+          'Kiểu Dữ Liệu': typeof val === 'object' ? (Array.isArray(val) ? 'Mảng (Array)' : 'Đối tượng (Object)') : typeof val,
+          'Người Cập Nhật': (c as any).updatedBy?.fullName || 'Hệ Thống Mặc Định',
+          'Thời Điểm Cập Nhật': c.updatedAt ? formatDateTimeVN(c.updatedAt) : '--',
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 28 },
+        { wch: 24 },
+        { wch: 35 },
+        { wch: 45 },
+        { wch: 18 },
+        { wch: 24 },
+        { wch: 22 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Tham Số Cấu Hình');
+
+      const fileName = `Cau_Hinh_He_Thong_NTU_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast.success('Đã xuất Báo cáo Cấu hình (.xlsx) thành công!');
+    } catch (err) {
+      console.error('Lỗi khi xuất file Excel:', err);
+      toast.error('Không thể xuất file báo cáo cấu hình.');
     }
   };
 
@@ -585,6 +636,18 @@ export const Settings: React.FC = () => {
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               <span>Làm Mới</span>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              disabled={configs.length === 0}
+              className="flex items-center gap-1.5 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 font-semibold"
+              title="Xuất bảng danh mục tham số hệ thống ra file Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Xuất Excel (.xlsx)</span>
             </Button>
 
             <Button

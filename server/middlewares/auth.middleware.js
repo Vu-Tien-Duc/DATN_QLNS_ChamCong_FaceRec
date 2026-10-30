@@ -19,7 +19,7 @@ const { sendError } = require('../utils/responseHandler');
  */
 const verifyToken = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers.authorization || (req.query?.token ? `Bearer ${req.query.token}` : null);
 
     if (!authHeader) {
       return sendError(res, 'Truy cập bị từ chối. Token không tồn tại.', null, 401);
@@ -49,7 +49,7 @@ const verifyToken = async (req, res, next) => {
     }
 
     const user = await User.findById(decoded.id || decoded.userId).select(
-      'role primaryRole vai_tro_chinh departmentId don_vi_chinh_id isActive kich_hoat passwordChangedAt doi_mat_khau_luc tokenVersion phien_ban_token fullName ho_ten email roles danh_sach_vai_tro da_dang_ky_face isFaceRegistered anh_khuon_mat facePhoto'
+      'role departmentId isActive passwordChangedAt tokenVersion fullName email roles isFaceRegistered facePhoto'
     );
 
     if (!user) {
@@ -94,25 +94,13 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
+const { normalizeRole } = require('../utils/roleUtils');
+
 /**
- * Trợ thủ: Lấy toàn bộ danh sách vai trò đang còn hiệu lực của người dùng
+ * Trợ thủ: Lấy toàn bộ danh sách vai trò đang còn hiệu lực của người dùng theo chuẩn lowercase snake_case
  */
 const normalizeRoleKey = (r) => {
-  if (!r) return '';
-  const clean = String(r).toLowerCase().replace(/[\s_-]+/g, '');
-  // Chỉ chuyển đổi các mã chức danh mở rộng từ CSDL Schema về Canonical Key
-  switch (clean) {
-    case 'photruongkhoa':
-      return 'phokhoa';
-    case 'photruongbomon':
-      return 'phobomon';
-    case 'photruongphong':
-      return 'phophong';
-    case 'chuyenvien':
-      return 'nhanvien';
-    default:
-      return clean;
-  }
+  return normalizeRole(r);
 };
 
 /**
@@ -170,8 +158,7 @@ const getUserPermissions = (user) => {
   const permissions = new Set();
 
   for (const role of activeRoles) {
-    const roleUpper = role.toUpperCase();
-    const rolePerms = ROLE_PERMISSIONS[roleUpper] || ROLE_PERMISSIONS[role] || [];
+    const rolePerms = ROLE_PERMISSIONS[role] || [];
     for (const p of rolePerms) {
       permissions.add(p);
     }

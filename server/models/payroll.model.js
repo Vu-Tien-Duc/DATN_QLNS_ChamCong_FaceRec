@@ -150,8 +150,9 @@ const phieuLuongSchema = new mongoose.Schema(
     trang_thai: {
       type: String,
       alias: 'status',
-      enum: ['DU_THAO', 'CHO_DUYET', 'DA_DUYET', 'DA_KHOA', 'DA_THANH_TOAN'],
-      default: 'DU_THAO',
+      enum: ['du_thao', 'cho_duyet', 'da_duyet', 'da_khoa', 'da_thanh_toan'],
+      default: 'du_thao',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     khoa_luc: {
       type: Date,
@@ -169,7 +170,7 @@ const phieuLuongSchema = new mongoose.Schema(
 
 
 phieuLuongSchema.virtual('isLocked').get(function () {
-  return this.trang_thai === 'DA_KHOA' || Boolean(this.khoa_luc);
+  return this.trang_thai === 'da_khoa' || Boolean(this.khoa_luc);
 });
 
 phieuLuongSchema.virtual('allowances')
@@ -326,9 +327,5 @@ phieuLuongSchema.index({ thang: 1, nam: 1, trang_thai: 1 });
 phieuLuongSchema.index({ nguoi_dung_id: 1, trang_thai: 1 });
 
 const Payroll = mongoose.models.Payroll || mongoose.model('Payroll', phieuLuongSchema, 'phieu_luong');
-
-if (!mongoose.models.PhieuLuong) {
-  mongoose.model('PhieuLuong', phieuLuongSchema, 'phieu_luong');
-}
 
 module.exports = Payroll;

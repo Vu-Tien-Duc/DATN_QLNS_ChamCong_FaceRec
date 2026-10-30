@@ -1,46 +1,26 @@
 import { UserProfile } from '../types';
 
 /**
- * Chuẩn hóa mọi biến thể vai trò về DUY NHẤT 1 Canonical Role Key chuẩn:
+ * Chuẩn hóa mọi biến thể vai trò về DUY NHẤT 1 Canonical Role Key chuẩn (lowercase snake_case):
  * - 'admin': Quản Trị Viên IT
  * - 'bgh': Ban Giám Hiệu
- * - 'truongkhoa': Trưởng Khoa
- * - 'phokhoa': Phó Trưởng Khoa
- * - 'truongbomon': Trưởng Bộ Môn
- * - 'phobomon': Phó Trưởng Bộ Môn
- * - 'truongphong': Trưởng Phòng
- * - 'phophong': Phó Trưởng Phòng
- * - 'daotao': Chuyên Viên Đào Tạo
+ * - 'truong_khoa': Trưởng Khoa
+ * - 'pho_khoa': Phó Trưởng Khoa
+ * - 'truong_bo_mon': Trưởng Bộ Môn
+ * - 'pho_bo_mon': Phó Trưởng Bộ Môn
+ * - 'truong_phong': Trưởng Phòng
+ * - 'pho_phong': Phó Trưởng Phòng
+ * - 'dao_tao': Chuyên Viên Đào Tạo
  * - 'tccb': Tổ Chức Cán Bộ
- * - 'ketoan': Kế Toán
- * - 'kiemtoan': Khảo Thí / Kiểm Toán
- * - 'giangvien': Giảng Viên
- * - 'nhanvien': Chuyên Viên / Nhân Viên
+ * - 'ke_toan': Kế Toán
+ * - 'kiem_toan': Khảo Thí / Kiểm Toán
+ * - 'giang_vien': Giảng Viên
+ * - 'chuyen_vien': Chuyên Viên
+ * - 'nhan_vien': Nhân Viên
  */
 export const normalizeRoleKey = (r?: any): string => {
   if (!r || typeof r !== 'string') return '';
-  const clean = r.toLowerCase().replace(/[\s_-]+/g, '');
-  switch (clean) {
-    case 'adminit':
-    case 'itadmin':
-    case 'quantri':
-    case 'quantrivien':
-      return 'admin';
-    case 'hieutruong':
-    case 'hieupho':
-    case 'bangiamhieu':
-      return 'bgh';
-    case 'photruongkhoa':
-      return 'phokhoa';
-    case 'photruongbomon':
-      return 'phobomon';
-    case 'photruongphong':
-      return 'phophong';
-    case 'chuyenvien':
-      return 'nhanvien';
-    default:
-      return clean;
-  }
+  return r.trim().toLowerCase().replace(/[\s-]+/g, '_');
 };
 
 /**
@@ -130,31 +110,35 @@ export const getRoleLabel = (role?: string): string => {
       return 'Quản Trị Viên IT';
     case 'bgh':
       return 'Ban Giám Hiệu';
-    case 'truongkhoa':
+    case 'truong_khoa':
       return 'Trưởng Khoa';
-    case 'phokhoa':
+    case 'pho_khoa':
       return 'Phó Trưởng Khoa';
-    case 'truongbomon':
+    case 'truong_bo_mon':
       return 'Trưởng Bộ Môn';
-    case 'phobomon':
+    case 'pho_bo_mon':
       return 'Phó Trưởng Bộ Môn';
-    case 'truongphong':
+    case 'truong_phong':
       return 'Trưởng Phòng';
-    case 'phophong':
+    case 'pho_phong':
       return 'Phó Trưởng Phòng';
-    case 'daotao':
+    case 'dao_tao':
       return 'Chuyên Viên Đào Tạo';
     case 'tccb':
       return 'Tổ Chức Cán Bộ';
-    case 'ketoan':
+    case 'ke_toan':
       return 'Kế Toán';
-    case 'kiemtoan':
+    case 'kiem_toan':
       return 'Khảo Thí / Kiểm Toán';
-    case 'giangvien':
+    case 'giang_vien':
       return 'Giảng Viên';
-    case 'nhanvien':
-      return 'Chuyên Viên / Nhân Viên';
+    case 'chuyen_vien':
+      return 'Chuyên Viên';
+    case 'nhan_vien':
+      return 'Nhân Viên';
+    case 'quan_ly_xe':
+      return 'Quản Lý Xe';
     default:
-      return (role || '').toUpperCase();
+      return role || '';
   }
 };

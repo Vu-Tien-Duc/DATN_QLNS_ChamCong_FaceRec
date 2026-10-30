@@ -21,7 +21,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { DepartmentSelect } from '../components/ui/DepartmentSelect';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { departmentApi } from '../api/department.api';
@@ -73,7 +76,7 @@ export const Subjects: React.FC = () => {
 
   // Role permissions
   const canManage = useMemo(() => {
-    return hasRole(user, ['admin', 'bgh', 'truongkhoa']);
+    return hasRole(user, ['admin', 'bgh', 'truong_khoa']);
   }, [user]);
 
   const canDelete = useMemo(() => {
@@ -185,6 +188,24 @@ export const Subjects: React.FC = () => {
     toast.success('Đã làm mới bộ lọc');
   };
 
+  // Phân cấp danh sách Khoa & Bộ Môn
+  const hierarchicalDepartments = useMemo(() => {
+    const faculties = departments.filter((d) => d.type === 'khoa').sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+    const boMons = departments.filter((d) => d.type === 'bomon').sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+    const functional = departments.filter((d) => d.type === 'phongban' || !d.type).sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+
+    const boMonsByFaculty: Record<string, DepartmentItem[]> = {};
+    boMons.forEach((bm) => {
+      const pId = typeof bm.parentId === 'object' ? bm.parentId?._id : bm.parentId;
+      if (pId) {
+        if (!boMonsByFaculty[pId]) boMonsByFaculty[pId] = [];
+        boMonsByFaculty[pId].push(bm);
+      }
+    });
+
+    return { faculties, boMonsByFaculty, functional };
+  }, [departments]);
+
   // Helper lấy tên khoa / bộ môn
   const getDepartmentName = (dept: any) => {
     if (!dept) return 'Chưa phân công';
@@ -194,39 +215,47 @@ export const Subjects: React.FC = () => {
   };
 
   // ===========================================================================
-  // EXPORT CSV
+  // EXPORT EXCEL (.XLSX)
   // ===========================================================================
-  const handleExportCSV = () => {
+  const handleExportExcel = () => {
     if (displayedSubjects.length === 0) {
-      toast.error('Không có dữ liệu môn học để xuất');
+      toast.error('Không có dữ liệu môn học để xuất file Excel.');
       return;
     }
 
     try {
-      const headers = ['Mã môn', 'Tên môn học', 'Số tín chỉ', 'Định mức giờ chuẩn', 'Khoa / Bộ môn', 'Trạng thái', 'Mô tả'];
-      const rows = displayedSubjects.map((s) => [
-        `"${s.code || ''}"`,
-        `"${s.name || ''}"`,
-        s.credits || 0,
-        `${(s.credits || 0) * 15} tiết chuẩn`,
-        `"${getDepartmentName(s.departmentId)}"`,
-        s.isActive ? 'Đang giảng dạy' : 'Tạm ngưng',
-        `"${(s.description || '').replace(/"/g, '""')}"`,
-      ]);
+      const dataRows = displayedSubjects.map((s, idx) => ({
+        'STT': idx + 1,
+        'Mã Môn Học': s.code || '--',
+        'Tên Môn Học': s.name || '--',
+        'Số Tín Chỉ': s.credits || 0,
+        'Định Mức Giờ Chuẩn': `${(s.credits || 0) * 15} tiết chuẩn`,
+        'Khoa / Bộ Môn Phụ Trách': getDepartmentName(s.departmentId),
+        'Trạng Thái Giảng Dạy': s.isActive ? 'Đang giảng dạy' : 'Tạm ngưng',
+        'Mô Tả / Đề Cương': s.description || '',
+      }));
 
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `Danh_Muc_Mon_Hoc_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success('Đã xuất danh sách môn học thành công!');
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 15 },
+        { wch: 32 },
+        { wch: 12 },
+        { wch: 22 },
+        { wch: 28 },
+        { wch: 22 },
+        { wch: 35 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Danh Mục Môn Học');
+
+      const fileName = `Danh_Muc_Mon_Hoc_NTU_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast.success('Đã xuất Danh mục môn học (.xlsx) thành công!');
     } catch (err) {
-      console.error('Lỗi khi xuất file:', err);
-      toast.error('Không thể xuất file danh mục môn học');
+      console.error('Lỗi khi xuất file Excel:', err);
+      toast.error('Không thể xuất file danh mục môn học.');
     }
   };
 
@@ -328,76 +357,76 @@ export const Subjects: React.FC = () => {
   return (
     <div className="space-y-5" data-purpose="academic-courses-dashboard">
       {/* =========================================================================
-          BEGIN: KpiMetricsCards (4 Cards matching code.html)
+          BEGIN: KpiMetricsCards (4 Cards matching code.html - Dark Mode Enabled)
          ========================================================================= */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-purpose="kpi-metric-cards">
         {/* Card 1: Tổng số môn học */}
-        <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">TỔNG SỐ MÔN HỌC</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <BookOpen className="w-3.5 h-3.5" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">TỔNG SỐ MÔN HỌC</span>
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <BookOpen className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-1.5">
+          <div className="mt-2">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-slate-900 tracking-tight">{kpis.total}</span>
-              <span className="text-xs font-medium text-slate-500">học phần</span>
+              <span className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">{kpis.total}</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">học phần</span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">Chính quy &amp; đại trà</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Chính quy &amp; đại trà</p>
           </div>
         </div>
 
         {/* Card 2: Đang giảng dạy */}
-        <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600">ĐANG GIẢNG DẠY</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <CheckCircle2 className="w-3.5 h-3.5" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">ĐANG GIẢNG DẠY</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-1.5">
+          <div className="mt-2">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-emerald-600 tracking-tight">{kpis.active}</span>
-              <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200/60">
+              <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 tracking-tight">{kpis.active}</span>
+              <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-200/60 dark:border-emerald-800">
                 Kích hoạt
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">Mở lớp trong TKB</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Mở lớp trong TKB</p>
           </div>
         </div>
 
         {/* Card 3: Tổng số tín chỉ */}
-        <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-600">TỔNG SỐ TÍN CHỈ</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Bookmark className="w-3.5 h-3.5" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">TỔNG SỐ TÍN CHỈ</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <Bookmark className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-1.5">
+          <div className="mt-2">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-amber-600 tracking-tight">{kpis.totalCredits}</span>
-              <span className="text-xs font-medium text-slate-500">tín chỉ</span>
+              <span className="text-2xl font-bold text-amber-600 dark:text-amber-400 tracking-tight">{kpis.totalCredits}</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">tín chỉ</span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">~{kpis.totalHours} tiết chuẩn giảng dạy</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">~{kpis.totalHours} tiết chuẩn giảng dạy</p>
           </div>
         </div>
 
         {/* Card 4: Khoa / Bộ Môn */}
-        <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">KHOA / BỘ MÔN</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <Building2 className="w-3.5 h-3.5" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">KHOA / BỘ MÔN</span>
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <Building2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-1.5">
+          <div className="mt-2">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-indigo-600 tracking-tight">{kpis.deptCount}</span>
-              <span className="text-xs font-medium text-slate-500">đơn vị</span>
+              <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 tracking-tight">{kpis.deptCount}</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">đơn vị</span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">Phân bổ chuyên môn</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Phân bổ chuyên môn</p>
           </div>
         </div>
       </section>
@@ -405,35 +434,36 @@ export const Subjects: React.FC = () => {
       {/* =========================================================================
           BEGIN: FilterAndActionsToolbar
          ========================================================================= */}
-      <section className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-xs space-y-4" data-purpose="filter-and-actions">
+      <section className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-4" data-purpose="filter-and-actions">
         {/* Top row: Header label + Action buttons */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <GraduationCap className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-sm font-bold text-slate-800">Bộ Lọc &amp; Tra Cứu Môn Học</h2>
-            <span className="text-xs text-slate-400 font-normal">
-              • Hiển thị <b className="text-slate-700">{displayedSubjects.length}</b> / {totalCount || displayedSubjects.length} môn
+            <GraduationCap className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">Bộ Lọc &amp; Tra Cứu Môn Học</h2>
+            <span className="text-xs text-slate-400 dark:text-slate-500 font-normal">
+              • Hiển thị <b className="text-slate-700 dark:text-slate-300">{displayedSubjects.length}</b> / {totalCount || displayedSubjects.length} môn
             </span>
           </div>
           <div className="flex items-center flex-wrap gap-2.5">
             {/* Button: Làm mới */}
             <button
               onClick={handleResetFilters}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:border-slate-400 shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 shadow-xs transition-colors cursor-pointer"
               type="button"
             >
-              <RotateCcw className="w-4 h-4 text-slate-500" />
+              <RotateCcw className="w-4 h-4 text-slate-500 dark:text-slate-400" />
               <span>Làm Mới</span>
             </button>
 
-            {/* Button: Xuất Excel (.csv) */}
+            {/* Button: Xuất Excel (.xlsx) */}
             <button
-              onClick={handleExportCSV}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-emerald-700 bg-white border border-emerald-300 hover:bg-emerald-50/60 shadow-xs transition-colors cursor-pointer"
+              onClick={handleExportExcel}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 shadow-2xs transition-colors cursor-pointer"
+              title="Xuất danh mục môn học ra file Excel (.xlsx)"
               type="button"
             >
-              <Download className="w-4 h-4 text-emerald-600" />
-              <span>Xuất Excel (.csv)</span>
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Xuất Excel (.xlsx)</span>
             </button>
 
             {/* Button: Thêm Môn Học Mới */}
@@ -463,29 +493,26 @@ export const Subjects: React.FC = () => {
                 setSearchKeyword(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 placeholder-slate-400 transition-colors"
+              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 transition-colors"
               placeholder="Tìm theo Mã môn hoặc Tên môn..."
               type="text"
             />
           </div>
 
-          {/* Select: Khoa / Bộ Môn */}
-          <div className="relative">
-            <select
+          {/* Select: Khoa / Bộ Môn Phân Cấp Chuyên Dụng */}
+          <div className="w-full">
+            <DepartmentSelect
+              departments={departments}
               value={selectedDeptId}
-              onChange={(e) => {
-                setSelectedDeptId(e.target.value);
+              onChange={(deptId) => {
+                setSelectedDeptId(deptId);
                 setCurrentPage(1);
               }}
-              className="w-full pl-3 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700 transition-colors"
-            >
-              <option value="">-- Tất cả Khoa / Bộ môn --</option>
-              {departments.map((dept) => (
-                <option key={dept._id} value={dept._id}>
-                  {dept.name}
-                </option>
-              ))}
-            </select>
+              allowAll={true}
+              allLabel="-- Tất cả Khoa / Bộ môn --"
+              placeholder="Chọn Khoa / Bộ môn..."
+              size="sm"
+            />
           </div>
 
           {/* Select: Trạng thái */}
@@ -496,7 +523,7 @@ export const Subjects: React.FC = () => {
                 setSelectedStatus(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full pl-3 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700 transition-colors"
+              className="w-full pl-3 pr-8 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700 dark:text-slate-200 transition-colors"
             >
               <option value="">-- Tất cả trạng thái --</option>
               <option value="active">Đang giảng dạy</option>
@@ -512,7 +539,7 @@ export const Subjects: React.FC = () => {
                 setSelectedCredits(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full pl-3 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700 transition-colors"
+              className="w-full pl-3 pr-8 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700 dark:text-slate-200 transition-colors"
             >
               <option value="">-- Tất cả số tín chỉ --</option>
               {distinctCreditsList.map((c) => (
@@ -528,19 +555,19 @@ export const Subjects: React.FC = () => {
       {/* =========================================================================
           BEGIN: AcademicDataTableSection (Strict Zero-Horizontal-Scroll Table)
          ========================================================================= */}
-      <section className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col" data-purpose="course-table-card">
+      <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col" data-purpose="course-table-card">
         {/* Table Card Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2.5">
-            <BookOpen className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-800">Danh Sách Học Phần Đào Tạo</h3>
-            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+            <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Danh Sách Học Phần Đào Tạo</h3>
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
               {displayedSubjects.length} / {totalCount || displayedSubjects.length} môn học
             </span>
           </div>
 
           {/* Page size selector */}
-          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-medium">
             <span>Hiển thị mỗi trang:</span>
             <select
               value={limit}
@@ -548,7 +575,7 @@ export const Subjects: React.FC = () => {
                 setLimit(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              className="text-xs bg-slate-50 border border-slate-200 rounded-lg py-1 px-2.5 pr-7 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-slate-700"
+              className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg py-1 px-2.5 pr-7 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-slate-700 dark:text-slate-200"
             >
               <option value="10">10</option>
               <option value="20">20</option>
@@ -570,7 +597,7 @@ export const Subjects: React.FC = () => {
               <col style={{ width: '8%' }} />
             </colgroup>
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 <th className="py-3.5 pl-6 pr-2" scope="col">MÃ MÔN</th>
                 <th className="py-3.5 px-3" scope="col">TÊN MÔN HỌC</th>
                 <th className="py-3.5 px-3 text-center" scope="col">SỐ TÍN CHỈ</th>
@@ -580,7 +607,7 @@ export const Subjects: React.FC = () => {
                 <th className="py-3.5 pl-2 pr-6 text-center" scope="col">THAO TÁC</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
               {isLoading ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
@@ -607,38 +634,38 @@ export const Subjects: React.FC = () => {
                   const deptName = getDepartmentName(sub.departmentId);
 
                   return (
-                    <tr key={sub._id} className="hover:bg-indigo-50/30 transition-colors group">
+                    <tr key={sub._id} className="hover:bg-indigo-50/30 dark:hover:bg-slate-800/40 transition-colors group">
                       {/* Mã Môn */}
-                      <td className="py-3.5 pl-6 pr-2 font-mono font-bold text-indigo-700">
+                      <td className="py-3.5 pl-6 pr-2 font-mono font-bold text-indigo-700 dark:text-indigo-400">
                         {sub.code}
                       </td>
 
                       {/* Tên Môn Học + Mô tả */}
                       <td className="py-3.5 px-3 truncate">
-                        <div className="font-bold text-slate-900 group-hover:text-indigo-900 truncate">
+                        <div className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-900 dark:group-hover:text-indigo-300 truncate">
                           {sub.name}
                         </div>
-                        <div className="text-[11px] text-slate-400 font-normal truncate mt-0.5">
+                        <div className="text-[11px] text-slate-400 dark:text-slate-500 font-normal truncate mt-0.5">
                           {sub.description || 'Không có mô tả chi tiết'}
                         </div>
                       </td>
 
                       {/* Số Tín Chỉ */}
                       <td className="py-3.5 px-3 text-center">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800">
                           {credits} TC
                         </span>
                       </td>
 
                       {/* Định Mức Giờ Chuẩn */}
-                      <td className="py-3.5 px-3 text-center font-medium text-slate-600">
+                      <td className="py-3.5 px-3 text-center font-medium text-slate-600 dark:text-slate-300">
                         {standardHours} tiết chuẩn
                       </td>
 
                       {/* Khoa / Bộ Môn Quản Lý */}
-                      <td className="py-3.5 px-3 text-slate-600 truncate">
+                      <td className="py-3.5 px-3 text-slate-600 dark:text-slate-300 truncate">
                         <div className="flex items-center gap-1.5 truncate">
-                          <Building2 className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                          <Building2 className="w-4 h-4 text-slate-400 dark:text-slate-500 flex-shrink-0" />
                           <span className="truncate" title={deptName}>
                             {deptName}
                           </span>
@@ -702,10 +729,10 @@ export const Subjects: React.FC = () => {
         </div>
 
         {/* Pagination Footer */}
-        <div className="px-6 py-3.5 border-t border-slate-200 bg-white flex items-center justify-between text-xs text-slate-500">
+        <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
           <div>
             <span>
-              Trang <b className="text-slate-800">{currentPage}</b> / {totalPages || 1} (Tổng cộng{' '}
+              Trang <b className="text-slate-800 dark:text-slate-200">{currentPage}</b> / {totalPages || 1} (Tổng cộng{' '}
               {totalCount || displayedSubjects.length} môn học)
             </span>
           </div>
@@ -716,8 +743,8 @@ export const Subjects: React.FC = () => {
               onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
               className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${
                 currentPage <= 1
-                  ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
-                  : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer'
+                  ? 'border-slate-200 dark:border-slate-800 text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer'
               }`}
               type="button"
             >
@@ -725,7 +752,7 @@ export const Subjects: React.FC = () => {
             </button>
 
             {/* Current Page Indicator */}
-            <span className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 font-semibold flex items-center justify-center">
+            <span className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-semibold flex items-center justify-center">
               {currentPage}
             </span>
 
@@ -735,8 +762,8 @@ export const Subjects: React.FC = () => {
               onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
               className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${
                 currentPage >= totalPages
-                  ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
-                  : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer'
+                  ? 'border-slate-200 dark:border-slate-800 text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer'
               }`}
               type="button"
             >
@@ -796,7 +823,7 @@ export const Subjects: React.FC = () => {
                     value={formData.code}
                     onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                     placeholder="VD: INT2204"
-                    className="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 uppercase"
+                    className="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-slate-100 uppercase"
                   />
                 </div>
 
@@ -812,7 +839,7 @@ export const Subjects: React.FC = () => {
                     required
                     value={formData.credits}
                     onChange={(e) => setFormData({ ...formData, credits: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-slate-100"
                   />
                   <span className="text-[10px] text-slate-400 mt-1 block">
                     ~{(Number(formData.credits) || 0) * 15} tiết chuẩn giảng dạy
@@ -831,27 +858,26 @@ export const Subjects: React.FC = () => {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="VD: Cơ sở dữ liệu & Phân tích"
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-slate-100"
                 />
               </div>
 
-              {/* Khoa / Bộ môn */}
+              {/* Khoa / Bộ môn Phân Cấp */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Khoa / Bộ môn phụ trách
                 </label>
-                <select
-                  value={formData.departmentId || ''}
-                  onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700"
-                >
-                  <option value="">-- Chưa gán khoa / bộ môn --</option>
-                  {departments.map((dept) => (
-                    <option key={dept._id} value={dept._id}>
-                      {dept.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full">
+                  <DepartmentSelect
+                    departments={departments}
+                    value={formData.departmentId || ''}
+                    onChange={(deptId) => setFormData({ ...formData, departmentId: deptId })}
+                    allowAll={true}
+                    allLabel="-- Chưa gán khoa / bộ môn --"
+                    placeholder="Chọn Khoa / Bộ môn phụ trách..."
+                    size="md"
+                  />
+                </div>
               </div>
 
               {/* Trạng thái hoạt động */}

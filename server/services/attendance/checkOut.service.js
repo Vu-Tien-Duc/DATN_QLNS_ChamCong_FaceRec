@@ -62,13 +62,13 @@ const performCheckOut = async ({
     }
   }
 
-  const { startOfDay, endOfDay } = getVietnamDayRange();
+  const { startOfDay, endOfDay, dateStr } = getVietnamDayRange();
   const nowVN = getVietnamTime();
 
   // 1. Tìm bản ghi check-in đang mở trong ngày hôm nay
   const query = {
     userId,
-    date: { $gte: startOfDay, $lte: endOfDay },
+    workDate: dateStr,
     checkInTime: { $ne: null },
     checkOutTime: null,
   };
@@ -102,12 +102,11 @@ const performCheckOut = async ({
 
   // 2. Tạo bản ghi PunchLog (Collection 4 - nhat_ky_quet_the)
   const punchPayload = {
-    cham_cong_id: openLog._id,
     attendanceLogId: openLog._id,
     userId,
     punchTime: nowVN,
-    punchType: 'CHECK_OUT',
-    method: method.toUpperCase(),
+    punchType: 'check_out',
+    method: method.toLowerCase(),
     deviceId: finalDeviceId,
     clientIp: ip || null,
     isCampusNetwork: geofenceMeta ? geofenceMeta.isCampusNetwork : null,
@@ -115,7 +114,7 @@ const performCheckOut = async ({
     suspiciousReason: geofenceMeta?.suspiciousReason || null,
     verificationMethod: geofenceMeta?.verificationMethod || null,
     locationName: validatedLocationName,
-    isFraudulent: isFraud,
+    isFraud: isFraud,
     fraudReason,
     shiftId: openLog.shiftId?._id || null,
   };

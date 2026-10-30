@@ -94,7 +94,7 @@ export const scheduleApi = {
     payload: {
       date: string;
       reason?: string;
-      status?: 'NGHI' | 'HUY' | 'DAY_BU';
+      status?: 'nghi' | 'huy' | 'day_bu';
       makeupDate?: string;
     }
   ): Promise<ApiResponse<ScheduleItem>> => {

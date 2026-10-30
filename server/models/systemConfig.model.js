@@ -78,14 +78,14 @@ const CAU_HINH_MAC_DINH = {
   ],
   DON_GIA_GIO: 120000,
   DINH_MUC_GIO_CHUAN: 135,
-  TY_LE_UU_DAI: { GIANG_VIEN: 0.30, HANH_CHINH: 0.00 },
+  TY_LE_UU_DAI: { giang_vien: 0.30, hanh_chinh: 0.00 },
   CHUC_VU: [
-    { ma_chuc_vu: 'HIEU_TRUONG', he_so_phu_cap: 1.0, ty_le_giam_dinh_muc: 0.80 },
-    { ma_chuc_vu: 'TRUONG_KHOA', he_so_phu_cap: 0.7, ty_le_giam_dinh_muc: 0.30 },
-    { ma_chuc_vu: 'TRUONG_BO_MON', he_so_phu_cap: 0.5, ty_le_giam_dinh_muc: 0.20 },
-    { ma_chuc_vu: 'TRUONG_PHONG', he_so_phu_cap: 0.6, ty_le_giam_dinh_muc: 0.00 },
-    { ma_chuc_vu: 'PHO_TRUONG_KHOA', he_so_phu_cap: 0.5, ty_le_giam_dinh_muc: 0.20 },
-    { ma_chuc_vu: 'PHO_TRUONG_PHONG', he_so_phu_cap: 0.4, ty_le_giam_dinh_muc: 0.00 }
+    { ma_chuc_vu: 'hieu_truong', he_so_phu_cap: 1.0, ty_le_giam_dinh_muc: 0.80 },
+    { ma_chuc_vu: 'truong_khoa', he_so_phu_cap: 0.7, ty_le_giam_dinh_muc: 0.30 },
+    { ma_chuc_vu: 'truong_bo_mon', he_so_phu_cap: 0.5, ty_le_giam_dinh_muc: 0.20 },
+    { ma_chuc_vu: 'truong_phong', he_so_phu_cap: 0.6, ty_le_giam_dinh_muc: 0.00 },
+    { ma_chuc_vu: 'pho_khoa', he_so_phu_cap: 0.5, ty_le_giam_dinh_muc: 0.20 },
+    { ma_chuc_vu: 'pho_phong', he_so_phu_cap: 0.4, ty_le_giam_dinh_muc: 0.00 }
   ],
   HE_SO_QUY_DOI_GIO: {
     hinh_thuc: { LY_THUYET: 1.0, THUC_HANH: 0.7 },
@@ -129,10 +129,6 @@ const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
 systemConfigSchema.plugin(schemaAliasPlugin);
 
 const SystemConfig = mongoose.models.SystemConfig || mongoose.model('SystemConfig', systemConfigSchema, 'cau_hinh_he_thong');
-
-if (!mongoose.models.CauHinhHeThong) {
-  mongoose.model('CauHinhHeThong', systemConfigSchema, 'cau_hinh_he_thong');
-}
 
 module.exports = SystemConfig;
 

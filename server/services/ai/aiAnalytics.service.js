@@ -9,6 +9,7 @@ const Schedule = require('../../models/schedule.model');
 const Department = require('../../models/department.model');
 const { buildAttendanceDateFilter } = require('../../utils/attendanceTime.utils');
 const { getVietnamParts, createVietnamDate } = require('../../utils/aiDateParser');
+const { normalizeRole } = require('../../utils/roleUtils');
 
 /**
  * ============================================================================
@@ -28,8 +29,8 @@ const getDepartmentScopeIds = async (departmentId) => {
   return allIds;
 };
 
-const isCampusLevelAdmin = (role) => ['admin', 'bgh', 'kiemtoan'].includes(role);
-const isFacultyLevelLeader = (role) => ['truongkhoa', 'phokhoa'].includes(role);
+const isCampusLevelAdmin = (role) => ['admin', 'bgh', 'kiem_toan'].includes(normalizeRole(role));
+const isFacultyLevelLeader = (role) => ['truong_khoa', 'pho_khoa'].includes(normalizeRole(role));
 
 /**
  * Kiểm tra xem currentUser có quyền truy cập dữ liệu của targetUserId hay không
@@ -42,7 +43,7 @@ const checkUserPermission = async (currentUser, targetUserId) => {
     return { allowed: false, reason: 'Chưa xác thực người dùng.' };
   }
 
-  const role = (currentUser.role || '').toLowerCase();
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
   const tid = targetUserId ? (targetUserId._id ? targetUserId._id.toString() : targetUserId.toString()) : null;
 
   // 1. Quản trị viên (Admin) và Ban Giám Hiệu (Hiệu trưởng, Hiệu phó): Toàn quyền tra cứu
@@ -57,7 +58,7 @@ const checkUserPermission = async (currentUser, targetUserId) => {
   }
 
   // 3. Giảng viên / Nhân viên: Chỉ được xem chính mình
-  if (role === 'giangvien' || role === 'nhanvien') {
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(role)) {
     return {
       allowed: false,
       reason: 'Bạn chỉ có quyền tra cứu thông tin của chính mình, không có quyền xem thông tin của cán bộ/giảng viên khác.',
@@ -87,7 +88,7 @@ const checkUserPermission = async (currentUser, targetUserId) => {
   }
 
   // 5. Trưởng bộ môn: Chỉ được xem cán bộ thuộc bộ môn trực tiếp của mình
-  if (role === 'truongbomon') {
+  if (['truong_bo_mon', 'pho_bo_mon'].includes(role)) {
     if (!tid) return { allowed: true };
     const myDeptId = currentUser.departmentId ? currentUser.departmentId.toString() : null;
     if (!myDeptId) {
@@ -121,7 +122,7 @@ const checkDepartmentPermission = async (currentUser, departmentId) => {
     return { allowed: false, reason: 'Chưa xác thực người dùng.' };
   }
 
-  const role = (currentUser.role || '').toLowerCase();
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
 
   // Admin và Ban Giám Hiệu có quyền tra cứu toàn trường
   if (isCampusLevelAdmin(role)) {
@@ -133,7 +134,7 @@ const checkDepartmentPermission = async (currentUser, departmentId) => {
   }
 
   // Giảng viên / Nhân viên không có quyền xem thống kê toàn khoa
-  if (role === 'giangvien' || role === 'nhanvien') {
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(role)) {
     return {
       allowed: false,
       reason: 'Bạn không có quyền xem thống kê cấp khoa hoặc toàn hệ thống. Bạn chỉ có thể tra cứu thông tin cá nhân.',
@@ -157,7 +158,7 @@ const checkDepartmentPermission = async (currentUser, departmentId) => {
   }
 
   // Trưởng bộ môn chỉ xem được bộ môn của mình
-  if (role === 'truongbomon') {
+  if (['truong_bo_mon', 'pho_bo_mon'].includes(role)) {
     const myDeptId = currentUser.departmentId ? currentUser.departmentId.toString() : null;
     if (!myDeptId) {
       return { allowed: false, reason: 'Tài khoản Trưởng bộ môn chưa được gán mã bộ môn trực thuộc.' };
@@ -320,7 +321,7 @@ const resolveDepartment = async (text = '', currentUser = null) => {
     lower.includes('khoa') ||
     lower.includes('bộ môn') ||
     lower.includes('bo mon') ||
-    (currentUser && currentUser.role === 'truongkhoa')
+    (currentUser && isFacultyLevelLeader(currentUser.role || currentUser.vai_tro_chinh))
   ) {
     if (currentUser?.departmentId) {
       const myDept = allDepts.find(
@@ -347,7 +348,7 @@ const resolveDepartment = async (text = '', currentUser = null) => {
 const getAttendanceSummary = async ({ userId, departmentId, fromDate, toDate, currentUser }) => {
   let effectiveDeptId = departmentId;
 
-  if (!userId && !effectiveDeptId && currentUser?.role === 'truongkhoa' && currentUser?.departmentId) {
+  if (!userId && !effectiveDeptId && isFacultyLevelLeader(currentUser?.role || currentUser?.vai_tro_chinh) && currentUser?.departmentId) {
     effectiveDeptId = currentUser.departmentId;
   }
 
@@ -394,13 +395,13 @@ const getAttendanceSummary = async ({ userId, departmentId, fromDate, toDate, cu
     .sort({ checkInTime: -1, createdAt: -1 });
 
   const total = logs.length;
-  const onTime = logs.filter((l) => l.status === 'ON_TIME').length;
-  const late = logs.filter((l) => l.status === 'LATE').length;
-  const earlyLeave = logs.filter((l) => l.status === 'EARLY_LEAVE').length;
-  const absent = logs.filter((l) => l.status === 'ABSENT').length;
-  const excusedAbsent = logs.filter((l) => l.status === 'EXCUSED_ABSENCE').length;
+  const onTime = logs.filter((l) => l.status === 'on_time').length;
+  const late = logs.filter((l) => l.status === 'late').length;
+  const earlyLeave = logs.filter((l) => l.status === 'early_leave').length;
+  const absent = logs.filter((l) => l.status === 'absent').length;
+  const excusedAbsent = logs.filter((l) => l.status === 'excused_absence').length;
 
-  const presentLogs = logs.filter((l) => ['ON_TIME', 'LATE', 'EARLY_LEAVE'].includes(l.status));
+  const presentLogs = logs.filter((l) => ['on_time', 'late', 'early_leave'].includes(l.status));
   const distinctPresentUserIds = [...new Set(presentLogs.map((l) => l.userId?._id?.toString() || l.userId?.toString()))];
 
   return {
@@ -422,7 +423,7 @@ const getAttendanceSummary = async ({ userId, departmentId, fromDate, toDate, cu
  */
 const getTopLateUsers = async ({ departmentId, fromDate, toDate, limit = 5, currentUser }) => {
   let effectiveDeptId = departmentId;
-  if (!effectiveDeptId && currentUser?.role === 'truongkhoa' && currentUser?.departmentId) {
+  if (!effectiveDeptId && isFacultyLevelLeader(currentUser?.role || currentUser?.vai_tro_chinh) && currentUser?.departmentId) {
     effectiveDeptId = currentUser.departmentId;
   }
 
@@ -441,7 +442,7 @@ const getTopLateUsers = async ({ departmentId, fromDate, toDate, limit = 5, curr
 
   const lateLogs = await AttendanceLog.find({
     userId: { $in: deptUserIds },
-    status: 'LATE',
+    status: 'late',
     ...dateFilter,
   }).populate('userId', 'fullName email role departmentId');
 
@@ -480,7 +481,7 @@ const getTopLateUsers = async ({ departmentId, fromDate, toDate, limit = 5, curr
  */
 const getLeaveRequestSummary = async ({ status, type, userId, departmentId, fromDate, toDate, currentUser }) => {
   let effectiveDeptId = departmentId;
-  if (!userId && !effectiveDeptId && currentUser?.role === 'truongkhoa' && currentUser?.departmentId) {
+  if (!userId && !effectiveDeptId && isFacultyLevelLeader(currentUser?.role || currentUser?.vai_tro_chinh) && currentUser?.departmentId) {
     effectiveDeptId = currentUser.departmentId;
   }
 
@@ -514,7 +515,7 @@ const getLeaveRequestSummary = async ({ status, type, userId, departmentId, from
   }
 
   if (status) {
-    query.status = status.toUpperCase();
+    query.status = status.toLowerCase();
   }
 
   if (type) {
@@ -536,9 +537,9 @@ const getLeaveRequestSummary = async ({ status, type, userId, departmentId, from
     .sort({ createdAt: -1 });
 
   const total = requests.length;
-  const pending = requests.filter((r) => r.status === 'PENDING').length;
-  const approved = requests.filter((r) => r.status === 'APPROVED').length;
-  const rejected = requests.filter((r) => r.status === 'REJECTED').length;
+  const pending = requests.filter((r) => r.status === 'pending').length;
+  const approved = requests.filter((r) => r.status === 'approved').length;
+  const rejected = requests.filter((r) => r.status === 'rejected').length;
 
   const leaveNormal = requests.filter((r) => r.type === 'nghi_phep').length;
   const makeUpTeaching = requests.filter((r) => r.type === 'day_bu').length;
@@ -546,7 +547,7 @@ const getLeaveRequestSummary = async ({ status, type, userId, departmentId, from
 
   let totalApprovedDays = 0;
   requests
-    .filter((r) => r.status === 'APPROVED' && r.type === 'nghi_phep')
+    .filter((r) => r.status === 'approved' && r.type === 'nghi_phep')
     .forEach((r) => {
       const diffTime = Math.abs(new Date(r.endDate) - new Date(r.startDate));
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
@@ -581,7 +582,7 @@ const getLeaveRequestSummary = async ({ status, type, userId, departmentId, from
  */
 const countTeachingSessions = async ({ userId, departmentId, fromDate, toDate, currentUser }) => {
   let effectiveDeptId = departmentId;
-  if (!userId && !effectiveDeptId && currentUser?.role === 'truongkhoa' && currentUser?.departmentId) {
+  if (!userId && !effectiveDeptId && isFacultyLevelLeader(currentUser?.role || currentUser?.vai_tro_chinh) && currentUser?.departmentId) {
     effectiveDeptId = currentUser.departmentId;
   }
 
@@ -675,7 +676,7 @@ const countTeachingSessions = async ({ userId, departmentId, fromDate, toDate, c
  */
 const countTeachersWithScheduleOnDate = async ({ departmentId, date = new Date(), currentUser }) => {
   let effectiveDeptId = departmentId;
-  if (!effectiveDeptId && currentUser?.role === 'truongkhoa' && currentUser?.departmentId) {
+  if (!effectiveDeptId && isFacultyLevelLeader(currentUser?.role || currentUser?.vai_tro_chinh) && currentUser?.departmentId) {
     effectiveDeptId = currentUser.departmentId;
   }
 

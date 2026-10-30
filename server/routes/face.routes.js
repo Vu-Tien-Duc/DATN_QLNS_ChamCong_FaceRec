@@ -21,19 +21,13 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
 });
 
-// Các file ảnh 5 góc mà FaceRegistrationModal gửi lên
+// Các file ảnh 5 góc mà FaceRegistrationModal gửi lên (Chuẩn hóa duy nhất 5 góc)
 const angleFields = [
   { name: 'image_straight', maxCount: 1 },
   { name: 'image_left',     maxCount: 1 },
   { name: 'image_right',    maxCount: 1 },
   { name: 'image_up',       maxCount: 1 },
   { name: 'image_down',     maxCount: 1 },
-  { name: 'image',          maxCount: 1 },
-  { name: 'straight',       maxCount: 1 },
-  { name: 'left',           maxCount: 1 },
-  { name: 'right',          maxCount: 1 },
-  { name: 'up',             maxCount: 1 },
-  { name: 'down',           maxCount: 1 },
 ];
 
 // Health check - không cần auth
@@ -66,7 +60,7 @@ router.get(
     const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
     const targetUserId = req.params.userId;
     const roles = getActiveRoles(req.user);
-    const canManage = roles.has('admin') || roles.has('bgh') || roles.has('truongkhoa') || roles.has('tccb');
+    const canManage = roles.has('admin') || roles.has('bgh') || roles.has('truong_khoa') || roles.has('pho_khoa') || roles.has('tccb');
 
     if (currentUserId === targetUserId || canManage) {
       return next();
@@ -85,7 +79,7 @@ const canDeleteFace = (req, res, next) => {
   const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
   const targetUserId = req.params.userId;
   const roles = getActiveRoles(req.user);
-  const canManage = roles.has('admin') || roles.has('bgh') || roles.has('truongkhoa') || roles.has('tccb');
+  const canManage = roles.has('admin') || roles.has('bgh') || roles.has('truong_khoa') || roles.has('pho_khoa') || roles.has('tccb');
 
   if (currentUserId === targetUserId || canManage) {
     return next();

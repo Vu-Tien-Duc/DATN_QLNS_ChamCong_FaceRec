@@ -44,7 +44,6 @@ const registerFaceDescriptorForUser = async ({
   faceDescriptor,
   faceDescriptors,
   descriptors,
-  poses,
   sampleAngles,
   force,
   overrideDuplicate,
@@ -74,11 +73,9 @@ const registerFaceDescriptorForUser = async ({
     throw new ServiceError('Yêu cầu cung cấp vector khuôn mặt 512 chiều hợp lệ (InsightFace buffalo_s).', 400);
   }
 
-  const effectivePoses = Array.isArray(poses) && poses.length === vectorList.length
-    ? poses
-    : Array.isArray(sampleAngles) && sampleAngles.length === vectorList.length
-      ? sampleAngles
-      : DEFAULT_POSES.slice(0, vectorList.length);
+  const effectiveSampleAngles = Array.isArray(sampleAngles) && sampleAngles.length === vectorList.length
+    ? sampleAngles
+    : DEFAULT_POSES.slice(0, vectorList.length);
 
   const targetUser = await User.findById(id);
   if (!targetUser) {
@@ -115,7 +112,7 @@ const registerFaceDescriptorForUser = async ({
 
   // 4. Lưu vào Collection 2 FaceTemplate (mau_khuon_mat)
   const templateDoc = await FaceTemplate.findOneAndUpdate(
-    { $or: [{ nguoi_dung_id: targetUser._id }, { userId: targetUser._id }] },
+    { userId: targetUser._id },
     {
       $set: {
         nguoi_dung_id: targetUser._id,
@@ -134,20 +131,12 @@ const registerFaceDescriptorForUser = async ({
   );
 
   // 5. Cập nhật User model
-  targetUser.da_dang_ky_face = true;
-  targetUser.isFaceRegistered = true;
-  targetUser.ngay_dang_ky_face = new Date();
-  targetUser.faceRegisteredAt = new Date();
-  await targetUser.save();
-
+  const now = new Date();
   await User.findByIdAndUpdate(targetUser._id, {
     $set: {
       da_dang_ky_face: true,
-      isFaceRegistered: true,
-      ngay_dang_ky_face: new Date(),
-      faceRegisteredAt: new Date(),
-      ngay_dong_y_sinh_trac: new Date(),
-      biometricConsentDate: new Date(),
+      ngay_dang_ky_face: now,
+      ngay_dong_y_sinh_trac: now,
     },
   });
 
@@ -164,7 +153,7 @@ const registerFaceDescriptorForUser = async ({
   // 7. Ghi Audit Log tuân thủ Nghị định 13/2023/NĐ-CP
   AuditLog.create({
     actor: currentUser?._id || currentUser?.id || targetUser._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: isForce && dupCheck.isDuplicate ? 'FORCE_REGISTER_FACE_DESCRIPTOR' : 'REGISTER_FACE_DESCRIPTOR',
     targetId: targetUser._id.toString(),
     targetType: 'User',
@@ -172,7 +161,7 @@ const registerFaceDescriptorForUser = async ({
     details: {
       userEmail: targetUser.email,
       sampleCount: vectorList.length,
-      sampleAngles: effectivePoses,
+      sampleAngles: effectiveSampleAngles,
       forcedOverride: isForce,
       encryptedAtRest: true,
       encryptionAlgorithm: 'AES-256-GCM',
@@ -188,7 +177,7 @@ const registerFaceDescriptorForUser = async ({
     email: targetUser.email,
     isFaceRegistered: true,
     sampleCount: vectorList.length,
-    sampleAngles: effectivePoses,
+    sampleAngles: effectiveSampleAngles,
     templateId: templateDoc._id,
   };
 };
@@ -196,14 +185,14 @@ const registerFaceDescriptorForUser = async ({
 /**
  * 2. Đăng ký từ danh sách file ảnh gửi lên
  */
-const registerFaceImagesForUser = async ({ id, files, sampleAngles, poses, force, currentUser, ip }) => {
+const registerFaceImagesForUser = async ({ id, files, sampleAngles, force, currentUser, ip }) => {
   if (!Array.isArray(files) || files.length === 0) {
     throw new ServiceError('Vui lòng cung cấp ít nhất một file ảnh khuôn mặt.', 400);
   }
 
   const descriptors = [];
   const recordedPoses = [];
-  const anglesInput = sampleAngles || poses;
+  const anglesInput = sampleAngles;
 
   for (let idx = 0; idx < files.length; idx++) {
     const file = files[idx];
@@ -254,7 +243,7 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
   }
   if (!targetUser) {
     targetUser = await User.findOne({
-      $or: [{ staffCode: id }, { ma_can_bo: id }, { employeeCode: id }, { email: id }],
+      $or: [{ staffCode: id }, { email: id }],
     });
   }
 
@@ -262,13 +251,13 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
     throw new ServiceError('Không tìm thấy người dùng.', 404);
   }
 
-  // 1. Xóa khỏi Collection mau_khuon_mat (bảo đảm cả 2 trường nguoi_dung_id và userId)
+  // 1. Xóa khỏi Collection mau_khuon_mat
   const deleteResult = await FaceTemplate.deleteMany({
-    $or: [{ nguoi_dung_id: targetUser._id }, { userId: targetUser._id }],
+    userId: targetUser._id,
   });
 
   // 2. Reset các trường sinh trắc học trên User (chuẩn hóa CSDL v2.5 Canonical 1-to-1)
-  const currentAvatar = targetUser.avatar || targetUser.anh_dai_dien || '';
+  const currentAvatar = targetUser.avatar || '';
   const shouldClearAvatar = currentAvatar.includes('/faces/face-') || currentAvatar.includes('face-');
   await User.findByIdAndUpdate(targetUser._id, {
     $set: {
@@ -300,7 +289,7 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
   // 4. Ghi Audit Log
   AuditLog.create({
     actor: currentUser?._id || currentUser?.id || targetUser._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'BIOMETRIC_DATA_PURGED_RIGHT_TO_ERASURE',
     targetId: targetUser._id.toString(),
     targetType: 'User',
@@ -328,7 +317,7 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
  */
 const getFaceTemplateByUserId = async (userId) => {
   return FaceTemplate.findOne({
-    $or: [{ nguoi_dung_id: userId }, { userId }],
+    userId,
   }).select('sampleAngles sampleCount embeddingModel registeredAt embeddingDimensions');
 };
 

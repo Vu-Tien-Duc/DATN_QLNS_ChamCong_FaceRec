@@ -3,6 +3,7 @@
  */
 const { parseVietnameseDateRange } = require('../../utils/aiDateParser');
 const { resolveUser, resolveDepartment } = require('./aiAnalytics.service');
+const { normalizeRole, UNIT_LEADER_ROLES } = require('../../utils/roleUtils');
 
 /**
  * Danh sách toàn bộ các Intent chuẩn tắc của hệ thống
@@ -56,7 +57,8 @@ const parseIntent = async (questionText = '', currentUser = null) => {
 
   // 3. Tìm kiếm Khoa / Phòng ban nếu có trong câu hỏi
   const deptMatch = await resolveDepartment(cleanQuestion, currentUser);
-  const defaultTruongkhoaDept = currentUser?.role === 'truongkhoa' && currentUser?.departmentId ? { _id: currentUser.departmentId } : null;
+  const curRole = normalizeRole(currentUser?.role || currentUser?.vai_tro_chinh);
+  const defaultTruongKhoaDept = UNIT_LEADER_ROLES.includes(curRole) && currentUser?.departmentId ? { _id: currentUser.departmentId } : null;
 
   // --------------------------------------------------------------------------
   // BẮT Ý ĐỊNH DỰA TRÊN TỪ KHÓA & MẪU CÂU (RULE-BASED INTENT CLASSIFIER)
@@ -88,7 +90,7 @@ const parseIntent = async (questionText = '', currentUser = null) => {
       return {
         intent: INTENTS.SCHEDULE_DEPT_TEACHERS_TODAY,
         dateRange,
-        department: deptMatch || defaultTruongkhoaDept,
+        department: deptMatch || defaultTruongKhoaDept,
         rawQuestion: cleanQuestion,
       };
     }
@@ -129,7 +131,7 @@ const parseIntent = async (questionText = '', currentUser = null) => {
       };
     }
 
-    if (currentUser && (currentUser.role === 'giangvien' || currentUser.role === 'nhanvien')) {
+    if (currentUser && ['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(curRole)) {
       const selfResolution = await resolveUser('tôi', currentUser);
       return {
         intent: INTENTS.SCHEDULE_USER_DETAILS,
@@ -157,8 +159,8 @@ const parseIntent = async (questionText = '', currentUser = null) => {
       return {
         intent: INTENTS.LEAVE_REQUEST_TYPE_COUNT,
         leaveType: 'day_bu',
-        status: lower.includes('chờ') ? 'PENDING' : lower.includes('duyệt') ? 'APPROVED' : null,
-        department: deptMatch || defaultTruongkhoaDept,
+        status: lower.includes('chờ') ? 'pending' : lower.includes('duyệt') ? 'approved' : null,
+        department: deptMatch || defaultTruongKhoaDept,
         dateRange,
         rawQuestion: cleanQuestion,
       };
@@ -168,8 +170,8 @@ const parseIntent = async (questionText = '', currentUser = null) => {
       return {
         intent: INTENTS.LEAVE_REQUEST_TYPE_COUNT,
         leaveType: 'doi_ca',
-        status: lower.includes('chờ') ? 'PENDING' : lower.includes('duyệt') ? 'APPROVED' : null,
-        department: deptMatch || defaultTruongkhoaDept,
+        status: lower.includes('chờ') ? 'pending' : lower.includes('duyệt') ? 'approved' : null,
+        department: deptMatch || defaultTruongKhoaDept,
         dateRange,
         rawQuestion: cleanQuestion,
       };
@@ -194,17 +196,17 @@ const parseIntent = async (questionText = '', currentUser = null) => {
 
     let statusFilter = null;
     if (lower.includes('được duyệt') || lower.includes('đã duyệt')) {
-      statusFilter = 'APPROVED';
+      statusFilter = 'approved';
     } else if (lower.includes('chờ duyệt') || lower.includes('đang chờ')) {
-      statusFilter = 'PENDING';
+      statusFilter = 'pending';
     } else if (lower.includes('từ chối') || lower.includes('bị từ chối')) {
-      statusFilter = 'REJECTED';
+      statusFilter = 'rejected';
     }
 
     return {
       intent: INTENTS.LEAVE_REQUEST_COUNT,
       status: statusFilter,
-      department: deptMatch || defaultTruongkhoaDept,
+      department: deptMatch || defaultTruongKhoaDept,
       dateRange,
       rawQuestion: cleanQuestion,
     };
@@ -283,7 +285,7 @@ const parseIntent = async (questionText = '', currentUser = null) => {
   ) {
     return {
       intent: INTENTS.ATTENDANCE_TOP_LATE,
-      department: deptMatch || defaultTruongkhoaDept,
+      department: deptMatch || defaultTruongKhoaDept,
       dateRange,
       rawQuestion: cleanQuestion,
     };
@@ -293,7 +295,7 @@ const parseIntent = async (questionText = '', currentUser = null) => {
   if (lower.includes('đi làm') || lower.includes('có mặt')) {
     return {
       intent: INTENTS.ATTENDANCE_PRESENT_COUNT,
-      department: deptMatch || defaultTruongkhoaDept,
+      department: deptMatch || defaultTruongKhoaDept,
       dateRange,
       rawQuestion: cleanQuestion,
     };
@@ -302,7 +304,7 @@ const parseIntent = async (questionText = '', currentUser = null) => {
   if (lower.includes('đi trễ') || lower.includes('đi muộn') || lower.includes('bao nhiêu người trễ')) {
     return {
       intent: INTENTS.ATTENDANCE_LATE_COUNT,
-      department: deptMatch || defaultTruongkhoaDept,
+      department: deptMatch || defaultTruongKhoaDept,
       dateRange,
       rawQuestion: cleanQuestion,
     };
@@ -311,7 +313,7 @@ const parseIntent = async (questionText = '', currentUser = null) => {
   if (lower.includes('vắng') || lower.includes('nghỉ')) {
     return {
       intent: INTENTS.ATTENDANCE_ABSENT_COUNT,
-      department: deptMatch || defaultTruongkhoaDept,
+      department: deptMatch || defaultTruongKhoaDept,
       dateRange,
       rawQuestion: cleanQuestion,
     };
@@ -321,7 +323,7 @@ const parseIntent = async (questionText = '', currentUser = null) => {
   if (lower.includes('báo cáo') || lower.includes('tổng hợp') || lower.includes('tóm tắt')) {
     return {
       intent: INTENTS.GENERAL_REPORT,
-      department: deptMatch || defaultTruongkhoaDept,
+      department: deptMatch || defaultTruongKhoaDept,
       dateRange,
       rawQuestion: cleanQuestion,
     };
@@ -330,7 +332,7 @@ const parseIntent = async (questionText = '', currentUser = null) => {
   // G. Không nhận diện được intent rõ ràng
   return {
     intent: INTENTS.UNKNOWN,
-    department: deptMatch || defaultTruongkhoaDept,
+    department: deptMatch || defaultTruongKhoaDept,
     dateRange,
     rawQuestion: cleanQuestion,
   };

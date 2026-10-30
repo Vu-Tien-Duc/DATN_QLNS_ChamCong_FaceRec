@@ -28,10 +28,14 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { faceApi, RegistrationStatusResponse } from '../api/face.api';
 import { apiClient } from '../api/apiClient';
+import { userApi } from '../api/user.api';
+import { DepartmentSelect, DepartmentItem } from '../components/ui/DepartmentSelect';
 import { FaceRegistrationModal } from '../components/biometrics/FaceRegistrationModal';
 import { useAuthStore } from '../store/useAuthStore';
 import { hasRole } from '../utils/rbac';
@@ -49,6 +53,8 @@ export const FaceRegistrationPage: React.FC = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [employeeSearch, setEmployeeSearch] = useState<string>('');
   const [filterTab, setFilterTab] = useState<'all' | 'registered' | 'not_registered'>('all');
+  const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
+  const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [employeeList, setEmployeeList] = useState<any[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState<boolean>(false);
 
@@ -129,6 +135,11 @@ export const FaceRegistrationPage: React.FC = () => {
     loadHealth();
     if (canManageOthers) {
       searchEmployees();
+      userApi.getDepartments().then((res: any) => {
+        if (res?.data && Array.isArray(res.data)) {
+          setDepartments(res.data);
+        }
+      }).catch(() => {});
     }
   }, [canManageOthers]);
 
@@ -203,15 +214,82 @@ export const FaceRegistrationPage: React.FC = () => {
     return raw;
   };
 
-  // Lọc danh sách nhân viên theo Tab
+  // Helper lấy ID đơn vị của nhân sự
+  const getEmpDepartmentId = (emp: any): string => {
+    const raw = emp.departmentId || emp.don_vi_chinh_id || emp.don_vi_id;
+    if (!raw) return '';
+    if (typeof raw === 'object') {
+      return String(raw._id || raw.id || '');
+    }
+    return String(raw);
+  };
+
+  // Helper lấy tên hiển thị đơn vị chính xác theo bảng Departments
+  const getEmpDepartmentName = (emp: any): string => {
+    if (emp.departmentName && String(emp.departmentName).trim()) {
+      return String(emp.departmentName).trim();
+    }
+    const deptId = getEmpDepartmentId(emp);
+    if (deptId && departments.length > 0) {
+      const found = departments.find((d) => String(d._id) === deptId);
+      if (found) return found.name || (found as any).ten_phong_ban || 'Văn phòng / Ban';
+    }
+    if (typeof emp.departmentId === 'object' && emp.departmentId?.name) {
+      return String(emp.departmentId.name);
+    }
+    return 'Văn phòng / Ban';
+  };
+
+  // Lọc danh sách nhân viên theo Tab và Khoa/Bộ môn
   const filteredEmployees = useMemo(() => {
     return employeeList.filter((emp) => {
+      // 1. Lọc theo trạng thái Face ID
       const isReg = Boolean(emp.isFaceRegistered);
-      if (filterTab === 'registered') return isReg;
-      if (filterTab === 'not_registered') return !isReg;
+      if (filterTab === 'registered' && !isReg) return false;
+      if (filterTab === 'not_registered' && isReg) return false;
+
+      // 2. Lọc theo Khoa / Bộ môn
+      if (departmentFilter !== 'ALL') {
+        const empDeptId = getEmpDepartmentId(emp);
+        const selectedDept = departments.find((d) => String(d._id) === String(departmentFilter));
+        const isBghFilter = selectedDept
+          ? String(selectedDept.type || selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
+            String(selectedDept.name || '').toLowerCase().includes('giám hiệu')
+          : false;
+
+        if (isBghFilter) {
+          const isUserBgh = String(emp.role || '').toLowerCase().includes('bgh') || empDeptId === departmentFilter;
+          if (!isUserBgh) return false;
+        } else {
+          // Khớp trực tiếp đơn vị
+          const matchesDirect = empDeptId === departmentFilter;
+
+          // Khớp đơn vị cha (khi lọc theo Khoa mà cán bộ thuộc Bộ môn trực thuộc)
+          const empDept = departments.find((d) => String(d._id) === empDeptId);
+          const empParentId = empDept?.parentId
+            ? typeof empDept.parentId === 'object' && empDept.parentId !== null && '_id' in empDept.parentId
+              ? String((empDept.parentId as any)._id)
+              : String(empDept.parentId)
+            : '';
+          const matchesParent = Boolean(empParentId && empParentId === departmentFilter);
+
+          // Khớp roles phân quyền
+          const matchesRoles = Array.isArray(emp.roles) && emp.roles.some((r: any) => {
+            const rDept = r.departmentId || r.don_vi_id;
+            if (!rDept) return false;
+            const rId = typeof rDept === 'object' && rDept !== null && '_id' in rDept ? String(rDept._id) : String(rDept);
+            return rId === departmentFilter;
+          });
+
+          if (!matchesDirect && !matchesParent && !matchesRoles) {
+            return false;
+          }
+        }
+      }
+
       return true;
     });
-  }, [employeeList, filterTab]);
+  }, [employeeList, filterTab, departmentFilter, departments]);
 
   // Tính toán phân trang
   const totalFilteredCount = filteredEmployees.length;
@@ -255,6 +333,65 @@ export const FaceRegistrationPage: React.FC = () => {
     return employeeList.filter((e) => Boolean(e.isFaceRegistered)).length;
   }, [employeeList]);
 
+  // ---------------------------------------------------------------------------
+  // XUẤT DANH SÁCH SINH TRẮC HỌC FACE ID RA FILE EXCEL (.XLSX)
+  // ---------------------------------------------------------------------------
+  const handleExportFaceExcel = () => {
+    if (!filteredEmployees.length) {
+      toast.error('Không có dữ liệu nhân sự để xuất file Excel');
+      return;
+    }
+    try {
+      const dataRows = filteredEmployees.map((emp, i) => {
+        const { name } = formatNameAndTitle(emp.fullName || '');
+        const deptName = getEmpDepartmentName(emp);
+        const isReg = Boolean(emp.isFaceRegistered);
+        const posesCount = emp.faceSamplesCount || (emp.faceDescriptors ? emp.faceDescriptors.length : isReg ? 5 : 0);
+        const registeredAt = emp.faceRegisteredAt ? new Date(emp.faceRegisteredAt).toLocaleDateString('vi-VN') : (isReg ? 'Đã lưu mẫu' : '--');
+
+        return {
+          'STT': i + 1,
+          'Mã Cán Bộ': emp.staffCode || emp.ma_can_bo || '--',
+          'Họ Và Tên': name,
+          'Khoa / Phòng Ban': deptName,
+          'Chức Vụ': emp.position || emp.chuc_vu || '--',
+          'Email Công Vụ': emp.email || '--',
+          'Số Điện Thoại': emp.phoneNumber || emp.phone || '--',
+          'Trạng Thái Face ID': isReg ? 'Đã kích hoạt' : 'Chưa đăng ký',
+          'Số Góc Mặt Đã Thu Thập': isReg ? `${posesCount}/5 góc` : '0/5 góc',
+          'Chuẩn Trích Xuất': isReg ? 'InsightFace 512D' : '--',
+          'Ngày Đăng Ký Mẫu': registeredAt,
+          'Trạng Thái Tài Khoản': emp.isActive !== false ? 'Đang hoạt động' : 'Đã khóa',
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 26 },
+        { wch: 28 },
+        { wch: 20 },
+        { wch: 28 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 24 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 20 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Danh Sách Face ID');
+
+      XLSX.writeFile(wb, `Danh_Sach_Face_ID_NTU_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success('Đã xuất Danh sách Face ID (.xlsx) thành công!');
+    } catch (err) {
+      console.error('Lỗi khi xuất Danh sách Face ID:', err);
+      toast.error('Lỗi khi đóng gói tệp Excel.');
+    }
+  };
+
   const totalEmployeesCount = employeeList.length || 0;
   const coveragePercent = totalEmployeesCount > 0 ? Math.round((totalRegisteredCount / totalEmployeesCount) * 100) : 0;
 
@@ -289,6 +426,16 @@ export const FaceRegistrationPage: React.FC = () => {
 
         {/* Nút thao tác trên Header */}
         <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={handleExportFaceExcel}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all cursor-pointer shadow-2xs"
+            title="Xuất danh sách đăng ký Face ID ra file Excel (.xlsx)"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden sm:inline">Xuất Excel (.xlsx)</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -379,20 +526,39 @@ export const FaceRegistrationPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Ô tìm kiếm */}
-          <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={employeeSearch}
-              onChange={(e) => {
-                setEmployeeSearch(e.target.value);
-                setCurrentPage(1);
-                searchEmployees(e.target.value);
-              }}
-              placeholder="Tìm theo tên, mã CB hoặc email..."
-              className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
+          {/* Thanh công cụ tìm kiếm và lọc Đơn vị */}
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+            {/* Bộ lọc Khoa / Bộ môn phân cấp */}
+            <div className="w-full sm:w-64">
+              <DepartmentSelect
+                departments={departments}
+                value={departmentFilter}
+                onChange={(val) => {
+                  setDepartmentFilter(val);
+                  setCurrentPage(1);
+                }}
+                allowAll={true}
+                allLabel="Tất cả Khoa / Đơn vị"
+                placeholder="Lọc theo đơn vị..."
+                size="sm"
+              />
+            </div>
+
+            {/* Ô tìm kiếm */}
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={employeeSearch}
+                onChange={(e) => {
+                  setEmployeeSearch(e.target.value);
+                  setCurrentPage(1);
+                  searchEmployees(e.target.value);
+                }}
+                placeholder="Tìm tên, mã CB, email..."
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
           </div>
         </div>
 

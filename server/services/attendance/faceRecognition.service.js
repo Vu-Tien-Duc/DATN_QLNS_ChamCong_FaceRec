@@ -92,9 +92,6 @@ const processFaceAttendance = async ({
       user = await User.findOne({
         $or: [
           { staffCode: rawUserId },
-          { employeeCode: rawUserId },
-          { ma_nhan_vien: rawUserId },
-          { ma_can_bo: rawUserId },
           { email: rawUserId },
         ],
       });
@@ -114,7 +111,7 @@ const processFaceAttendance = async ({
       try {
         const Department = require('../../models/department.model');
         const dept = await Department.findById(user.departmentId);
-        if (dept) departmentName = dept.name || dept.ten_phong_ban || '';
+        if (dept) departmentName = dept.name || '';
       } catch (_) {}
     }
 
@@ -128,8 +125,8 @@ const processFaceAttendance = async ({
         email: user.email,
         role: user.role,
         avatar: user.avatar,
-        staffCode: user.staffCode || user.employeeCode || user.ma_nhan_vien || '',
-        department: departmentName || user.departmentName || '',
+        staffCode: user.staffCode || '',
+        department: departmentName || '',
       },
       similarity: aiResult.similarity,
       confidence: aiResult.confidence,
@@ -166,7 +163,7 @@ const processFaceAttendance = async ({
     await checkAndSetCooldown(userKey, 60).catch(() => {});
 
     const queueResponse = await addPunchJob({
-      type: 'FACE_AI',
+      type: 'face_ai',
       userId,
       punchTime: new Date(),
       location,
@@ -217,22 +214,16 @@ const processFaceAttendance = async ({
   // Tra cứu bản ghi chấm công trong ngày hôm nay của người dùng
   const todayLog = await AttendanceLog.findOne({
     userId,
-    $or: [
-      { workDate: workDateStr },
-      { ngay_cong: workDateStr },
-      { checkInTime: { $gte: startOfDay, $lte: endOfDay } },
-    ],
-  })
-    .populate('ca_id')
-    .populate('shiftId');
+    workDate: workDateStr,
+  }).populate('shiftId');
 
   // Bản ghi chấm công đang mở (đã Check-in nhưng chưa Check-out)
   let openLog = todayLog && todayLog.checkInTime && !todayLog.checkOutTime ? todayLog : null;
 
   // Quyết định hành động: CHECK_IN hay CHECK_OUT
-  let actionType = 'CHECK_IN';
+  let actionType = 'check_in';
 
-  if (requestedAction === 'CHECK_IN') {
+  if (requestedAction === 'check_in') {
     if (todayLog) {
       const inTimeStr = todayLog.checkInTime
         ? new Date(todayLog.checkInTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
@@ -253,8 +244,8 @@ const processFaceAttendance = async ({
         );
       }
     }
-    actionType = 'CHECK_IN';
-  } else if (requestedAction === 'CHECK_OUT') {
+    actionType = 'check_in';
+  } else if (requestedAction === 'check_out') {
     if (!openLog) {
       if (todayLog && todayLog.checkOutTime) {
         const outTimeStr = new Date(todayLog.checkOutTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
@@ -271,11 +262,11 @@ const processFaceAttendance = async ({
         );
       }
     }
-    actionType = 'CHECK_OUT';
+    actionType = 'check_out';
   } else {
     // Chế độ Tự Động (Auto-detect): Nếu có lượt vào đang mở -> Thực hiện Tan Ca; nếu đã hoàn thành cả ngày -> Thông báo; nếu chưa -> Vào Ca
     if (openLog) {
-      actionType = 'CHECK_OUT';
+      actionType = 'check_out';
     } else if (todayLog && todayLog.checkOutTime) {
       const inTimeStr = todayLog.checkInTime
         ? new Date(todayLog.checkInTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
@@ -287,7 +278,7 @@ const processFaceAttendance = async ({
         'ATTENDANCE_COMPLETED_TODAY'
       );
     } else {
-      actionType = 'CHECK_IN';
+      actionType = 'check_in';
     }
   }
 
@@ -296,7 +287,7 @@ const processFaceAttendance = async ({
 
   let attendanceRecord = null;
 
-  if (actionType === 'CHECK_OUT' && openLog) {
+  if (actionType === 'check_out' && openLog) {
     // 6. Thực hiện CHECK-OUT
     const checkOutTime = new Date();
     openLog.checkOutTime = checkOutTime;
@@ -339,15 +330,15 @@ const processFaceAttendance = async ({
     await PunchLog.create({
       attendanceLogId: openLog._id,
       userId,
-      punchType: 'CHECK_OUT',
+      punchType: 'check_out',
       punchTime: checkOutTime,
-      method: 'FACE_AI',
+      method: 'face_ai',
       confidenceScore: aiResult.similarity,
       livenessScore: aiResult.liveness_score,
       evidenceImage: storedEvidencePath,
       location: location || { lat: null, lng: null },
       deviceId,
-      isFraudulent: geoCheck.isFraud,
+      isFraud: geoCheck.isFraud,
       fraudReason: geoCheck.fraudReason,
       clientIp: reqIp,
       isCampusNetwork: geoCheck.isCampusNetwork,
@@ -359,7 +350,8 @@ const processFaceAttendance = async ({
     // 7. Thực hiện CHECK-IN: Bắt buộc kiểm tra Lịch phân công giảng dạy / ca làm việc hôm nay
     const scheduleEval = await evaluateUserScheduleForCheckIn(userId, null, user);
     if (!scheduleEval || !scheduleEval.canCheckIn) {
-      const userPrefix = (user.role || '').toLowerCase() === 'giangvien' ? 'Giảng viên' : 'Cán bộ';
+      const r = (user.role || user.vai_tro_chinh || '').toLowerCase();
+      const userPrefix = r === 'giang_vien' ? 'Giảng viên' : 'Cán bộ';
       throw new ServiceError(
         scheduleEval?.message || `${userPrefix} ${user.fullName} hôm nay không có lịch phân công giảng dạy hoặc ca làm việc nào trên hệ thống. Không thể chấm công.`,
         400,
@@ -371,7 +363,7 @@ const processFaceAttendance = async ({
     const selectedSchedule = scheduleEval.selectedSchedule;
     const selectedShift = scheduleEval.shift;
     const selectedScheduleId = selectedSchedule?._id || null;
-    const calculatedStatus = scheduleEval.status || 'ON_TIME';
+    const calculatedStatus = scheduleEval.status || 'on_time';
     const lateMinutes = scheduleEval.lateMinutes || 0;
 
     try {
@@ -382,12 +374,12 @@ const processFaceAttendance = async ({
         workDate: workDateStr,
         checkInTime,
         lateMinutes,
-        method: 'FACE_AI',
+        method: 'face_ai',
         status: calculatedStatus,
         confidenceScore: aiResult.similarity,
         capturedImage: storedEvidencePath,
         location: location || { lat: null, lng: null },
-        isFraudulent: geoCheck.isFraud,
+        isFraud: geoCheck.isFraud,
         fraudReason: geoCheck.fraudReason,
       });
     } catch (createErr) {
@@ -405,15 +397,15 @@ const processFaceAttendance = async ({
     await PunchLog.create({
       attendanceLogId: attendanceRecord._id,
       userId,
-      punchType: 'CHECK_IN',
+      punchType: 'check_in',
       punchTime: checkInTime,
-      method: 'FACE_AI',
+      method: 'face_ai',
       confidenceScore: aiResult.similarity,
       livenessScore: aiResult.liveness_score,
       evidenceImage: storedEvidencePath,
       location: location || { lat: null, lng: null },
       deviceId,
-      isFraudulent: geoCheck.isFraud,
+      isFraud: geoCheck.isFraud,
       fraudReason: geoCheck.fraudReason,
       clientIp: reqIp,
       isCampusNetwork: geoCheck.isCampusNetwork,
@@ -430,7 +422,7 @@ const processFaceAttendance = async ({
   // Ghi AuditLog
   AuditLog.create({
     actor: userId,
-    actorType: 'USER',
+    actorType: 'user',
     action: `ATTENDANCE_FACE_${actionType}`,
     targetId: attendanceRecord._id.toString(),
     targetType: 'AttendanceLog',
@@ -454,8 +446,8 @@ const processFaceAttendance = async ({
       avatar: user.avatar,
       departmentId: user.departmentId,
       punchType: actionType,
-      method: 'FACE_AI',
-      scanTime: new Date(),
+      method: 'face_ai',
+      punchTime: new Date(),
       status: attendanceRecord.status,
       confidenceScore: aiResult.similarity,
       isFraud: geoCheck.isFraud,
@@ -467,7 +459,7 @@ const processFaceAttendance = async ({
   return {
     success: true,
     action: actionType,
-    message: `${actionType === 'CHECK_IN' ? 'Check-in (Điểm danh vào)' : 'Check-out (Ra về)'} thành công: ${user.fullName}`,
+    message: `${actionType === 'check_in' ? 'Check-in (Điểm danh vào)' : 'Check-out (Ra về)'} thành công: ${user.fullName}`,
     user: {
       _id: user._id,
       fullName: user.fullName,

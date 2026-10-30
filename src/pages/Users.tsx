@@ -29,7 +29,9 @@ import {
   ChevronUp,
   Camera,
   Upload,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { userApi } from '../api/user.api';
 import {
   UserProfile,
@@ -56,44 +58,45 @@ import { Portal } from '../components/ui/Portal';
 const ROLE_OPTIONS = [
   { value: 'bgh', label: 'Ban Giám Hiệu (BGH)', badgeClass: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800' },
   { value: 'admin', label: 'Quản trị Hệ thống / TCCB', badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800' },
-  { value: 'truongkhoa', label: 'Trưởng Khoa / Trưởng Đơn Vị', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800' },
-  { value: 'phokhoa', label: 'Phó Trưởng Khoa', badgeClass: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800' },
-  { value: 'truongbomon', label: 'Trưởng Bộ Môn', badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800' },
-  { value: 'giangvien', label: 'Giảng Viên', badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' },
-  { value: 'nhanvien', label: 'Chuyên Viên Hành Chính', badgeClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800' },
+  { value: 'truong_khoa', label: 'Trưởng Khoa / Trưởng Đơn Vị', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800' },
+  { value: 'pho_khoa', label: 'Phó Trưởng Khoa', badgeClass: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800' },
+  { value: 'truong_bo_mon', label: 'Trưởng Bộ Môn', badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800' },
+  { value: 'pho_bo_mon', label: 'Phó Trưởng Bộ Môn', badgeClass: 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-800' },
+  { value: 'giang_vien', label: 'Giảng Viên', badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' },
+  { value: 'nhan_vien', label: 'Chuyên Viên Hành Chính', badgeClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800' },
 ];
 
 const ACADEMIC_RANK_OPTIONS: { value: AcademicRankType; label: string; short: string }[] = [
-  { value: 'KHONG', label: 'Không có học hàm', short: '' },
-  { value: 'PHO_GIAO_SU', label: 'Phó Giáo sư (PGS)', short: 'PGS.' },
-  { value: 'GIAO_SU', label: 'Giáo sư (GS)', short: 'GS.' },
+  { value: 'khong', label: 'Không có học hàm', short: '' },
+  { value: 'pho_giao_su', label: 'Phó Giáo sư (PGS)', short: 'PGS.' },
+  { value: 'giao_su', label: 'Giáo sư (GS)', short: 'GS.' },
 ];
 
 const DEGREE_OPTIONS: { value: DegreeType; label: string; short: string }[] = [
-  { value: 'CU_NHAN', label: 'Cử nhân (CN)', short: 'CN.' },
-  { value: 'KY_SU', label: 'Kỹ sư (KS)', short: 'KS.' },
-  { value: 'THAC_SI', label: 'Thạc sĩ (ThS)', short: 'ThS.' },
-  { value: 'TIEN_SI', label: 'Tiến sĩ (TS)', short: 'TS.' },
-  { value: 'KHAC', label: 'Khác', short: '' },
+  { value: 'cu_nhan', label: 'Cử nhân (CN)', short: 'CN.' },
+  { value: 'ky_su', label: 'Kỹ sư (KS)', short: 'KS.' },
+  { value: 'thac_si', label: 'Thạc sĩ (ThS)', short: 'ThS.' },
+  { value: 'tien_si', label: 'Tiến sĩ (TS)', short: 'TS.' },
+  { value: 'khac', label: 'Khác', short: '' },
 ];
 
 const STAFF_TYPE_OPTIONS: { value: StaffType; label: string }[] = [
-  { value: 'GIANG_VIEN', label: 'Ngạch Giảng viên (Giảng dạy)' },
-  { value: 'HANH_CHINH', label: 'Ngạch Chuyên viên / Hành chính' },
+  { value: 'giang_vien', label: 'Ngạch Giảng viên (Giảng dạy)' },
+  { value: 'hanh_chinh', label: 'Ngạch Chuyên viên / Hành chính' },
 ];
 
 const CONTRACT_TYPE_OPTIONS: { value: ContractType; label: string }[] = [
-  { value: 'TOAN_THOI_GIAN', label: 'Cơ hữu toàn thời gian' },
-  { value: 'KHONG_XAC_DINH_THOI_HAN', label: 'HĐ không xác định thời hạn' },
-  { value: 'XAC_DINH_THOI_HAN', label: 'HĐ xác định thời hạn (12-36 tháng)' },
-  { value: 'THU_VIEC', label: 'Hợp đồng thử việc / Tập sự' },
-  { value: 'BAN_THOI_GIAN', label: 'Giảng viên thỉnh giảng / Bán thời gian' },
+  { value: 'toan_thoi_gian', label: 'Cơ hữu toàn thời gian' },
+  { value: 'khong_xac_dinh_thoi_han', label: 'HĐ không xác định thời hạn' },
+  { value: 'xac_dinh_thoi_han', label: 'HĐ xác định thời hạn (12-36 tháng)' },
+  { value: 'thu_viec', label: 'Hợp đồng thử việc / Tập sự' },
+  { value: 'ban_thoi_gian', label: 'Giảng viên thỉnh giảng / Bán thời gian' },
 ];
 
 const EMPLOYMENT_STATUS_OPTIONS: { value: EmploymentStatusType; label: string; color: string }[] = [
-  { value: 'DANG_LAM_VIEC', label: 'Đang công tác', color: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' },
-  { value: 'TAM_HOAN', label: 'Tạm hoãn / Nghỉ thai sản / Đi học', color: 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800' },
-  { value: 'DA_NGHI_VIEC', label: 'Đã thôi việc / Chuyển công tác', color: 'text-rose-700 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800' },
+  { value: 'dang_lam_viec', label: 'Đang công tác', color: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' },
+  { value: 'tam_hoan', label: 'Tạm hoãn / Nghỉ thai sản / Đi học', color: 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800' },
+  { value: 'da_nghi_viec', label: 'Đã thôi việc / Chuyển công tác', color: 'text-rose-700 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800' },
 ];
 
 const SALARY_SCALE_PRESETS = [
@@ -130,12 +133,12 @@ const getRoleMeta = (role?: string) => {
 
 const getAcademicPrefix = (u: UserProfile): string => {
   const parts: string[] = [];
-  if (u.academicRank === 'GIAO_SU') parts.push('GS.');
-  else if (u.academicRank === 'PHO_GIAO_SU') parts.push('PGS.');
+  if (u.academicRank === 'giao_su') parts.push('GS.');
+  else if (u.academicRank === 'pho_giao_su') parts.push('PGS.');
 
-  if (u.degree === 'TIEN_SI') parts.push('TS.');
-  else if (u.degree === 'THAC_SI') parts.push('ThS.');
-  else if (u.degree === 'KY_SU') parts.push('KS.');
+  if (u.degree === 'tien_si') parts.push('TS.');
+  else if (u.degree === 'thac_si') parts.push('ThS.');
+  else if (u.degree === 'ky_su') parts.push('KS.');
   return parts.join(' ');
 };
 
@@ -211,12 +214,13 @@ const getAvatarGradient = (role?: string) => {
       return 'from-purple-600 to-indigo-600';
     case 'admin':
       return 'from-rose-500 to-orange-500';
-    case 'truongkhoa':
-    case 'phokhoa':
+    case 'truong_khoa':
+    case 'pho_khoa':
       return 'from-blue-600 to-cyan-600';
-    case 'truongbomon':
+    case 'truong_bo_mon':
+    case 'pho_bo_mon':
       return 'from-indigo-600 to-blue-500';
-    case 'giangvien':
+    case 'giang_vien':
       return 'from-brand-500 to-indigo-600';
     default:
       return 'from-amber-500 to-orange-600';
@@ -285,7 +289,7 @@ export const Users: React.FC = () => {
 
   const viewerRole = normalizeRoleKey(currentUser?.role);
   const canCreateOrDelete = hasRole(currentUser, ['admin', 'bgh', 'tccb']);
-  const canEdit = hasRole(currentUser, ['admin', 'bgh', 'tccb', 'truongkhoa']);
+  const canEdit = hasRole(currentUser, ['admin', 'bgh', 'tccb', 'truong_khoa']);
 
   // Kiểm tra phân cấp quyền khóa/vô hiệu hóa tài khoản (Peer & Hierarchy Protection)
   const canManageUserStatus = useCallback(
@@ -315,7 +319,7 @@ export const Users: React.FC = () => {
 
   // State bộ lọc & Tìm kiếm
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [filterTab, setFilterTab] = useState<'all' | 'giangvien' | 'leadership' | 'hanhchinh' | 'face_yes' | 'face_no'>('all');
+  const [filterTab, setFilterTab] = useState<'all' | 'giang_vien' | 'leadership' | 'hanhchinh' | 'face_yes' | 'face_no'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
 
   // Chế độ hiển thị (3 chế độ: Bảng, Thẻ lưới, Theo Khoa)
@@ -345,23 +349,23 @@ export const Users: React.FC = () => {
     email: '',
     password: '',
     staffCode: '',
-    role: 'giangvien',
+    role: 'giang_vien',
     departmentId: '',
     phoneNumber: '',
     position: 'Giảng viên',
-    academicRank: 'KHONG',
-    degree: 'THAC_SI',
-    staffType: 'GIANG_VIEN',
-    contractType: 'TOAN_THOI_GIAN',
+    academicRank: 'khong',
+    degree: 'thac_si',
+    staffType: 'giang_vien',
+    contractType: 'toan_thoi_gian',
     salaryScale: 'V.07.01.03',
     salaryCoefficient: 2.34,
     dependentsCount: 0,
     annualLeaveQuota: 12,
-    gender: 'NAM',
+    gender: 'nam',
     dateOfBirth: '',
     startDate: new Date().toISOString().slice(0, 10),
     address: '',
-    employmentStatus: 'DANG_LAM_VIEC',
+    employmentStatus: 'dang_lam_viec',
     avatar: '',
     isActive: true,
   });
@@ -423,17 +427,17 @@ export const Users: React.FC = () => {
     const faceRegCount = users.filter((u) => Boolean(u.isFaceRegistered)).length;
     const lecturerCount = users.filter((u) => {
       const r = normalizeRoleKey(u.role);
-      return u.staffType === 'GIANG_VIEN' || ['giangvien', 'truongkhoa', 'phokhoa', 'truongbomon'].includes(r);
+      return u.staffType === 'giang_vien' || ['giang_vien', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon'].includes(r);
     }).length;
     const leadershipCount = users.filter((u) =>
-      ['bgh', 'truongkhoa', 'phokhoa', 'truongbomon'].includes(normalizeRoleKey(u.role))
+      ['bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong'].includes(normalizeRoleKey(u.role))
     ).length;
     const adminStaffCount = users.filter((u) => {
       const r = normalizeRoleKey(u.role);
-      return u.staffType === 'HANH_CHINH' || r === 'nhanvien' || r === 'admin';
+      return u.staffType === 'hanh_chinh' || r === 'nhan_vien' || r === 'chuyen_vien' || r === 'admin';
     }).length;
     const pgsTsCount = users.filter(
-      (u) => u.academicRank === 'GIAO_SU' || u.academicRank === 'PHO_GIAO_SU' || u.degree === 'TIEN_SI'
+      (u) => u.academicRank === 'giao_su' || u.academicRank === 'pho_giao_su' || u.degree === 'tien_si'
     ).length;
 
     return {
@@ -462,14 +466,14 @@ export const Users: React.FC = () => {
 
       // 2. Lọc theo Tab
       const rKey = normalizeRoleKey(u.role);
-      if (filterTab === 'giangvien') {
-        if (u.staffType !== 'GIANG_VIEN' && !['giangvien', 'truongkhoa', 'phokhoa', 'truongbomon'].includes(rKey)) {
+      if (filterTab === 'giang_vien') {
+        if (u.staffType !== 'giang_vien' && !['giang_vien', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon'].includes(rKey)) {
           return false;
         }
       } else if (filterTab === 'leadership') {
-        if (!['bgh', 'truongkhoa', 'phokhoa', 'truongbomon'].includes(rKey)) return false;
+        if (!['bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong'].includes(rKey)) return false;
       } else if (filterTab === 'hanhchinh') {
-        if (u.staffType !== 'HANH_CHINH' && rKey !== 'nhanvien' && rKey !== 'admin') return false;
+        if (u.staffType !== 'hanh_chinh' && rKey !== 'nhan_vien' && rKey !== 'chuyen_vien' && rKey !== 'admin') return false;
       } else if (filterTab === 'face_yes') {
         if (!u.isFaceRegistered) return false;
       } else if (filterTab === 'face_no') {
@@ -597,30 +601,30 @@ export const Users: React.FC = () => {
     const nextIdx = users.length + 1;
     const suggestedCode = `GV${String(nextIdx).padStart(3, '0')}`;
 
-    const initialDeptId = viewerRole === 'truongkhoa' ? (getDepartmentIdValue(currentUser as any) || '') : '';
+    const initialDeptId = viewerRole === 'truong_khoa' ? (getDepartmentIdValue(currentUser as any) || '') : '';
 
     setFormData({
       fullName: '',
       email: '',
       password: 'password123',
       staffCode: suggestedCode,
-      role: 'giangvien',
+      role: 'giang_vien',
       departmentId: initialDeptId,
       phoneNumber: '',
       position: 'Giảng viên',
-      academicRank: 'KHONG',
-      degree: 'THAC_SI',
-      staffType: 'GIANG_VIEN',
-      contractType: 'TOAN_THOI_GIAN',
+      academicRank: 'khong',
+      degree: 'thac_si',
+      staffType: 'giang_vien',
+      contractType: 'toan_thoi_gian',
       salaryScale: 'V.07.01.03',
       salaryCoefficient: 2.34,
       dependentsCount: 0,
       annualLeaveQuota: 12,
-      gender: 'NAM',
+      gender: 'nam',
       dateOfBirth: '',
       startDate: new Date().toISOString().slice(0, 10),
       address: '',
-      employmentStatus: 'DANG_LAM_VIEC',
+      employmentStatus: 'dang_lam_viec',
       avatar: '',
       isActive: true,
     });
@@ -639,23 +643,99 @@ export const Users: React.FC = () => {
       departmentId: getDepartmentIdValue(u),
       phoneNumber: u.phoneNumber || '',
       position: typeof u.position === 'string' ? u.position : '',
-      academicRank: u.academicRank || 'KHONG',
-      degree: u.degree || 'THAC_SI',
-      staffType: u.staffType || (normalizeRoleKey(u.role) === 'nhanvien' ? 'HANH_CHINH' : 'GIANG_VIEN'),
-      contractType: u.contractType || 'TOAN_THOI_GIAN',
+      academicRank: u.academicRank || 'khong',
+      degree: u.degree || 'thac_si',
+      staffType: u.staffType || (normalizeRoleKey(u.role) === 'nhan_vien' ? 'hanh_chinh' : 'giang_vien'),
+      contractType: u.contractType || 'toan_thoi_gian',
       salaryScale: u.salaryScale || 'V.07.01.03',
       salaryCoefficient: u.salaryCoefficient ?? 2.34,
       dependentsCount: u.dependentsCount ?? 0,
       annualLeaveQuota: u.annualLeaveQuota ?? 12,
-      gender: u.gender || 'NAM',
+      gender: u.gender || 'nam',
       dateOfBirth: u.dateOfBirth ? String(u.dateOfBirth).slice(0, 10) : '',
       startDate: u.startDate ? String(u.startDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
       address: u.address || '',
-      employmentStatus: u.employmentStatus || 'DANG_LAM_VIEC',
+      employmentStatus: u.employmentStatus || 'dang_lam_viec',
       avatar: u.avatar || '',
       isActive: u.isActive !== false,
     });
     setIsFormModalOpen(true);
+  };
+
+  // ---------------------------------------------------------------------------
+  // XUẤT DANH SÁCH NHÂN SỰ RA FILE EXCEL (.XLSX)
+  // ---------------------------------------------------------------------------
+  const handleExportUsersExcel = () => {
+    if (!filteredUsers.length) {
+      toast.error('Không có dữ liệu nhân sự để xuất file Excel');
+      return;
+    }
+    try {
+      const dataRows = filteredUsers.map((u, i) => {
+        const prefix = getAcademicPrefix(u);
+        const academicDesc = [
+          ACADEMIC_RANK_OPTIONS.find((r) => r.value === u.academicRank)?.label || '',
+          DEGREE_OPTIONS.find((d) => d.value === u.degree)?.label || '',
+        ].filter(Boolean).join(' - ') || 'Không';
+
+        const roleMeta = getRoleMeta(u.role);
+        const deptName = getDepartmentName(u, departments);
+        const contractDesc = CONTRACT_TYPE_OPTIONS.find((c) => c.value === u.contractType)?.label || u.contractType || '--';
+        const empStatusDesc = EMPLOYMENT_STATUS_OPTIONS.find((s) => s.value === u.employmentStatus)?.label || 'Đang công tác';
+
+        return {
+          'STT': i + 1,
+          'Mã Cán Bộ': u.staffCode || '--',
+          'Họ Và Tên': prefix ? `${prefix} ${u.fullName}` : u.fullName,
+          'Chức Danh / Vị Trí': u.position || '--',
+          'Khoa / Phòng Ban': deptName,
+          'Vai Trò Hệ Thống': roleMeta.label,
+          'Email Công Vụ': u.email,
+          'Số Điện Thoại': u.phoneNumber || '--',
+          'Học Hàm & Học Vị': academicDesc,
+          'Loại Nhân Sự': u.staffType === 'giang_vien' ? 'Giảng viên' : 'Hành chính',
+          'Loại Hợp Đồng': contractDesc,
+          'Ngạch Lương': u.salaryScale || '--',
+          'Hệ Số Lương': u.salaryCoefficient || 2.34,
+          'Người Phụ Thuộc': u.dependentsCount || 0,
+          'Phép Năm': `${u.annualLeaveQuota || 12} ngày`,
+          'Sinh Trắc Học Face ID': u.isFaceRegistered ? 'Đã đăng ký (512D)' : 'Chưa đăng ký',
+          'Tình Trạng Công Tác': empStatusDesc,
+          'Trạng Thái Hoạt Động': u.isActive !== false ? 'Đang hoạt động' : 'Đã khóa',
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 26 },
+        { wch: 22 },
+        { wch: 28 },
+        { wch: 24 },
+        { wch: 28 },
+        { wch: 15 },
+        { wch: 28 },
+        { wch: 14 },
+        { wch: 22 },
+        { wch: 14 },
+        { wch: 12 },
+        { wch: 16 },
+        { wch: 12 },
+        { wch: 22 },
+        { wch: 20 },
+        { wch: 18 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Danh Sách Cán Bộ');
+
+      XLSX.writeFile(wb, `Danh_Sach_Nhan_Su_NTU_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success('Đã xuất Danh sách nhân sự (.xlsx) thành công!');
+    } catch (err) {
+      console.error('Lỗi khi xuất Danh sách nhân sự:', err);
+      toast.error('Lỗi khi đóng gói tệp Excel.');
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -671,24 +751,24 @@ export const Users: React.FC = () => {
       const cat = getDeptCategory(selectedDept);
       if (cat === 'bgh') {
         newRole = 'bgh';
-        newStaffType = 'HANH_CHINH';
+        newStaffType = 'hanh_chinh';
         newPosition = formData.position && !['Giảng viên', 'Chuyên viên'].includes(formData.position) ? formData.position : 'Hiệu trưởng';
       } else if (cat === 'khoa') {
-        if (['bgh', 'truongbomon', 'admin'].includes(newRole)) {
-          newRole = 'giangvien';
-          newStaffType = 'GIANG_VIEN';
+        if (['bgh', 'truong_bo_mon', 'admin'].includes(newRole)) {
+          newRole = 'giang_vien';
+          newStaffType = 'giang_vien';
           newPosition = 'Giảng viên';
         }
-      } else if (cat === 'bomon') {
-        if (['bgh', 'truongkhoa', 'phokhoa', 'nhanvien', 'admin'].includes(newRole)) {
-          newRole = 'giangvien';
-          newStaffType = 'GIANG_VIEN';
+      } else if (cat === 'bo_mon' || cat === 'bomon') {
+        if (['bgh', 'truong_khoa', 'pho_khoa', 'nhan_vien', 'admin'].includes(newRole)) {
+          newRole = 'giang_vien';
+          newStaffType = 'giang_vien';
           newPosition = 'Giảng viên';
         }
-      } else if (cat === 'phongban') {
-        if (['bgh', 'truongkhoa', 'phokhoa', 'truongbomon', 'giangvien'].includes(newRole)) {
-          newRole = 'nhanvien';
-          newStaffType = 'HANH_CHINH';
+      } else if (cat === 'phong_ban' || cat === 'phongban') {
+        if (['bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'giang_vien'].includes(newRole)) {
+          newRole = 'nhan_vien';
+          newStaffType = 'hanh_chinh';
           newPosition = 'Chuyên viên';
         }
       }
@@ -705,7 +785,7 @@ export const Users: React.FC = () => {
 
   const handleRoleChange = (newRole: string) => {
     let newDeptId = formData.departmentId;
-    let newStaffType = newRole === 'nhanvien' || newRole === 'admin' || newRole === 'bgh' ? 'HANH_CHINH' : 'GIANG_VIEN';
+    let newStaffType = newRole === 'nhan_vien' || newRole === 'admin' || newRole === 'bgh' ? 'hanh_chinh' : 'giang_vien';
     let newPosition = formData.position;
 
     const currentDept = departments.find((d) => String(d._id) === String(newDeptId));
@@ -723,27 +803,27 @@ export const Users: React.FC = () => {
       ) || departments.find((d) => getDeptCategory(d) === 'phongban');
       newDeptId = adminDept ? adminDept._id : '';
       newPosition = 'Quản trị viên hệ thống';
-    } else if (newRole === 'truongkhoa' || newRole === 'phokhoa') {
+    } else if (newRole === 'truong_khoa' || newRole === 'pho_khoa') {
       if (currentCat !== 'khoa') {
         const firstKhoa = departments.find((d) => getDeptCategory(d) === 'khoa');
         newDeptId = firstKhoa ? firstKhoa._id : '';
       }
-      newPosition = newRole === 'truongkhoa' ? 'Trưởng Khoa' : 'Phó Trưởng Khoa';
-    } else if (newRole === 'truongbomon') {
-      if (currentCat !== 'bomon') {
-        const firstBomon = departments.find((d) => getDeptCategory(d) === 'bomon');
+      newPosition = newRole === 'truong_khoa' ? 'Trưởng Khoa' : 'Phó Trưởng Khoa';
+    } else if (newRole === 'truong_bo_mon') {
+      if (currentCat !== 'bo_mon' && currentCat !== 'bomon') {
+        const firstBomon = departments.find((d) => getDeptCategory(d) === 'bo_mon');
         newDeptId = firstBomon ? firstBomon._id : '';
       }
       newPosition = 'Trưởng Bộ Môn';
-    } else if (newRole === 'giangvien') {
-      if (currentCat === 'bgh' || currentCat === 'phongban') {
+    } else if (newRole === 'giang_vien') {
+      if (currentCat === 'bgh' || currentCat === 'phong_ban' || currentCat === 'phongban') {
         const firstKhoa = departments.find((d) => getDeptCategory(d) === 'khoa');
         newDeptId = firstKhoa ? firstKhoa._id : '';
       }
       newPosition = 'Giảng viên';
-    } else if (newRole === 'nhanvien') {
-      if (currentCat === 'bgh' || currentCat === 'bomon' || currentCat === 'khoa') {
-        const firstPhong = departments.find((d) => getDeptCategory(d) === 'phongban');
+    } else if (newRole === 'nhan_vien') {
+      if (currentCat === 'bgh' || currentCat === 'bo_mon' || currentCat === 'bomon' || currentCat === 'khoa') {
+        const firstPhong = departments.find((d) => getDeptCategory(d) === 'phong_ban');
         newDeptId = firstPhong ? firstPhong._id : '';
       }
       newPosition = 'Chuyên viên';
@@ -760,8 +840,8 @@ export const Users: React.FC = () => {
 
   const availableRoleOptions = useMemo(() => {
     // Trưởng khoa chỉ được chọn phân quyền cán bộ/giảng viên thuộc khoa
-    if (viewerRole === 'truongkhoa') {
-      return ROLE_OPTIONS.filter((r) => ['giangvien', 'nhanvien'].includes(r.value));
+    if (viewerRole === 'truong_khoa') {
+      return ROLE_OPTIONS.filter((r) => ['giang_vien', 'nhan_vien'].includes(r.value));
     }
     // Admin và Ban Giám Hiệu có quyền chọn bất kỳ vai trò nào
     return ROLE_OPTIONS;
@@ -793,19 +873,19 @@ export const Users: React.FC = () => {
         toast.error('Cán bộ có vai trò Ban Giám Hiệu (BGH) bắt buộc phải thuộc đơn vị Ban Giám Hiệu.');
         return;
       }
-      if (['truongkhoa', 'phokhoa'].includes(formData.role) && selectedDept.type !== 'khoa') {
+      if (['truong_khoa', 'pho_khoa'].includes(formData.role) && selectedDept.type !== 'khoa') {
         toast.error('Trưởng Khoa / Phó Trưởng Khoa bắt buộc phải thuộc đơn vị cấp Khoa.');
         return;
       }
-      if (formData.role === 'truongbomon' && selectedDept.type !== 'bomon') {
+      if (['truong_bo_mon', 'pho_bo_mon'].includes(formData.role) && selectedDept.type !== 'bo_mon' && selectedDept.type !== 'bomon') {
         toast.error('Trưởng Bộ Môn bắt buộc phải thuộc đơn vị cấp Bộ Môn.');
         return;
       }
-      if (formData.role === 'giangvien' && selectedDept.type !== 'bomon') {
+      if (formData.role === 'giang_vien' && selectedDept.type !== 'bo_mon' && selectedDept.type !== 'bomon') {
         toast.error('Giảng viên bắt buộc phải trực thuộc một Bộ Môn cụ thể.');
         return;
       }
-      if (formData.role === 'admin' && (selectedDept.type === 'khoa' || selectedDept.type === 'bomon')) {
+      if (formData.role === 'admin' && (selectedDept.type === 'khoa' || selectedDept.type === 'bo_mon' || selectedDept.type === 'bomon')) {
         toast.error('Quản trị viên hệ thống (Admin) phải thuộc Hội Đồng Trường hoặc các Ban chức năng NTU.');
         return;
       }
@@ -889,7 +969,7 @@ export const Users: React.FC = () => {
         await userApi.deleteUser(u._id);
         toast.success(`Đã vô hiệu hóa tài khoản của ${parsed.name}.`);
       } else {
-        await userApi.updateUser(u._id, { isActive: true, employmentStatus: 'DANG_LAM_VIEC' });
+        await userApi.updateUser(u._id, { isActive: true, employmentStatus: 'dang_lam_viec' });
         toast.success(`Đã mở khóa tài khoản của ${parsed.name}.`);
       }
       await fetchAllData();
@@ -1029,6 +1109,16 @@ export const Users: React.FC = () => {
               <RefreshCw className={`w-4 h-4 transition-transform group-hover:rotate-45 ${loading ? 'animate-spin text-brand-600' : ''}`} />
             </button>
 
+            <button
+              type="button"
+              onClick={handleExportUsersExcel}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-xs font-bold transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+              title="Xuất danh sách nhân sự ra file Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden sm:inline">Xuất Excel (.xlsx)</span>
+            </button>
+
             {canCreateOrDelete && (
               <button
                 type="button"
@@ -1159,18 +1249,18 @@ export const Users: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                setFilterTab('giangvien');
+                setFilterTab('giang_vien');
                 setCurrentPage(1);
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer whitespace-nowrap ${
-                filterTab === 'giangvien'
+                filterTab === 'giang_vien'
                   ? 'bg-emerald-600 text-white font-bold shadow-xs'
                   : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${filterTab === 'giangvien' ? 'bg-white' : 'bg-emerald-500'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${filterTab === 'giang_vien' ? 'bg-white' : 'bg-emerald-500'}`} />
               <span>Khối Giảng dạy</span>
-              <span className={`px-1.5 py-0.2 rounded-md text-[10px] ${filterTab === 'giangvien' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] ${filterTab === 'giang_vien' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
                 {stats.lecturerCount}
               </span>
             </button>
@@ -1340,7 +1430,7 @@ export const Users: React.FC = () => {
                       <div className="hidden lg:flex min-w-0 flex-col gap-0.5 text-xs">
                         <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
                           {academicPrefix || 'Cử nhân / Kỹ sư'} •{' '}
-                          {emp.staffType === 'HANH_CHINH' ? 'Hành chính' : 'Giảng dạy'}
+                          {emp.staffType === 'hanh_chinh' ? 'Hành chính' : 'Giảng dạy'}
                         </span>
                         <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                           Ngạch {emp.salaryScale || 'V.07.01.03'} (HS {(emp.salaryCoefficient ?? 2.34).toFixed(2)})
@@ -1992,7 +2082,7 @@ export const Users: React.FC = () => {
                     <select
                       value={formData.role}
                       onChange={(e) => handleRoleChange(e.target.value)}
-                      disabled={viewerRole === 'truongkhoa'}
+                      disabled={viewerRole === 'truong_khoa'}
                       className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
                       {availableRoleOptions.map((r) => (
@@ -2012,7 +2102,7 @@ export const Users: React.FC = () => {
                       value={formData.departmentId}
                       onChange={handleDepartmentChange}
                       role={formData.role}
-                      disabled={viewerRole === 'truongkhoa' || formData.role === 'bgh'}
+                      disabled={viewerRole === 'truong_khoa' || formData.role === 'bgh'}
                       required
                     />
                     {formData.role === 'bgh' && (
@@ -2036,9 +2126,9 @@ export const Users: React.FC = () => {
                       onChange={(e) => setFormData({ ...formData, gender: e.target.value as GenderType })}
                       className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
-                      <option value="NAM">Nam</option>
-                      <option value="NU">Nữ</option>
-                      <option value="KHAC">Khác</option>
+                      <option value="nam">Nam</option>
+                      <option value="nu">Nữ</option>
+                      <option value="khac">Khác</option>
                     </select>
                   </div>
 
@@ -2439,7 +2529,7 @@ export const Users: React.FC = () => {
                   <div className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
                     <span className="text-slate-400 block mb-0.5">Giới tính & Ngày sinh</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">
-                      {detailUser.gender === 'NU' ? 'Nữ' : detailUser.gender === 'KHAC' ? 'Khác' : 'Nam'} •{' '}
+                      {detailUser.gender === 'nu' ? 'Nữ' : detailUser.gender === 'khac' ? 'Khác' : 'Nam'} •{' '}
                       {detailUser.dateOfBirth
                         ? new Date(detailUser.dateOfBirth).toLocaleDateString('vi-VN')
                         : 'Chưa cập nhật'}

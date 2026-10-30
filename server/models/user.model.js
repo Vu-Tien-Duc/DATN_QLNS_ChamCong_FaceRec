@@ -1,48 +1,26 @@
 const mongoose = require('mongoose');
 const { schemaAliasPlugin } = require('../utils/schemaAliasPlugin');
+const { ALL_ROLES, normalizeRole } = require('../utils/roleUtils');
 require('./department.model');
 
-const GENDER_MAP = {
-  NAM: 'MALE',
-  NU: 'FEMALE',
-  KHAC: 'OTHER',
-  MALE: 'NAM',
-  FEMALE: 'NU',
-  OTHER: 'KHAC',
-};
-
-const CONTRACT_MAP = {
-  TOAN_THOI_GIAN: 'FULL_TIME',
-  BAN_THOI_GIAN: 'PART_TIME',
-  THU_VIEC: 'PROBATION',
-  KHONG_XAC_DINH_THOI_HAN: 'INDEFINITE',
-  XAC_DINH_THOI_HAN: 'DEFINITE',
-  FULL_TIME: 'TOAN_THOI_GIAN',
-  PART_TIME: 'BAN_THOI_GIAN',
-  PROBATION: 'THU_VIEC',
-  INDEFINITE: 'KHONG_XAC_DINH_THOI_HAN',
-  DEFINITE: 'XAC_DINH_THOI_HAN',
-};
 
 const vaiTroSchema = new mongoose.Schema(
   {
     ma_vai_tro: {
       type: String,
       alias: 'role',
-      enum: [
-        'ADMIN', 'BGH', 'TCCB', 'DAO_TAO', 'KE_TOAN', 'KIEM_TOAN',
-        'TRUONG_KHOA', 'PHO_TRUONG_KHOA',
-        'TRUONG_BO_MON', 'PHO_TRUONG_BO_MON',
-        'TRUONG_PHONG', 'PHO_TRUONG_PHONG',
-        'GIANG_VIEN', 'CHUYEN_VIEN', 'NHAN_VIEN'
-      ],
+      lowercase: true,
+      trim: true,
+      set: (v) => normalizeRole(v),
+      enum: ALL_ROLES,
       required: true,
     },
     pham_vi: {
       type: String,
       alias: 'scope',
-      enum: ['TOAN_TRUONG', 'KHOA', 'BO_MON', 'PHONG_BAN'],
+      enum: ['toan_truong', 'khoa', 'bo_mon', 'phong_ban'],
       required: true,
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     don_vi_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -121,14 +99,16 @@ const userSchema = new mongoose.Schema(
     hoc_ham: {
       type: String,
       alias: 'academicRank',
-      enum: ['GIAO_SU', 'PHO_GIAO_SU', 'KHONG'],
-      default: 'KHONG',
+      enum: ['giao_su', 'pho_giao_su', 'khong'],
+      default: 'khong',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     hoc_vi: {
       type: String,
       alias: 'degree',
-      enum: ['TIEN_SI', 'THAC_SI', 'CU_NHAN', 'KY_SU', 'KHAC'],
-      default: 'CU_NHAN',
+      enum: ['tien_si', 'thac_si', 'cu_nhan', 'ky_su', 'khac'],
+      default: 'cu_nhan',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     ngach_luong: {
       type: String,
@@ -165,8 +145,9 @@ const userSchema = new mongoose.Schema(
     gioi_tinh: {
       type: String,
       alias: 'gender',
-      enum: ['NAM', 'NU', 'KHAC', 'MALE', 'FEMALE', 'OTHER'],
-      default: 'NAM',
+      enum: ['nam', 'nu', 'khac'],
+      default: 'nam',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     chuc_vu: {
       type: mongoose.Schema.Types.Mixed,
@@ -176,17 +157,16 @@ const userSchema = new mongoose.Schema(
     loai_nhan_su: {
       type: String,
       alias: 'staffType',
-      enum: ['GIANG_VIEN', 'HANH_CHINH'],
-      default: 'GIANG_VIEN',
+      enum: ['giang_vien', 'hanh_chinh'],
+      default: 'giang_vien',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     loai_hop_dong: {
       type: String,
       alias: 'contractType',
-      enum: [
-        'TOAN_THOI_GIAN', 'BAN_THOI_GIAN', 'THU_VIEC', 'KHONG_XAC_DINH_THOI_HAN', 'XAC_DINH_THOI_HAN',
-        'FULL_TIME', 'PART_TIME', 'PROBATION', 'INDEFINITE', 'DEFINITE', 'FIXED_TERM'
-      ],
-      default: 'TOAN_THOI_GIAN',
+      enum: ['toan_thoi_gian', 'ban_thoi_gian', 'thu_viec', 'khong_xac_dinh_thoi_han', 'xac_dinh_thoi_han'],
+      default: 'toan_thoi_gian',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     ngay_sinh: {
       type: Date,
@@ -211,16 +191,14 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Mật khẩu là bắt buộc'],
       select: false,
     },
-    // Vai trò phẳng cũ (tương thích ngược)
     vai_tro_chinh: {
       type: String,
       alias: 'primaryRole',
-      enum: [
-        'admin', 'truongkhoa', 'phokhoa', 'truongbomon', 'phobomon', 'giangvien', 'nhanvien', 'nhan_vien',
-        'ADMIN', 'BGH', 'bgh', 'TCCB', 'tccb', 'DAO_TAO', 'dao_tao', 'KE_TOAN', 'ke_toan', 'KIEM_TOAN', 'kiem_toan',
-        'CHUYEN_VIEN', 'NHAN_VIEN'
-      ],
-      default: 'giangvien',
+      lowercase: true,
+      trim: true,
+      set: (v) => normalizeRole(v),
+      enum: ALL_ROLES,
+      default: 'giang_vien',
     },
     // Mảng vai trò RBAC chuẩn v2.5 có nhiệm kỳ
     danh_sach_vai_tro: {
@@ -249,8 +227,9 @@ const userSchema = new mongoose.Schema(
     trang_thai_lam_viec: {
       type: String,
       alias: 'employmentStatus',
-      enum: ['DANG_LAM_VIEC', 'DA_NGHI_VIEC', 'TAM_HOAN', 'ACTIVE', 'RESIGNED', 'SUSPENDED', 'PROBATION', 'ON_LEAVE'],
-      default: 'DANG_LAM_VIEC',
+      enum: ['dang_lam_viec', 'da_nghi_viec', 'tam_hoan'],
+      default: 'dang_lam_viec',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     han_muc_phep_nam: {
       type: Number,
@@ -315,8 +294,9 @@ const userSchema = new mongoose.Schema(
     loai_otp: {
       type: String,
       alias: 'otpType',
-      enum: ['VERIFY_ACCOUNT', 'FORGOT_PASSWORD'],
+      enum: ['verify_account', 'forgot_password'],
       default: null,
+      set: (v) => v ? String(v).toLowerCase() : v,
       select: false,
     },
     so_lan_thu_otp: {
@@ -454,7 +434,7 @@ userSchema.aliases = {
 
 userSchema.virtual('academicTitle').get(function () {
   const parts = [];
-  if (this.hoc_ham && this.hoc_ham !== 'KHONG') parts.push(this.hoc_ham);
+  if (this.hoc_ham && this.hoc_ham !== 'khong') parts.push(this.hoc_ham);
   if (this.hoc_vi) parts.push(this.hoc_vi);
   return parts.join(' ');
 });
@@ -468,7 +448,7 @@ userSchema.virtual('identityCard')
     this.so_cccd_ma_hoa = v;
   });
 
-// Getter/Setter ảo cho `role` / `vai_tro` tương thích ngược 100% với middleware và UI chuẩn RBAC v2.5:
+// Getter/Setter ảo cho `role` / `vai_tro` đồng nhất chuẩn lowercase snake_case (truong_khoa, pho_khoa...):
 userSchema.virtual('role')
   .get(function () {
     if (this.danh_sach_vai_tro && this.danh_sach_vai_tro.length > 0) {
@@ -476,30 +456,13 @@ userSchema.virtual('role')
       // Tìm vai trò còn hiệu lực (den_ngay === null hoặc den_ngay >= now)
       const activeRole = this.danh_sach_vai_tro.find(r => !r.den_ngay || new Date(r.den_ngay) >= now);
       if (activeRole) {
-        const map = {
-          ADMIN: 'admin',
-          BGH: 'bgh',
-          TRUONG_KHOA: 'truongkhoa',
-          PHO_TRUONG_KHOA: 'phokhoa',
-          TRUONG_BO_MON: 'truongbomon',
-          PHO_TRUONG_BO_MON: 'phobomon',
-          TRUONG_PHONG: 'truongphong',
-          PHO_TRUONG_PHONG: 'phophong',
-          DAO_TAO: 'dao_tao',
-          KE_TOAN: 'ke_toan',
-          KIEM_TOAN: 'kiem_toan',
-          TCCB: 'tccb',
-          GIANG_VIEN: 'giangvien',
-          CHUYEN_VIEN: 'nhanvien',
-          NHAN_VIEN: 'nhanvien',
-        };
-        return map[activeRole.ma_vai_tro] || activeRole.ma_vai_tro.toLowerCase();
+        return normalizeRole(activeRole.ma_vai_tro || activeRole.role);
       }
     }
-    return this.vai_tro_chinh || 'giangvien';
+    return normalizeRole(this.vai_tro_chinh) || 'giang_vien';
   })
   .set(function (val) {
-    this.vai_tro_chinh = val;
+    this.vai_tro_chinh = normalizeRole(val);
   });
 
 userSchema.virtual('vai_tro')
@@ -534,14 +497,13 @@ userSchema.plugin(schemaAliasPlugin);
 
 userSchema.pre('validate', function () {
   if (this.han_muc_phep_nam !== undefined && this.han_muc_phep_nam !== null && !Number.isInteger(this.han_muc_phep_nam)) {
-    this.invalidate('annualLeaveQuota', 'Hạn mức ngày phép phải là số nguyên');
+    this.invalidate('han_muc_phep_nam', 'Hạn mức ngày phép phải là số nguyên');
   }
   const cccd = this._raw_so_cccd || this.identityCard || this.so_cccd_ma_hoa;
   if (cccd && !/^(\d{9}|\d{12})$/.test(cccd)) {
     this.invalidate('identityCard', 'Số CCCD/CMND phải gồm 9 hoặc 12 chữ số');
   }
   if (this.ma_can_bo && !/^[A-Z0-9][A-Z0-9_-]*$/.test(this.ma_can_bo)) {
-    this.invalidate('staffCode', 'Mã cán bộ chỉ được chứa chữ in hoa, số, dấu gạch ngang hoặc gạch dưới');
     this.invalidate('ma_can_bo', 'Mã cán bộ chỉ được chứa chữ in hoa, số, dấu gạch ngang hoặc gạch dưới');
   }
 });
@@ -558,9 +520,5 @@ userSchema.index({ trang_thai_lam_viec: 1 });
 userSchema.index({ don_vi_chinh_id: 1 });
 
 const User = mongoose.models.User || mongoose.model('User', userSchema, 'nguoi_dung');
-
-if (!mongoose.models.NguoiDung) {
-  mongoose.model('NguoiDung', userSchema, 'nguoi_dung');
-}
 
 module.exports = User;

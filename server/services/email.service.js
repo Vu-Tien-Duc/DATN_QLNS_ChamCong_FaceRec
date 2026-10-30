@@ -239,7 +239,7 @@ const sendCheckInNotificationEmail = async ({
   const transporter = createTransporter();
   const timeStr = new Date(checkInTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const dateStr = formatDate(checkInTime);
-  const isLate = status === 'LATE' || lateMinutes > 0;
+  const isLate = status === 'late' || lateMinutes > 0;
   const lateHours = Math.floor(lateMinutes / 60);
   const remainingMins = lateMinutes % 60;
   const lateTimeFormatted = lateHours > 0 ? `${lateHours} giờ ${remainingMins} phút` : `${lateMinutes} phút`;

@@ -161,11 +161,11 @@ const logPromptInjectionAttempt = async ({ user, question, detectionResult, ip =
   try {
     await AuditLog.create({
       actor: user?._id || user?.id || null,
-      actorType: user ? 'USER' : 'SYSTEM',
+      actorType: user ? 'user' : 'system',
       action: 'SECURITY_ALERT_PROMPT_INJECTION',
       targetType: 'AiSecurityGuardrail',
       targetId: 'AI_PROMPT_INJECTION_BLOCKED',
-      status: 'FAILED',
+      status: 'failed',
       ipAddress: ip,
       userAgent,
       details: {

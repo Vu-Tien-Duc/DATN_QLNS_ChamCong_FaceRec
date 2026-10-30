@@ -66,18 +66,18 @@ const processScanQRCode = async ({
   const locationName = geofenceResult.closest?.name || 'Khuôn viên Đại học';
 
   const nowVN = getVietnamTime();
-  const { startOfDay, endOfDay } = getVietnamDayRange();
+  const { startOfDay, endOfDay, dateStr } = getVietnamDayRange();
 
   // 3. Tra cứu bản ghi chấm công hôm nay của nhân sự
   let attendance = await AttendanceLog.findOne({
     userId,
-    date: { $gte: startOfDay, $lte: endOfDay },
+    workDate: dateStr,
   }).populate('shiftId');
 
   // TRƯỜNG HỢP 1: CHƯA CHECK-IN -> THỰC HIỆN CHECK-IN BẰNG QR
   if (!attendance || !attendance.checkInTime) {
     let effectiveShift = null;
-    let calculatedStatus = 'ON_TIME';
+    let calculatedStatus = 'on_time';
     let lateMinutes = 0;
 
     const evalResult = await evaluateUserScheduleForCheckIn(userId);
@@ -89,15 +89,15 @@ const processScanQRCode = async ({
       );
     }
     effectiveShift = evalResult.shift;
-    calculatedStatus = evalResult.status || 'ON_TIME';
+    calculatedStatus = evalResult.status || 'on_time';
     lateMinutes = evalResult.lateMinutes || 0;
 
     // Tạo PunchLog (Collection 4 - nhat_ky_quet_the)
     const punchLog = await PunchLog.create({
       userId,
       punchTime: nowVN,
-      punchType: 'CHECK_IN',
-      method: 'QR_CODE',
+      punchType: 'check_in',
+      method: 'qr_code',
       deviceId: finalDeviceId,
       clientIp: ip || null,
       isCampusNetwork: geofenceResult ? geofenceResult.isCampusNetwork : null,
@@ -106,7 +106,7 @@ const processScanQRCode = async ({
       verificationMethod: geofenceResult?.verificationMethod || null,
       locationName,
       gpsCoordinates: { latitude: lat, longitude: lng },
-      isFraudulent: isFraud,
+      isFraud: isFraud,
       fraudReason,
       shiftId: effectiveShift?._id || null,
     });
@@ -114,10 +114,10 @@ const processScanQRCode = async ({
     if (!attendance) {
       attendance = new AttendanceLog({
         userId,
-        date: startOfDay,
+        workDate: dateStr,
         checkInTime: nowVN,
         status: calculatedStatus,
-        method: 'QR_CODE',
+        method: 'qr_code',
         deviceId: finalDeviceId,
         shiftId: effectiveShift?._id || null,
         lateMinutes,
@@ -129,7 +129,7 @@ const processScanQRCode = async ({
     } else {
       attendance.checkInTime = nowVN;
       attendance.status = calculatedStatus;
-      attendance.method = 'QR_CODE';
+      attendance.method = 'qr_code';
       attendance.deviceId = finalDeviceId;
       attendance.lateMinutes = lateMinutes;
       if (isFraud) {
@@ -144,7 +144,7 @@ const processScanQRCode = async ({
     await attendance.save();
 
     return {
-      type: 'CHECK_IN',
+      type: 'check_in',
       message: isFraud
         ? `Quét QR Check-in thành công có cảnh báo: ${fraudReason}`
         : 'Quét mã QR Check-in thành công.',
@@ -162,8 +162,8 @@ const processScanQRCode = async ({
     const punchLog = await PunchLog.create({
       userId,
       punchTime: nowVN,
-      punchType: 'CHECK_OUT',
-      method: 'QR_CODE',
+      punchType: 'check_out',
+      method: 'qr_code',
       deviceId: finalDeviceId,
       clientIp: ip || null,
       isCampusNetwork: geofenceResult ? geofenceResult.isCampusNetwork : null,
@@ -172,7 +172,7 @@ const processScanQRCode = async ({
       verificationMethod: geofenceResult?.verificationMethod || null,
       locationName,
       gpsCoordinates: { latitude: lat, longitude: lng },
-      isFraudulent: isFraud,
+      isFraud: isFraud,
       fraudReason,
       shiftId: attendance.shiftId?._id || null,
     });
@@ -205,7 +205,7 @@ const processScanQRCode = async ({
     await attendance.save();
 
     return {
-      type: 'CHECK_OUT',
+      type: 'check_out',
       message: isFraud
         ? `Quét QR Check-out thành công có cảnh báo: ${fraudReason}`
         : 'Quét mã QR Check-out thành công.',

@@ -122,27 +122,27 @@ const getTodayScheduleWindow = (shift) => {
 
 /**
  * Tính toán trạng thái chấm công dựa vào thời điểm check-in và cấu hình ca:
- * - Check-in trước hoặc đúng startTime -> 'ON_TIME' (Đúng giờ)
- * - Check-in sau startTime -> 'LATE' (Đi muộn)
+ * - Check-in trước hoặc đúng startTime -> 'on_time' (Đúng giờ)
+ * - Check-in sau startTime -> 'late' (Đi muộn)
  * @param {Date} checkInTime 
  * @param {Object} shiftConfig 
  * @param {Date} [date=new Date()] (ngày áp dụng)
- * @returns {String} 'ON_TIME' | 'LATE'
+ * @returns {String} 'on_time' | 'late'
  */
 const calculateAttendanceStatus = (checkInTime, shiftConfig, date = new Date()) => {
-  if (!shiftConfig || !shiftConfig.startTime) return 'ON_TIME';
+  if (!shiftConfig || !shiftConfig.startTime) return 'on_time';
 
   const vnDate = getVietnamTime(checkInTime || date);
   const currentMinutes = vnDate.getHours() * 60 + vnDate.getMinutes();
   const startMinutes = timeStringToMinutes(shiftConfig.startTime);
 
   if (currentMinutes > startMinutes) {
-    return 'LATE';
+    return 'late';
   }
-  return 'ON_TIME';
+  return 'on_time';
 };
 
-const calculateCheckOutStatus = (checkOutTime, shiftConfig, initialStatus = 'ON_TIME') => {
+const calculateCheckOutStatus = (checkOutTime, shiftConfig, initialStatus = 'on_time') => {
   if (!shiftConfig || !shiftConfig.endTime) {
     return { finalStatus: initialStatus, isEarlyLeave: false, earlyMinutes: 0 };
   }
@@ -156,8 +156,8 @@ const calculateCheckOutStatus = (checkOutTime, shiftConfig, initialStatus = 'ON_
 
   // Quy tắc nghiệp vụ: Nếu ban đầu ON_TIME mà về sớm -> EARLY_LEAVE. Nếu ban đầu đã LATE -> giữ nguyên LATE
   let finalStatus = initialStatus;
-  if (isEarlyLeave && initialStatus === 'ON_TIME') {
-    finalStatus = 'EARLY_LEAVE';
+  if (isEarlyLeave && initialStatus === 'on_time') {
+    finalStatus = 'early_leave';
   }
 
   return {
@@ -238,8 +238,8 @@ const recalculateAttendanceSummary = async (attendanceLogId) => {
   // 1. Lấy tất cả lượt quét gốc của phiên chấm công này
   const punches = await PunchLog.find({ attendanceLogId: attendanceLog._id }).sort({ punchTime: 1 });
 
-  const checkIns = punches.filter((p) => p.punchType === 'CHECK_IN');
-  const checkOuts = punches.filter((p) => p.punchType === 'CHECK_OUT');
+  const checkIns = punches.filter((p) => p.punchType === 'check_in');
+  const checkOuts = punches.filter((p) => p.punchType === 'check_out');
 
   const earliestCheckIn = checkIns.length > 0 ? checkIns[0].punchTime : null;
   const latestCheckOut = checkOuts.length > 0 ? checkOuts[checkOuts.length - 1].punchTime : null;
@@ -248,15 +248,15 @@ const recalculateAttendanceSummary = async (attendanceLogId) => {
   let lateMinutes = 0;
   let earlyMinutes = 0;
   let workingMinutes = 0;
-  let status = 'ON_TIME';
+  let status = 'on_time';
 
   // 2. Nếu có đơn nghỉ phép
   const hasLeave = Boolean(attendanceLog.leaveRequestId);
 
   if (hasLeave) {
-    status = 'EXCUSED_ABSENCE';
+    status = 'excused_absence';
   } else if (!earliestCheckIn) {
-    status = 'ABSENT';
+    status = 'absent';
   } else {
     // 3. Tính toán đi muộn
     if (shift && shift.startTime) {
@@ -282,11 +282,11 @@ const recalculateAttendanceSummary = async (attendanceLogId) => {
 
     // 6. Suy diễn trạng thái chặt chẽ theo phút (Strict State Derivation)
     if (lateMinutes > 0) {
-      status = 'LATE';
+      status = 'late';
     } else if (earlyMinutes > 0) {
-      status = 'EARLY_LEAVE';
+      status = 'early_leave';
     } else {
-      status = 'ON_TIME';
+      status = 'on_time';
     }
   }
 

@@ -8,6 +8,7 @@ const LeaveRequest = require('../models/leaveRequest.model');
 const { buildAttendanceDateFilter } = require('../utils/attendanceTime.utils');
 const { getDeanDepartmentIds, getDeanScopedUserIds } = require('../utils/deanScope');
 const { PERMISSIONS, hasPermission } = require('../config/permissions');
+const { normalizeRole, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES } = require('../utils/roleUtils');
 const ServiceError = require('../utils/serviceError');
 
 const calculateCalendarDays = (startDate, endDate) => {
@@ -21,20 +22,20 @@ const calculateCalendarDays = (startDate, endDate) => {
 
 // Helper nhận diện tài khoản Quản trị hệ thống IT và Lãnh đạo BGH (không phải đối tượng chấm công)
 const NON_ADMIN_MONGO_CRITERIA = {
-  vai_tro_chinh: { $nin: ['ADMIN', 'admin', 'BGH', 'bgh'] },
+  vai_tro_chinh: { $nin: ['admin', 'bgh'] },
   ma_can_bo: { $not: /^(ADMIN|BGH)/i },
   email: { $not: /^admin@/i, $not: /daihocdtd@/i, $not: /^hieutruong@/i },
 };
 
 const isSystemAdminUser = (u) => {
   if (!u) return false;
-  const r = String(u.role || u.primaryRole || u.vai_tro_chinh || '').toLowerCase();
+  const r = normalizeRole(u.role || u.primaryRole || u.vai_tro_chinh);
   const code = String(u.staffCode || u.ma_can_bo || '').toUpperCase();
   const email = String(u.email || '').toLowerCase();
   const name = String(u.fullName || u.ho_ten || '').toLowerCase();
   const hasAdminOrBghRole = Array.isArray(u.roles) && u.roles.some((item) => {
-    const itemRole = String(item.role || item.ma_vai_tro || '').toUpperCase();
-    return itemRole === 'ADMIN' || itemRole === 'BGH';
+    const itemRole = normalizeRole(item.role || item.ma_vai_tro);
+    return itemRole === 'admin' || itemRole === 'bgh';
   });
   return (
     r === 'admin' ||
@@ -55,8 +56,9 @@ const isSystemAdminUser = (u) => {
 
 const getAttendanceReportData = async ({ userId, departmentId, from, to, currentUser }) => {
   let targetUserIds = [];
-  const canViewAll = hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || ['admin', 'ADMIN'].includes(currentUser.role);
-  const canViewDept = hasPermission(currentUser, PERMISSIONS.CONG_XEM_DON_VI) || ['truongkhoa', 'TRUONG_KHOA'].includes(currentUser.role);
+  const currentRole = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
+  const canViewAll = hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || ['admin', 'bgh'].includes(currentRole);
+  const canViewDept = hasPermission(currentUser, PERMISSIONS.CONG_XEM_DON_VI) || UNIT_LEADER_ROLES.includes(currentRole);
 
   if (canViewAll) {
     if (userId) {
@@ -113,7 +115,7 @@ const getAttendanceReportData = async ({ userId, departmentId, from, to, current
   if (fromDate || toDate) Object.assign(attendanceQuery, buildAttendanceDateFilter(fromDate, toDate));
   const attendances = await AttendanceLog.find(attendanceQuery);
 
-  const leaveQuery = { userId: { $in: targetUserIds }, status: 'APPROVED', type: 'nghi_phep' };
+  const leaveQuery = { userId: { $in: targetUserIds }, status: 'approved', type: 'nghi_phep' };
   if (fromDate || toDate) {
     if (toDate) leaveQuery.startDate = { $lte: toDate };
     if (fromDate) leaveQuery.endDate = { $gte: fromDate };
@@ -144,9 +146,9 @@ const getAttendanceReportData = async ({ userId, departmentId, from, to, current
       return date && date >= weekStart && date <= weekEnd;
     });
     const total = logs.length;
-    const onTime = logs.filter((attendance) => attendance.status === 'ON_TIME').length;
-    const late = logs.filter((attendance) => ['LATE', 'EARLY_LEAVE'].includes(attendance.status)).length;
-    const excused = logs.filter((attendance) => attendance.status === 'EXCUSED_ABSENCE').length;
+    const onTime = logs.filter((attendance) => attendance.status === 'on_time').length;
+    const late = logs.filter((attendance) => ['late', 'early_leave'].includes(attendance.status)).length;
+    const excused = logs.filter((attendance) => attendance.status === 'excused_absence').length;
     return {
       label: week.label,
       subLabel: `${startDay}/${monthString} - ${endDay}/${monthString}`,
@@ -160,11 +162,11 @@ const getAttendanceReportData = async ({ userId, departmentId, from, to, current
 
   return {
     totalRecords: attendances.length,
-    onTimeCount: attendances.filter((attendance) => attendance.status === 'ON_TIME').length,
-    lateCount: attendances.filter((attendance) => attendance.status === 'LATE').length,
-    earlyLeaveCount: attendances.filter((attendance) => attendance.status === 'EARLY_LEAVE').length,
-    absentCount: attendances.filter((attendance) => attendance.status === 'ABSENT').length,
-    excusedAbsenceCount: attendances.filter((attendance) => attendance.status === 'EXCUSED_ABSENCE').length,
+    onTimeCount: attendances.filter((attendance) => attendance.status === 'on_time').length,
+    lateCount: attendances.filter((attendance) => attendance.status === 'late').length,
+    earlyLeaveCount: attendances.filter((attendance) => attendance.status === 'early_leave').length,
+    absentCount: attendances.filter((attendance) => attendance.status === 'absent').length,
+    excusedAbsenceCount: attendances.filter((attendance) => attendance.status === 'excused_absence').length,
     approvedLeaveDays: approvedLeaves.reduce((sum, leave) => {
       const effectiveStart = fromDate ? new Date(Math.max(leave.startDate.getTime(), fromDate.getTime())) : leave.startDate;
       const effectiveEnd = toDate ? new Date(Math.min(leave.endDate.getTime(), toDate.getTime())) : leave.endDate;
@@ -188,8 +190,9 @@ const getMonthlyReportData = async ({ month: monthInput, year: yearInput, depart
   const year = parsedYear || nowVN.getUTCFullYear();
 
   let departmentFilter = departmentId || null;
-  const canViewAll = hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || ['admin', 'ADMIN'].includes(currentUser.role);
-  const canViewDept = hasPermission(currentUser, PERMISSIONS.CONG_XEM_DON_VI) || ['truongkhoa', 'TRUONG_KHOA'].includes(currentUser.role);
+  const currentRole = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
+  const canViewAll = hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || ['admin', 'bgh'].includes(currentRole);
+  const canViewDept = hasPermission(currentUser, PERMISSIONS.CONG_XEM_DON_VI) || UNIT_LEADER_ROLES.includes(currentRole);
 
   if (!canViewAll && canViewDept) {
     const scopedDepartmentIds = await getDeanDepartmentIds(currentUser);
@@ -225,8 +228,9 @@ const getExportReportDataForUser = async ({ query, currentUser }) => {
 
   let targetUserIds = [];
   let departmentFilter = departmentId || null;
-  const canViewAll = hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || ['admin', 'ADMIN'].includes(currentUser.role);
-  const canViewDept = hasPermission(currentUser, PERMISSIONS.CONG_XEM_DON_VI) || ['truongkhoa', 'TRUONG_KHOA'].includes(currentUser.role);
+  const currentRole = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
+  const canViewAll = hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || ['admin', 'bgh'].includes(currentRole);
+  const canViewDept = hasPermission(currentUser, PERMISSIONS.CONG_XEM_DON_VI) || UNIT_LEADER_ROLES.includes(currentRole);
 
   if (canViewAll) {
     if (userId) targetUserIds = [userId];
@@ -298,15 +302,15 @@ const getWeekdayVN = (date) => {
 
 const getStatusLabel = (status) => {
   switch (status) {
-    case 'ON_TIME':
+    case 'on_time':
       return 'Đúng giờ';
-    case 'LATE':
+    case 'late':
       return 'Đi muộn';
-    case 'EARLY_LEAVE':
+    case 'early_leave':
       return 'Về sớm';
-    case 'ABSENT':
+    case 'absent':
       return 'Vắng mặt';
-    case 'EXCUSED_ABSENCE':
+    case 'excused_absence':
       return 'Nghỉ có phép';
     default:
       return status || '--';
@@ -347,11 +351,11 @@ const getLeaveTypeLabel = (type) => {
 
 const getLeaveStatusLabel = (status) => {
   switch (status) {
-    case 'APPROVED':
+    case 'approved':
       return 'Đã duyệt';
-    case 'PENDING':
+    case 'pending':
       return 'Chờ duyệt';
-    case 'REJECTED':
+    case 'rejected':
       return 'Đã từ chối';
     default:
       return status || '--';
@@ -359,39 +363,38 @@ const getLeaveStatusLabel = (status) => {
 };
 
 const getRoleLabel = (role) => {
-  switch (role) {
+  const norm = normalizeRole(role);
+  switch (norm) {
     case 'admin':
-    case 'ADMIN':
       return 'Quản trị viên';
-    case 'BGH':
+    case 'bgh':
       return 'Ban Giám hiệu';
-    case 'TCCB':
+    case 'tccb':
       return 'Phòng Tổ chức Cán bộ';
-    case 'DAO_TAO':
+    case 'dao_tao':
       return 'Phòng Đào tạo';
-    case 'KE_TOAN':
+    case 'ke_toan':
       return 'Phòng Kế toán';
-    case 'KIEM_TOAN':
+    case 'kiem_toan':
       return 'Ban Kiểm toán';
-    case 'truongkhoa':
-    case 'TRUONG_KHOA':
+    case 'truong_khoa':
       return 'Trưởng Khoa';
-    case 'PHO_TRUONG_KHOA':
+    case 'pho_khoa':
       return 'Phó Trưởng Khoa';
-    case 'TRUONG_BO_MON':
+    case 'truong_bo_mon':
       return 'Trưởng Bộ môn';
-    case 'PHO_TRUONG_BO_MON':
+    case 'pho_bo_mon':
       return 'Phó Trưởng Bộ môn';
-    case 'TRUONG_PHONG':
+    case 'truong_phong':
       return 'Trưởng Phòng';
-    case 'PHO_TRUONG_PHONG':
+    case 'pho_phong':
       return 'Phó Trưởng Phòng';
-    case 'giangvien':
-    case 'GIANG_VIEN':
+    case 'giang_vien':
       return 'Giảng Viên';
-    case 'nhanvien':
-    case 'CHUYEN_VIEN':
-      return 'Chuyên viên / Cán bộ';
+    case 'chuyen_vien':
+      return 'Chuyên viên';
+    case 'nhan_vien':
+      return 'Nhân viên';
     default:
       return role || 'Cán bộ';
   }
@@ -471,11 +474,11 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
     const sCode = user.staffCode || user.ma_can_bo || (user._id ? `CB-${user._id.toString().slice(-4).toUpperCase()}` : '--');
 
     const totalShifts = userAttendances.length;
-    const onTime = userAttendances.filter((a) => a.status === 'ON_TIME').length;
-    const late = userAttendances.filter((a) => a.status === 'LATE').length;
-    const early = userAttendances.filter((a) => a.status === 'EARLY_LEAVE').length;
-    const absent = userAttendances.filter((a) => a.status === 'ABSENT').length;
-    const excused = userAttendances.filter((a) => a.status === 'EXCUSED_ABSENCE').length;
+    const onTime = userAttendances.filter((a) => a.status === 'on_time').length;
+    const late = userAttendances.filter((a) => a.status === 'late').length;
+    const early = userAttendances.filter((a) => a.status === 'early_leave').length;
+    const absent = userAttendances.filter((a) => a.status === 'absent').length;
+    const excused = userAttendances.filter((a) => a.status === 'excused_absence').length;
     const valid = onTime + excused;
     const attendanceRate = totalShifts > 0 ? Math.round((valid / totalShifts) * 100) : 100;
 
@@ -543,8 +546,8 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
     });
 
     const total = weekLogs.length;
-    const onTime = weekLogs.filter((a) => a.status === 'ON_TIME' || a.status === 'EXCUSED_ABSENCE').length;
-    const late = weekLogs.filter((a) => a.status === 'LATE' || a.status === 'EARLY_LEAVE').length;
+    const onTime = weekLogs.filter((a) => a.status === 'on_time' || a.status === 'excused_absence').length;
+    const late = weekLogs.filter((a) => a.status === 'late' || a.status === 'early_leave').length;
 
     const rate = total > 0 ? Math.round((onTime / total) * 100) : 100;
     const lateRate = total > 0 ? Math.round((late / total) * 100) : 0;
@@ -688,9 +691,9 @@ const generateExportReportData = async ({
 
     // Tính toán số phút trễ / sớm
     let lateEarlyMinutes = '0 phút';
-    if (log.status === 'ON_TIME') {
+    if (log.status === 'on_time') {
       lateEarlyMinutes = '0 phút (Đúng giờ)';
-    } else if (log.status === 'LATE') {
+    } else if (log.status === 'late') {
       if (checkIn) {
         const vnCI = toVnDate(checkIn);
         const [shH, shM] = shiftStart.split(':').map(Number);
@@ -701,7 +704,7 @@ const generateExportReportData = async ({
       } else {
         lateEarlyMinutes = 'Đi muộn';
       }
-    } else if (log.status === 'EARLY_LEAVE') {
+    } else if (log.status === 'early_leave') {
       if (checkOut) {
         const vnCO = toVnDate(checkOut);
         const [ehH, ehM] = shiftEnd.split(':').map(Number);
@@ -712,9 +715,9 @@ const generateExportReportData = async ({
       } else {
         lateEarlyMinutes = 'Về sớm';
       }
-    } else if (log.status === 'ABSENT') {
+    } else if (log.status === 'absent') {
       lateEarlyMinutes = 'Vắng mặt';
-    } else if (log.status === 'EXCUSED_ABSENCE') {
+    } else if (log.status === 'excused_absence') {
       lateEarlyMinutes = 'Nghỉ có phép';
     }
 
@@ -778,10 +781,10 @@ const generateExportReportData = async ({
     }
 
     let approvalInfo = '';
-    if (req.status === 'APPROVED') {
+    if (req.status === 'approved') {
       const dateStr = req.updatedAt ? formatDateVN(req.updatedAt) : '';
       approvalInfo = `Duyệt ngày ${dateStr}${req.approvalNote ? `: ${req.approvalNote}` : ''}`;
-    } else if (req.status === 'REJECTED') {
+    } else if (req.status === 'rejected') {
       const dateStr = req.updatedAt ? formatDateVN(req.updatedAt) : '';
       approvalInfo = `Từ chối ngày ${dateStr}${req.rejectionReason ? `: ${req.rejectionReason}` : ''}`;
     } else {
@@ -817,11 +820,11 @@ const generateExportReportData = async ({
       : 'Chưa phân bổ';
 
     const totalShifts = uLogs.length;
-    const onTime = uLogs.filter((l) => l.status === 'ON_TIME').length;
-    const late = uLogs.filter((l) => l.status === 'LATE').length;
-    const early = uLogs.filter((l) => l.status === 'EARLY_LEAVE').length;
-    const absent = uLogs.filter((l) => l.status === 'ABSENT').length;
-    const excused = uLogs.filter((l) => l.status === 'EXCUSED_ABSENCE').length;
+    const onTime = uLogs.filter((l) => l.status === 'on_time').length;
+    const late = uLogs.filter((l) => l.status === 'late').length;
+    const early = uLogs.filter((l) => l.status === 'early_leave').length;
+    const absent = uLogs.filter((l) => l.status === 'absent').length;
+    const excused = uLogs.filter((l) => l.status === 'excused_absence').length;
 
     const validShifts = onTime + excused;
     const rate = totalShifts > 0 ? Math.round((validShifts / totalShifts) * 100) : 100;
@@ -882,11 +885,11 @@ const generateExportReportData = async ({
     }
 
     dailyStatsMap[dateKey].totalShifts += 1;
-    if (log.status === 'ON_TIME') dailyStatsMap[dateKey].onTime += 1;
-    else if (log.status === 'LATE') dailyStatsMap[dateKey].late += 1;
-    else if (log.status === 'EARLY_LEAVE') dailyStatsMap[dateKey].early += 1;
-    else if (log.status === 'ABSENT') dailyStatsMap[dateKey].absent += 1;
-    else if (log.status === 'EXCUSED_ABSENCE') dailyStatsMap[dateKey].excused += 1;
+    if (log.status === 'on_time') dailyStatsMap[dateKey].onTime += 1;
+    else if (log.status === 'late') dailyStatsMap[dateKey].late += 1;
+    else if (log.status === 'early_leave') dailyStatsMap[dateKey].early += 1;
+    else if (log.status === 'absent') dailyStatsMap[dateKey].absent += 1;
+    else if (log.status === 'excused_absence') dailyStatsMap[dateKey].excused += 1;
   });
 
   const dailyStatsList = Object.values(dailyStatsMap).map((d, index) => {
@@ -901,17 +904,17 @@ const generateExportReportData = async ({
 
   // 9. Chuẩn bị dữ liệu Sheet 1: Tổng quan
   const totalShifts = attendanceLogs.length;
-  const onTimeCount = attendanceLogs.filter((l) => l.status === 'ON_TIME').length;
-  const lateCount = attendanceLogs.filter((l) => l.status === 'LATE').length;
-  const earlyLeaveCount = attendanceLogs.filter((l) => l.status === 'EARLY_LEAVE').length;
-  const absentCount = attendanceLogs.filter((l) => l.status === 'ABSENT').length;
-  const excusedAbsenceCount = attendanceLogs.filter((l) => l.status === 'EXCUSED_ABSENCE').length;
+  const onTimeCount = attendanceLogs.filter((l) => l.status === 'on_time').length;
+  const lateCount = attendanceLogs.filter((l) => l.status === 'late').length;
+  const earlyLeaveCount = attendanceLogs.filter((l) => l.status === 'early_leave').length;
+  const absentCount = attendanceLogs.filter((l) => l.status === 'absent').length;
+  const excusedAbsenceCount = attendanceLogs.filter((l) => l.status === 'excused_absence').length;
 
   const validShifts = onTimeCount + excusedAbsenceCount;
   const overallAttendanceRate = totalShifts > 0 ? Math.round((validShifts / totalShifts) * 100) : 100;
 
   // Tính số ngày nghỉ phép đã duyệt
-  const approvedLeaves = leaveRequests.filter((r) => r.status === 'APPROVED' && r.type === 'nghi_phep');
+  const approvedLeaves = leaveRequests.filter((r) => r.status === 'approved' && r.type === 'nghi_phep');
   const approvedLeaveDays = approvedLeaves.reduce((sum, item) => {
     const s = new Date(item.startDate);
     const e = new Date(item.endDate);

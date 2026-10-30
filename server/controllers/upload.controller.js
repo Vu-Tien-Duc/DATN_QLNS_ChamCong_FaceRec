@@ -16,6 +16,7 @@ const User = require('../models/user.model');
 const LeaveRequest = require('../models/leaveRequest.model');
 const { verifyToken } = require('../middlewares/auth.middleware');
 const { isUserInDeanScope } = require('../utils/deanScope');
+const { normalizeRole } = require('../utils/roleUtils');
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -124,9 +125,7 @@ const downloadFile = async (req, res, next) => {
     const isAvatarOrFacePhoto = await User.exists({
       $or: [
         { avatar: { $regex: mediaReferencePattern } },
-        { anh_dai_dien: { $regex: mediaReferencePattern } },
         { facePhoto: { $regex: mediaReferencePattern } },
-        { anh_khuon_mat: { $regex: mediaReferencePattern } },
       ],
     });
     if (isAvatarOrFacePhoto) {
@@ -160,26 +159,28 @@ const downloadFile = async (req, res, next) => {
       return streamMinioFile(res, objectKey, false);
     }
 
-    // Xác thực người dùng và phân quyền theo phạm vi (Admin, Trưởng khoa, Chủ đơn)
+    // Xác thực người dùng và phân quyền theo phạm vi (Admin, BGH, Trưởng khoa, Phó khoa, Chủ đơn)
     return verifyToken(req, res, (authError) => {
       if (authError) {
         return next(authError);
       }
 
-      const ownerId = leaveRequest.userId?._id || leaveRequest.userId;
+      const ownerId = (leaveRequest.userId?._id || leaveRequest.userId)?.toString();
       const currentUser = req.user;
+      const currentUserId = (currentUser.id || currentUser._id)?.toString();
+      const currentRole = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
 
       const authorizeAndSend = async () => {
-        if (currentUser.role === 'admin') {
+        if (['admin', 'bgh'].includes(currentRole)) {
           return streamMinioFile(res, objectKey, false);
         }
-        if (currentUser.role === 'truongkhoa') {
+        if (['truong_khoa', 'pho_khoa'].includes(currentRole)) {
           if (await isUserInDeanScope(currentUser, ownerId)) {
             return streamMinioFile(res, objectKey, false);
           }
           return sendError(res, 'Bạn không có quyền xem tài liệu ngoài khoa.', null, 403);
         }
-        if (ownerId?.toString() === currentUser.id) {
+        if (ownerId === currentUserId) {
           return streamMinioFile(res, objectKey, false);
         }
         return sendError(res, 'Bạn không có quyền xem tài liệu của người khác.', null, 403);

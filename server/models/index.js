@@ -19,7 +19,6 @@ const SystemConfig = require('./systemConfig.model');
 const AuditLog = require('./auditLog.model');
 
 module.exports = {
-  // 14 Model chuẩn Code tiếng Anh
   User,
   FaceTemplate,
   Department,
@@ -34,26 +33,4 @@ module.exports = {
   RefreshToken,
   SystemConfig,
   AuditLog,
-
-  // 14 Model tương thích chuẩn tiếng Việt
-  NguoiDung: User,
-  DuLieuKhuonMat: FaceTemplate,
-  MauKhuonMat: FaceTemplate,
-  DonVi: Department,
-  PhongBan: Department,
-  CaLamViec: ShiftConfig,
-  MonHoc: Subject,
-  LichGiangDay: Schedule,
-  LichTrinh: Schedule,
-  NgayNghiLe: Holiday,
-  LuotQuetChamCong: PunchLog,
-  LuotQuet: PunchLog,
-  CongTongHop: AttendanceLog,
-  NhatKyChamCong: AttendanceLog,
-  DonTu: LeaveRequest,
-  DonNghiPhep: LeaveRequest,
-  PhieuLuong: Payroll,
-  MaLamMoi: RefreshToken,
-  CauHinhHeThong: SystemConfig,
-  NhatKyKiemToan: AuditLog,
 };

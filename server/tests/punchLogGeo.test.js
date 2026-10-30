@@ -12,12 +12,12 @@ const run = async () => {
   const punchNoGps = new PunchLog({
     cham_cong_id: new mongoose.Types.ObjectId(),
     nguoi_dung_id: new mongoose.Types.ObjectId(),
-    loai_quet: 'CHECK_IN',
+    loai_quet: 'check_in',
     phuong_thuc: 'face',
   });
 
   const objNoGps = punchNoGps.toObject();
-  assert.equal(punchNoGps.phuong_thuc, 'FACE_AI', 'Phương thức "face" phải được setter tự động chuẩn hóa thành "FACE_AI"');
+  assert.equal(punchNoGps.phuong_thuc, 'face_ai', 'Phương thức "face" phải được setter tự động chuẩn hóa thành "face_ai"');
   assert.equal(
     objNoGps.toa_do_gps,
     undefined,
@@ -29,8 +29,8 @@ const run = async () => {
   const punchWithGps = new PunchLog({
     cham_cong_id: new mongoose.Types.ObjectId(),
     nguoi_dung_id: new mongoose.Types.ObjectId(),
-    loai_quet: 'CHECK_IN',
-    phuong_thuc: 'FACE_AI',
+    loai_quet: 'check_in',
+    phuong_thuc: 'face_ai',
     toa_do_gps: {
       type: 'Point',
       coordinates: [105.7826, 21.0378], // [kinh_do, vi_do]
@@ -52,7 +52,7 @@ const run = async () => {
   const punchInvalidScore = new PunchLog({
     cham_cong_id: new mongoose.Types.ObjectId(),
     nguoi_dung_id: new mongoose.Types.ObjectId(),
-    loai_quet: 'CHECK_IN',
+    loai_quet: 'check_in',
     do_tin_cay_ai: 1.5, // Sai: > 1
   });
   const validationErr = await punchInvalidScore.validate().catch(e => e);
@@ -67,8 +67,8 @@ const run = async () => {
     mat_khau_ma_hoa: 'hashed_password_sample',
     danh_sach_vai_tro: [
       {
-        ma_vai_tro: 'TRUONG_KHOA',
-        pham_vi: 'KHOA',
+        ma_vai_tro: 'truong_khoa',
+        pham_vi: 'khoa',
         don_vi_id: new mongoose.Types.ObjectId(),
         tu_ngay: new Date('2025-01-01'),
         den_ngay: null, // Đang trong nhiệm kỳ
@@ -79,10 +79,10 @@ const run = async () => {
     phien_ban_khoa_cccd: 1,
   });
 
-  assert.equal(user.role, 'truongkhoa', 'Getter ảo role phải tự động suy ra truongkhoa từ mã TRUONG_KHOA');
+  assert.equal(user.role, 'truong_khoa', 'Getter ảo role phải tự động suy ra truong_khoa từ mã vai trò');
   assert.equal(user.annualLeaveQuota, 12);
   assert.equal(user.tokenVersion, 1);
-  console.log('✓ Test 4 ĐẠT: User RBAC có nhiệm kỳ và getter ảo role tương thích ngược chuẩn.');
+  console.log('✓ Test 4 ĐẠT: User RBAC có nhiệm kỳ và getter ảo role tương thích chuẩn lowercase snake_case.');
 
   // Test 5: Model RefreshToken (Anti-Replay Token Family & Grace Period)
   const refreshToken = new RefreshToken({

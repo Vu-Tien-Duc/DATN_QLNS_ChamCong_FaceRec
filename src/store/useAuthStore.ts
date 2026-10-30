@@ -141,7 +141,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   switchDemoRole: async (role: UserRoleLegacy) => {
-    const roleEmails: Record<UserRoleLegacy, string> = {
+    const roleEmails: Partial<Record<UserRoleLegacy, string>> = {
       bgh: 'hieutruong@university.edu.vn',
       admin: 'admin@university.edu.vn',
       truong_khoa: 'truongkhoa.cntt@university.edu.vn',
@@ -161,55 +161,55 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     // Fallback nếu offline hoặc không có mạng
-    const roleProfiles: Record<UserRoleLegacy, Partial<UserProfile>> = {
+    const roleProfiles: Partial<Record<UserRoleLegacy, Partial<UserProfile>>> = {
       bgh: {
         fullName: 'GS. TS. Nguyễn Văn An',
         email: 'hieutruong@university.edu.vn',
         role: 'bgh',
         departmentName: 'Ban Giám Hiệu',
-        roles: [{ role: 'BGH', scope: 'TOAN_TRUONG' }],
+        roles: [{ role: 'bgh', scope: 'toan_truong' }],
       },
       admin: {
         fullName: 'Quản Trị Viên Hệ Thống (Admin)',
         email: 'admin@university.edu.vn',
         role: 'admin',
         departmentName: 'Phòng Quản Trị Công Nghệ',
-        roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }],
+        roles: [{ role: 'admin', scope: 'toan_truong' }],
       },
       truong_khoa: {
         fullName: 'PGS. TS. Lê Hoàng Nam',
         email: 'truongkhoa.cntt@university.edu.vn',
         role: 'truong_khoa',
         departmentName: 'Khoa Công Nghệ Thông Tin & CĐS',
-        roles: [{ role: 'TRUONG_KHOA', scope: 'KHOA' }],
+        roles: [{ role: 'truong_khoa', scope: 'khoa' }],
       },
       giang_vien: {
         fullName: 'TS. Trần Thị Bích',
         email: 'giangvien.bich@university.edu.vn',
         role: 'giang_vien',
         departmentName: 'Khoa Công Nghệ Thông Tin & CĐS',
-        roles: [{ role: 'GIANG_VIEN', scope: 'BO_MON' }],
+        roles: [{ role: 'giang_vien', scope: 'bo_mon' }],
       },
       nhan_vien: {
         fullName: 'Đỗ Thu Hà',
         email: 'nhanvien.ha@university.edu.vn',
         role: 'nhan_vien',
         departmentName: 'Phòng Đào Tạo',
-        roles: [{ role: 'NHAN_VIEN', scope: 'PHONG_BAN' }],
+        roles: [{ role: 'nhan_vien', scope: 'phong_ban' }],
       },
       ke_toan: {
         fullName: 'ThS. Nguyễn Thị Mai',
         email: 'admin.hr@university.edu.vn',
         role: 'ke_toan',
         departmentName: 'Phòng Hành Chính - Tổng Hợp',
-        roles: [{ role: 'ADMIN', scope: 'TOAN_TRUONG' }],
+        roles: [{ role: 'ke_toan', scope: 'toan_truong' }],
       },
       pho_khoa: {
         fullName: 'TS. Đặng Tiến Hưng',
         email: 'phokhoa.cntt@university.edu.vn',
         role: 'pho_khoa',
         departmentName: 'Khoa Công Nghệ Thông Tin & CĐS',
-        roles: [{ role: 'PHO_TRUONG_KHOA', scope: 'KHOA' }],
+        roles: [{ role: 'pho_khoa', scope: 'khoa' }],
       },
     };
 

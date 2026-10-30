@@ -6,6 +6,7 @@
  * - Kiểm soát chặt chẽ phân quyền dữ liệu RBAC (Cá nhân, Khoa, Toàn trường).
  */
 const Department = require('../../models/department.model');
+const { normalizeRole } = require('../../utils/roleUtils');
 const {
   detectPromptInjection,
   sanitizePromptInput,
@@ -170,8 +171,8 @@ const handleAiChat = async ({
   let departmentId = department?._id;
   let effectiveDepartment = department;
 
-  const role = (currentUser?.role || '').toLowerCase();
-  if (!departmentId && (role === 'truongkhoa' || role === 'phokhoa') && currentUser?.departmentId) {
+  const role = normalizeRole(currentUser?.role || currentUser?.primaryRole || currentUser?.vai_tro_chinh);
+  if (!departmentId && ['truong_khoa', 'pho_khoa'].includes(role) && currentUser?.departmentId) {
     departmentId = currentUser.departmentId;
   }
   if (!effectiveDepartment && departmentId) {

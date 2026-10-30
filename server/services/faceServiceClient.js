@@ -94,28 +94,20 @@ const enrollMultiAngle = async ({ files, employeeId, fullName, department }) => 
   if (fullName) formData.append('full_name', fullName);
   if (department) formData.append('department', department);
 
-  const angleMap = [
-    ['image_straight', 'image_straight'],
-    ['image_left',     'image_left'],
-    ['image_right',    'image_right'],
-    ['image_up',       'image_up'],
-    ['image_down',     'image_down'],
-    ['straight',       'image_straight'],
-    ['left',           'image_left'],
-    ['right',          'image_right'],
-    ['up',             'image_up'],
-    ['down',           'image_down'],
-    ['image',          'image_straight'],
+  const angleFields = [
+    'image_straight',
+    'image_left',
+    'image_right',
+    'image_up',
+    'image_down',
   ];
 
   if (files) {
-    const added = new Set();
-    for (const [field, outField] of angleMap) {
-      if (files[field] && files[field][0] && !added.has(outField)) {
+    for (const field of angleFields) {
+      if (files[field] && files[field][0]) {
         const f = files[field][0];
         const buffer = f.buffer || require('fs').readFileSync(f.path);
-        formData.append(outField, new Blob([buffer], { type: f.mimetype || 'image/jpeg' }), `${outField}.jpg`);
-        added.add(outField);
+        formData.append(field, new Blob([buffer], { type: f.mimetype || 'image/jpeg' }), `${field}.jpg`);
       }
     }
   }
@@ -250,18 +242,18 @@ const ensureRamCacheWarm = async (force = false) => {
 
       // Nạp từ MongoDB
       const templates = await FaceTemplate.find()
-        .select('+vector_dac_trung +vector_trung_binh +descriptors +averageDescriptor')
-        .populate('nguoi_dung_id', 'ho_ten ma_can_bo fullName staffCode')
+        .select('+vector_dac_trung +vector_trung_binh')
+        .populate('userId', 'fullName staffCode')
         .lean();
 
       const payload = [];
       for (const t of templates) {
-        const u = t.nguoi_dung_id || t.userId || {};
-        const resolvedUserId = (u._id || t.nguoi_dung_id || t.userId || '').toString();
-        const fullName = u.ho_ten || u.fullName || 'Cán bộ';
-        const staffCode = u.ma_can_bo || u.staffCode || resolvedUserId;
-        const avg = t.vector_trung_binh || t.averageDescriptor || t.averageEmbedding;
-        const allVecs = t.vector_dac_trung || t.descriptors || t.faceDescriptors || [];
+        const u = t.userId || {};
+        const resolvedUserId = (u._id || t.userId || '').toString();
+        const fullName = u.fullName || 'Cán bộ';
+        const staffCode = u.staffCode || resolvedUserId;
+        const avg = t.averageDescriptor || t.vector_trung_binh;
+        const allVecs = t.descriptors || t.vector_dac_trung || [];
 
         if (Array.isArray(avg) && avg.length === 512) {
           payload.push({ userId: resolvedUserId, employeeId: staffCode, fullName, embedding: avg });

@@ -96,25 +96,21 @@ const performCheckIn = async ({
   // 2. Kiểm tra xem hôm nay đã có lượt check-in chưa
   let attendance = await AttendanceLog.findOne({
     userId,
-    $or: [
-      { workDate: workDateStr },
-      { ngay_cong: workDateStr },
-      { date: { $gte: startOfDay, $lte: endOfDay } },
-    ],
+    workDate: workDateStr,
   });
 
-  if (attendance && (attendance.checkInTime || attendance.thoi_gian_vao)) {
+  if (attendance && attendance.checkInTime) {
     throw new ServiceError(
       'Bạn đã thực hiện check-in cho ngày hôm nay rồi.',
       400,
       'ATTENDANCE_ALREADY_CHECKED_IN',
-      { checkInTime: attendance.checkInTime || attendance.thoi_gian_vao }
+      { checkInTime: attendance.checkInTime }
     );
   }
 
   // 3. Đánh giá ca làm việc hoặc thời khóa biểu hôm nay
   let effectiveShift = null;
-  let calculatedStatus = 'ON_TIME';
+  let calculatedStatus = 'on_time';
   let lateMinutes = 0;
 
   if (shiftId) {
@@ -132,7 +128,7 @@ const performCheckIn = async ({
     }
     effectiveShift = evalResult.shift;
     scheduleId = evalResult.selectedSchedule?._id || null;
-    calculatedStatus = evalResult.status || 'ON_TIME';
+    calculatedStatus = evalResult.status || 'on_time';
     lateMinutes = evalResult.lateMinutes || 0;
   } else {
     const statusInfo = calculateAttendanceStatus(nowVN, effectiveShift);
@@ -145,12 +141,11 @@ const performCheckIn = async ({
   const finalShiftId = shiftId || effectiveShift?._id || null;
 
   const punchPayload = {
-    cham_cong_id: attendanceId,
     attendanceLogId: attendanceId,
     userId,
     punchTime: nowVN,
-    punchType: 'CHECK_IN',
-    method: method.toUpperCase(),
+    punchType: 'check_in',
+    method: method.toLowerCase(),
     deviceId: finalDeviceId,
     clientIp: ip || null,
     isCampusNetwork: geofenceMeta ? geofenceMeta.isCampusNetwork : null,
@@ -158,7 +153,7 @@ const performCheckIn = async ({
     suspiciousReason: geofenceMeta?.suspiciousReason || null,
     verificationMethod: geofenceMeta?.verificationMethod || null,
     locationName: validatedLocationName,
-    isFraudulent: isFraud,
+    isFraud: isFraud,
     fraudReason,
     shiftId: finalShiftId,
     scheduleId: scheduleId || null,
@@ -180,15 +175,11 @@ const performCheckIn = async ({
       _id: attendanceId,
       userId,
       workDate: workDateStr,
-      date: workDateStr,
-      ngay_cong: workDateStr,
       checkInTime: nowVN,
-      thoi_gian_vao: nowVN,
       status: calculatedStatus,
-      method: method.toUpperCase(),
+      method: method.toLowerCase(),
       deviceId: finalDeviceId,
       shiftId: finalShiftId,
-      ca_id: finalShiftId,
       scheduleId: scheduleId || null,
       lateMinutes,
       isFraud,
@@ -199,7 +190,7 @@ const performCheckIn = async ({
   } else {
     attendance.checkInTime = nowVN;
     attendance.status = calculatedStatus;
-    attendance.method = method.toUpperCase();
+    attendance.method = method.toLowerCase();
     attendance.deviceId = finalDeviceId;
     attendance.lateMinutes = lateMinutes;
     if (isFraud) {

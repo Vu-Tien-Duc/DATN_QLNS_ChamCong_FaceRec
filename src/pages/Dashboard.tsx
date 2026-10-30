@@ -33,7 +33,10 @@ import {
   ExternalLink,
   Award,
   BookOpen,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { DepartmentSelect, DepartmentItem } from '../components/ui/DepartmentSelect';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { apiClient, extractArray } from '../api/apiClient';
@@ -74,27 +77,27 @@ function getInitials(fullName?: string): string {
 }
 
 const STATUS_CONFIGS: Record<string, { label: string; dotCls: string; badgeCls: string }> = {
-  ON_TIME: {
+  on_time: {
     label: 'Đúng giờ',
     dotCls: 'bg-emerald-500',
     badgeCls: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800',
   },
-  LATE: {
+  late: {
     label: 'Đi muộn',
     dotCls: 'bg-amber-500',
     badgeCls: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800',
   },
-  EARLY_LEAVE: {
+  early_leave: {
     label: 'Về sớm',
     dotCls: 'bg-orange-500',
     badgeCls: 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800',
   },
-  EXCUSED_ABSENCE: {
+  excused_absence: {
     label: 'Nghỉ có phép',
     dotCls: 'bg-indigo-500',
     badgeCls: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800',
   },
-  ABSENT: {
+  absent: {
     label: 'Vắng không phép',
     dotCls: 'bg-rose-500',
     badgeCls: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800',
@@ -116,6 +119,9 @@ export const Dashboard: React.FC = () => {
   const [isApprovingId, setIsApprovingId] = useState<string | null>(null);
 
   // Real backend metrics
+  const [allUsersList, setAllUsersList] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<DepartmentItem[]>([]);
+  const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
   const [totalStaff, setTotalStaff] = useState<number>(0);
   const [totalDepartments, setTotalDepartments] = useState<number>(0);
   const [todayAttendanceStats, setTodayAttendanceStats] = useState({
@@ -142,7 +148,7 @@ export const Dashboard: React.FC = () => {
 
   // Live recent punches
   const [recentPunches, setRecentPunches] = useState<AttendanceHistoryItem[]>([]);
-  const [tableFilter, setTableFilter] = useState<'ALL' | 'FACE_AI' | 'GPS'>('ALL');
+  const [tableFilter, setTableFilter] = useState<'ALL' | 'face_ai' | 'GPS'>('ALL');
   const [searchPunchKeyword, setSearchPunchKeyword] = useState<string>('');
 
   // Realtime clock
@@ -190,6 +196,8 @@ export const Dashboard: React.FC = () => {
       ]);
       const usersList = extractArray(usersRes.data);
       const deptsList = extractArray(deptsRes.data);
+      setAllUsersList(usersList);
+      setDepartments(deptsList as DepartmentItem[]);
       setTotalStaff(usersList.length || 0);
       setTotalDepartments(deptsList.length || 0);
 
@@ -210,11 +218,11 @@ export const Dashboard: React.FC = () => {
       let excused = 0;
 
       todayRecords.forEach((r) => {
-        if (r.status === 'ON_TIME') onTime++;
-        else if (r.status === 'LATE') late++;
-        else if (r.status === 'EARLY_LEAVE') early++;
-        else if (r.status === 'EXCUSED_ABSENCE') excused++;
-        else if (r.status === 'ABSENT') absent++;
+        if (r.status === 'on_time') onTime++;
+        else if (r.status === 'late') late++;
+        else if (r.status === 'early_leave') early++;
+        else if (r.status === 'excused_absence') excused++;
+        else if (r.status === 'absent') absent++;
       });
 
       const present = onTime + late + early;
@@ -233,7 +241,7 @@ export const Dashboard: React.FC = () => {
 
       // 3. Tải đơn nghỉ phép chờ duyệt
       const leaveRes = await leaveRequestApi
-        .getLeaveRequests({ status: 'CHO_DUYET', limit: 5 })
+        .getLeaveRequests({ status: 'cho_duyet', limit: 5 })
         .catch(() => ({ requests: [], total: 0 }));
       const requests = leaveRes.requests || leaveRes.data || [];
       setPendingLeaveCount(leaveRes.total || requests.length || 0);
@@ -281,10 +289,10 @@ export const Dashboard: React.FC = () => {
       const sevenDaysRecords = sevenDaysRes.records || [];
       const trend = past7Days.map((item) => {
         const dayLogs = sevenDaysRecords.filter((r) => r.workDate === item.dateStr);
-        const pCount = dayLogs.filter((r) => r.status === 'ON_TIME').length;
-        const lCount = dayLogs.filter((r) => r.status === 'LATE' || r.status === 'EARLY_LEAVE').length;
-        const eCount = dayLogs.filter((r) => r.status === 'EXCUSED_ABSENCE').length;
-        const aCount = dayLogs.filter((r) => r.status === 'ABSENT').length;
+        const pCount = dayLogs.filter((r) => r.status === 'on_time').length;
+        const lCount = dayLogs.filter((r) => r.status === 'late' || r.status === 'early_leave').length;
+        const eCount = dayLogs.filter((r) => r.status === 'excused_absence').length;
+        const aCount = dayLogs.filter((r) => r.status === 'absent').length;
         return {
           day: item.day,
           dateStr: item.dateStr,
@@ -346,6 +354,143 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  // Helper lấy ID đơn vị của nhân sự
+  const getEmpDepartmentId = (u: any): string => {
+    const raw = u.departmentId || u.don_vi_chinh_id || u.don_vi_id;
+    if (!raw) return '';
+    if (typeof raw === 'object') return String(raw._id || raw.id || '');
+    return String(raw);
+  };
+
+  // Helper lấy tên hiển thị đơn vị chính xác
+  const getEmpDepartmentName = (u: any): string => {
+    if (u.departmentName && String(u.departmentName).trim()) return String(u.departmentName).trim();
+    const deptId = getEmpDepartmentId(u);
+    if (deptId && departments.length > 0) {
+      const found = departments.find((d) => String(d._id) === deptId);
+      if (found) return found.name || (found as any).ten_phong_ban || 'Văn phòng / Ban';
+    }
+    if (typeof u.departmentId === 'object' && u.departmentId?.name) return String(u.departmentId.name);
+    return 'Văn phòng / Ban';
+  };
+
+  // Lọc danh sách nhân viên áp dụng bộ lọc Khoa / Bộ môn
+  const filteredUsersList = useMemo(() => {
+    if (departmentFilter === 'ALL') return allUsersList;
+    return allUsersList.filter((u) => {
+      const uDeptId = getEmpDepartmentId(u);
+      const selectedDept = departments.find((d) => String(d._id) === String(departmentFilter));
+      const isBghFilter = selectedDept
+        ? String(selectedDept.type || selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
+          String(selectedDept.name || '').toLowerCase().includes('giám hiệu')
+        : false;
+
+      if (isBghFilter) {
+        return String(u.role || '').toLowerCase().includes('bgh') || uDeptId === departmentFilter;
+      }
+
+      // 1. Trực tiếp
+      if (uDeptId === departmentFilter) return true;
+
+      // 2. Cha (Khoa -> Bộ môn)
+      const uDept = departments.find((d) => String(d._id) === uDeptId);
+      const uParentId = uDept?.parentId
+        ? typeof uDept.parentId === 'object' && uDept.parentId !== null && '_id' in uDept.parentId
+          ? String((uDept.parentId as any)._id)
+          : String(uDept.parentId)
+        : '';
+      if (uParentId && uParentId === departmentFilter) return true;
+
+      // 3. Roles
+      if (Array.isArray(u.roles)) {
+        return u.roles.some((r: any) => {
+          const rDept = r.departmentId || r.don_vi_id;
+          if (!rDept) return false;
+          const rId = typeof rDept === 'object' && rDept !== null && '_id' in rDept ? String(rDept._id) : String(rDept);
+          return rId === departmentFilter;
+        });
+      }
+
+      return false;
+    });
+  }, [allUsersList, departmentFilter, departments]);
+
+  // Xuất Báo Cáo Chấm Công Sáng Nay ra file Excel (.xlsx)
+  const handleExportMorningReportExcel = () => {
+    if (!filteredUsersList.length) {
+      toast.error('Không có dữ liệu nhân sự để xuất báo cáo.');
+      return;
+    }
+    try {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('vi-VN');
+
+      const dataRows = filteredUsersList.map((emp, i) => {
+        const empId = String(emp._id || emp.id);
+        const deptName = getEmpDepartmentName(emp);
+
+        // Tìm kiếm log chấm công hôm nay của cán bộ này
+        const punchLog = recentPunches.find((p) => {
+          const pUserId = typeof p.userId === 'object' ? String((p.userId as any)?._id || (p.userId as any)?.id) : String(p.userId);
+          return pUserId === empId;
+        });
+
+        const hasIn = Boolean(punchLog?.checkInTime);
+        const hasOut = Boolean(punchLog?.checkOutTime);
+        const checkInFormatted = hasIn ? formatTimeVN(punchLog?.checkInTime) : '--:--:--';
+        const checkOutFormatted = hasOut ? formatTimeVN(punchLog?.checkOutTime) : '--:--:--';
+        const statusMeta = punchLog ? STATUS_CONFIGS[punchLog.status] || { label: 'Có mặt' } : { label: 'Chưa check-in' };
+
+        const methodStr = punchLog
+          ? punchLog.method?.toLowerCase().includes('gps')
+            ? 'Mobile GPS'
+            : 'Face AI Kiosk'
+          : '--';
+
+        return {
+          'STT': i + 1,
+          'Mã Cán Bộ': emp.staffCode || emp.ma_can_bo || '--',
+          'Họ Và Tên': emp.fullName || '--',
+          'Khoa / Bộ Môn': deptName,
+          'Chức Vụ': emp.position || emp.chuc_vu || 'Giảng viên',
+          'Ngày Điểm Danh': dateStr,
+          'Giờ Check-in': checkInFormatted,
+          'Giờ Check-out': checkOutFormatted,
+          'Trạng Thái Sáng Nay': hasIn ? statusMeta.label : 'Chưa đến',
+          'Phương Thức Xác Thực': methodStr,
+          'Độ Tin Cậy AI': punchLog?.punchLogIds?.[0]?.confidenceScore ? `${punchLog.punchLogIds[0].confidenceScore.toFixed(2)} cos` : '--',
+          'Face ID': emp.isFaceRegistered ? 'Đã kích hoạt' : 'Chưa đăng ký',
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 26 },
+        { wch: 28 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 22 },
+        { wch: 16 },
+        { wch: 16 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Báo Cáo Sáng Nay');
+
+      const fileName = `Bao_Cao_Cham_Cong_Sang_Nay_${todayDateIso}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast.success('Đã xuất Báo cáo chấm công sáng nay (.xlsx) thành công!');
+    } catch (err) {
+      console.error('Lỗi khi xuất Báo cáo sáng nay:', err);
+      toast.error('Lỗi khi đóng gói tệp Excel.');
+    }
+  };
+
   // Filtered live punch list
   const filteredPunches = useMemo(() => {
     return recentPunches.filter((item) => {
@@ -356,8 +501,35 @@ export const Dashboard: React.FC = () => {
       );
 
       // Filter by device type
-      if (tableFilter === 'FACE_AI' && !isFace) return false;
+      if (tableFilter === 'face_ai' && !isFace) return false;
       if (tableFilter === 'GPS' && !isGps) return false;
+
+      // Filter by Department
+      if (departmentFilter !== 'ALL') {
+        const userObj = typeof item.userId === 'object' ? item.userId : null;
+        if (userObj) {
+          const deptId = getEmpDepartmentId(userObj);
+          const selectedDept = departments.find((d) => String(d._id) === String(departmentFilter));
+          const isBghFilter = selectedDept
+            ? String(selectedDept.type || selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
+              String(selectedDept.name || '').toLowerCase().includes('giám hiệu')
+            : false;
+          if (isBghFilter) {
+            const isUserBgh = String((userObj as any).role || '').toLowerCase().includes('bgh') || deptId === departmentFilter;
+            if (!isUserBgh) return false;
+          } else {
+            const matchesDirect = deptId === departmentFilter;
+            const uDept = departments.find((d) => String(d._id) === deptId);
+            const uParentId = uDept?.parentId
+              ? typeof uDept.parentId === 'object' && uDept.parentId !== null && '_id' in uDept.parentId
+                ? String((uDept.parentId as any)._id)
+                : String(uDept.parentId)
+              : '';
+            const matchesParent = Boolean(uParentId && uParentId === departmentFilter);
+            if (!matchesDirect && !matchesParent) return false;
+          }
+        }
+      }
 
       // Filter by keyword
       if (searchPunchKeyword.trim()) {
@@ -371,7 +543,7 @@ export const Dashboard: React.FC = () => {
 
       return true;
     });
-  }, [recentPunches, tableFilter, searchPunchKeyword]);
+  }, [recentPunches, tableFilter, searchPunchKeyword, departmentFilter, departments]);
 
   // Donut chart calculations (100% REAL)
   const totalRecordsToday =
@@ -407,11 +579,35 @@ export const Dashboard: React.FC = () => {
           </p>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Action Buttons & Department Filter */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-wrap">
+          {/* Bộ lọc Khoa / Bộ môn phân cấp */}
+          <div className="w-full sm:w-60">
+            <DepartmentSelect
+              departments={departments}
+              value={departmentFilter}
+              onChange={(val) => setDepartmentFilter(val)}
+              allowAll={true}
+              allLabel="Toàn trường (Tất cả đơn vị)"
+              placeholder="Lọc theo Khoa / Viện..."
+              size="sm"
+            />
+          </div>
+
+          {/* Nút Xuất Báo Cáo Sáng Nay (.xlsx) */}
+          <button
+            onClick={handleExportMorningReportExcel}
+            className="px-3 py-2 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+            type="button"
+            title="Xuất danh sách điểm danh sáng nay ra file Excel (.xlsx)"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Xuất Báo Cáo Sáng Nay (.xlsx)</span>
+          </button>
+
           <button
             onClick={() => setScannerMode('check-in')}
-            className="px-3.5 py-2 rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-semibold text-xs shadow-2xs hover:bg-slate-800 dark:hover:bg-white transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-semibold text-xs shadow-2xs hover:bg-slate-800 dark:hover:bg-white transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
             type="button"
           >
             <Camera className="w-3.5 h-3.5" />
@@ -420,7 +616,7 @@ export const Dashboard: React.FC = () => {
 
           <button
             onClick={() => navigate('/leave-requests')}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+            className="px-3.5 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
             type="button"
           >
             <CheckCheck className="w-3.5 h-3.5" />
@@ -868,9 +1064,9 @@ export const Dashboard: React.FC = () => {
                 Tất cả ({recentPunches.length})
               </button>
               <button
-                onClick={() => setTableFilter('FACE_AI')}
+                onClick={() => setTableFilter('face_ai')}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  tableFilter === 'FACE_AI'
+                  tableFilter === 'face_ai'
                     ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
@@ -914,7 +1110,7 @@ export const Dashboard: React.FC = () => {
               </div>
             ) : (
               filteredPunches.map((item, idx) => {
-                const statusInfo = STATUS_CONFIGS[item.status] || STATUS_CONFIGS.ON_TIME;
+                const statusInfo = STATUS_CONFIGS[item.status] || STATUS_CONFIGS.on_time;
                 const userObj = typeof item.userId === 'object' ? item.userId : null;
                 const deptName = userObj?.departmentId?.name || 'Ban Giám Hiệu';
                 const shiftName =
@@ -924,7 +1120,7 @@ export const Dashboard: React.FC = () => {
                 const conf = item.punchLogIds?.[0]?.confidenceScore;
                 const hasCheckedIn = Boolean(item.checkInTime);
                 const hasCheckedOut = Boolean(item.checkOutTime);
-                const isAbsent = item.status === 'ABSENT' || (!hasCheckedIn && !hasCheckedOut);
+                const isAbsent = item.status === 'absent' || (!hasCheckedIn && !hasCheckedOut);
                 const roleLabel = getRoleLabel(userObj?.role);
 
                 return (
@@ -1021,7 +1217,7 @@ export const Dashboard: React.FC = () => {
                   </tr>
                 ) : (
                   filteredPunches.map((item, idx) => {
-                    const statusInfo = STATUS_CONFIGS[item.status] || STATUS_CONFIGS.ON_TIME;
+                    const statusInfo = STATUS_CONFIGS[item.status] || STATUS_CONFIGS.on_time;
                     const userObj = typeof item.userId === 'object' ? item.userId : null;
                     const deptName = userObj?.departmentId?.name || 'Ban Giám Hiệu';
                     const shiftName =
@@ -1031,7 +1227,7 @@ export const Dashboard: React.FC = () => {
                     const conf = item.punchLogIds?.[0]?.confidenceScore;
                     const hasCheckedIn = Boolean(item.checkInTime);
                     const hasCheckedOut = Boolean(item.checkOutTime);
-                    const isAbsent = item.status === 'ABSENT' || (!hasCheckedIn && !hasCheckedOut);
+                    const isAbsent = item.status === 'absent' || (!hasCheckedIn && !hasCheckedOut);
                     const roleLabel = getRoleLabel(userObj?.role);
 
                     return (

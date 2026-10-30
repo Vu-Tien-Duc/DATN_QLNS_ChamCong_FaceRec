@@ -8,7 +8,7 @@ const ServiceError = require('../utils/serviceError');
 const getAuditLogs = async ({ actor, action, targetType, status, search, keyword, startDate, endDate, page, limit }) => {
   const query = {};
   if (actor) {
-    if (actor === 'null' || actor === 'SYSTEM') {
+    if (actor === 'null' || actor === 'system') {
       query.actor = null;
     } else if (!mongoose.Types.ObjectId.isValid(actor)) {
       throw new ServiceError('ID người thực hiện (actor) không đúng định dạng ObjectId hợp lệ.', 400);
@@ -19,9 +19,9 @@ const getAuditLogs = async ({ actor, action, targetType, status, search, keyword
   if (action) query.action = action;
   if (targetType) query.targetType = targetType;
   if (status) {
-    const upperStatus = String(status).toUpperCase();
-    if (['SUCCESS', 'FAILED'].includes(upperStatus)) {
-      query.status = upperStatus;
+    const normalizedStatus = String(status).toLowerCase();
+    if (['success', 'failed'].includes(normalizedStatus)) {
+      query.status = normalizedStatus;
     }
   }
 

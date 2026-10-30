@@ -27,7 +27,7 @@ const run = async () => {
     so_cap_duyet: 2,
     cap_duyet_hien_tai: 1,
     phien_ban: 1,
-    status: 'PENDING',
+    status: 'pending',
   });
   await req1.validate();
   assert.equal(req1.so_cap_duyet, 2);
@@ -40,12 +40,12 @@ const run = async () => {
   const lecturerId = objectId();
   const reqLecturer = {
     userId: lecturerId,
-    status: 'PENDING',
+    status: 'pending',
     currentLevel: 1,
   };
   const sameUserAsApprover = {
     id: lecturerId.toString(),
-    role: 'TRUONG_KHOA',
+    role: 'truong_khoa',
   };
   const permSelf = await validateLeaveApprovalPermission(sameUserAsApprover, reqLecturer);
   assert.equal(permSelf.allowed, false);
@@ -57,13 +57,13 @@ const run = async () => {
   const deptLecturerId = objectId();
   const reqPendingBGH = {
     userId: deptLecturerId,
-    status: 'PENDING_BGH',
+    status: 'pending_bgh',
     currentLevel: 2,
     totalLevels: 2,
   };
   const deanUser = {
     id: objectId().toString(),
-    role: 'TRUONG_KHOA',
+    role: 'truong_khoa',
     departmentId: objectId().toString(),
   };
   // Trưởng khoa duyệt Cấp 2 -> Bị từ chối vì cấp 2 chỉ BGH mới có quyền
@@ -75,7 +75,7 @@ const run = async () => {
   // BGH / Admin duyệt Cấp 2 -> Được phép
   const rectorUser = {
     id: objectId().toString(),
-    role: 'BGH',
+    role: 'bgh',
   };
   const permRector = await validateLeaveApprovalPermission(rectorUser, reqPendingBGH);
   assert.equal(permRector.allowed, true);
@@ -88,12 +88,13 @@ const run = async () => {
   assert.equal(longDays, 5);
   // Quy tắc: <= 3 ngày -> 1 cấp; > 3 ngày -> 2 cấp
   const getRequiredLevels = (days, role) => {
-    if (['TRUONG_KHOA', 'PHO_TRUONG_KHOA'].includes(role)) return 1; // Thẳng BGH
+    const r = (role || '').toLowerCase();
+    if (['truong_khoa', 'pho_khoa'].includes(r)) return 1; // Thẳng BGH
     return days > 3 ? 2 : 1;
   };
-  assert.equal(getRequiredLevels(shortDays, 'GIANG_VIEN'), 1);
-  assert.equal(getRequiredLevels(longDays, 'GIANG_VIEN'), 2);
-  assert.equal(getRequiredLevels(shortDays, 'TRUONG_KHOA'), 1);
+  assert.equal(getRequiredLevels(shortDays, 'giang_vien'), 1);
+  assert.equal(getRequiredLevels(longDays, 'giang_vien'), 2);
+  assert.equal(getRequiredLevels(shortDays, 'truong_khoa'), 1);
   console.log('✓ Test 4 ĐẠT: Thuật toán phân luồng cấp duyệt tự động (<= 3 ngày: 1 cấp, > 3 ngày: 2 cấp, Lãnh đạo: Thẳng BGH).');
 
   // Test 5: Logic Optimistic Locking
@@ -124,10 +125,10 @@ const run = async () => {
     userId: deptLecturerId,
     shiftId: objectId(),
     workDate: '2026-11-02',
-    status: 'EXCUSED_ABSENCE',
+    status: 'excused_absence',
     leaveRequestId: req1._id,
   });
-  assert.equal(attDoc.trang_thai, 'EXCUSED_ABSENCE');
+  assert.equal(attDoc.trang_thai, 'excused_absence');
   assert.equal((attDoc.leaveRequestId || attDoc.don_tu_id).toString(), req1._id.toString());
   console.log('✓ Test 6 ĐẠT: Cấu trúc liên kết hồi tố và hoàn tác công AttendanceLog đồng bộ chuẩn xác với LeaveRequest.');
 

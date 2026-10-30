@@ -103,8 +103,9 @@ const faceTemplateSchema = new mongoose.Schema(
     trang_thai_ma_hoa: {
       type: String,
       alias: 'encryptionStatus',
-      enum: ['PLAINTEXT', 'AES_256_GCM'],
-      default: 'AES_256_GCM',
+      enum: ['plaintext', 'aes_256_gcm'],
+      default: 'aes_256_gcm',
+      set: (v) => v ? String(v).toLowerCase() : v,
     },
     du_lieu_ma_hoa: {
       type: String,
@@ -160,7 +161,7 @@ faceTemplateSchema.pre('save', function () {
   if (this.vector_trung_binh && Array.isArray(this.vector_trung_binh)) {
     this.vector_trung_binh_ma_hoa = encryptBiometricVector(this.vector_trung_binh);
   }
-  this.trang_thai_ma_hoa = 'AES_256_GCM';
+  this.trang_thai_ma_hoa = 'aes_256_gcm';
 });
 
 faceTemplateSchema.methods.getDecryptedDescriptors = function () {
@@ -180,12 +181,10 @@ faceTemplateSchema.methods.getDecryptedAverageDescriptor = function () {
 faceTemplateSchema.pre('validate', function () {
   const desc = this.vector_dac_trung;
   if (!desc || !Array.isArray(desc) || desc.length === 0 || !desc.every(d => Array.isArray(d) && d.length === 512 && d.every(v => Number.isFinite(v)))) {
-    this.invalidate('descriptors', 'Mỗi mẫu khuôn mặt phải chứa đúng 512 số hữu hạn (InsightFace buffalo_s / buffalo_l)');
     this.invalidate('vector_dac_trung', 'Mỗi mẫu khuôn mặt phải chứa đúng 512 số hữu hạn (InsightFace buffalo_s / buffalo_l)');
   }
   const validModels = ['buffalo_s', 'buffalo_l', 'insightface-buffalo_l'];
   if (this.mo_hinh_ai && !validModels.includes(this.mo_hinh_ai)) {
-    this.invalidate('embeddingModel', 'Mô hình AI chỉ chấp nhận buffalo_s, buffalo_l hoặc insightface-buffalo_l');
     this.invalidate('mo_hinh_ai', 'Mô hình AI chỉ chấp nhận buffalo_s, buffalo_l hoặc insightface-buffalo_l');
   }
 
@@ -214,9 +213,5 @@ faceTemplateSchema.pre('validate', function () {
 
 
 const FaceTemplate = mongoose.models.FaceTemplate || mongoose.model('FaceTemplate', faceTemplateSchema, 'mau_khuon_mat');
-
-if (!mongoose.models.MauKhuonMat) {
-  mongoose.model('MauKhuonMat', faceTemplateSchema, 'mau_khuon_mat');
-}
 
 module.exports = FaceTemplate;

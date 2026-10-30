@@ -71,8 +71,4 @@ subjectSchema.index({ kich_hoat: 1 });
 
 const Subject = mongoose.models.Subject || mongoose.model('Subject', subjectSchema, 'mon_hoc');
 
-if (!mongoose.models.MonHoc) {
-  mongoose.model('MonHoc', subjectSchema, 'mon_hoc');
-}
-
 module.exports = Subject;

@@ -67,11 +67,9 @@ shiftConfigSchema.pre('validate', function () {
   const et = this.gio_ket_thuc;
   if (st && et && et <= st) {
     this.invalidate('gio_ket_thuc', 'Giờ kết thúc ca phải sau giờ bắt đầu; ca qua đêm chưa được hỗ trợ');
-    this.invalidate('endTime', 'Giờ kết thúc ca phải sau giờ bắt đầu; ca qua đêm chưa được hỗ trợ');
   }
   const late = this.nguong_di_muon_phut;
   if (late !== undefined && late !== null && !Number.isInteger(late)) {
-    this.invalidate('lateThresholdMinutes', 'Ngưỡng phút trễ phải là số nguyên');
     this.invalidate('nguong_di_muon_phut', 'Ngưỡng phút trễ phải là số nguyên');
   }
 });
@@ -80,13 +78,5 @@ shiftConfigSchema.index({ ten_ca: 1 });
 shiftConfigSchema.index({ gio_bat_dau: 1, gio_ket_thuc: 1 });
 
 const ShiftConfig = mongoose.models.ShiftConfig || mongoose.model('ShiftConfig', shiftConfigSchema, 'ca_lam_viec');
-
-if (!mongoose.models.CaLamViec) {
-  mongoose.model('CaLamViec', shiftConfigSchema, 'ca_lam_viec');
-}
-
-if (!mongoose.models.CauHinhCa) {
-  mongoose.model('CauHinhCa', shiftConfigSchema, 'ca_lam_viec');
-}
 
 module.exports = ShiftConfig;

@@ -83,7 +83,7 @@ const run = async () => {
         { bac: 5, tu: 100000000, den: null, thue_suat: 0.35 },
       ],
     },
-    status: 'DU_THAO',
+    status: 'du_thao',
   });
 
   await payrollDoc.validate();
@@ -96,7 +96,7 @@ const run = async () => {
   console.log('✓ Test 2 ĐẠT: Payroll Model lưu trữ hoàn hảo Snapshot tham số năm 2026 và Dual-Standard Aliases.');
 
   // Test 3: Cơ chế Khóa lương (isLocked / DA_KHOA)
-  payrollDoc.trang_thai = 'DA_KHOA';
+  payrollDoc.trang_thai = 'da_khoa';
   payrollDoc.khoa_luc = new Date();
   assert.equal(payrollDoc.isLocked, true);
 
@@ -121,7 +121,7 @@ const run = async () => {
     userId: objectId(),
     shiftId: objectId(),
     workDate: '2026-10-15',
-    status: 'ON_TIME',
+    status: 'on_time',
     da_chot: true,
   });
   assert.equal(attLog.da_chot, true);
@@ -130,8 +130,8 @@ const run = async () => {
 
   // Test 5: Xác thực Mở khóa lương (Unlock Payroll)
   const validateUnlockPermission = (user, reason) => {
-    const role = (user.role || '').toUpperCase();
-    if (!['ADMIN', 'BGH'].includes(role)) {
+    const role = (user.role || '').toLowerCase();
+    if (!['admin', 'bgh'].includes(role)) {
       const err = new Error('UNAUTHORIZED_UNLOCK');
       err.statusCode = 403;
       throw err;
@@ -146,18 +146,18 @@ const run = async () => {
 
   // Giảng viên mở khóa -> Bị từ chối 403
   assert.throws(
-    () => validateUnlockPermission({ role: 'GIANG_VIEN' }, 'Cần điều chỉnh giờ dạy'),
+    () => validateUnlockPermission({ role: 'giang_vien' }, 'Cần điều chỉnh giờ dạy'),
     (err) => err.statusCode === 403
   );
 
   // Admin mở khóa không có lý do -> Bị từ chối 400
   assert.throws(
-    () => validateUnlockPermission({ role: 'ADMIN' }, ''),
+    () => validateUnlockPermission({ role: 'admin' }, ''),
     (err) => err.statusCode === 400
   );
 
   // BGH mở khóa hợp lệ có lý do
-  assert.equal(validateUnlockPermission({ role: 'BGH' }, 'Điều chỉnh thù lao bù giờ sau phúc khảo'), true);
+  assert.equal(validateUnlockPermission({ role: 'bgh' }, 'Điều chỉnh thù lao bù giờ sau phúc khảo'), true);
   console.log('✓ Test 5 ĐẠT: Phân quyền mở khóa lương nghiêm ngặt dành riêng cho BGH/Admin có lý do kiểm toán.');
 
   // Test 6: Kiểm tra cấu trúc dữ liệu xuất Excel & PDF

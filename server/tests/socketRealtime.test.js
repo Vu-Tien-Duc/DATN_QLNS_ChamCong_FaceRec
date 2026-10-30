@@ -60,7 +60,7 @@ const runTests = async () => {
   );
 
   const teacherToken = jwt.sign(
-    { id: 'gv_user_002', role: 'giangvien', departmentId: 'dept_cntt', fullName: 'ThS. Nguyễn Văn A' },
+    { id: 'gv_user_002', role: 'giang_vien', departmentId: 'dept_cntt', fullName: 'ThS. Nguyễn Văn A' },
     JWT_SECRET,
     { expiresIn: '1h' }
   );
@@ -100,12 +100,12 @@ const runTests = async () => {
     userName: 'ThS. Nguyễn Văn A',
     staffCode: 'GV002',
     departmentId: 'dept_cntt',
-    punchType: 'CHECK_IN',
-    method: 'FACE_AI',
-    status: 'ON_TIME',
+    punchType: 'check_in',
+    method: 'face_ai',
+    status: 'on_time',
     confidenceScore: 0.98,
     isFraud: false,
-    scanTime: new Date(),
+    punchTime: new Date(),
   };
 
   const startTime = performance.now();
@@ -125,8 +125,8 @@ const runTests = async () => {
 
   assert.equal(receivedPunch.userId, samplePunch.userId);
   assert.equal(receivedPunch.userName, samplePunch.userName);
-  assert.equal(receivedPunch.punchType, 'CHECK_IN');
-  assert.equal(receivedPunch.status, 'ON_TIME');
+  assert.equal(receivedPunch.punchType, 'check_in');
+  assert.equal(receivedPunch.status, 'on_time');
   console.log(`✓ Test 3 ĐẠT: Nhận sự kiện attendance:new-punch trong ${duration.toFixed(2)}ms (< 100ms chuẩn Realtime).`);
 
   // ---------------------------------------------------------------------------

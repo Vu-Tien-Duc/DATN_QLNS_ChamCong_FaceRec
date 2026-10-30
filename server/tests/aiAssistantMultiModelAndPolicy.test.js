@@ -59,8 +59,8 @@ const run = async () => {
   const ambiguousResponse = generateFallbackResponse({
     isAmbiguous: true,
     ambiguousMatches: [
-      { fullName: 'TS. Nguyễn Văn Hưng', email: 'hung.nv@uni.edu.vn', departmentName: 'Khoa CNTT', role: 'GIANG_VIEN' },
-      { fullName: 'ThS. Trần Văn Hưng', email: 'hung.tv@uni.edu.vn', departmentName: 'Khoa Kinh tế', role: 'GIANG_VIEN' },
+      { fullName: 'TS. Nguyễn Văn Hưng', email: 'hung.nv@uni.edu.vn', departmentName: 'Khoa CNTT', role: 'giang_vien' },
+      { fullName: 'ThS. Trần Văn Hưng', email: 'hung.tv@uni.edu.vn', departmentName: 'Khoa Kinh tế', role: 'giang_vien' },
     ],
   });
   assert.ok(ambiguousResponse.includes('Yêu Cầu Xác Nhận Danh Tính'));
@@ -160,7 +160,7 @@ const run = async () => {
   assert.strictEqual(permHTDept.allowed, true, 'Hiệu trưởng phải có quyền xem toàn trường');
 
   // 9.2 Giảng viên cố tình xem thông tin người khác bị từ chối
-  const giangVienUser = { id: 'gv1', role: 'giangvien' };
+  const giangVienUser = { id: 'gv1', role: 'giang_vien' };
   const permGV = await checkUserPermission(giangVienUser, 'gv2');
   assert.strictEqual(permGV.allowed, false, 'Giảng viên không được xem thông tin người khác');
   assert.ok(permGV.reason.includes('chỉ có quyền tra cứu thông tin của chính mình'));

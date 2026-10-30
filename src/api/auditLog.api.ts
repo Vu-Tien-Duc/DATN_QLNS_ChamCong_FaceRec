@@ -8,13 +8,13 @@ export interface AuditLogItem {
     email: string;
     role: string;
   } | string | null;
-  actorType?: 'USER' | 'SYSTEM';
+  actorType?: 'user' | 'system';
   action: string;
   targetId: string;
   targetType: string;
   ipAddress?: string | null;
   userAgent?: string | null;
-  status: 'SUCCESS' | 'FAILED';
+  status: 'success' | 'failed';
   timestamp: string;
   details?: any;
   previousHash?: string | null;

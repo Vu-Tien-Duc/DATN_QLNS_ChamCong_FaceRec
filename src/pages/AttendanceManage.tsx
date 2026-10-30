@@ -27,7 +27,10 @@ import {
   FilePlus,
   AlertTriangle,
   Camera,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { DepartmentSelect } from '../components/ui/DepartmentSelect';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
@@ -151,35 +154,35 @@ const STATUS_CONFIG: Record<
     icon: any;
   }
 > = {
-  ON_TIME: {
+  on_time: {
     label: 'Đúng Giờ',
     dotColor: 'bg-emerald-500',
     badgeCls: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
     bgSoft: 'bg-emerald-50 dark:bg-emerald-950/30',
     icon: CheckCircle2,
   },
-  LATE: {
+  late: {
     label: 'Đi Muộn',
     dotColor: 'bg-amber-500',
     badgeCls: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
     bgSoft: 'bg-amber-50 dark:bg-amber-950/30',
     icon: Clock,
   },
-  EARLY_LEAVE: {
+  early_leave: {
     label: 'Về Sớm',
     dotColor: 'bg-orange-500',
     badgeCls: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800',
     bgSoft: 'bg-orange-50 dark:bg-orange-950/30',
     icon: Clock,
   },
-  EXCUSED_ABSENCE: {
+  excused_absence: {
     label: 'Nghỉ Có Phép',
     dotColor: 'bg-blue-500',
     badgeCls: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800',
     bgSoft: 'bg-blue-50 dark:bg-blue-950/30',
     icon: CheckCircle2,
   },
-  ABSENT: {
+  absent: {
     label: 'Vắng Mặt',
     dotColor: 'bg-rose-500',
     badgeCls: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800',
@@ -189,7 +192,7 @@ const STATUS_CONFIG: Record<
 };
 
 const METHOD_LABELS: Record<string, { label: string; icon: any; cls: string }> = {
-  FACE_AI: {
+  face_ai: {
     label: 'Face ID AI',
     icon: ScanFace,
     cls: 'text-indigo-600 bg-indigo-50 border-indigo-200 dark:text-indigo-300 dark:bg-indigo-950/40 dark:border-indigo-800',
@@ -204,7 +207,7 @@ const METHOD_LABELS: Record<string, { label: string; icon: any; cls: string }> =
     icon: ScanFace,
     cls: 'text-indigo-600 bg-indigo-50 border-indigo-200 dark:text-indigo-300 dark:bg-indigo-950/40 dark:border-indigo-800',
   },
-  QR_CODE: {
+  qr_code: {
     label: 'Mã QR TOTP',
     icon: QrCode,
     cls: 'text-cyan-600 bg-cyan-50 border-cyan-200 dark:text-cyan-300 dark:bg-cyan-950/40 dark:border-cyan-800',
@@ -234,7 +237,7 @@ const METHOD_LABELS: Record<string, { label: string; icon: any; cls: string }> =
     icon: ShieldCheck,
     cls: 'text-purple-600 bg-purple-50 border-purple-200 dark:text-purple-300 dark:bg-purple-950/40 dark:border-purple-800',
   },
-  SYSTEM_AUTO: {
+  system_auto: {
     label: 'Hệ Thống Tự Động',
     icon: Sparkles,
     cls: 'text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-300 dark:bg-slate-900 dark:border-slate-700',
@@ -298,7 +301,7 @@ export const AttendanceManage: React.FC = () => {
   const [brokenEvidence, setBrokenEvidence] = useState<Record<string, boolean>>({});
 
   // Form state cho Adjust Modal
-  const [adjustStatus, setAdjustStatus] = useState<string>('ON_TIME');
+  const [adjustStatus, setAdjustStatus] = useState<string>('on_time');
   const [adjustCheckIn, setAdjustCheckIn] = useState<string>('');
   const [adjustCheckOut, setAdjustCheckOut] = useState<string>('');
   const [adjustNote, setAdjustNote] = useState<string>('');
@@ -313,7 +316,7 @@ export const AttendanceManage: React.FC = () => {
 
   // Form state cho Manual Punch Modal
   const [manualUserId, setManualUserId] = useState<string>('');
-  const [manualPunchType, setManualPunchType] = useState<'CHECK_IN' | 'CHECK_OUT'>('CHECK_IN');
+  const [manualPunchType, setManualPunchType] = useState<'check_in' | 'check_out'>('check_in');
   const [manualNote, setManualNote] = useState<string>('');
   const [isSubmittingManual, setIsSubmittingManual] = useState<boolean>(false);
 
@@ -481,15 +484,15 @@ export const AttendanceManage: React.FC = () => {
     let totalLateMinutes = 0;
 
     filteredRecords.forEach((r) => {
-      if (r.status === 'ON_TIME') onTime++;
-      else if (r.status === 'LATE') {
+      if (r.status === 'on_time') onTime++;
+      else if (r.status === 'late') {
         late++;
         totalLateMinutes += r.lateMinutes || 0;
-      } else if (r.status === 'EARLY_LEAVE') early++;
-      else if (r.status === 'ABSENT') absent++;
-      else if (r.status === 'EXCUSED_ABSENCE') excused++;
+      } else if (r.status === 'early_leave') early++;
+      else if (r.status === 'absent') absent++;
+      else if (r.status === 'excused_absence') excused++;
 
-      if (r.isFraud || r.isFraudulent) fraudCount++;
+      if (r.isFraud) fraudCount++;
     });
 
     const total = filteredRecords.length;
@@ -508,82 +511,84 @@ export const AttendanceManage: React.FC = () => {
     };
   }, [filteredRecords]);
 
-  // Export CSV
-  const handleExportCSV = () => {
+  // Xuất file Excel (.xlsx) điểm danh toàn trường chuyên nghiệp
+  const handleExportExcel = () => {
     if (filteredRecords.length === 0) {
-      toast.error('Không có dữ liệu điểm danh để xuất.');
+      toast.error('Không có dữ liệu điểm danh để xuất file Excel.');
       return;
     }
 
-    const headers = [
-      'STT',
-      'Mã Cán Bộ',
-      'Họ Và Tên',
-      'Email',
-      'Khoa/Phòng Ban',
-      'Ngày Chấm Công',
-      'Ca Làm Việc',
-      'Giờ Check-in',
-      'Giờ Check-out',
-      'Đi Muộn (Phút)',
-      'Thời Lượng (Giờ)',
-      'Trạng Thái',
-      'Phương Thức',
-      'Gian Lận',
-      'Lý Do Gian Lận',
-    ];
+    try {
+      const dataRows = filteredRecords.map((r, idx) => {
+        const deptName =
+          typeof r.userId?.departmentId === 'object'
+            ? r.userId?.departmentId?.name || ''
+            : '';
+        const statusLabel = STATUS_CONFIG[r.status]?.label || r.status || 'Chưa rõ';
+        const methodLabel = METHOD_LABELS[r.method]?.label || r.method || 'Chưa rõ';
+        const isFraudText = r.isFraud ? 'Phát hiện nghi vấn' : 'Bình thường';
 
-    const rows = filteredRecords.map((r, idx) => {
-      const deptName =
-        typeof r.userId?.departmentId === 'object'
-          ? r.userId?.departmentId?.name || ''
-          : '';
-      const statusLabel = STATUS_CONFIG[r.status]?.label || r.status || 'Chưa rõ';
-      const methodLabel = METHOD_LABELS[r.method]?.label || r.method || 'Chưa rõ';
-      const isFraudText = r.isFraud || r.isFraudulent ? 'Có' : 'Không';
+        return {
+          'STT': idx + 1,
+          'Mã Cán Bộ': r.userId?.staffCode || '--',
+          'Họ Và Tên': r.userId?.fullName || '--',
+          'Email Công Vụ': r.userId?.email || '--',
+          'Khoa / Phòng Ban': deptName || '--',
+          'Ngày Chấm Công': formatShortDate(r.workDate),
+          'Ca Làm Việc': r.shiftId?.name || 'Hành chính',
+          'Giờ Check-in': formatShortTime(r.checkInTime),
+          'Giờ Check-out': formatShortTime(r.checkOutTime),
+          'Đi Muộn (Phút)': r.lateMinutes || 0,
+          'Thời Lượng (Giờ)': r.workHours || 0,
+          'Số Tiết Dạy': r.actualTeachingPeriods || 0,
+          'Trạng Thái': statusLabel,
+          'Phương Thức Điểm Danh': methodLabel,
+          'An Ninh / Gian Lận': isFraudText,
+          'Lý Do / Chi Tiết': r.fraudReason || '',
+        };
+      });
 
-      return [
-        idx + 1,
-        `"${r.userId?.staffCode || ''}"`,
-        `"${r.userId?.fullName || ''}"`,
-        `"${r.userId?.email || ''}"`,
-        `"${deptName}"`,
-        `"${formatShortDate(r.workDate)}"`,
-        `"${r.shiftId?.name || 'Hành chính'}"`,
-        `"${formatShortTime(r.checkInTime)}"`,
-        `"${formatShortTime(r.checkOutTime)}"`,
-        r.lateMinutes || 0,
-        r.workHours || 0,
-        `"${statusLabel}"`,
-        `"${methodLabel}"`,
-        `"${isFraudText}"`,
-        `"${r.fraudReason || ''}"`,
-      ].join(',');
-    });
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 26 },
+        { wch: 28 },
+        { wch: 26 },
+        { wch: 16 },
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 22 },
+        { wch: 20 },
+        { wch: 30 },
+      ];
 
-    const csvContent = '﻿' + [headers.join(','), ...rows].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute(
-      'download',
-      `Bao_Cao_Diem_Danh_${resolvedFrom || 'All'}_${resolvedTo || 'All'}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Xuất file Excel CSV thành công!');
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Dữ Liệu Điểm Danh');
+
+      const dateTag = resolvedFrom || resolvedTo ? `_${resolvedFrom || 'Start'}_${resolvedTo || 'End'}` : `_${new Date().toISOString().slice(0, 10)}`;
+      const fileName = `Bao_Cao_Diem_Danh_NTU${dateTag}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast.success('Đã xuất Báo cáo điểm danh (.xlsx) thành công!');
+    } catch (err) {
+      console.error('Lỗi khi xuất tệp Excel:', err);
+      toast.error('Lỗi khi đóng gói tệp Excel.');
+    }
   };
 
   // Adjust Handlers
   const handleOpenAdjustModal = (item: AttendanceHistoryItem) => {
     setAdjustingLog(item);
-    setAdjustStatus(item.status || 'ON_TIME');
+    setAdjustStatus(item.status || 'on_time');
     setAdjustCheckIn(toLocalDatetimeInput(item.checkInTime));
     setAdjustCheckOut(toLocalDatetimeInput(item.checkOutTime));
     setAdjustNote((item as any).notes || (item as any).note || '');
-    setAdjustIsFraud(Boolean(item.isFraud || item.isFraudulent));
+    setAdjustIsFraud(Boolean(item.isFraud));
     setAdjustFraudReason(item.fraudReason || '');
   };
 
@@ -635,7 +640,7 @@ export const AttendanceManage: React.FC = () => {
     }
     setIsSubmittingManual(true);
     try {
-      if (manualPunchType === 'CHECK_IN') {
+      if (manualPunchType === 'check_in') {
         await (attendanceApi.manualCheckIn as any)({
           userId: manualUserId,
           notes: manualNote,
@@ -806,12 +811,13 @@ export const AttendanceManage: React.FC = () => {
             </button>
 
             <button
-              onClick={handleExportCSV}
+              onClick={handleExportExcel}
               type="button"
-              className="h-9 flex items-center gap-1.5 px-3 rounded-lg bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 transition-colors text-xs font-medium shrink-0"
+              className="h-9 flex items-center gap-1.5 px-3 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 transition-colors text-xs font-bold shrink-0 cursor-pointer shadow-2xs"
+              title="Xuất dữ liệu điểm danh ra file Excel (.xlsx)"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>Xuất Excel (.csv)</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Xuất Excel (.xlsx)</span>
             </button>
 
             {hasRole(user, ['admin', 'bgh']) && (
@@ -828,7 +834,7 @@ export const AttendanceManage: React.FC = () => {
               </button>
             )}
 
-            {hasRole(user, ['admin', 'bgh', 'truongkhoa']) && (
+            {hasRole(user, ['admin', 'bgh', 'truong_khoa', 'pho_khoa']) && (
               <button
                 onClick={() => setIsManualPunchModalOpen(true)}
                 type="button"
@@ -937,29 +943,24 @@ export const AttendanceManage: React.FC = () => {
 
         {/* Dropdown Filters & Suspect Alert Checkbox (Aligned 4-column grid, matching h-10 controls) */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-end">
-          {/* Khoa / Phòng Ban */}
+          {/* Khoa / Phòng Ban Phân Cấp */}
           <div className="flex flex-col space-y-1">
             <label className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold truncate">
               Khoa / Phòng Ban
             </label>
-            <div className="relative h-10">
-              <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <select
+            <div className="w-full">
+              <DepartmentSelect
+                departments={departments}
                 value={selectedDeptId}
-                onChange={(e) => {
-                  setSelectedDeptId(e.target.value);
+                onChange={(deptId) => {
+                  setSelectedDeptId(deptId);
                   setCurrentPage(1);
                 }}
-                className="w-full h-10 appearance-none pl-9 pr-8 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs outline-none focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-brand-500/20 cursor-pointer"
-              >
-                <option value="">-- Tất cả Khoa / Đơn vị --</option>
-                {departments.map((d) => (
-                  <option key={d._id} value={d._id}>
-                    {d.name} ({d.code})
-                  </option>
-                ))}
-              </select>
-              <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                allowAll={true}
+                allLabel="-- Tất cả Khoa / Đơn vị --"
+                placeholder="Chọn Khoa / Đơn vị..."
+                size="md"
+              />
             </div>
           </div>
 
@@ -978,11 +979,11 @@ export const AttendanceManage: React.FC = () => {
                 className="w-full h-10 appearance-none px-3 pr-8 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs outline-none focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-brand-500/20 cursor-pointer"
               >
                 <option value="">-- Tất cả trạng thái --</option>
-                <option value="ON_TIME">Đúng giờ</option>
-                <option value="LATE">Đi muộn</option>
-                <option value="EARLY_LEAVE">Về sớm</option>
-                <option value="EXCUSED_ABSENCE">Nghỉ có phép</option>
-                <option value="ABSENT">Vắng mặt</option>
+                <option value="on_time">Đúng giờ</option>
+                <option value="late">Đi muộn</option>
+                <option value="early_leave">Về sớm</option>
+                <option value="excused_absence">Nghỉ có phép</option>
+                <option value="absent">Vắng mặt</option>
               </select>
               <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
@@ -1003,9 +1004,9 @@ export const AttendanceManage: React.FC = () => {
                 className="w-full h-10 appearance-none px-3 pr-8 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs outline-none focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-brand-500/20 cursor-pointer"
               >
                 <option value="">-- Tất cả phương thức --</option>
-                <option value="FACE_AI">Face ID AI (Kiosk Camera)</option>
-                <option value="SYSTEM_AUTO">Hệ thống Tự động / Cổng</option>
-                <option value="QR_CODE">Mã QR Động TOTP</option>
+                <option value="face_ai">Face ID AI (Kiosk Camera)</option>
+                <option value="system_auto">Hệ thống Tự động / Cổng</option>
+                <option value="qr_code">Mã QR Động TOTP</option>
                 <option value="GPS">Mobile GPS Geofence</option>
                 <option value="MANUAL">Cổng Web / Thủ công</option>
                 <option value="ADMIN_OVERRIDE">Quản trị Điều chỉnh</option>
@@ -1152,7 +1153,7 @@ export const AttendanceManage: React.FC = () => {
                 </tr>
               ) : (
                 filteredRecords.map((item) => {
-                  const statusObj = STATUS_CONFIG[item.status] || STATUS_CONFIG.ABSENT;
+                  const statusObj = STATUS_CONFIG[item.status] || STATUS_CONFIG.absent;
                   const methodKey = item.method || '';
                   const methodObj =
                     METHOD_LABELS[methodKey] ||
@@ -1162,7 +1163,7 @@ export const AttendanceManage: React.FC = () => {
                       cls: 'text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-300 dark:bg-slate-900 dark:border-slate-700',
                     };
                   const MethodIcon = methodObj.icon;
-                  const isFraud = item.isFraud || item.isFraudulent;
+                  const isFraud = item.isFraud;
                   const deptName =
                     typeof item.userId?.departmentId === 'object'
                       ? item.userId?.departmentId?.name || ''
@@ -1310,11 +1311,11 @@ export const AttendanceManage: React.FC = () => {
                               Match
                             </span>
                           </div>
-                        ) : item.status === 'EXCUSED_ABSENCE' ? (
+                        ) : item.status === 'excused_absence' ? (
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 truncate">
                             #NP-Đã duyệt
                           </span>
-                        ) : item.method === 'GPS' || item.method === 'GPS_MOBILE' ? (
+                        ) : item.method === 'GPS' || item.method === 'gps_mobile' ? (
                           <span className="text-[11px] font-mono text-slate-400 truncate">
                             Định Vị GPS
                           </span>
@@ -1340,7 +1341,7 @@ export const AttendanceManage: React.FC = () => {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          {hasRole(user, ['admin', 'bgh', 'truongkhoa']) && (
+                          {hasRole(user, ['admin', 'bgh', 'truong_khoa', 'pho_khoa']) && (
                             <button
                               onClick={() => handleOpenAdjustModal(item)}
                               className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-indigo-600 transition-colors"
@@ -1535,7 +1536,7 @@ export const AttendanceManage: React.FC = () => {
               </div>
 
               {/* Cảnh báo an ninh nếu có */}
-              {(selectedDetailLog.isFraud || selectedDetailLog.isFraudulent) && (
+              {selectedDetailLog.isFraud && (
                 <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
                   <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
                   <div>
@@ -1595,11 +1596,11 @@ export const AttendanceManage: React.FC = () => {
                     onChange={(e) => setAdjustStatus(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
                   >
-                    <option value="ON_TIME">Đúng Giờ</option>
-                    <option value="LATE">Đi Muộn</option>
-                    <option value="EARLY_LEAVE">Về Sớm</option>
-                    <option value="EXCUSED_ABSENCE">Nghỉ Có Phép</option>
-                    <option value="ABSENT">Vắng Mặt</option>
+                    <option value="on_time">Đúng Giờ</option>
+                    <option value="late">Đi Muộn</option>
+                    <option value="early_leave">Về Sớm</option>
+                    <option value="excused_absence">Nghỉ Có Phép</option>
+                    <option value="absent">Vắng Mặt</option>
                   </select>
                 </div>
 
@@ -1821,9 +1822,9 @@ export const AttendanceManage: React.FC = () => {
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => setManualPunchType('CHECK_IN')}
+                      onClick={() => setManualPunchType('check_in')}
                       className={`py-2 rounded-lg font-semibold transition-all ${
-                        manualPunchType === 'CHECK_IN'
+                        manualPunchType === 'check_in'
                           ? 'bg-brand-600 text-white shadow-xs'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                       }`}
@@ -1832,9 +1833,9 @@ export const AttendanceManage: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setManualPunchType('CHECK_OUT')}
+                      onClick={() => setManualPunchType('check_out')}
                       className={`py-2 rounded-lg font-semibold transition-all ${
-                        manualPunchType === 'CHECK_OUT'
+                        manualPunchType === 'check_out'
                           ? 'bg-brand-600 text-white shadow-xs'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                       }`}

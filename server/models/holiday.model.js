@@ -75,8 +75,4 @@ holidaySchema.index({ ngay_bat_dau: 1, ngay_ket_thuc: 1 });
 
 const Holiday = mongoose.models.Holiday || mongoose.model('Holiday', holidaySchema, 'ngay_nghi_le');
 
-if (!mongoose.models.NgayNghiLe) {
-  mongoose.model('NgayNghiLe', holidaySchema, 'ngay_nghi_le');
-}
-
 module.exports = Holiday;

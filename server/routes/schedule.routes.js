@@ -41,7 +41,7 @@ const { verifyToken, authorizeRoles } = require('../middlewares/auth.middleware'
  *               example: "giangvien.bich@university.edu.vn"
  *             role:
  *               type: string
- *               example: "giangvien"
+ *               example: "giang_vien"
  *         shiftId:
  *           type: object
  *           properties:
@@ -332,7 +332,7 @@ router.get('/:id', getScheduleById);
  *       409:
  *         description: Trùng lịch với ca khác trong cùng học kỳ (SCHEDULE_002)
  */
-router.post('/', authorizeRoles('admin', 'truongkhoa'), createSchedule);
+router.post('/', authorizeRoles('admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao'), createSchedule);
 
 /**
  * @swagger
@@ -365,7 +365,7 @@ router.post('/', authorizeRoles('admin', 'truongkhoa'), createSchedule);
  *       409:
  *         description: Trùng lịch khi thay đổi ca/thứ (SCHEDULE_002)
  */
-router.put('/:id', authorizeRoles('admin', 'truongkhoa'), updateSchedule);
+router.put('/:id', authorizeRoles('admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao'), updateSchedule);
 
 /**
  * @swagger
@@ -388,7 +388,7 @@ router.put('/:id', authorizeRoles('admin', 'truongkhoa'), updateSchedule);
  *       404:
  *         description: Không tìm thấy lịch để xóa (SCHEDULE_001)
  */
-router.delete('/:id', authorizeRoles('admin', 'truongkhoa'), deleteSchedule);
+router.delete('/:id', authorizeRoles('admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao'), deleteSchedule);
 
 /**
  * @swagger
@@ -408,6 +408,6 @@ router.delete('/:id', authorizeRoles('admin', 'truongkhoa'), deleteSchedule);
  *       200:
  *         description: Ghi nhận ngoại lệ thành công
  */
-router.post('/:id/exceptions', authorizeRoles('admin', 'truongkhoa', 'giangvien', 'nhanvien'), addException);
+router.post('/:id/exceptions', authorizeRoles('admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao', 'giang_vien', 'nhan_vien'), addException);
 
 module.exports = router;

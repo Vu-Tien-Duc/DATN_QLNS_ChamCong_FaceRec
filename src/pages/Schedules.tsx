@@ -30,8 +30,11 @@ import {
   Sparkles,
   GraduationCap,
   ChevronDown,
+  FileSpreadsheet,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
+import { DepartmentSelect } from '../components/ui/DepartmentSelect';
 import { scheduleApi } from '../api/schedule.api';
 import { apiClient, extractArray } from '../api/apiClient';
 import { useAuthStore } from '../store/useAuthStore';
@@ -43,8 +46,8 @@ import { Portal } from '../components/ui/Portal';
 // TYPES & DATA STRUCTURES
 // =============================================================================
 
-export type ScheduleType = 'CHINH_KHOA' | 'DAY_BU';
-export type ScheduleExceptionStatus = 'NGHI' | 'DAY_BU' | 'HUY';
+export type ScheduleType = 'chinh_khoa' | 'day_bu';
+export type ScheduleExceptionStatus = 'nghi' | 'day_bu' | 'huy';
 export type ViewMode = 'matrix' | 'lecturer' | 'table' | 'calendar';
 
 interface ScheduleItem {
@@ -75,6 +78,10 @@ interface ScheduleItem {
     name?: string;
     ten_mon?: string;
     code?: string;
+  type?: string;
+  loai_don_vi?: string;
+  parentId?: string | { _id: string; name: string } | null;
+  [key: string]: any;
     ma_mon?: string;
     credits?: number;
     so_tin_chi?: number;
@@ -132,6 +139,10 @@ interface SubjectItem {
   name?: string;
   ten_mon?: string;
   code?: string;
+  type?: string;
+  loai_don_vi?: string;
+  parentId?: string | { _id: string; name: string } | null;
+  [key: string]: any;
   ma_mon?: string;
   credits?: number;
   so_tin_chi?: number;
@@ -152,6 +163,10 @@ interface DepartmentItem {
   _id: string;
   name: string;
   code?: string;
+  type?: string;
+  loai_don_vi?: string;
+  parentId?: string | { _id: string; name: string } | null;
+  [key: string]: any;
 }
 
 // 7 Days of week in chronological order Monday -> Sunday
@@ -165,14 +180,7 @@ const WEEKDAYS = [
   { value: 0, label: 'CHỦ NHẬT', shortLabel: 'Chủ Nhật', short: 'CN' },
 ] as const;
 
-// Danh mục Học kỳ chuẩn kèm mốc ngày bắt đầu (Tuần 1)
-export const SEMESTER_OPTIONS = [
-  { key: '1_2026-2027', semester: 1, academicYear: '2026-2027', label: 'Học kỳ 1 (2026 - 2027)', defaultStartDate: '2026-09-07' },
-  { key: '2_2026-2027', semester: 2, academicYear: '2026-2027', label: 'Học kỳ 2 (2026 - 2027)', defaultStartDate: '2027-01-18' },
-  { key: '3_2026-2027', semester: 3, academicYear: '2026-2027', label: 'Học kỳ Hè (2026 - 2027)', defaultStartDate: '2027-06-07' },
-  { key: '1_2025-2026', semester: 1, academicYear: '2025-2026', label: 'Học kỳ 1 (2025 - 2026)', defaultStartDate: '2025-09-08' },
-  { key: '2_2025-2026', semester: 2, academicYear: '2025-2026', label: 'Học kỳ 2 (2025 - 2026)', defaultStartDate: '2026-01-19' },
-];
+// Đã bỏ phân loại theo Học kỳ
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -308,6 +316,63 @@ function matchScheduleToShift(item: ScheduleItem, shift: ShiftItem): boolean {
   return false;
 }
 
+
+interface ScheduleActiveStatus {
+  active: boolean;
+  isException?: boolean;
+  exceptionReason?: string;
+  isMakeup?: boolean;
+}
+
+function isScheduleActiveOnDate(
+  item: ScheduleItem,
+  targetIsoDate: string,
+  targetWeekday: number
+): ScheduleActiveStatus {
+  // 1. Nếu là Lịch Dạy Bù (DAY_BU): Chỉ xuất hiện đúng vào ngày bù
+  if (item.scheduleType === 'day_bu') {
+    const makeupIso = item.makeupDate ? toIsoDateString(new Date(item.makeupDate)) : '';
+    if (makeupIso && makeupIso === targetIsoDate) {
+      return { active: true, isMakeup: true };
+    }
+    return { active: false };
+  }
+
+  // 2. Lịch Chính Khóa: Thứ trong tuần phải khớp
+  const itemWeekday = item.weekday ?? item.thu_trong_tuan ?? 1;
+  if (itemWeekday !== targetWeekday) {
+    return { active: false };
+  }
+
+  // 3. Kiểm tra khoảng ngày hiệu lực [startDate, endDate]
+  const startIso = item.startDate ? toIsoDateString(new Date(item.startDate)) : '';
+  const endIso = item.endDate ? toIsoDateString(new Date(item.endDate)) : '';
+
+  if (startIso && targetIsoDate < startIso) {
+    return { active: false };
+  }
+  if (endIso && targetIsoDate > endIso) {
+    return { active: false };
+  }
+
+  // 4. Kiểm tra ngoại lệ (Báo nghỉ) vào ngày targetIsoDate
+  const exceptions = item.exceptions || item.ngoai_le || [];
+  const exc = exceptions.find((e: any) => {
+    const eDate = e.date ? toIsoDateString(new Date(e.date)) : '';
+    return eDate === targetIsoDate;
+  });
+
+  if (exc && (exc.status === 'nghi' || exc.status === 'huy')) {
+    return {
+      active: true,
+      isException: true,
+      exceptionReason: exc.reason || 'Báo nghỉ',
+    };
+  }
+
+  return { active: true };
+}
+
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
@@ -333,8 +398,20 @@ export const Schedules: React.FC = () => {
   // 4. Day filter: 'all' (7 ngày) or specific weekday (1 to 6, 0 for Sunday)
   const [selectedDayFilter, setSelectedDayFilter] = useState<'all' | number>('all');
 
-  // 5. Semester & Year
-  const [selectedSemesterYear, setSelectedSemesterYear] = useState<string>('1_2026-2027');
+  // Shift dropdown filter state
+  const [isShiftFilterOpen, setIsShiftFilterOpen] = useState<boolean>(false);
+
+  // Searchable department dropdown filter state
+  const [isDepartmentFilterOpen, setIsDepartmentFilterOpen] = useState<boolean>(false);
+  const [departmentSearchQuery, setDepartmentSearchQuery] = useState<string>('');
+
+  // Searchable lecturer dropdown filter state
+  const [isLecturerFilterOpen, setIsLecturerFilterOpen] = useState<boolean>(false);
+  const [lecturerSearchQuery, setLecturerSearchQuery] = useState<string>('');
+
+  // Form Lecturer Search state
+  const [isFormLecturerOpen, setIsFormLecturerOpen] = useState<boolean>(false);
+  const [formLecturerSearch, setFormLecturerSearch] = useState<string>('');
 
   // 6. Week navigation (for matrix & lecturer views)
   const [weekRefDate, setWeekRefDate] = useState<Date>(() => new Date());
@@ -375,7 +452,7 @@ export const Schedules: React.FC = () => {
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date(new Date().setMonth(new Date().getMonth() + 4)).toISOString().split('T')[0],
     isRecurring: true,
-    scheduleType: 'CHINH_KHOA' as ScheduleType,
+    scheduleType: 'chinh_khoa' as ScheduleType,
     makeupDate: '',
     weekNumbers: Array.from({ length: 15 }, (_, i) => i + 1),
     academicYear: '2026-2027',
@@ -390,35 +467,20 @@ export const Schedules: React.FC = () => {
   // Exception Form State
   const [exceptionData, setExceptionData] = useState({
     date: new Date().toISOString().split('T')[0],
-    status: 'NGHI' as ScheduleExceptionStatus,
+    status: 'nghi' as ScheduleExceptionStatus,
     reason: '',
     makeupDate: '',
   });
   const [exceptionSubmitting, setExceptionSubmitting] = useState<boolean>(false);
 
-  // Parse Semester and Academic Year from dropdown value
-  const { semesterNum, academicYearVal } = useMemo(() => {
-    const parts = selectedSemesterYear.split('_');
-    return {
-      semesterNum: Number(parts[0]) || 1,
-      academicYearVal: parts[1] || '2026-2027',
-    };
-  }, [selectedSemesterYear]);
-
   // =============================================================================
-  // DATA FETCHING
+  // DATA FETCHING (Tải toàn bộ lịch phân công không phụ thuộc học kỳ)
   // =============================================================================
 
   const loadSchedules = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, any> = {
-        limit: 500,
-        academicYear: academicYearVal,
-        semester: semesterNum,
-      };
-
-      const res = await scheduleApi.getSchedules(params);
+      const res = await scheduleApi.getSchedules({ limit: 1000 });
       const list = extractArray<ScheduleItem>(res);
       setSchedules(list);
     } catch (err: any) {
@@ -428,7 +490,7 @@ export const Schedules: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [academicYearVal, semesterNum]);
+  }, []);
 
   const loadMeta = useCallback(async () => {
     try {
@@ -528,6 +590,11 @@ export const Schedules: React.FC = () => {
       const deptName = getUserDepartmentName(lec);
       if (deptId === selectedDepartmentFilter) return true;
       if (targetDept && deptName.toLowerCase() === targetDept.name.toLowerCase()) return true;
+      const userDept = departments.find((d) => String(d._id) === String(deptId));
+      const parentId = userDept?.parentId
+        ? (typeof userDept.parentId === 'object' && '_id' in userDept.parentId ? String(userDept.parentId._id) : String(userDept.parentId))
+        : '';
+      if (parentId === selectedDepartmentFilter) return true;
       return false;
     });
   }, [lecturers, selectedDepartmentFilter, departments, getUserDepartmentName]);
@@ -563,11 +630,16 @@ export const Schedules: React.FC = () => {
         const deptId = typeof lec.departmentId === 'object' ? lec.departmentId?._id : lec.departmentId;
         const deptName = getUserDepartmentName(lec);
         const targetDept = departments.find((d) => d._id === selectedDepartmentFilter);
-        if (targetDept) {
-          const matchId = deptId === selectedDepartmentFilter;
-          const matchName = deptName.toLowerCase() === targetDept.name.toLowerCase();
-          if (!matchId && !matchName) return false;
-        }
+        const matchId = deptId === selectedDepartmentFilter;
+        const matchName = targetDept ? deptName.toLowerCase() === targetDept.name.toLowerCase() : false;
+        let matchParent = false;
+        const userDept = departments.find((d) => String(d._id) === String(deptId));
+        const parentId = userDept?.parentId
+          ? (typeof userDept.parentId === 'object' && '_id' in userDept.parentId ? String(userDept.parentId._id) : String(userDept.parentId))
+          : '';
+        if (parentId === selectedDepartmentFilter) matchParent = true;
+
+        if (!matchId && !matchName && !matchParent) return false;
       }
 
       // 3. Filter by Lecturer
@@ -620,6 +692,9 @@ export const Schedules: React.FC = () => {
     setSelectedShiftFilter('all');
     setSelectedDepartmentFilter('all');
     setSelectedLecturerFilter('all');
+    setIsShiftFilterOpen(false);
+    setIsDepartmentFilterOpen(false);
+    setIsLecturerFilterOpen(false);
     setSearchKeyword('');
     setTablePage(1);
   };
@@ -678,9 +753,7 @@ export const Schedules: React.FC = () => {
     setWeekRefDate(new Date());
   };
 
-  const handleSemesterYearChange = (val: string) => {
-    setSelectedSemesterYear(val);
-  };
+  // Đã bỏ handleSemesterYearChange
 
   // =============================================================================
   // MONTH CALENDAR COMPUTATION
@@ -753,10 +826,13 @@ export const Schedules: React.FC = () => {
       initialPeriodCount = 4;
     }
 
-    const currentSemOpt = SEMESTER_OPTIONS.find((s) => s.key === selectedSemesterYear) || SEMESTER_OPTIONS[0];
-    const defaultStartDate = currentSemOpt.defaultStartDate;
+    const todayStr = toIsoDateString(new Date());
+    const endFourMonths = new Date();
+    endFourMonths.setMonth(endFourMonths.getMonth() + 4);
+    const defaultEndDate = toIsoDateString(endFourMonths);
     const defaultWeeks = Array.from({ length: 15 }, (_, i) => i + 1);
-    const defaultEndDate = calculateEndDateFromWeeks(defaultStartDate, defaultWeeks);
+    setIsFormLecturerOpen(false);
+    setFormLecturerSearch('');
 
     setFormData({
       userId: initUserId || filteredLecturerOptions[0]?._id || lecturers[0]?._id || user?._id || '',
@@ -768,14 +844,14 @@ export const Schedules: React.FC = () => {
       periodCount: initialPeriodCount,
       startTime: sTime,
       endTime: eTime,
-      startDate: defaultStartDate,
+      startDate: todayStr,
       endDate: defaultEndDate,
       isRecurring: true,
-      scheduleType: 'CHINH_KHOA',
+      scheduleType: 'chinh_khoa',
       makeupDate: '',
       weekNumbers: defaultWeeks,
-      academicYear: currentSemOpt.academicYear,
-      semester: currentSemOpt.semester,
+      academicYear: '2026-2027',
+      semester: 1,
       latitude: 20.9752,
       longitude: 105.7628,
       radiusMeters: 100,
@@ -813,11 +889,11 @@ export const Schedules: React.FC = () => {
       startDate: editStartDate,
       endDate: editEndDate,
       isRecurring: item.isRecurring ?? item.lap_lai_hang_tuan ?? true,
-      scheduleType: (item.scheduleType || item.loai_lich || 'CHINH_KHOA') as ScheduleType,
+      scheduleType: (item.scheduleType || item.loai_lich || 'chinh_khoa') as ScheduleType,
       makeupDate: item.makeupDate ? new Date(item.makeupDate).toISOString().split('T')[0] : '',
       weekNumbers: editWeeks,
-      academicYear: item.academicYear || item.nam_hoc || academicYearVal,
-      semester: item.semester || item.hoc_ky || semesterNum,
+      academicYear: item.academicYear || item.nam_hoc || '2026-2027',
+      semester: item.semester || item.hoc_ky || 1,
       latitude: item.latitude ?? item.vi_do ?? 20.9752,
       longitude: item.longitude ?? item.kinh_do ?? 105.7628,
       radiusMeters: item.radiusMeters ?? item.ban_kinh_met ?? 100,
@@ -837,7 +913,7 @@ export const Schedules: React.FC = () => {
     setSelectedSchedule(item);
     setExceptionData({
       date: new Date().toISOString().split('T')[0],
-      status: 'NGHI',
+      status: 'nghi',
       reason: '',
       makeupDate: '',
     });
@@ -859,6 +935,18 @@ export const Schedules: React.FC = () => {
     }
     if (!formData.startDate || !formData.endDate) {
       toast.error('Vui lòng chọn ngày bắt đầu và kết thúc');
+      return;
+    }
+    if (formData.startDate > formData.endDate) {
+      toast.error('Ngày bắt đầu không được lớn hơn ngày kết thúc');
+      return;
+    }
+    if (formData.startTime >= formData.endTime) {
+      toast.error('Giờ bắt đầu phải trước giờ kết thúc');
+      return;
+    }
+    if (formData.scheduleType === 'day_bu' && !formData.makeupDate) {
+      toast.error('Vui lòng chọn ngày dạy bù');
       return;
     }
 
@@ -896,13 +984,7 @@ export const Schedules: React.FC = () => {
       }
 
       setIsFormModalOpen(false);
-      const currentFilterKey = `${semesterNum}_${academicYearVal}`;
-      const savedKey = `${formData.semester}_${formData.academicYear}`;
-      if (savedKey !== currentFilterKey) {
-        setSelectedSemesterYear(savedKey);
-      } else {
-        loadSchedules();
-      }
+      loadSchedules();
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Lưu lịch thất bại';
       const code = err.response?.data?.errorCode;
@@ -942,7 +1024,7 @@ export const Schedules: React.FC = () => {
         date: exceptionData.date,
         status: exceptionData.status,
         reason: exceptionData.reason || 'Báo nghỉ / bù từ giao diện lịch trình',
-        makeupDate: exceptionData.status === 'DAY_BU' ? exceptionData.makeupDate : undefined,
+        makeupDate: String(exceptionData.status).toLowerCase() === 'day_bu' ? exceptionData.makeupDate : undefined,
       });
 
       toast.success('Ghi nhận ngoại lệ buổi học thành công');
@@ -952,6 +1034,119 @@ export const Schedules: React.FC = () => {
       toast.error(err.response?.data?.message || 'Ghi nhận ngoại lệ thất bại');
     } finally {
       setExceptionSubmitting(false);
+    }
+  };
+
+  // =============================================================================
+  // XUẤT THỜI KHÓA BIỂU RA FILE EXCEL (.XLSX)
+  // =============================================================================
+  const handleExportScheduleExcel = () => {
+    if (!filteredSchedules.length) {
+      toast.error('Không có dữ liệu thời khóa biểu để xuất file');
+      return;
+    }
+    try {
+      // 1. Sheet 1: Danh Sách Chi Tiết Phân Công
+      const detailRows = filteredSchedules.map((item, idx) => {
+        const subInfo = resolveSubject(item.subjectId, subjects);
+        const lec = typeof item.userId === 'object' ? item.userId : null;
+        const shiftObj = typeof item.shiftId === 'object' ? item.shiftId : null;
+        const shiftName = shiftObj?.name || shiftObj?.ten_ca || 'Ca học';
+        const wObj = WEEKDAYS.find((w) => w.value === item.weekday);
+
+        return {
+          'STT': idx + 1,
+          'Thứ Trong Tuần': wObj?.label || `Thứ ${item.weekday}`,
+          'Ca Giảng Dạy': shiftName,
+          'Khung Giờ': `${item.startTime || ''} - ${item.endTime || ''}`,
+          'Tiết Học': `Tiết ${item.startPeriod || 1} - ${(item.startPeriod || 1) + (item.periodCount || 4) - 1}`,
+          'Môn Học': subInfo?.name || 'Hành chính / Sinh hoạt',
+          'Mã Môn': subInfo?.code || '--',
+          'Số Tín Chỉ': subInfo?.credits || 0,
+          'Giảng Viên / Cán Bộ': lec?.fullName || 'Chưa phân công',
+          'Mã Cán Bộ': lec?.staffCode || '--',
+          'Email': lec?.email || '--',
+          'Khoa / Phòng Ban': getUserDepartmentName(lec),
+          'Phòng Học': item.roomId || item.phong_hoc || '--',
+          'Danh Sách Tuần': Array.isArray(item.weekNumbers) ? item.weekNumbers.join(', ') : '1-15',
+          'Ngày Bắt Đầu': formatDateFull(item.startDate),
+          'Ngày Kết Thúc': formatDateFull(item.endDate),
+          'Loại Lịch': item.scheduleType === 'day_bu' ? 'Dạy bù' : 'Chính khóa',
+          'Ngày Bù (nếu có)': item.makeupDate ? formatDateFull(item.makeupDate) : '',
+        };
+      });
+
+      const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+      wsDetail['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 22 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 28 },
+        { wch: 12 },
+        { wch: 10 },
+        { wch: 24 },
+        { wch: 14 },
+        { wch: 28 },
+        { wch: 24 },
+        { wch: 24 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 16 },
+      ];
+
+      // 2. Sheet 2: Ma Trận Thời Khóa Biểu Tuần Hiện Tại
+      const matrixHeaders = ['Ca Giảng Dạy', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật'];
+      const matrixRows: any[][] = [];
+      matrixRows.push(matrixHeaders);
+
+      sortedShifts.forEach((sh) => {
+        const row = [sh.name];
+        weekDaysList.forEach((day) => {
+          const cellSchedules = filteredSchedules.filter((item) => {
+            const { active } = isScheduleActiveOnDate(item, day.isoDate, day.weekday);
+            if (!active) return false;
+            return matchScheduleToShift(item, sh);
+          });
+
+          if (cellSchedules.length === 0) {
+            row.push('-');
+          } else {
+            const desc = cellSchedules.map((item) => {
+              const sub = resolveSubject(item.subjectId, subjects);
+              const lec = typeof item.userId === 'object' ? item.userId : null;
+              return `${sub?.name || 'Lớp học'} (${lec?.fullName || 'GV'}) [${item.roomId || 'Phòng'}]`;
+            }).join('\n---\n');
+            row.push(desc);
+          }
+        });
+        matrixRows.push(row);
+      });
+
+      const wsMatrix = XLSX.utils.aoa_to_sheet(matrixRows);
+      wsMatrix['!cols'] = [
+        { wch: 22 },
+        { wch: 30 },
+        { wch: 30 },
+        { wch: 30 },
+        { wch: 30 },
+        { wch: 30 },
+        { wch: 30 },
+        { wch: 30 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, wsDetail, 'Chi Tiết Phân Công');
+      XLSX.utils.book_append_sheet(wb, wsMatrix, 'Ma Trận TKB Tuần');
+
+      XLSX.writeFile(wb, `Thoi_Khoa_Bieu_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success('Đã xuất Thời khóa biểu (.xlsx) thành công!');
+    } catch (err) {
+      console.error('Lỗi khi xuất Thời khóa biểu:', err);
+      toast.error('Lỗi khi đóng gói tệp Excel.');
     }
   };
 
@@ -1096,8 +1291,8 @@ export const Schedules: React.FC = () => {
                     {displayedDays.map((day) => {
                       // Filtered schedules for this day of week and this shift
                       const cellSchedules = filteredSchedules.filter((item) => {
-                        const w = item.weekday ?? item.thu_trong_tuan ?? 1;
-                        if (w !== day.weekday) return false;
+                        const { active } = isScheduleActiveOnDate(item, day.isoDate, day.weekday);
+                        if (!active) return false;
                         return matchScheduleToShift(item, shift);
                       });
 
@@ -1134,12 +1329,16 @@ export const Schedules: React.FC = () => {
                                 const teacherName = lec?.fullName || 'Vũ Tiến Đức';
                                 const deptName = getUserDepartmentName(lec);
                                 const roomName = item.roomId || 'Phòng học';
-
+                                const dateStatus = isScheduleActiveOnDate(item, day.isoDate, day.weekday);
                                 return (
                                   <div
                                     key={item._id}
                                     onClick={(e) => openDetailModal(item, e)}
-                                    className={`rounded-2xl p-2.5 border transition-all text-xs cursor-pointer shadow-2xs hover:shadow-md relative group/card ${cardStyle.bg} ${cardStyle.hoverBorder}`}
+                                    className={`rounded-2xl p-2.5 border transition-all text-xs cursor-pointer shadow-2xs hover:shadow-md relative group/card ${
+                                      dateStatus.isException
+                                        ? 'bg-rose-50/70 border-rose-300 dark:bg-rose-950/20 dark:border-rose-800 opacity-80'
+                                        : cardStyle.bg
+                                    } ${cardStyle.hoverBorder}`}
                                   >
                                     {/* Quick Actions Overlay (hiện mượt khi hover góc trên phải) */}
                                     {isAdminOrDean && (
@@ -1218,7 +1417,7 @@ export const Schedules: React.FC = () => {
                                         {item.startTime} - {item.endTime}
                                       </span>
                                       <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold whitespace-nowrap shrink-0 ${cardStyle.badgeColor}`}>
-                                        {item.scheduleType === 'DAY_BU' ? 'Dạy bù' : 'Cả kỳ'}
+                                        {item.scheduleType === 'day_bu' ? 'Dạy bù' : 'Cả kỳ'}
                                       </span>
                                     </div>
                                   </div>
@@ -1352,8 +1551,8 @@ export const Schedules: React.FC = () => {
                   <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                     {weekDaysList.map((day) => {
                       const daySchedules = lecSchedules.filter((item) => {
-                        const w = item.weekday ?? item.thu_trong_tuan ?? 1;
-                        return w === day.weekday;
+                        const { active } = isScheduleActiveOnDate(item, day.isoDate, day.weekday);
+                        return active;
                       });
 
                       return (
@@ -1558,12 +1757,12 @@ export const Schedules: React.FC = () => {
                     <td className="p-3.5 text-center">
                       <span
                         className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          item.scheduleType === 'DAY_BU'
+                          item.scheduleType === 'day_bu'
                             ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300'
                             : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300'
                         }`}
                       >
-                        {item.scheduleType === 'DAY_BU' ? 'Dạy bù' : 'Chính khóa'}
+                        {item.scheduleType === 'day_bu' ? 'Dạy bù' : 'Chính khóa'}
                       </span>
                     </td>
 
@@ -1704,8 +1903,8 @@ export const Schedules: React.FC = () => {
         {calendarDays.map((cd) => {
           // Schedules matching this day of week
           const daySchedules = filteredSchedules.filter((item) => {
-            const w = item.weekday ?? item.thu_trong_tuan ?? 1;
-            return w === cd.weekday;
+            const { active } = isScheduleActiveOnDate(item, cd.isoDate, cd.weekday);
+            return active;
           });
 
           return (
@@ -1840,24 +2039,17 @@ export const Schedules: React.FC = () => {
           </button>
         </div>
 
-        {/* Right: Semester & Create Schedule Action */}
+        {/* Right: Primary Create Button & Export Button */}
         <div className="flex items-center gap-2 self-end lg:self-auto">
-          {/* Học kỳ Selector */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 shadow-2xs">
-            <CalendarIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Học kỳ:</span>
-            <select
-              value={selectedSemesterYear}
-              onChange={(e) => handleSemesterYearChange(e.target.value)}
-              className="text-xs font-bold text-slate-800 dark:text-slate-100 bg-transparent border-none focus:outline-none cursor-pointer pr-1"
-            >
-              {SEMESTER_OPTIONS.map((opt) => (
-                <option key={opt.key} value={opt.key}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <button
+            type="button"
+            onClick={handleExportScheduleExcel}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-2xs hover:shadow-xs transition-all shrink-0"
+            title="Xuất Thời Khóa Biểu ra file Excel (.xlsx)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden sm:inline">Xuất TKB (.xlsx)</span>
+          </button>
 
           {/* Primary Create Button */}
           {isAdminOrDean && (
@@ -1884,55 +2076,238 @@ export const Schedules: React.FC = () => {
             <span className="text-xs font-bold">Lọc theo:</span>
           </div>
 
-          {/* Filter 1: LỌC THEO CA */}
-          <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-850 text-xs">
-            <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-            <select
-              value={selectedShiftFilter}
-              onChange={(e) => setSelectedShiftFilter(e.target.value)}
-              className="bg-transparent border-none text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
-            >
-              <option value="all">Tất cả các ca</option>
-              {sortedShifts.map((s) => (
-                <option key={s._id} value={s._id}>
-                  {s.name} ({s.startTime} - {s.endTime})
-                </option>
-              ))}
-            </select>
+          {/* Filter 1: LỌC THEO CA (Custom Dropdown) */}
+          <div className="relative">
+            <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-850 text-xs">
+              <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <button
+                type="button"
+                onClick={() => {
+                  setIsShiftFilterOpen((prev) => !prev);
+                  setIsDepartmentFilterOpen(false);
+                  setIsLecturerFilterOpen(false);
+                }}
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none"
+              >
+                <span>
+                  {selectedShiftFilter === 'all'
+                    ? 'Tất cả các ca'
+                    : (() => {
+                        const sel = sortedShifts.find((s) => s._id === selectedShiftFilter);
+                        return sel ? `${sel.name} (${sel.startTime} - ${sel.endTime})` : 'Ca đã chọn';
+                      })()}
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+
+              {selectedShiftFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedShiftFilter('all');
+                  }}
+                  className="p-0.5 text-slate-400 hover:text-slate-600 rounded"
+                  title="Bỏ chọn ca"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Shift Dropdown Popup */}
+            {isShiftFilterOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setIsShiftFilterOpen(false)}
+                />
+                <div className="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl z-40 p-1.5 space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedShiftFilter('all');
+                      setIsShiftFilterOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between ${
+                      selectedShiftFilter === 'all'
+                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <span>Tất cả các ca ({sortedShifts.length} ca)</span>
+                    {selectedShiftFilter === 'all' && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                  </button>
+
+                  {sortedShifts.map((s) => {
+                    const isSelected = selectedShiftFilter === s._id;
+                    return (
+                      <button
+                        key={s._id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedShiftFilter(s._id);
+                          setIsShiftFilterOpen(false);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                          isSelected
+                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-bold'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-semibold text-slate-800 dark:text-slate-200">{s.name}</div>
+                          <div className="text-[10px] font-mono text-slate-400">
+                            {s.startTime} - {s.endTime}
+                          </div>
+                        </div>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Filter 2: LỌC THEO NGÀNH / KHOA */}
-          <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-850 text-xs">
-            <Building2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-            <select
-              value={selectedDepartmentFilter}
-              onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
-              className="bg-transparent border-none text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
-            >
-              <option value="all">Tất cả ngành / khoa</option>
-              {departments.map((dept) => (
-                <option key={dept._id} value={dept._id}>
-                  {dept.name}
-                </option>
-              ))}
-            </select>
+          {/* Filter 2: LỌC THEO KHOA / BỘ MÔN (DepartmentSelect Phân Cấp) */}
+          <div className="min-w-[200px] max-w-[260px]">
+            <DepartmentSelect
+              departments={departments}
+              value={selectedDepartmentFilter === 'all' ? '' : selectedDepartmentFilter}
+              onChange={(val) => {
+                setSelectedDepartmentFilter(val || 'all');
+                setSelectedLecturerFilter('all');
+              }}
+              allowAll={true}
+              allLabel="Tất cả khoa / ban"
+              placeholder="Chọn đơn vị trực thuộc"
+              size="sm"
+            />
           </div>
 
-          {/* Filter 3: LỌC THEO GIẢNG VIÊN */}
-          <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-850 text-xs">
-            <User className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-            <select
-              value={selectedLecturerFilter}
-              onChange={(e) => setSelectedLecturerFilter(e.target.value)}
-              className="bg-transparent border-none text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
-            >
-              <option value="all">Tất cả giảng viên</option>
-              {filteredLecturerOptions.map((lec) => (
-                <option key={lec._id} value={lec._id}>
-                  {lec.fullName} {lec.staffCode ? `(${lec.staffCode})` : ''}
-                </option>
-              ))}
-            </select>
+          {/* Filter 3: LỌC THEO GIẢNG VIÊN (Searchable Combobox) */}
+          <div className="relative">
+            <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-850 text-xs">
+              <User className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLecturerFilterOpen((prev) => !prev);
+                  setIsShiftFilterOpen(false);
+                  setIsDepartmentFilterOpen(false);
+                  setLecturerSearchQuery('');
+                }}
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none"
+              >
+                <span>
+                  {selectedLecturerFilter === 'all'
+                    ? 'Tất cả giảng viên'
+                    : (() => {
+                        const sel = lecturers.find((l) => l._id === selectedLecturerFilter);
+                        return sel ? `${sel.fullName} (${sel.staffCode || 'GV'})` : 'Giảng viên đã chọn';
+                      })()}
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+
+              {selectedLecturerFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedLecturerFilter('all');
+                  }}
+                  className="p-0.5 text-slate-400 hover:text-slate-600 rounded"
+                  title="Bỏ chọn giảng viên"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Dropdown Popup */}
+            {isLecturerFilterOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setIsLecturerFilterOpen(false)}
+                />
+                <div className="absolute left-0 top-full mt-1 w-72 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl z-40 p-2 space-y-1.5">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      autoFocus
+                      value={lecturerSearchQuery}
+                      onChange={(e) => setLecturerSearchQuery(e.target.value)}
+                      placeholder="Tìm theo tên hoặc mã GV..."
+                      className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="max-h-52 overflow-y-auto space-y-0.5 custom-scrollbar">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedLecturerFilter('all');
+                        setIsLecturerFilterOpen(false);
+                      }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between ${
+                        selectedLecturerFilter === 'all'
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <span>Tất cả giảng viên</span>
+                      {selectedLecturerFilter === 'all' && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                    </button>
+
+                    {filteredLecturerOptions
+                      .filter((lec) => {
+                        if (!lecturerSearchQuery.trim()) return true;
+                        const q = lecturerSearchQuery.toLowerCase();
+                        const name = (lec.fullName || '').toLowerCase();
+                        const code = (lec.staffCode || '').toLowerCase();
+                        return name.includes(q) || code.includes(q);
+                      })
+                      .map((lec) => {
+                        const isSelected = selectedLecturerFilter === lec._id;
+                        return (
+                          <button
+                            key={lec._id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedLecturerFilter(lec._id);
+                              setIsLecturerFilterOpen(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                              isSelected
+                                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-bold'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            <div className="truncate pr-2">
+                              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                {lec.fullName}
+                              </span>
+                              {lec.staffCode && (
+                                <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400">
+                                  {lec.staffCode}
+                                </span>
+                              )}
+                              <div className="text-[10px] text-slate-400 truncate">
+                                {getUserDepartmentName(lec)}
+                              </div>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Filter 4: TÌM KIẾM TỪ KHÓA (Môn học, Giảng viên, Phòng) */}
@@ -1993,9 +2368,24 @@ export const Schedules: React.FC = () => {
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700/80">
-                Tuần: {formatDayMonth(weekDaysList[0].date)} - {formatDayMonth(weekDaysList[6].date)}/{weekDaysList[6].date.getFullYear()}
-              </span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700/80">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Tuần: {formatDayMonth(weekDaysList[0].date)}/{weekDaysList[0].date.getFullYear()} - {formatDayMonth(weekDaysList[6].date)}/{weekDaysList[6].date.getFullYear()}
+                </span>
+                <label title="Chọn ngày để chuyển tuần" className="cursor-pointer ml-1 flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-700">
+                  <CalendarIcon className="w-3.5 h-3.5" />
+                  <input
+                    type="date"
+                    value={toIsoDateString(weekRefDate)}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setWeekRefDate(new Date(e.target.value));
+                      }
+                    }}
+                    className="sr-only"
+                  />
+                </label>
+              </div>
 
               <button
                 type="button"
@@ -2135,79 +2525,99 @@ export const Schedules: React.FC = () => {
                 </div>
               )}
 
-              {/* Kế hoạch Đào tạo: Năm học & Học kỳ */}
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-50/80 to-indigo-50/80 dark:from-slate-800/90 dark:to-indigo-950/40 border border-blue-200/70 dark:border-blue-900/50 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                    <CalendarDays className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    <span>Kế hoạch Đào tạo (Năm học & Học kỳ)</span>
-                    <span className="text-rose-500">*</span>
-                  </label>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-200/50">
-                    Phân chia theo kỳ học
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Áp dụng cho kỳ:</span>
-                    <select
-                      value={`${formData.semester}_${formData.academicYear}`}
-                      onChange={(e) => {
-                        const targetKey = e.target.value;
-                        const semOpt = SEMESTER_OPTIONS.find((s) => s.key === targetKey);
-                        if (semOpt) {
-                          const newStart = semOpt.defaultStartDate;
-                          const newEnd = calculateEndDateFromWeeks(newStart, formData.weekNumbers);
-                          setFormData({
-                            ...formData,
-                            semester: semOpt.semester,
-                            academicYear: semOpt.academicYear,
-                            startDate: newStart,
-                            endDate: newEnd,
-                          });
-                        }
-                      }}
-                      className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 focus:ring-2 focus:ring-blue-500/20 shadow-2xs"
-                    >
-                      {SEMESTER_OPTIONS.map((opt) => (
-                        <option key={opt.key} value={opt.key}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="flex flex-col justify-center px-3 py-1.5 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200/60 dark:border-slate-700/60 text-[11px]">
-                    <span className="text-slate-400">Khai giảng kỳ (Tuần 1):</span>
-                    <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
-                      {formatDateFull(formData.startDate)}
-                    </span>
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                      ✓ Đã tự động khớp 15 tuần theo kỳ
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Nhân sự / Giảng viên */}
-              <div className="space-y-1">
+              {/* Nhân sự / Giảng viên phụ trách (Searchable Combobox) */}
+              <div className="space-y-1 relative">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Nhân sự / Giảng viên phụ trách <span className="text-rose-500">*</span>
                 </label>
-                <select
-                  value={formData.userId}
-                  onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20"
-                >
-                  <option value="">-- Chọn nhân sự --</option>
-                  {lecturers.map((lec) => (
-                    <option key={lec._id} value={lec._id}>
-                      {lec.fullName} ({lec.staffCode || 'N/A'}) - {getUserDepartmentName(lec)}
-                    </option>
-                  ))}
-                </select>
+                
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsFormLecturerOpen((prev) => !prev);
+                      setFormLecturerSearch('');
+                    }}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 flex items-center justify-between text-left focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <span>
+                      {(() => {
+                        const sel = lecturers.find((l) => l._id === formData.userId);
+                        return sel
+                          ? `${sel.fullName} (${sel.staffCode || 'N/A'}) - ${getUserDepartmentName(sel)}`
+                          : '-- Chọn nhân sự / giảng viên --';
+                      })()}
+                    </span>
+                    <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                  </button>
+
+                  {isFormLecturerOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-30"
+                        onClick={() => setIsFormLecturerOpen(false)}
+                      />
+                      <div className="absolute left-0 top-full mt-1 w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xl z-40 p-2 space-y-2">
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            autoFocus
+                            value={formLecturerSearch}
+                            onChange={(e) => setFormLecturerSearch(e.target.value)}
+                            placeholder="Nhập tên hoặc mã giảng viên..."
+                            className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <div className="max-h-48 overflow-y-auto space-y-0.5 custom-scrollbar">
+                          {lecturers
+                            .filter((lec) => {
+                              if (!formLecturerSearch.trim()) return true;
+                              const q = formLecturerSearch.toLowerCase();
+                              return (
+                                (lec.fullName || '').toLowerCase().includes(q) ||
+                                (lec.staffCode || '').toLowerCase().includes(q)
+                              );
+                            })
+                            .map((lec) => {
+                              const isSelected = formData.userId === lec._id;
+                              return (
+                                <button
+                                  key={lec._id}
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData({ ...formData, userId: lec._id });
+                                    setIsFormLecturerOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                                    isSelected
+                                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-bold'
+                                      : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                      {lec.fullName}
+                                      {lec.staffCode && (
+                                        <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400">
+                                          {lec.staffCode}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400">
+                                      {getUserDepartmentName(lec)} {lec.email ? `• ${lec.email}` : ''}
+                                    </div>
+                                  </div>
+                                  {isSelected && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Ca làm việc & Thứ */}
@@ -2381,626 +2791,304 @@ export const Schedules: React.FC = () => {
                 </div>
               </div>
 
-              {/* Hiệu lực ngày & Tự động đồng bộ theo tuần học */}
+              {/* Loại lịch & Ngày dạy bù (nếu có) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Hiệu lực từ ngày (Bắt đầu Tuần 1) <span className="text-rose-500">*</span>
-                    </label>
-                  </div>
-                  <input
-                    type="date"
-                    value={formData.startDate}
-                    onChange={(e) => {
-                      const newStart = e.target.value;
-                      setFormData({
-                        ...formData,
-                        startDate: newStart,
-                        endDate: calculateEndDateFromWeeks(newStart, formData.weekNumbers),
-                      });
-                    }}
-                    required
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Loại phân công <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={formData.scheduleType}
+                    onChange={(e) => setFormData({ ...formData, scheduleType: e.target.value as ScheduleType })}
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                  />
-                  <p className="text-[10px] text-slate-400">
-                    Mốc tính tuần học kỳ (Tuần 1: {getWeekDateString(formData.startDate, 1) || '--/--'})
-                  </p>
+                  >
+                    <option value="chinh_khoa">Lịch chính khóa (Hàng tuần)</option>
+                    <option value="day_bu">Lịch dạy bù (Một ngày cụ thể)</option>
+                  </select>
                 </div>
 
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Đến ngày
-                    </label>
-                    <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" />
-                      Tự động tính theo tuần
-                    </span>
-                  </div>
-                  <div className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 font-mono flex items-center justify-between">
-                    <span className="font-bold">{formatDateFull(formData.endDate)}</span>
-                    <span className="text-[10px] font-medium text-slate-500">
-                      (Hết Tuần {formData.weekNumbers.length > 0 ? Math.max(...formData.weekNumbers) : 15})
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-400">
-                    Tự động co giãn theo tuần học cuối cùng được chọn
-                  </p>
-                </div>
-              </div>
-
-              {/* Tuần học áp dụng (Cấu trúc lại trực quan, thông minh) */}
-              <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <CalendarDays className="w-4 h-4 text-blue-600" />
-                      <span>Tuần học áp dụng</span>
-                    </label>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                      Đã chọn: {formData.weekNumbers.length} / 15 tuần
-                    </span>
-                  </div>
-
-                  {/* Nút Preset chọn nhanh */}
-                  <div className="flex flex-wrap items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const weeks = Array.from({ length: 15 }, (_, i) => i + 1);
-                        setFormData({
-                          ...formData,
-                          weekNumbers: weeks,
-                          endDate: calculateEndDateFromWeeks(formData.startDate, weeks),
-                        });
-                      }}
-                      className="text-[10px] px-2 py-1 font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 transition-colors"
-                    >
-                      Tất cả (1-15)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const weeks = Array.from({ length: 15 }, (_, i) => i + 1).filter((w) => w % 2 !== 0);
-                        setFormData({
-                          ...formData,
-                          weekNumbers: weeks,
-                          endDate: calculateEndDateFromWeeks(formData.startDate, weeks),
-                        });
-                      }}
-                      className="text-[10px] px-2 py-1 font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition-colors"
-                    >
-                      Tuần lẻ
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const weeks = Array.from({ length: 15 }, (_, i) => i + 1).filter((w) => w % 2 === 0);
-                        setFormData({
-                          ...formData,
-                          weekNumbers: weeks,
-                          endDate: calculateEndDateFromWeeks(formData.startDate, weeks),
-                        });
-                      }}
-                      className="text-[10px] px-2 py-1 font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition-colors"
-                    >
-                      Tuần chẵn
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const weeks = Array.from({ length: 8 }, (_, i) => i + 1);
-                        setFormData({
-                          ...formData,
-                          weekNumbers: weeks,
-                          endDate: calculateEndDateFromWeeks(formData.startDate, weeks),
-                        });
-                      }}
-                      className="text-[10px] px-2 py-1 font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition-colors"
-                    >
-                      Nửa đầu (1-8)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const weeks = Array.from({ length: 7 }, (_, i) => i + 9);
-                        setFormData({
-                          ...formData,
-                          weekNumbers: weeks,
-                          endDate: calculateEndDateFromWeeks(formData.startDate, weeks),
-                        });
-                      }}
-                      className="text-[10px] px-2 py-1 font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition-colors"
-                    >
-                      Nửa cuối (9-15)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormData({
-                          ...formData,
-                          weekNumbers: [],
-                          endDate: calculateEndDateFromWeeks(formData.startDate, []),
-                        });
-                      }}
-                      className="text-[10px] px-2 py-1 font-semibold rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                    >
-                      Bỏ chọn
-                    </button>
-                  </div>
-                </div>
-
-                {/* Khối chọn tuần phân chia 2 giai đoạn kèm ngày cụ thể */}
-                <div className="space-y-2 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
-                  {/* Giai đoạn 1: Tuần 1 -> 8 */}
+                {formData.scheduleType === 'day_bu' ? (
                   <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Giai đoạn 1 (Tuần 1 - 8)
-                    </span>
-                    <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
-                      {Array.from({ length: 8 }, (_, i) => i + 1).map((wNum) => {
-                        const isSelected = formData.weekNumbers.includes(wNum);
-                        const weekDate = getWeekDateString(formData.startDate, wNum);
-                        return (
-                          <button
-                            key={wNum}
-                            type="button"
-                            onClick={() => {
-                              const updated = isSelected
-                                ? formData.weekNumbers.filter((w) => w !== wNum)
-                                : [...formData.weekNumbers, wNum].sort((a, b) => a - b);
-                              setFormData({
-                                ...formData,
-                                weekNumbers: updated,
-                                endDate: calculateEndDateFromWeeks(formData.startDate, updated),
-                              });
-                            }}
-                            className={`py-1.5 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 border ${
-                              isSelected
-                                ? 'bg-blue-600 border-blue-600 text-white shadow-xs scale-[1.02]'
-                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-blue-300'
-                            }`}
-                          >
-                            <span>T{wNum}</span>
-                            <span className={`text-[9px] font-mono leading-none ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>
-                              {weekDate}
-                            </span>
-                            <span className={`text-[8.5px] px-1 rounded font-semibold ${
-                              isSelected ? 'bg-blue-500/80 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'
-                            }`}>
-                              {isSelected ? 'Học' : 'Nghỉ'}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <label className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                      Ngày dạy bù <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.makeupDate}
+                      onChange={(e) => {
+                        const mDate = e.target.value;
+                        const d = new Date(mDate);
+                        const wd = !isNaN(d.getTime()) ? d.getDay() : formData.weekday;
+                        setFormData({
+                          ...formData,
+                          makeupDate: mDate,
+                          weekday: wd,
+                          startDate: mDate,
+                          endDate: mDate,
+                        });
+                      }}
+                      required
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 text-slate-800 dark:text-slate-200 font-mono"
+                    />
                   </div>
-
-                  {/* Giai đoạn 2: Tuần 9 -> 15 */}
-                  <div className="space-y-1 pt-1.5 border-t border-slate-200/50 dark:border-slate-700/50">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Giai đoạn 2 (Tuần 9 - 15)
-                    </span>
-                    <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-                      {Array.from({ length: 7 }, (_, i) => i + 9).map((wNum) => {
-                        const isSelected = formData.weekNumbers.includes(wNum);
-                        const weekDate = getWeekDateString(formData.startDate, wNum);
-                        return (
-                          <button
-                            key={wNum}
-                            type="button"
-                            onClick={() => {
-                              const updated = isSelected
-                                ? formData.weekNumbers.filter((w) => w !== wNum)
-                                : [...formData.weekNumbers, wNum].sort((a, b) => a - b);
-                              setFormData({
-                                ...formData,
-                                weekNumbers: updated,
-                                endDate: calculateEndDateFromWeeks(formData.startDate, updated),
-                              });
-                            }}
-                            className={`py-1.5 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 border ${
-                              isSelected
-                                ? 'bg-blue-600 border-blue-600 text-white shadow-xs scale-[1.02]'
-                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-blue-300'
-                            }`}
-                          >
-                            <span>T{wNum}</span>
-                            <span className={`text-[9px] font-mono leading-none ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>
-                              {weekDate}
-                            </span>
-                            <span className={`text-[8.5px] px-1 rounded font-semibold ${
-                              isSelected ? 'bg-blue-500/80 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'
-                            }`}>
-                              {isSelected ? 'Học' : 'Nghỉ'}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                ) : (
+                  <div className="flex items-center pt-5">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={formData.isRecurring}
+                        onChange={(e) => setFormData({ ...formData, isRecurring: e.target.checked })}
+                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Lặp lại hàng tuần theo thứ đã chọn</span>
+                    </label>
                   </div>
-                </div>
-
-                {formData.weekNumbers.length === 0 && (
-                  <p className="text-[11px] text-rose-500 font-semibold flex items-center gap-1">
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    <span>Vui lòng chọn ít nhất 1 tuần áp dụng cho lịch giảng dạy này.</span>
-                  </p>
                 )}
               </div>
 
-              {/* Submit Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <Button
+              {/* Hiệu lực ngày */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Hiệu lực từ ngày <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Đến hết ngày <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.endDate}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Footer Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <button
                   type="button"
-                  variant="outline"
                   onClick={() => setIsFormModalOpen(false)}
-                  disabled={formSubmitting}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
                 >
                   Hủy
-                </Button>
-                <Button
+                </button>
+                <button
                   type="submit"
-                  isLoading={formSubmitting}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={formSubmitting}
+                  className="px-5 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  <Check className="w-4 h-4 mr-1.5" />
-                  {isEditing ? 'Lưu thay đổi' : 'Tạo lịch phân công'}
-                </Button>
+                  {formSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isEditing ? 'Lưu Thay Đổi' : 'Tạo Phân Công'}</span>
+                </button>
               </div>
             </form>
           </div>
         </div>
-        </Portal>
-      )}
+      </Portal>
+    )}
 
-      {/* =========================================================================
-          MODAL 2: SCHEDULE DETAIL MODAL (CHI TIẾT LỊCH GIẢNG DẠY RÕ RÀNG, ĐẦY ĐỦ)
-         ========================================================================= */}
-      {isDetailModalOpen && selectedSchedule && (() => {
-        const subInfo = resolveSubject(selectedSchedule.subjectId, subjects);
+    {/* =========================================================================
+        MODAL 2: SCHEDULE DETAIL MODAL
+       ========================================================================= */}
+    {isDetailModalOpen && selectedSchedule && (() => {
+      const subInfo = resolveSubject(selectedSchedule.subjectId, subjects);
+      const lec = typeof selectedSchedule.userId === 'object' ? selectedSchedule.userId : null;
+      const sh = typeof selectedSchedule.shiftId === 'object' ? selectedSchedule.shiftId : shifts.find((s) => s._id === selectedSchedule.shiftId);
+      const wObj = WEEKDAYS.find((w) => w.value === (selectedSchedule.weekday ?? selectedSchedule.thu_trong_tuan ?? 1)) || WEEKDAYS[0];
 
-        const lec = typeof selectedSchedule.userId === 'object'
-          ? selectedSchedule.userId
-          : lecturers.find((l) => l._id === selectedSchedule.userId);
+      const startP = selectedSchedule.startPeriod || selectedSchedule.tiet_bat_dau || 1;
+      const countP = selectedSchedule.periodCount || selectedSchedule.so_tiet || 4;
+      const endP = startP + countP - 1;
 
-        const sh = typeof selectedSchedule.shiftId === 'object'
-          ? selectedSchedule.shiftId
-          : shifts.find((s) => s._id === selectedSchedule.shiftId);
+      const startDate = selectedSchedule.startDate || selectedSchedule.ngay_bat_dau;
+      const endDate = selectedSchedule.endDate || selectedSchedule.ngay_ket_thuc;
+      const isMakeup = selectedSchedule.scheduleType === 'day_bu';
+      const makeupDate = selectedSchedule.makeupDate || selectedSchedule.ngay_day_bu;
+      const isRecurring = selectedSchedule.isRecurring ?? selectedSchedule.lap_lai_hang_tuan ?? true;
+      const exceptions = selectedSchedule.exceptions || selectedSchedule.ngoai_le || [];
 
-        const wVal = selectedSchedule.weekday ?? selectedSchedule.thu_trong_tuan ?? 1;
-        const wObj = WEEKDAYS.find((w) => w.value === wVal) || WEEKDAYS[0];
-
-        const startP = selectedSchedule.startPeriod || selectedSchedule.tiet_bat_dau || 1;
-        const countP = selectedSchedule.periodCount || selectedSchedule.so_tiet || 4;
-        const endP = startP + countP - 1;
-
-        const startDate = selectedSchedule.startDate || selectedSchedule.ngay_bat_dau;
-        const endDate = selectedSchedule.endDate || selectedSchedule.ngay_ket_thuc;
-        const isMakeup = selectedSchedule.scheduleType === 'DAY_BU';
-        const makeupDate = selectedSchedule.makeupDate || selectedSchedule.ngay_day_bu;
-
-        const weeks = selectedSchedule.weekNumbers && selectedSchedule.weekNumbers.length > 0
-          ? selectedSchedule.weekNumbers
-          : (selectedSchedule.danh_sach_tuan && selectedSchedule.danh_sach_tuan.length > 0
-            ? selectedSchedule.danh_sach_tuan
-            : Array.from({ length: 15 }, (_, i) => i + 1));
-
-        const exceptions = selectedSchedule.exceptions || selectedSchedule.ngoai_le || [];
-        const isRecurring = selectedSchedule.isRecurring ?? selectedSchedule.lap_lai_hang_tuan ?? true;
-        const acadYear = selectedSchedule.academicYear || selectedSchedule.nam_hoc || academicYearVal;
-        const sem = selectedSchedule.semester || selectedSchedule.hoc_ky || semesterNum;
-
-        return (
-          <Portal>
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 animate-in zoom-in-95 duration-200">
-                {/* Header */}
-                <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between bg-slate-50/60 dark:bg-slate-900/60">
-                  <div className="space-y-1.5 pr-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                        isMakeup
-                          ? 'bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
-                          : 'bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800'
-                      }`}>
-                        {isMakeup ? 'Lịch Dạy Bù' : 'Lịch Chính Khóa'}
+      return (
+        <Portal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 animate-in zoom-in-95 duration-200">
+              {/* Header */}
+              <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between bg-slate-50/60 dark:bg-slate-900/60">
+                <div className="space-y-1.5 pr-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                      isMakeup
+                        ? 'bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+                        : 'bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800'
+                    }`}>
+                      {isMakeup ? 'Lịch Dạy Bù' : 'Lịch Chính Khóa'}
+                    </span>
+                    {sh && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                        {sh.name} ({sh.startTime} - {sh.endTime})
                       </span>
-                      {sh && (
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
-                          {sh.name || (sh as any).ten_ca} ({sh.startTime || (sh as any).gio_bat_dau} - {sh.endTime || (sh as any).gio_ket_thuc})
-                        </span>
-                      )}
-                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800">
-                        {wObj.label}
-                      </span>
-                    </div>
-
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                      {subInfo?.name || 'Phân công công tác / Hành chính'}
-                      {subInfo?.code && (
-                        <span className="text-xs px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-mono font-semibold">
-                          {subInfo.code}
-                        </span>
-                      )}
-                    </h3>
+                    )}
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800">
+                      {wObj.label}
+                    </span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setIsDetailModalOpen(false)}
-                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                    title="Đóng"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    {subInfo?.name || 'Phân công công tác / Hành chính'}
+                    {subInfo?.code && (
+                      <span className="text-xs px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-mono font-semibold">
+                        {subInfo.code}
+                      </span>
+                    )}
+                  </h3>
                 </div>
 
-                {/* Body Content - Scrollable */}
-                <div className="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs">
-                  {/* Khối Giảng viên & Đơn vị */}
-                  <div className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
-                        <User className="w-5 h-5" />
+                <button
+                  type="button"
+                  onClick={() => setIsDetailModalOpen(false)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  title="Đóng"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar text-xs">
+                {/* Giảng viên & Khung giờ */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
+                      <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      <span>Cán bộ / Giảng viên</span>
+                    </div>
+                    <div className="space-y-1.5 pl-6 text-slate-600 dark:text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Họ và tên:</span>
+                        <span className="font-bold text-slate-900 dark:text-slate-100">{lec?.fullName || 'Vũ Tiến Đức'}</span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                            {lec?.fullName || 'Chưa phân công'}
-                          </span>
-                          {(lec?.staffCode) && (
-                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-200/60 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                              Mã CB: {lec.staffCode}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-slate-500 dark:text-slate-400 text-[11px] flex items-center gap-2 mt-0.5">
-                          <Building2 className="w-3.5 h-3.5" />
-                          <span>{getUserDepartmentName(selectedSchedule.userId)}</span>
-                          {lec?.email && (
-                            <>
-                              <span>•</span>
-                              <span>{lec.email}</span>
-                            </>
-                          )}
-                        </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Mã cán bộ:</span>
+                        <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">{lec?.staffCode || 'N/A'}</span>
                       </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Khoa / Phòng:</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{getUserDepartmentName(lec)}</span>
+                      </div>
+                      {lec?.email && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Email:</span>
+                          <span className="font-mono text-slate-600 dark:text-slate-300">{lec.email}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Khối Lưới Thông tin Lịch trình */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Thẻ Thời gian & Tiết */}
-                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 space-y-2">
-                      <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
-                        <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                        <span>Thời gian & Tiết học</span>
-                      </div>
-                      <div className="space-y-1.5 pl-6 text-slate-600 dark:text-slate-300">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Khung giờ:</span>
-                          <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
-                            {selectedSchedule.startTime} - {selectedSchedule.endTime}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Tiết giảng dạy:</span>
-                          <span className="font-semibold text-blue-600 dark:text-blue-400">
-                            Tiết {startP} - {endP} ({countP} tiết)
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Ca phân công:</span>
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            {sh?.name || 'Theo khung giờ'}
-                          </span>
-                        </div>
-                        {sh?.lateThresholdMinutes !== undefined && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Ngang trễ tối đa:</span>
-                            <span className="font-semibold text-amber-600 dark:text-amber-400">
-                              {sh.lateThresholdMinutes} phút
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
+                      <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>Thời gian & Ca học</span>
                     </div>
-
-                    {/* Thẻ Địa điểm & Phòng học */}
-                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 space-y-2">
-                      <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
-                        <MapPin className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                        <span>Địa điểm & Học phần</span>
+                    <div className="space-y-1.5 pl-6 text-slate-600 dark:text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Khung giờ:</span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                          {selectedSchedule.startTime} - {selectedSchedule.endTime}
+                        </span>
                       </div>
-                      <div className="space-y-1.5 pl-6 text-slate-600 dark:text-slate-300">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Phòng học:</span>
-                          <span className="font-bold text-slate-900 dark:text-slate-100">
-                            {selectedSchedule.roomId || selectedSchedule.phong_hoc || 'Chưa xếp phòng'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Số tín chỉ:</span>
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            {subInfo?.credits ? `${subInfo.credits} Tín chỉ` : '3 Tín chỉ'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Hình thức lặp:</span>
-                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                            {isRecurring ? 'Lặp lại hàng tuần' : 'Một lần duy nhất'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Tọa độ GPS Geofence:</span>
-                          <span className="font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                            {selectedSchedule.latitude ?? selectedSchedule.vi_do ?? 20.9752},{' '}
-                            {selectedSchedule.longitude ?? selectedSchedule.kinh_do ?? 105.7628} (R: {selectedSchedule.radiusMeters ?? selectedSchedule.ban_kinh_met ?? 100}m)
-                          </span>
-                        </div>
-                        {isMakeup && makeupDate && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Ngày học bù:</span>
-                            <span className="font-bold text-amber-600 dark:text-amber-400">
-                              {formatDateFull(makeupDate)}
-                            </span>
-                          </div>
-                        )}
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Tiết học:</span>
+                        <span className="font-semibold text-blue-600 dark:text-blue-400">
+                          Tiết {startP} - {endP} ({countP} tiết)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Ca phân công:</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{sh?.name || 'Theo khung giờ'}</span>
                       </div>
                     </div>
                   </div>
-
-                  {/* Khối Kế hoạch Học kỳ & Tuần áp dụng (Cấu trúc lại trực quan theo 2 giai đoạn) */}
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 space-y-3.5">
-                    <div className="flex items-center justify-between font-bold text-slate-800 dark:text-slate-200">
-                      <div className="flex items-center gap-2">
-                        <CalendarDays className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                        <span>Kế hoạch Đào tạo & Tuần áp dụng</span>
-                      </div>
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800">
-                        {acadYear} • Học kỳ {sem}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/40 dark:border-slate-700/40 text-[11px]">
-                      <div>
-                        <span className="text-slate-400">Thời gian hiệu lực: </span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">
-                          {formatDateFull(startDate)} → {formatDateFull(endDate)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between sm:justify-end gap-2">
-                        <span className="text-slate-400">Tần suất học: </span>
-                        <span className="font-bold text-blue-600 dark:text-blue-400">
-                          {weeks.length === 15
-                            ? 'Cả học kỳ (15/15 tuần)'
-                            : weeks.every((w: number) => w % 2 !== 0)
-                            ? `Cách tuần (Tuần lẻ: ${weeks.length} tuần)`
-                            : weeks.every((w: number) => w % 2 === 0)
-                            ? `Cách tuần (Tuần chẵn: ${weeks.length} tuần)`
-                            : `Tùy chọn ${weeks.length} / 15 tuần`}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Lưới tuần áp dụng 2 giai đoạn */}
-                    <div className="space-y-2.5 pt-1">
-                      {/* Giai đoạn 1 */}
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          Giai đoạn 1 (Tuần 1 - 8)
-                        </span>
-                        <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
-                          {Array.from({ length: 8 }, (_, i) => i + 1).map((wNum) => {
-                            const isActive = weeks.includes(wNum);
-                            const wDateStr = getWeekDateString(startDate, wNum);
-                            return (
-                              <div
-                                key={wNum}
-                                className={`py-1.5 px-1 rounded-xl text-center flex flex-col items-center justify-center gap-0.5 border transition-all ${
-                                  isActive
-                                    ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
-                                    : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700/60 opacity-60'
-                                }`}
-                                title={isActive ? `Tuần ${wNum} (${wDateStr}): Có lịch giảng dạy` : `Tuần ${wNum} (${wDateStr}): Nghỉ`}
-                              >
-                                <span className="text-[11px] font-bold">T{wNum}</span>
-                                {wDateStr && (
-                                  <span className={`text-[8.5px] font-mono leading-none ${isActive ? 'text-blue-100' : 'text-slate-400'}`}>
-                                    {wDateStr}
-                                  </span>
-                                )}
-                                <span className="text-[9px] font-medium leading-none">
-                                  {isActive ? 'Học' : 'Nghỉ'}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Giai đoạn 2 */}
-                      <div className="space-y-1 pt-1.5 border-t border-slate-200/50 dark:border-slate-700/50">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          Giai đoạn 2 (Tuần 9 - 15)
-                        </span>
-                        <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-                          {Array.from({ length: 7 }, (_, i) => i + 9).map((wNum) => {
-                            const isActive = weeks.includes(wNum);
-                            const wDateStr = getWeekDateString(startDate, wNum);
-                            return (
-                              <div
-                                key={wNum}
-                                className={`py-1.5 px-1 rounded-xl text-center flex flex-col items-center justify-center gap-0.5 border transition-all ${
-                                  isActive
-                                    ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
-                                    : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700/60 opacity-60'
-                                }`}
-                                title={isActive ? `Tuần ${wNum} (${wDateStr}): Có lịch giảng dạy` : `Tuần ${wNum} (${wDateStr}): Nghỉ`}
-                              >
-                                <span className="text-[11px] font-bold">T{wNum}</span>
-                                {wDateStr && (
-                                  <span className={`text-[8.5px] font-mono leading-none ${isActive ? 'text-blue-100' : 'text-slate-400'}`}>
-                                    {wDateStr}
-                                  </span>
-                                )}
-                                <span className="text-[9px] font-medium leading-none">
-                                  {isActive ? 'Học' : 'Nghỉ'}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Chú thích (Legend) */}
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200/40 dark:border-slate-700/40">
-                      <div className="flex items-center gap-3">
-                        <span className="flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                          <span className="text-slate-600 dark:text-slate-300 font-medium">Có lịch học ({weeks.length} tuần)</span>
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600"></span>
-                          <span className="text-slate-400 font-medium">Nghỉ ({15 - weeks.length} tuần)</span>
-                        </span>
-                      </div>
-                      <span className="italic">{isRecurring ? 'Chu kỳ lặp hàng tuần' : 'Lịch phát sinh'}</span>
-                    </div>
-                  </div>
-
-                  {/* Ngoại lệ buổi học (nếu có) */}
-                  {exceptions.length > 0 && (
-                    <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 space-y-2">
-                      <div className="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-300">
-                        <AlertTriangle className="w-4 h-4 text-amber-600" />
-                        <span>Ngoại lệ buổi học đã ghi nhận ({exceptions.length})</span>
-                      </div>
-                      <div className="space-y-1.5 pl-6">
-                        {exceptions.map((ex: any, idx: number) => (
-                          <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-amber-100 dark:border-amber-900/30 last:border-0">
-                            <div>
-                              <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                {formatDateFull(ex.date || ex.ngay)}
-                              </span>
-                              <span className="mx-2 text-slate-300">•</span>
-                              <span className="text-slate-600 dark:text-slate-400">{ex.reason || ex.ly_do || 'Không rõ lý do'}</span>
-                            </div>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200/70 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                              {ex.status || ex.trang_thai || 'NGHI'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {/* Footer Buttons */}
-                <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/60 dark:bg-slate-900/60">
+                {/* Phòng học & Địa điểm GPS */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
+                    <MapPin className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                    <span>Địa điểm & Phòng học</span>
+                  </div>
+                  <div className="space-y-1.5 pl-6 text-slate-600 dark:text-slate-300">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Phòng học:</span>
+                      <span className="font-bold text-slate-900 dark:text-slate-100">{selectedSchedule.roomId || 'Chưa xếp phòng'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Số tín chỉ:</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{subInfo?.credits ? `${subInfo.credits} Tín chỉ` : '3 Tín chỉ'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Tọa độ GPS Geofence:</span>
+                      <span className="font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                        {selectedSchedule.latitude ?? 20.9752}, {selectedSchedule.longitude ?? 105.7628} (R: {selectedSchedule.radiusMeters ?? 100}m)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Khối Thời gian áp dụng & Chu kỳ */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 space-y-3">
+                  <div className="flex items-center justify-between font-bold text-slate-800 dark:text-slate-200">
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      <span>Kế hoạch Giảng dạy & Hiệu lực</span>
+                    </div>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800">
+                      {isRecurring ? 'Lặp lại hàng tuần' : 'Một lần'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/40 dark:border-slate-700/40 text-xs">
+                    <div>
+                      <span className="text-slate-400">Hiệu lực từ ngày: </span>
+                      <strong className="text-slate-800 dark:text-slate-200 font-mono">{formatDateFull(startDate)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Đến hết ngày: </span>
+                      <strong className="text-slate-800 dark:text-slate-200 font-mono">{formatDateFull(endDate)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lịch Ngoại lệ */}
+                {exceptions.length > 0 && (
+                  <div className="p-3.5 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/40 space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-300">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>Lịch Ngoại lệ / Báo nghỉ / Dạy bù ({exceptions.length})</span>
+                    </div>
+                    <div className="space-y-1.5 pl-6">
+                      {exceptions.map((ex: any, idx: number) => (
+                        <div key={idx} className="text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between">
+                          <span>Ngày {formatDateFull(ex.date)}: <strong>{ex.status === 'nghi' ? 'Nghỉ' : String(ex.status).toLowerCase() === 'day_bu' ? 'Dạy bù' : ex.status}</strong> {ex.reason ? `(${ex.reason})` : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Detail Footer */}
+              <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/60 dark:bg-slate-900/60">
                   <div className="flex items-center gap-2">
                     {isAdminOrDean && (
                       <Button
@@ -3096,13 +3184,13 @@ export const Schedules: React.FC = () => {
                   onChange={(e) => setExceptionData({ ...exceptionData, status: e.target.value as any })}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
                 >
-                  <option value="NGHI">Báo Nghỉ (Tạm hoãn buổi học)</option>
-                  <option value="DAY_BU">Xếp Lịch Học Bù</option>
-                  <option value="HUY">Hủy Bỏ Buổi Học Này</option>
+                  <option value="nghi">Báo Nghỉ (Tạm hoãn buổi học)</option>
+                  <option value="day_bu">Xếp Lịch Học Bù</option>
+                  <option value="huy">Hủy Bỏ Buổi Học Này</option>
                 </select>
               </div>
 
-              {exceptionData.status === 'DAY_BU' && (
+              {String(exceptionData.status).toLowerCase() === 'day_bu' && (
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Ngày học bù dự kiến <span className="text-rose-500">*</span>

@@ -4,6 +4,8 @@
  * Sinh viên thực hiện: Vũ Tiến Đức - MSV: 2310900023
  */
 
+const { normalizeRole } = require('../utils/roleUtils');
+
 // 1. Danh mục các quyền hạt nhân (Granular Permissions)
 const PERMISSIONS = {
   // Đơn từ
@@ -44,11 +46,11 @@ const PERMISSIONS = {
   HE_THONG_KIEM_TOAN: 'HE_THONG:KIEM_TOAN',
 };
 
-// 2. Ma trận Ánh xạ Vai trò -> Tập quyền (Role-to-Permissions Mapping)
-const ROLE_PERMISSIONS = {
-  ADMIN: Object.values(PERMISSIONS), // Admin toàn quyền
+// 2. Ma trận Ánh xạ Vai trò -> Tập quyền (Chuẩn canonical lowercase snake_case)
+const CANONICAL_ROLE_PERMISSIONS = {
+  admin: Object.values(PERMISSIONS), // Admin toàn quyền
 
-  BGH: [
+  bgh: [
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_XEM_DON_VI,
     PERMISSIONS.DON_TU_DUYET_CAP_2,
@@ -63,7 +65,7 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.HE_THONG_KIEM_TOAN,
   ],
 
-  TCCB: [
+  tccb: [
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_XEM_DON_VI,
     PERMISSIONS.DON_TU_DUYET_CAP_2,
@@ -75,7 +77,7 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.HE_THONG_KIEM_TOAN,
   ],
 
-  DAO_TAO: [
+  dao_tao: [
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.CONG_XEM_BAN_THAN,
     PERMISSIONS.LICH_XEM_DON_VI,
@@ -83,7 +85,7 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.LICH_DAY_BU,
   ],
 
-  KE_TOAN: [
+  ke_toan: [
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.CONG_XEM_BAN_THAN,
     PERMISSIONS.CONG_XEM_TOAN_TRUONG,
@@ -93,12 +95,12 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.LUONG_KHOA,
   ],
 
-  KIEM_TOAN: [
+  kiem_toan: [
     PERMISSIONS.CONG_XEM_TOAN_TRUONG,
     PERMISSIONS.HE_THONG_KIEM_TOAN,
   ],
 
-  TRUONG_KHOA: [
+  truong_khoa: [
     PERMISSIONS.DON_TU_TAO,
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_XEM_DON_VI,
@@ -116,7 +118,7 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.NHAN_SU_XEM_DON_VI,
   ],
 
-  PHO_TRUONG_KHOA: [
+  pho_khoa: [
     PERMISSIONS.DON_TU_TAO,
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_XEM_DON_VI,
@@ -133,7 +135,7 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.NHAN_SU_XEM_DON_VI,
   ],
 
-  TRUONG_BO_MON: [
+  truong_bo_mon: [
     PERMISSIONS.DON_TU_TAO,
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_XEM_DON_VI,
@@ -150,7 +152,7 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.LUONG_XEM_BAN_THAN,
   ],
 
-  PHO_TRUONG_BO_MON: [
+  pho_bo_mon: [
     PERMISSIONS.DON_TU_TAO,
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_XEM_DON_VI,
@@ -164,7 +166,7 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.LUONG_XEM_BAN_THAN,
   ],
 
-  TRUONG_PHONG: [
+  truong_phong: [
     PERMISSIONS.DON_TU_TAO,
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_XEM_DON_VI,
@@ -178,7 +180,7 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.NHAN_SU_XEM_DON_VI,
   ],
 
-  PHO_TRUONG_PHONG: [
+  pho_phong: [
     PERMISSIONS.DON_TU_TAO,
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_XEM_DON_VI,
@@ -190,7 +192,7 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.NHAN_SU_XEM_DON_VI,
   ],
 
-  GIANG_VIEN: [
+  giang_vien: [
     PERMISSIONS.DON_TU_TAO,
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_HUY,
@@ -202,7 +204,16 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.LUONG_XEM_BAN_THAN,
   ],
 
-  CHUYEN_VIEN: [
+  chuyen_vien: [
+    PERMISSIONS.DON_TU_TAO,
+    PERMISSIONS.DON_TU_XEM_BAN_THAN,
+    PERMISSIONS.DON_TU_HUY,
+    PERMISSIONS.CONG_QUET_MAT,
+    PERMISSIONS.CONG_XEM_BAN_THAN,
+    PERMISSIONS.CONG_GIAI_TRINH,
+    PERMISSIONS.LUONG_XEM_BAN_THAN,
+  ],
+  nhan_vien: [
     PERMISSIONS.DON_TU_TAO,
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_HUY,
@@ -212,6 +223,8 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.LUONG_XEM_BAN_THAN,
   ],
 };
+
+const ROLE_PERMISSIONS = CANONICAL_ROLE_PERMISSIONS;
 
 /**
  * Tính toán tập quyền thực tế (Effective Permissions) của người dùng:
@@ -226,41 +239,36 @@ function getEffectivePermissions(user) {
   const now = new Date();
 
   // Kiểm tra mảng vai trò RBAC v2.5
-  const rolesList = user.roles || [];
+  const rolesList = user.roles || user.danh_sach_vai_tro || [];
 
   if (Array.isArray(rolesList) && rolesList.length > 0) {
     for (const r of rolesList) {
+      if (!r) continue;
       // Bỏ qua vai trò đã hết nhiệm kỳ (endDate / den_ngay)
       const expiry = r.endDate || r.den_ngay;
       if (expiry && new Date(expiry) < now) {
         continue;
       }
 
-      const roleCode = (r.role || '').toUpperCase();
+      const roleCode = normalizeRole(r.role || r.ma_vai_tro);
       const rolePerms = ROLE_PERMISSIONS[roleCode] || [];
       for (const p of rolePerms) {
         permissions.add(p);
       }
 
       // Xử lý ủy quyền cho phó trưởng
-      const isDelegated = r.isDelegated;
-      if (isDelegated && ['PHO_TRUONG_KHOA', 'PHO_TRUONG_BO_MON', 'PHO_TRUONG_PHONG'].includes(roleCode)) {
+      const isDelegated = r.isDelegated || r.duoc_uy_quyen;
+      if (isDelegated && ['pho_khoa', 'pho_bo_mon', 'pho_phong'].includes(roleCode)) {
         permissions.add(PERMISSIONS.DON_TU_DUYET_CAP_1);
       }
     }
   }
 
-  // Tương thích ngược với vai trò phẳng
-  const fallbackRole = user.role;
+  // Fallback vai trò phẳng nếu chưa có trong permissions
+  const fallbackRole = user.role || user.primaryRole || user.vai_tro_chinh;
   if (fallbackRole && permissions.size === 0) {
-    const roleMapping = {
-      admin: 'ADMIN',
-      truongkhoa: 'TRUONG_KHOA',
-      giangvien: 'GIANG_VIEN',
-      nhanvien: 'CHUYEN_VIEN',
-    };
-    const mapped = roleMapping[fallbackRole.toLowerCase()] || fallbackRole.toUpperCase();
-    const fallbackPerms = ROLE_PERMISSIONS[mapped] || [];
+    const roleCode = normalizeRole(fallbackRole);
+    const fallbackPerms = ROLE_PERMISSIONS[roleCode] || [];
     for (const p of fallbackPerms) {
       permissions.add(p);
     }

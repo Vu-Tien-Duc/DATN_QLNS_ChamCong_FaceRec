@@ -118,9 +118,9 @@ const processPunchJobData = async (jobData) => {
   } = require('../utils/attendanceTime.utils');
   const { validateGeofence } = require('../utils/attendanceHelpers');
 
-  const scanTime = punchTime ? new Date(punchTime) : new Date();
-  const nowVN = getVietnamTime(scanTime);
-  const { startOfDay, endOfDay } = getVietnamDayRange(scanTime);
+  const effectivePunchTime = punchTime ? new Date(punchTime) : new Date();
+  const nowVN = getVietnamTime(effectivePunchTime);
+  const { startOfDay, endOfDay } = getVietnamDayRange(effectivePunchTime);
   const workDateStr = nowVN.toISOString().slice(0, 10);
 
   // 1. Đối soát Geofence & IP
@@ -131,7 +131,7 @@ const processPunchJobData = async (jobData) => {
   if (!mongoose.connection || mongoose.connection.readyState !== 1) {
     return {
       success: true,
-      action: punchType || 'CHECK_IN',
+      action: punchType || 'check_in',
       recordId: new mongoose.Types.ObjectId(),
       userId,
       isFraud: geoCheck.isFraud,
@@ -155,12 +155,12 @@ const processPunchJobData = async (jobData) => {
     checkOutTime: null,
   }).populate('shiftId');
 
-  let actionType = punchType || (openLog ? 'CHECK_OUT' : 'CHECK_IN');
+  let actionType = punchType || (openLog ? 'check_out' : 'check_in');
   let attendanceRecord = null;
 
-  if (openLog && actionType === 'CHECK_OUT') {
+  if (openLog && actionType === 'check_out') {
     // Luồng CHECK-OUT
-    const checkOutTime = scanTime;
+    const checkOutTime = effectivePunchTime;
     openLog.checkOutTime = checkOutTime;
     if (evidenceRef) openLog.capturedImage = evidenceRef;
 
@@ -181,23 +181,23 @@ const processPunchJobData = async (jobData) => {
     await PunchLog.create({
       attendanceLogId: openLog._id,
       userId,
-      punchType: 'CHECK_OUT',
+      punchType: 'check_out',
       punchTime: checkOutTime,
-      method: type || 'FACE_AI',
+      method: type || 'face_ai',
       confidenceScore: aiResult?.similarity || 1.0,
       livenessScore: aiResult?.liveness_score || 1.0,
       evidenceImage: evidenceRef,
       location: location || { lat: null, lng: null },
       deviceId,
-      isFraudulent: geoCheck.isFraud,
+      isFraud: geoCheck.isFraud,
       fraudReason: geoCheck.fraudReason,
       clientIp: reqIp,
       isCampusNetwork: geoCheck.isCampusNetwork,
     });
   } else {
     // Luồng CHECK-IN
-    actionType = 'CHECK_IN';
-    const checkInTime = scanTime;
+    actionType = 'check_in';
+    const checkInTime = effectivePunchTime;
 
     let selectedShift = activeSchedules[0]?.shiftId;
     let selectedScheduleId = activeSchedules[0]?._id || null;
@@ -214,27 +214,27 @@ const processPunchJobData = async (jobData) => {
       scheduleId: selectedScheduleId,
       workDate: workDateStr,
       checkInTime,
-      method: type || 'FACE_AI',
+      method: type || 'face_ai',
       status: calculatedStatus,
       confidenceScore: aiResult?.similarity || 1.0,
       capturedImage: evidenceRef,
       location: location || { lat: null, lng: null },
-      isFraudulent: geoCheck.isFraud,
+      isFraud: geoCheck.isFraud,
     });
 
     // Ghi PunchLog lượt vào
     await PunchLog.create({
       attendanceLogId: attendanceRecord._id,
       userId,
-      punchType: 'CHECK_IN',
+      punchType: 'check_in',
       punchTime: checkInTime,
-      method: type || 'FACE_AI',
+      method: type || 'face_ai',
       confidenceScore: aiResult?.similarity || 1.0,
       livenessScore: aiResult?.liveness_score || 1.0,
       evidenceImage: evidenceRef,
       location: location || { lat: null, lng: null },
       deviceId,
-      isFraudulent: geoCheck.isFraud,
+      isFraud: geoCheck.isFraud,
       fraudReason: geoCheck.fraudReason,
       clientIp: reqIp,
       isCampusNetwork: geoCheck.isCampusNetwork,
@@ -245,7 +245,7 @@ const processPunchJobData = async (jobData) => {
   if (mongoose.connection && mongoose.connection.readyState === 1) {
     AuditLog.create({
       actor: userId,
-      actorType: 'USER',
+      actorType: 'user',
       action: `ATTENDANCE_QUEUE_${actionType}`,
       targetId: attendanceRecord._id.toString(),
       targetType: 'AttendanceLog',
@@ -276,8 +276,8 @@ const processPunchJobData = async (jobData) => {
           avatar: userDoc?.avatar,
           departmentId: userDoc?.departmentId,
           punchType: actionType,
-          method: type || 'FACE_AI',
-          scanTime,
+          method: type || 'face_ai',
+          punchTime: effectivePunchTime,
           status: attendanceRecord.status,
           confidenceScore: aiResult?.similarity || 1.0,
           isFraud: geoCheck.isFraud,

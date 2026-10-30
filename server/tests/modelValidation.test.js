@@ -76,14 +76,14 @@ const run = async () => {
     passwordHash: 'hashed-password',
     departmentId: objectId(),
     identityCard: '001201012345',
-    gender: 'FEMALE',
+    gender: 'nu',
     position: 'Trưởng bộ môn',
-    contractType: 'INDEFINITE',
+    contractType: 'khong_xac_dinh_thoi_han',
   });
   await validCccdUser.validate();
   assert.equal(validCccdUser.identityCard, '001201012345');
-  assert.equal(validCccdUser.gender, 'FEMALE');
-  assert.equal(validCccdUser.contractType, 'INDEFINITE');
+  assert.equal(validCccdUser.gender, 'nu');
+  assert.equal(validCccdUser.contractType, 'khong_xac_dinh_thoi_han');
 
   const insightFaceTemplate = {
     userId: objectId(),
@@ -143,7 +143,7 @@ const run = async () => {
     userId: objectId(),
     shiftId: objectId(),
     workDate: '2026-10-12',
-    status: 'ON_TIME',
+    status: 'on_time',
     checkInTime: new Date('2026-10-12T08:00:00+07:00'),
   };
   await expectValidationError(
@@ -165,7 +165,7 @@ const run = async () => {
     new PunchLog({
       attendanceLogId: objectId(),
       userId: objectId(),
-      punchType: 'CHECK_IN',
+      punchType: 'check_in',
       confidenceScore: 1.1,
     }),
     'confidenceScore'
@@ -329,7 +329,7 @@ const run = async () => {
     workDate: '2026-10-15',
     thoi_gian_vao: new Date('2026-10-15T08:15:00+07:00'),
     di_muon_phut: 15,
-    trang_thai: 'LATE',
+    trang_thai: 'late',
     ve_som_phut: 10,
     quen_quet_ra: true,
   });

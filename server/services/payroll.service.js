@@ -12,8 +12,8 @@ const User = require('../models/user.model');
 const AttendanceLog = require('../models/attendanceLog.model');
 const Schedule = require('../models/schedule.model');
 const SystemConfig = require('../models/systemConfig.model');
-const AuditLog = require('../models/auditLog.model');
 const { getDeanScopedUserIds } = require('../utils/deanScope');
+const { normalizeRole, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES } = require('../utils/roleUtils');
 
 class ServiceError extends Error {
   constructor(message, statusCode = 400, errorCode = null, data = null) {
@@ -26,20 +26,20 @@ class ServiceError extends Error {
 }
 
 const NON_ADMIN_MONGO_CRITERIA = {
-  vai_tro_chinh: { $nin: ['ADMIN', 'admin', 'BGH', 'bgh'] },
+  vai_tro_chinh: { $nin: ['admin', 'bgh'] },
   ma_can_bo: { $not: /^(ADMIN|BGH)/i },
   email: { $not: /^admin@/i, $not: /daihocdtd@/i, $not: /^hieutruong@/i },
 };
 
 const isSystemAdminUser = (u) => {
   if (!u) return false;
-  const r = String(u.role || u.primaryRole || u.vai_tro_chinh || '').toLowerCase();
+  const r = normalizeRole(u.role || u.primaryRole || u.vai_tro_chinh);
   const code = String(u.staffCode || u.ma_can_bo || '').toUpperCase();
   const email = String(u.email || '').toLowerCase();
   const name = String(u.fullName || u.ho_ten || '').toLowerCase();
   const hasAdminOrBghRole = Array.isArray(u.roles) && u.roles.some((item) => {
-    const itemRole = String(item.role || item.ma_vai_tro || '').toUpperCase();
-    return itemRole === 'ADMIN' || itemRole === 'BGH';
+    const itemRole = normalizeRole(item.role || item.ma_vai_tro);
+    return itemRole === 'admin' || itemRole === 'bgh';
   });
   return (
     r === 'admin' ||
@@ -153,11 +153,14 @@ const getPayrollConfigParams = async () => {
     don_gia_gio_chuan: Number(paramMap.DON_GIA_GIO_VUOT) || 120000,
     dinh_muc_thang: Math.round((Number(paramMap.DINH_MUC_GIO_CHUAN) || 135) / 3), // 45 giờ/tháng
     phu_cap_chuc_vu_map: paramMap.PHU_CAP_CHUC_VU || {
-      HIEU_TRUONG: 1.3,
-      HIEU_PHO: 1.1,
-      TRUONG_KHOA: 0.9,
-      PHO_TRUONG_KHOA: 0.7,
-      TRUONG_BO_MON: 0.5,
+      hieu_truong: 1.3,
+      hieu_pho: 1.1,
+      truong_khoa: 0.9,
+      pho_khoa: 0.7,
+      truong_bo_mon: 0.5,
+      pho_bo_mon: 0.4,
+      truong_phong: 0.7,
+      pho_phong: 0.5,
     },
   };
 };
@@ -167,7 +170,7 @@ const getPayrollConfigParams = async () => {
  */
 const calculateUserPayroll = async ({ user, month, year, configParams, createdBy }) => {
   const userId = user._id || user.id;
-  const userRole = (user.role || '').toUpperCase();
+  const userRole = normalizeRole(user.role || user.primaryRole || user.vai_tro_chinh);
 
   // 1. Hệ số lương và lương cơ sở
   const heSoLuong = Number(user.he_so_luong || user.salaryCoefficient || 2.34);
@@ -183,7 +186,7 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
   const phuCapThamNien = seniorityYears >= 5 ? Math.round(luongChinh * (seniorityYears / 100)) : 0;
 
   // Phụ cấp ưu đãi nghề ngành giáo dục (30% tổng lương chính + phụ cấp chức vụ)
-  const isFaculty = ['GIANG_VIEN', 'GIANGVIEN', 'TRUONG_KHOA', 'TRUONGKHOA', 'PHO_TRUONG_KHOA', 'PHOKHOA', 'TRUONG_BO_MON'].includes(userRole);
+  const isFaculty = ['giang_vien', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon'].includes(userRole);
   const phuCapUuDaiNghe = isFaculty ? Math.round((luongChinh + phuCapChucVu) * 0.3) : 0;
 
   // 3. Giờ giảng dạy thực tế và thù lao vượt giờ
@@ -288,7 +291,7 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
     },
     netSalary,
     parameterSnapshot: snapshotThamSo,
-    status: 'DU_THAO',
+    status: 'du_thao',
     lockedAt: null,
   };
 };
@@ -298,10 +301,10 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
  */
 const generateMonthlyPayroll = async ({ month, year, departmentId, currentUser }) => {
   const currentUserId = currentUser.id || currentUser._id;
-  const role = (currentUser.role || '').toUpperCase();
-  const isAdminOrHR = ['ADMIN', 'BGH', 'KE_TOAN'].includes(role);
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
+  const isAdminOrHR = ['admin', 'bgh', 'ke_toan'].includes(role);
 
-  if (!isAdminOrHR && role !== 'TRUONG_KHOA' && role !== 'TRUONGKHOA') {
+  if (!isAdminOrHR && !['truong_khoa', 'pho_khoa'].includes(role)) {
     throw new ServiceError('Bạn không có quyền khởi tạo bảng lương.', 403);
   }
 
@@ -309,7 +312,7 @@ const generateMonthlyPayroll = async ({ month, year, departmentId, currentUser }
   const lockedCount = await Payroll.countDocuments({
     month: Number(month),
     year: Number(year),
-    status: 'DA_KHOA',
+    status: 'da_khoa',
   });
 
   if (lockedCount > 0) {
@@ -377,8 +380,8 @@ const generateMonthlyPayroll = async ({ month, year, departmentId, currentUser }
  */
 const lockMonthlyPayroll = async ({ month, year, currentUser, ip }) => {
   const currentUserId = currentUser.id || currentUser._id;
-  const role = (currentUser.role || '').toUpperCase();
-  const isAuthorized = ['ADMIN', 'BGH', 'KE_TOAN'].includes(role);
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
+  const isAuthorized = ['admin', 'bgh', 'ke_toan'].includes(role);
 
   if (!isAuthorized) {
     throw new ServiceError('Chỉ Quản trị viên hoặc Ban Giám Hiệu mới có quyền khóa bảng lương.', 403);
@@ -399,7 +402,7 @@ const lockMonthlyPayroll = async ({ month, year, currentUser, ip }) => {
     { month: m, year: y },
     {
       $set: {
-        status: 'DA_KHOA',
+        status: 'da_khoa',
         lockedAt: lockTime,
         approvedBy: currentUserId,
       },
@@ -442,8 +445,8 @@ const lockMonthlyPayroll = async ({ month, year, currentUser, ip }) => {
  */
 const unlockMonthlyPayroll = async ({ month, year, reason, currentUser, ip }) => {
   const currentUserId = currentUser.id || currentUser._id;
-  const role = (currentUser.role || '').toUpperCase();
-  const isAuthorized = ['ADMIN', 'BGH', 'KE_TOAN'].includes(role);
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
+  const isAuthorized = ['admin', 'bgh', 'ke_toan'].includes(role);
 
   if (!isAuthorized) {
     throw new ServiceError('Chỉ Quản trị viên hoặc Ban Giám Hiệu mới có quyền mở khóa bảng lương.', 403);
@@ -460,7 +463,7 @@ const unlockMonthlyPayroll = async ({ month, year, reason, currentUser, ip }) =>
     { month: m, year: y },
     {
       $set: {
-        status: 'DA_DUYET',
+        status: 'da_duyet',
         lockedAt: null,
       },
     }
@@ -490,16 +493,16 @@ const unlockMonthlyPayroll = async ({ month, year, reason, currentUser, ip }) =>
  */
 const fetchPayrolls = async ({ month, year, departmentId, status, userId, currentUser }) => {
   const currentUserId = (currentUser.id || currentUser._id).toString();
-  const role = (currentUser.role || '').toUpperCase();
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
   const query = {};
 
   if (month) query.month = Number(month);
   if (year) query.year = Number(year);
   if (status) query.status = status;
 
-  if (['GIANG_VIEN', 'GIANGVIEN', 'NHAN_VIEN', 'NHANVIEN', 'CHUYEN_VIEN'].includes(role)) {
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(role)) {
     query.userId = currentUserId;
-  } else if (['TRUONG_KHOA', 'TRUONGKHOA', 'PHO_TRUONG_KHOA', 'PHOKHOA'].includes(role)) {
+  } else if (['truong_khoa', 'pho_khoa'].includes(role)) {
     const deanUserIds = await getDeanScopedUserIds(currentUser);
     if (userId) {
       if (!deanUserIds.includes(userId.toString())) {
@@ -509,7 +512,7 @@ const fetchPayrolls = async ({ month, year, departmentId, status, userId, curren
     } else {
       query.userId = { $in: deanUserIds };
     }
-  } else if (['ADMIN', 'BGH', 'KE_TOAN'].includes(role)) {
+  } else if (['admin', 'bgh', 'ke_toan'].includes(role)) {
     if (userId) {
       query.userId = userId;
     } else if (departmentId) {
@@ -554,10 +557,10 @@ const fetchPayrollById = async (id, currentUser) => {
   }
 
   const currentUserId = (currentUser.id || currentUser._id).toString();
-  const role = (currentUser.role || '').toUpperCase();
+  const role = normalizeRole(currentUser.role || currentUser.primaryRole || currentUser.vai_tro_chinh);
   const ownerId = (payroll.userId?._id || payroll.userId).toString();
 
-  if (['GIANG_VIEN', 'GIANGVIEN', 'NHAN_VIEN', 'NHANVIEN'].includes(role)) {
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(role)) {
     if (ownerId !== currentUserId) {
       throw new ServiceError('Bạn chỉ có quyền xem phiếu lương của chính mình.', 403);
     }
@@ -664,7 +667,7 @@ const exportPayrollPdfData = async (id, currentUser) => {
       incomeTax: payroll.personalIncomeTax?.taxAmount || 0,
     },
     netSalary: payroll.netSalary,
-    isLocked: payroll.status === 'DA_KHOA',
+    isLocked: payroll.status === 'da_khoa',
     lockedAt: payroll.lockedAt,
     approvedBy: payroll.approvedBy?.fullName || 'BAN GIÁM HIỆU',
     generatedAt: new Date(),

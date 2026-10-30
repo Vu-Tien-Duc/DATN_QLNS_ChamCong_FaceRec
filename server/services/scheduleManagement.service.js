@@ -15,6 +15,8 @@ const User = require('../models/user.model');
 const Subject = require('../models/subject.model');
 const AuditLog = require('../models/auditLog.model');
 const { getDeanDepartmentIds } = require('../utils/deanScope');
+const { isScheduleActiveOnDate } = require('../utils/scheduleDate.utils');
+const { normalizeRole, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES } = require('../utils/roleUtils');
 
 class ServiceError extends Error {
   constructor(message, statusCode = 400, errorCode = null, data = null) {
@@ -107,7 +109,7 @@ const detectScheduleConflicts = async ({
   weekNumbers = [],
   academicYear,
   semester,
-  scheduleType = 'CHINH_KHOA',
+  scheduleType = 'chinh_khoa',
   makeupDate = null,
   excludeScheduleId = null,
 }) => {
@@ -117,10 +119,19 @@ const detectScheduleConflicts = async ({
   };
 
   if (academicYear) query.academicYear = academicYear;
-  if (semester) query.semester = Number(semester);
+  if (semester && Number(semester) !== 0) {
+    query.$or = [
+      { semester: Number(semester) },
+      { hoc_ky: Number(semester) },
+      { semester: 0 },
+      { hoc_ky: 0 },
+      { semester: null },
+      { hoc_ky: null },
+    ];
+  }
 
   // Nếu là lịch dạy bù: so sánh theo ngày bù
-  if (scheduleType === 'DAY_BU' && makeupDate) {
+  if (scheduleType === 'day_bu' && makeupDate) {
     const targetDate = new Date(makeupDate);
     const startOfTarget = new Date(targetDate.setHours(0, 0, 0, 0));
     const endOfTarget = new Date(targetDate.setHours(23, 59, 59, 999));
@@ -145,7 +156,7 @@ const detectScheduleConflicts = async ({
 
   for (const exist of existingSchedules) {
     // Bỏ qua các buổi đã hủy
-    const isCancelled = Array.isArray(exist.exceptions) && exist.exceptions.some((ex) => ex.status === 'HUY');
+    const isCancelled = Array.isArray(exist.exceptions) && exist.exceptions.some((ex) => ex.status === 'huy');
     if (isCancelled) continue;
 
     // Kiểm tra tuần học chung
@@ -204,11 +215,11 @@ const fetchSchedules = async ({
   currentUser,
 }) => {
   const query = {};
-  const userRole = (currentUser.role || '').toLowerCase();
+  const userRole = normalizeRole(currentUser.role || currentUser.vai_tro_chinh);
 
-  if (userRole === 'giangvien' || userRole === 'nhanvien') {
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(userRole)) {
     query.userId = currentUser.id || currentUser._id;
-  } else if (userRole === 'truongkhoa') {
+  } else if (UNIT_LEADER_ROLES.includes(userRole)) {
     const departmentIds = await getDeanDepartmentIds(currentUser);
     const scopedUserIds = await User.find({
       departmentId: { $in: departmentIds },
@@ -229,7 +240,16 @@ const fetchSchedules = async ({
   if (shiftId) query.shiftId = shiftId;
   if (weekday !== undefined && weekday !== '') query.weekday = Number(weekday);
   if (academicYear) query.academicYear = academicYear;
-  if (semester) query.semester = Number(semester);
+  if (semester && Number(semester) !== 0) {
+    query.$or = [
+      { semester: Number(semester) },
+      { hoc_ky: Number(semester) },
+      { semester: 0 },
+      { hoc_ky: 0 },
+      { semester: null },
+      { hoc_ky: null },
+    ];
+  }
 
   if (startDate && endDate) {
     query.startDate = { $lte: new Date(endDate) };
@@ -284,8 +304,8 @@ const fetchScheduleById = async (scheduleId, currentUser) => {
     throw new ServiceError('Không tìm thấy lịch giảng dạy/công tác.', 404);
   }
 
-  const userRole = (currentUser.role || '').toLowerCase();
-  if (userRole === 'giangvien' && String(schedule.userId?._id || schedule.userId) !== String(currentUser.id)) {
+  const userRole = normalizeRole(currentUser.role || currentUser.vai_tro_chinh);
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(userRole) && String(schedule.userId?._id || schedule.userId) !== String(currentUser.id || currentUser._id)) {
     throw new ServiceError('Bạn không có quyền truy cập lịch của người khác.', 403);
   }
 
@@ -296,6 +316,11 @@ const fetchScheduleById = async (scheduleId, currentUser) => {
  * 8. Tạo mới Thời khóa biểu học kỳ
  */
 const createNewSchedule = async (data, currentUser) => {
+  const role = normalizeRole(currentUser?.role || currentUser?.vai_tro_chinh);
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(role)) {
+    throw new ServiceError('Tài khoản Giảng viên / Nhân viên không có quyền tạo hoặc phân công lịch trình.', 403);
+  }
+
   const {
     userId,
     shiftId,
@@ -309,7 +334,7 @@ const createNewSchedule = async (data, currentUser) => {
     isRecurring = true,
     startDate,
     endDate,
-    scheduleType = 'CHINH_KHOA',
+    scheduleType = 'chinh_khoa',
     makeupDate,
     weekNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     academicYear = '2025-2026',
@@ -393,8 +418,8 @@ const createNewSchedule = async (data, currentUser) => {
     radiusMeters: finalRadius,
     weekday: Number(weekday),
     isRecurring: Boolean(isRecurring),
-    startDate: startDate ? new Date(startDate) : new Date('2026-01-15'),
-    endDate: endDate ? new Date(endDate) : new Date('2026-12-31'),
+    startDate: startDate ? new Date(startDate) : new Date(),
+    endDate: endDate ? new Date(endDate) : new Date(Date.now() + 15 * 7 * 24 * 60 * 60 * 1000),
     scheduleType,
     makeupDate: makeupDate ? new Date(makeupDate) : null,
     weekNumbers,
@@ -406,7 +431,7 @@ const createNewSchedule = async (data, currentUser) => {
   // 3. Ghi Audit Log
   AuditLog.create({
     actor: currentUser.id || currentUser._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'CREATE_SCHEDULE',
     targetId: newSchedule._id.toString(),
     targetType: 'Schedule',
@@ -420,6 +445,11 @@ const createNewSchedule = async (data, currentUser) => {
  * 9. Cập nhật Thời khóa biểu
  */
 const updateExistingSchedule = async (scheduleId, data, currentUser) => {
+  const role = normalizeRole(currentUser?.role || currentUser?.vai_tro_chinh);
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(role)) {
+    throw new ServiceError('Tài khoản Giảng viên / Nhân viên không có quyền chỉnh sửa phân công lịch trình.', 403);
+  }
+
   const schedule = await Schedule.findById(scheduleId);
   if (!schedule) {
     throw new ServiceError('Không tìm thấy lịch cần cập nhật.', 404);
@@ -460,7 +490,7 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
 
   AuditLog.create({
     actor: currentUser.id || currentUser._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'UPDATE_SCHEDULE',
     targetId: schedule._id.toString(),
     targetType: 'Schedule',
@@ -474,6 +504,11 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
  * 10. Xóa Thời khóa biểu
  */
 const removeSchedule = async (scheduleId, currentUser) => {
+  const role = normalizeRole(currentUser?.role || currentUser?.vai_tro_chinh);
+  if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(role)) {
+    throw new ServiceError('Tài khoản Giảng viên / Nhân viên không có quyền xóa phân công lịch trình.', 403);
+  }
+
   const schedule = await Schedule.findById(scheduleId);
   if (!schedule) {
     throw new ServiceError('Không tìm thấy lịch để xóa.', 404);
@@ -483,7 +518,7 @@ const removeSchedule = async (scheduleId, currentUser) => {
 
   AuditLog.create({
     actor: currentUser.id || currentUser._id,
-    actorType: 'USER',
+    actorType: 'user',
     action: 'DELETE_SCHEDULE',
     targetId: scheduleId,
     targetType: 'Schedule',
@@ -496,16 +531,31 @@ const removeSchedule = async (scheduleId, currentUser) => {
 /**
  * 11. Thêm ngoại lệ buổi học (Nghỉ, Hủy, Dạy bù)
  */
-const addScheduleException = async ({ scheduleId, date, reason, status = 'NGHI', makeupDate, currentUser }) => {
+const addScheduleException = async ({ scheduleId, date, reason, status = 'nghi', makeupDate, currentUser }) => {
   const schedule = await Schedule.findById(scheduleId);
   if (!schedule) {
     throw new ServiceError('Không tìm thấy lịch giảng dạy.', 404);
   }
 
+  const userRole = normalizeRole(currentUser?.role || currentUser?.vai_tro_chinh);
+  const isLecturerOrStaff = ['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(userRole);
+  if (isLecturerOrStaff) {
+    const scheduleOwnerId = String(schedule.userId || schedule.nguoi_dung_id);
+    const curUserId = String(currentUser.id || currentUser._id);
+    if (scheduleOwnerId !== curUserId) {
+      throw new ServiceError('Bạn chỉ có quyền báo nghỉ/bù cho lịch của chính mình.', 403);
+    }
+  }
+
+  const exceptionDate = new Date(date);
   const exceptionItem = {
-    date: new Date(date),
+    ngay: exceptionDate,
+    date: exceptionDate,
+    ly_do: reason || 'Giảng viên có lý do công tác',
     reason: reason || 'Giảng viên có lý do công tác',
+    trang_thai: status,
     status,
+    ngay_day_bu: makeupDate ? new Date(makeupDate) : null,
     makeupDate: makeupDate ? new Date(makeupDate) : null,
   };
 
@@ -523,7 +573,7 @@ const addScheduleException = async ({ scheduleId, date, reason, status = 'NGHI',
 const fetchTodaySchedules = async ({ userId, date, currentUser }) => {
   const targetDate = date ? new Date(date) : new Date();
   const currentWeekday = targetDate.getDay();
-  const userRole = (currentUser?.role || '').toLowerCase();
+  const userRole = normalizeRole(currentUser?.role || currentUser?.vai_tro_chinh);
 
   const query = {
     weekday: currentWeekday,
@@ -534,9 +584,9 @@ const fetchTodaySchedules = async ({ userId, date, currentUser }) => {
 
   if (userId) {
     query.userId = userId;
-  } else if (userRole === 'giangvien' || userRole === 'nhanvien' || userRole === 'giang_vien' || userRole === 'nhan_vien') {
+  } else if (['giang_vien', 'nhan_vien', 'chuyen_vien'].includes(userRole)) {
     query.userId = currentUser.id || currentUser._id;
-  } else if (userRole === 'truongkhoa' || userRole === 'truong_khoa') {
+  } else if (UNIT_LEADER_ROLES.includes(userRole)) {
     const departmentIds = await getDeanDepartmentIds(currentUser);
     const scopedUserIds = await User.find({
       departmentId: { $in: departmentIds },
@@ -544,12 +594,14 @@ const fetchTodaySchedules = async ({ userId, date, currentUser }) => {
     query.userId = { $in: scopedUserIds };
   }
 
-  return Schedule.find(query)
+  const schedules = await Schedule.find(query)
     .populate('userId', 'fullName email staffCode role departmentId avatar facePhoto ho_ten ma_can_bo ms_can_bo')
     .populate('shiftId', 'name startTime endTime ten_ca gio_bat_dau gio_ket_thuc lateThresholdMinutes nguong_di_muon_phut')
     .populate('subjectId', 'name code credits ten_mon ma_mon so_tin_chi phong_ban_id')
     .sort({ startPeriod: 1, startTime: 1 })
     .lean();
+
+  return schedules.filter((s) => isScheduleActiveOnDate(s, targetDate));
 };
 
 module.exports = {

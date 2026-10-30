@@ -84,20 +84,21 @@ const attendanceLogSchema = new mongoose.Schema(
     trang_thai: {
       type: String,
       alias: 'status',
-      enum: ['ON_TIME', 'LATE', 'EARLY_LEAVE', 'ABSENT', 'EXCUSED_ABSENCE'],
-      default: 'ON_TIME',
+      enum: ['on_time', 'late', 'early_leave', 'absent', 'excused_absence'],
+      default: 'on_time',
       set: function (val) {
         if (!val) return val;
+        const v = String(val).toLowerCase();
         const map = {
-          DUNG_GIO: 'ON_TIME',
-          DI_MUON: 'LATE',
-          VE_SOM: 'EARLY_LEAVE',
-          VANG_MAT: 'ABSENT',
-          NGHI_PHEP: 'EXCUSED_ABSENCE',
-          NGHI_LE: 'EXCUSED_ABSENCE',
-          NGHI_KHONG_LUONG: 'EXCUSED_ABSENCE',
+          dung_gio: 'on_time',
+          di_muon: 'late',
+          ve_som: 'early_leave',
+          vang_mat: 'absent',
+          nghi_phep: 'excused_absence',
+          nghi_le: 'excused_absence',
+          nghi_khong_luong: 'excused_absence',
         };
-        return map[val] || val;
+        return map[v] || v;
       },
     },
     danh_sach_luot_quet_ids: [{
@@ -146,7 +147,7 @@ const attendanceLogSchema = new mongoose.Schema(
     },
     co_gian_lan: {
       type: Boolean,
-      alias: 'isFraudulent',
+      alias: 'isFraud',
       default: false,
     },
     co_di_muon: {
@@ -177,17 +178,17 @@ const attendanceLogSchema = new mongoose.Schema(
     phuong_thuc: {
       type: String,
       alias: 'method',
-      enum: ['FACE_AI', 'QR_CODE', 'GPS_MOBILE', 'THU_CONG_ADMIN', 'SYSTEM_AUTO', 'FACE', 'QR', 'GPS', 'MANUAL', 'SYSTEM', 'ADMIN_OVERRIDE'],
-      default: 'FACE_AI',
+      enum: ['face_ai', 'qr_code', 'gps_mobile', 'thu_cong_admin', 'system_auto'],
+      default: 'face_ai',
       set: function (val) {
         if (!val) return val;
-        const v = String(val).toUpperCase();
+        const v = String(val).toLowerCase();
         const map = {
-          FACE: 'FACE_AI',
-          QR: 'QR_CODE',
-          GPS: 'GPS_MOBILE',
-          MANUAL: 'THU_CONG_ADMIN',
-          SYSTEM: 'SYSTEM_AUTO',
+          face: 'face_ai',
+          qr: 'qr_code',
+          gps: 'gps_mobile',
+          manual: 'thu_cong_admin',
+          system: 'system_auto',
         };
         return map[v] || v;
       },
@@ -228,11 +229,6 @@ attendanceLogSchema.virtual('punches', {
   foreignField: 'attendanceLogId',
 });
 
-attendanceLogSchema.virtual('luot_quet', {
-  ref: 'LuotQuet',
-  localField: '_id',
-  foreignField: 'cham_cong_id',
-});
 
 attendanceLogSchema.aliases = {
   workKey: 'khoa_cong',
@@ -259,7 +255,7 @@ attendanceLogSchema.aliases = {
   isManualOverride: 'ghi_de_thu_cong',
   overriddenBy: 'nguoi_ghi_de_id',
   overrideReason: 'ly_do_ghi_de',
-  isFraudulent: 'co_gian_lan',
+  isFraud: 'co_gian_lan',
   capturedImage: 'anh_minh_chung',
   location: 'toa_do',
   latitude: 'toa_do.vi_do',
@@ -280,7 +276,6 @@ attendanceLogSchema.pre('validate', function () {
 
   if (vao && ra) {
     if (new Date(ra).getTime() < new Date(vao).getTime()) {
-      this.invalidate('checkOutTime', 'Thời gian ra không thể trước thời gian vào');
       this.invalidate('thoi_gian_ra', 'Thời gian ra không thể trước thời gian vào');
     } else if (this.isNew || this.isModified('thoi_gian_vao') || this.isModified('thoi_gian_ra')) {
       this.thoi_luong_lam_viec_phut = Math.round((new Date(ra).getTime() - new Date(vao).getTime()) / 60000);
@@ -289,36 +284,34 @@ attendanceLogSchema.pre('validate', function () {
 
   if (this.ghi_de_thu_cong) {
     if (!this.nguoi_ghi_de_id) {
-      this.invalidate('overriddenBy', 'Ghi đè thủ công bắt buộc phải có người thực hiện');
       this.invalidate('nguoi_ghi_de_id', 'Ghi đè thủ công bắt buộc phải có người thực hiện');
     }
     if (!this.ly_do_ghi_de || !this.ly_do_ghi_de.trim()) {
-      this.invalidate('overrideReason', 'Ghi đè thủ công bắt buộc phải có lý do giải trình');
       this.invalidate('ly_do_ghi_de', 'Ghi đè thủ công bắt buộc phải có lý do giải trình');
     }
   }
 
   if (!this.ghi_de_thu_cong) {
     if (this.don_tu_id) {
-      this.trang_thai = 'EXCUSED_ABSENCE';
+      this.trang_thai = 'excused_absence';
     } else if (this.thoi_gian_vao) {
       if (this.di_muon_phut > 0 && this.ve_som_phut > 0) {
-        this.trang_thai = 'LATE';
+        this.trang_thai = 'late';
       } else if (this.di_muon_phut > 0) {
-        this.trang_thai = 'LATE';
+        this.trang_thai = 'late';
       } else if (this.ve_som_phut > 0) {
-        this.trang_thai = 'EARLY_LEAVE';
-      } else if (this.trang_thai !== 'EXCUSED_ABSENCE') {
-        this.trang_thai = 'ON_TIME';
+        this.trang_thai = 'early_leave';
+      } else if (this.trang_thai !== 'excused_absence') {
+        this.trang_thai = 'on_time';
       }
     }
   }
 
   // Tự động đồng bộ các cờ chi tiết
-  if (this.di_muon_phut > 0 || this.trang_thai === 'LATE') {
+  if (this.di_muon_phut > 0 || this.trang_thai === 'late') {
     this.co_di_muon = true;
   }
-  if (this.ve_som_phut > 0 || this.trang_thai === 'EARLY_LEAVE') {
+  if (this.ve_som_phut > 0 || this.trang_thai === 'early_leave') {
     this.co_ve_som = true;
   }
 });
@@ -344,13 +337,5 @@ attendanceLogSchema.index({ co_ve_som: 1, ngay_cong: -1 });
 attendanceLogSchema.index({ quen_quet_ra: 1, ngay_cong: -1 });
 
 const AttendanceLog = mongoose.models.AttendanceLog || mongoose.model('AttendanceLog', attendanceLogSchema, 'nhat_ky_cham_cong');
-
-if (!mongoose.models.NhatKyChamCong) {
-  mongoose.model('NhatKyChamCong', attendanceLogSchema, 'nhat_ky_cham_cong');
-}
-
-if (!mongoose.models.CongTongHop) {
-  mongoose.model('CongTongHop', attendanceLogSchema, 'nhat_ky_cham_cong');
-}
 
 module.exports = AttendanceLog;

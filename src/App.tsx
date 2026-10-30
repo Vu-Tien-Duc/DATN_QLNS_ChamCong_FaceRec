@@ -80,7 +80,7 @@ export const App: React.FC = () => {
           <Route
             path="attendance-manage"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truongkhoa', 'phokhoa', 'tccb']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'tccb']}>
                 <AttendanceManage />
               </ProtectedRoute>
             }
@@ -95,7 +95,7 @@ export const App: React.FC = () => {
           <Route
             path="users"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truongkhoa', 'tccb']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'tccb']}>
                 <Users />
               </ProtectedRoute>
             }
@@ -104,7 +104,7 @@ export const App: React.FC = () => {
           <Route
             path="subjects"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truongkhoa', 'daotao']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'dao_tao']}>
                 <Subjects />
               </ProtectedRoute>
             }
@@ -115,7 +115,7 @@ export const App: React.FC = () => {
           <Route
             path="reports"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'ketoan', 'truongkhoa']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'ke_toan', 'truong_khoa']}>
                 <Reports />
               </ProtectedRoute>
             }
@@ -141,7 +141,7 @@ export const App: React.FC = () => {
           <Route
             path="shifts"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'daotao']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'dao_tao']}>
                 <Shifts />
               </ProtectedRoute>
             }
@@ -150,7 +150,7 @@ export const App: React.FC = () => {
           <Route
             path="audit-logs"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'kiemtoan']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'kiem_toan']}>
                 <AuditLogs />
               </ProtectedRoute>
             }
