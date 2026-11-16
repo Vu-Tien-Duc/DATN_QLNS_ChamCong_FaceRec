@@ -261,6 +261,12 @@ const getGraceToken = async (hashedToken) => {
   return redisGetJson(key);
 };
 
+const deleteGraceToken = async (hashedToken) => {
+  if (!hashedToken) return false;
+  const key = `${GRACE_PREFIX}${hashedToken}`;
+  return redisDel(key);
+};
+
 // -------------------------------------------------------------
 // 3. KHÓA PHÂN TÁN REDIS (DISTRIBUTED LOCK - ATOMIC SET NX PX + LUA)
 // -------------------------------------------------------------
@@ -283,7 +289,7 @@ end
  * @returns {Promise<boolean>}
  */
 const acquireRedisLock = async (lockKey, ttlSeconds = 60, workerId) => {
-  if (!isRedisReady()) return null; // Trả về null để báo hiệu fallback sang MongoDB/Memory
+  if (!isRedisReady()) return null; // Trả về null để báo hiệu fallback sang SQL Server/Memory
   const key = `${LOCK_PREFIX}${lockKey.toUpperCase().trim()}`;
   try {
     const res = await redisClient.set(key, workerId, 'EX', ttlSeconds, 'NX');
@@ -362,6 +368,7 @@ module.exports = {
   resetCooldown,
   setGraceToken,
   getGraceToken,
+  deleteGraceToken,
   acquireRedisLock,
   releaseRedisLock,
   cacheFaceVectors,

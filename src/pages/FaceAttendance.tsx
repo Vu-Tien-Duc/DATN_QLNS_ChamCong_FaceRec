@@ -23,7 +23,7 @@ import {
 import toast from 'react-hot-toast';
 import confetti from 'canvas-confetti';
 import { useLocation } from 'react-router-dom';
-import { attendanceApi, AttendancePunchResult, AttendanceHistoryItem } from '../api/attendance.api';
+import { attendanceApi, AttendancePunchResult, AttendanceHistoryItem } from '../api/chamCong.api';
 import { audioFeedback } from '../utils/audioFeedback';
 import { useAuthStore } from '../store/useAuthStore';
 import { cameraManager } from '../utils/cameraManager';

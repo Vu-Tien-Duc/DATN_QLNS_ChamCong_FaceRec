@@ -32,9 +32,9 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
-import { faceApi, RegistrationStatusResponse } from '../api/face.api';
+import { faceApi, RegistrationStatusResponse } from '../api/khuonMat.api';
 import { apiClient } from '../api/apiClient';
-import { userApi } from '../api/user.api';
+import { userApi } from '../api/nguoiDung.api';
 import { DepartmentSelect, DepartmentItem } from '../components/ui/DepartmentSelect';
 import { FaceRegistrationModal } from '../components/biometrics/FaceRegistrationModal';
 import { useAuthStore } from '../store/useAuthStore';
@@ -119,7 +119,7 @@ export const FaceRegistrationPage: React.FC = () => {
     if (!canManageOthers) return;
     try {
       setLoadingEmployees(true);
-      const res = await apiClient.get<any>(`/users?limit=200&search=${encodeURIComponent(keyword)}`);
+      const res = await apiClient.get<any>(`/nguoi-dung?gioi_han=200&tim_kiem=${encodeURIComponent(keyword)}`);
       const users = res.data?.data?.users || res.data?.users || res.data || [];
       if (Array.isArray(users)) {
         setEmployeeList(users);

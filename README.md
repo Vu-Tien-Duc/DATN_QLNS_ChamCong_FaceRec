@@ -199,99 +199,99 @@ DATN_QLNS_ChamCong_FaceRec/
 │   │   ├── error.middleware.js          # Bắt và chuẩn hóa mã lỗi hệ thống tập trung
 │   │   ├── rateLimiter.middleware.js    # Chống tấn công brute-force vào API Login, OTP, Attendance
 │   │   └── upload.middleware.js         # Multer cấu hình lưu trữ bộ nhớ và đĩa
-│   ├── models/                          # 14 Mongoose Models (CSDL thuần Việt + Aliases tiếng Anh chuẩn v2.6)
-│   │   ├── index.js                     # Barrel export đồng thời cả 2 chuẩn tên (Anh & Việt)
-│   │   ├── user.model.js                # Collection 1: nguoi_dung (10 vai trò đại học, nhiệm kỳ, Face ID flag)
+│   ├── models/                          # 14 Models cốt lõi + 2 Models AI RAG (Chuẩn CSDL v2.5 thuần tiếng Việt)
+│   │   ├── user.model.js                # Collection 1: nguoi_dung (vai trò đại học, nhiệm kỳ, Face ID flag)
 │   │   ├── faceTemplate.model.js        # Collection 2: mau_khuon_mat (512D ArcFace, 5 góc, L2 Centroid)
-│   │   ├── department.model.js          # Collection 3: don_vi / phong_ban (Cây cơ cấu Khoa/Viện/Bộ môn)
+│   │   ├── department.model.js          # Collection 3: phong_ban (Cây cơ cấu Khoa/Viện/Bộ môn)
 │   │   ├── shiftConfig.model.js         # Collection 4: ca_lam_viec (Khung giờ, buffer, hệ số)
-│   │   ├── subject.model.js             # Collection 5: mon_hoc (Mã môn, tín chỉ, lý thuyết/thực hành)
-│   │   ├── schedule.model.js            # Collection 6: lich_giang_day / lich_trinh (TKB học kỳ, dạy bù, ngoại lệ)
+│   │   ├── subject.model.js             # Collection 5: mon_hoc (Mã môn, tên môn, tín chỉ)
+│   │   ├── schedule.model.js            # Collection 6: lich_trinh (TKB học kỳ, dạy bù, ngoại lệ)
 │   │   ├── holiday.model.js             # Collection 7: ngay_nghi_le (Danh mục ngày nghỉ lễ toàn trường)
-│   │   ├── punchLog.model.js            # Collection 8: luot_quet_cham_cong / luot_quet (Raw punches, GeoJSON GPS)
+│   │   ├── punchLog.model.js            # Collection 8: luot_quet_cham_cong (Raw punches, GeoJSON GPS)
 │   │   ├── attendanceLog.model.js       # Collection 9: nhat_ky_cham_cong (Bản ghi nhật ký chấm công)
-│   │   ├── leaveRequest.model.js        # Collection 10: don_tu / don_nghi_phep (Duyệt đa cấp, khóa lạc quan 409)
+│   │   ├── leaveRequest.model.js        # Collection 10: don_nghi_phep (Duyệt đa cấp, khóa lạc quan 409)
 │   │   ├── payroll.model.js             # Collection 11: phieu_luong (Bảng lương 2026, thuế 5 bậc, isLocked)
 │   │   ├── refreshToken.model.js        # Collection 12: ma_lam_moi (Token Rotation, Grace Period 15s, TTL 30 ngày)
-│   │   ├── systemConfig.model.js        # Collection 13: cau_hinh_he_thong (19 tham số nghiệp vụ động toàn trường)
-│   │   └── auditLog.model.js            # Collection 14: nhat_ky_kiem_toan (Append-Only bất biến, 403 khi sửa/xóa)
-│   ├── routes/                          # Định tuyến API (Đầy đủ 14 phân hệ)
+│   │   ├── systemConfig.model.js        # Collection 13: cau_hinh_he_thong (Tham số nghiệp vụ động toàn trường)
+│   │   ├── auditLog.model.js            # Collection 14: nhat_ky_kiem_toan (Append-Only bất biến, SHA-256)
+│   │   ├── aiDocument.model.js          # Collection 15 (AI RAG): tai_lieu_rag (Metadata, hash SHA-256, phạm vi)
+│   │   └── aiDocumentChunk.model.js     # Collection 16 (AI RAG): phan_doan_tai_lieu (Phân đoạn, vector & từ khóa)
+│   ├── routes/                          # Định tuyến API các phân hệ
 │   │   ├── index.js                     # Gắn các route con với tiền tố /api và /api/v1
-│   │   └── *.routes.js                  # 14 file route tương ứng với từng phân hệ
+│   │   └── *.routes.js                  # Các file route tương ứng từng phân hệ (bao gồm ai.routes.js)
 │   ├── services/                        # Tầng xử lý nghiệp vụ độc lập
 │   │   ├── faceServiceClient.js         # HTTP Client gọi sang Python Face Service (Port 8001, Auto Self-Healing)
 │   │   ├── faceTemplate.service.js      # Xử lý đăng ký mẫu mặt 5 góc, kiểm tra trùng lặp L2 norm
-│   │   ├── attendance/                  # 8 modules phân rã nghiệp vụ chấm công (Check-in, Check-out, QR, GPS...)
-│   │   ├── ai/                          # Đa mô hình LLM Router (Gemini, Claude, DeepSeek, Local Ollama) & Quy chế 2026
+│   │   ├── attendance/                  # Các module phân rã nghiệp vụ chấm công (Check-in, Check-out, QR, GPS...)
+│   │   ├── ai/                          # Trợ lý AI Đa Năng: Gateway (Gemini/Groq/DeepSeek), RAG, Document Parser, Context
 │   │   ├── auth.service.js              # Nghiệp vụ xác thực, Token Rotation Grace Period 15s & In-Memory Revocation
 │   │   ├── cron.service.js              # Tác vụ nền đánh vắng tự động, xử lý quên quẹt ra, catch-up khi restart
-│   │   ├── email.service.js             # Soạn và gửi mail thông báo chấm công, báo cáo cuối ngày
+│   │   ├── notification.service.js      # Thông báo sự kiện hệ thống
 │   │   ├── leaveRequest.service.js      # Duyệt đa cấp Khoa -> BGH, chặn tự duyệt, hồi tố và hoàn tác công ACID
 │   │   ├── payroll.service.js           # Tính lương chuẩn 2026, thuế lũy tiến 5 bậc, khóa lương, xuất Excel/PDF
 │   │   └── report.service.js            # Sinh dữ liệu thống kê báo cáo công theo chuẩn RBAC deanScope
 │   └── utils/                           # Tiện ích bổ trợ thuật toán
-│       ├── attendanceEvidence.js        # Quản lý lưu/đọc ảnh minh chứng chấm công (0o600)
 │       ├── attendanceHelpers.js         # Thuật toán so khớp Cosine, Geofencing Haversine, Margin Top 1-2
 │       ├── deanScope.js                 # Hạt nhân kiểm tra phạm vi dữ liệu quản lý đơn vị
-│       ├── schemaAliasPlugin.js         # Plugin Mongoose đồng bộ tự động $match/$sort
-│       └── seeder.js                    # Khởi tạo dữ liệu mẫu 19 cấu hình, 13 tài khoản đại diện, TKB
+│       └── seeder.js                    # Khởi tạo dữ liệu mẫu toàn bộ 14 collections cốt lõi
 │
 ├── src/                                 # MÃ NGUỒN FRONTEND (REACT 19 / TYPESCRIPT / TAILWINDCSS)
-│   ├── App.tsx                          # Gốc ứng dụng, Toaster, AuthProvider và bảo vệ định tuyến
+│   ├── App.tsx                          # Gốc ứng dụng, Toaster và bảo vệ định tuyến
 │   ├── main.tsx                         # Khởi tạo React DOM gắn vào #root
-│   ├── types/                           # Định nghĩa kiểu dữ liệu toàn cục TypeScript (User, Payroll, Leave, etc.)
-│   ├── api/                             # Cấu hình Axios Client và Interceptors
-│   ├── context/                         # React Context quản lý trạng thái phiên đăng nhập
-│   ├── components/                      # UI Components dùng chung (Layout, Face Scanner HUD, Modal 5 góc...)
-│   └── pages/                           # 17 Trang phân hệ chức năng hoàn chỉnh
+│   ├── types/                           # Định nghĩa kiểu dữ liệu toàn cục TypeScript
+│   ├── api/                             # Cấu hình Axios Client (normalizeBackendData) & API modules (gồm ai.api.ts)
+│   ├── store/                           # Zustand store (useAuthStore) quản lý phiên đăng nhập
+│   ├── components/                      # UI Components (MainLayout, PageHeader, AiChatBox + page-mascot Pug, Face HUD...)
+│   └── pages/                           # 18 Trang phân hệ chức năng hoàn chỉnh
 │       ├── Dashboard.tsx                # Bảng điều khiển trung tâm KPIs, biểu đồ chuyên cần, TKB hôm nay
+│       ├── FaceAttendance.tsx           # Trạm điểm danh khuôn mặt trực tiếp Kiosk AI & QR
 │       ├── AttendanceMe.tsx             # Chấm công cá nhân, theo dõi lịch sử và ảnh bằng chứng
 │       ├── AttendanceManage.tsx         # Quản lý điểm danh đơn vị/toàn trường (deanScope), điều chỉnh công
-│       ├── FaceRegistrationPage.tsx     # Đăng ký khuôn mặt 5 góc thời gian thực kèm HUD Euler 3D
+│       ├── FaceRegistrationPage.tsx     # Thu thập Face ID 5 góc thời gian thực kèm HUD Euler 3D
 │       ├── Schedules.tsx                # Thời khóa biểu học kỳ, thêm lịch chính khóa/dạy bù, chống xung đột
 │       ├── LeaveRequests.tsx            # Nộp đơn và phê duyệt đơn nghỉ phép đa cấp, chặn tự duyệt, hồi tố công
 │       ├── Payroll.tsx                  # Bảng lương năm 2026, thuế lũy tiến 5 bậc, khóa sổ lương, xuất Excel/PDF
-│       ├── AIChat.tsx                   # Trợ lý AI hỏi đáp quy chế nhà trường 2026, tra cứu công qua đa LLM
-│       ├── Users.tsx                    # Quản lý hồ sơ cán bộ, phân quyền 10 vai trò đại học, liên kết Face ID
+│       ├── Profile.tsx                  # Hồ sơ cá nhân, trạng thái Face ID và đổi mật khẩu bảo mật
+│       ├── Users.tsx                    # Quản lý hồ sơ cán bộ, phân quyền vai trò đại học, liên kết Face ID
 │       ├── Departments.tsx              # Quản lý cơ cấu Khoa / Bộ môn / Phòng ban chức năng
 │       ├── Shifts.tsx                   # Cấu hình ca làm việc, buffer quẹt thẻ và hệ số công
 │       ├── Subjects.tsx                 # Danh mục môn học, học phần đào tạo, số tín chỉ
 │       ├── Holidays.tsx                 # Quản lý ngày nghỉ lễ toàn trường theo năm dương lịch
 │       ├── Reports.tsx                  # Báo cáo chuyên sâu tỷ lệ chuyên cần theo đơn vị, vi phạm GPS
-│       ├── AuditLogs.tsx                # Tra cứu nhật ký kiểm toán an toàn bất biến (Append-Only) cho Admin/BGH
-│       ├── Settings.tsx                 # Bảng điều khiển 19 tham số cấu hình động toàn trường (SystemConfig)
-│       └── Login.tsx                    # Cổng đăng nhập xác thực JWT, bảng chọn tài khoản demo nhanh 13 vị trí
+│       ├── AuditLogs.tsx                # Tra cứu nhật ký kiểm toán an toàn bất biến (Append-Only, SHA-256)
+│       ├── Settings.tsx                 # Bảng điều khiển tham số cấu hình động toàn trường (SystemConfig)
+│       └── Login.tsx                    # Cổng đăng nhập xác thực JWT, bảng chọn tài khoản demo nhanh
 │
-├── private/attendance-evidence/         # Thư mục lưu file ảnh minh chứng chấm công nhạy cảm
-└── uploads/                             # Thư mục lưu file đính kèm đơn phép và ảnh avatar
+├── public/mascots/                      # Bộ sprite sheets cho nhân vật AI Mascot (page-mascot Pug...)
+└── private/attendance-evidence/         # Thư mục lưu cục bộ dự phòng khi MinIO chưa kích hoạt
 ```
 
 ---
 
-## 4. MÔ HÌNH DỮ LIỆU MONGODB (14 COLLECTIONS - CHUẨN v2.6)
+## 4. MÔ HÌNH DỮ LIỆU MONGODB (14 COLLECTIONS CỐT LÕI + 2 COLLECTIONS AI RAG - CHUẨN v2.5)
 
-Hệ thống áp dụng kiến trúc dữ liệu **Chuẩn hóa kép (Dual-Standard)**:
-- **Tên Collection và Trường trong MongoDB:** 100% tiếng Việt định dạng `snake_case` (Đảm bảo yêu cầu bảo vệ đồ án tốt nghiệp trong nước).
-- **Tên Model và Trường trong Mã nguồn Backend:** Định dạng chuẩn tiếng Anh `camelCase` thông qua cơ chế Mongoose Aliases và `schemaAliasPlugin` (Đảm bảo tính chuyên nghiệp và chuẩn quốc tế của mã nguồn).
+Hệ thống chuẩn hóa **100% tên Collection và tên trường trong MongoDB sang tiếng Việt `snake_case`** (loại bỏ cơ chế dual-alias thừa ở Backend; Frontend sử dụng tầng chuẩn hóa `normalizeBackendData` tại `src/utils/normalizeBackendData.ts`).
 
-### 4.1. Bảng Tổng hợp 14 Collection Cốt Lõi
+### 4.1. Bảng Tổng hợp các Collection trong Cơ sở dữ liệu
 
 | STT | Tên Model Code | Collection thực tế trong DB | File định nghĩa Schema | Mục đích nghiệp vụ cốt lõi |
 | :---: | :--- | :--- | :--- | :--- |
-| 1 | `User` | `nguoi_dung` | `server/models/user.model.js` | Hồ sơ cán bộ, phân quyền RBAC 10 vai trò đại học, nhiệm kỳ, Face ID flag |
-| 2 | `FaceTemplate` | `mau_khuon_mat` / `du_lieu_khuon_mat` | `server/models/faceTemplate.model.js` | Vector sinh trắc học 512D (ArcFace), 5 góc mặt và vector trọng tâm L2 norm |
-| 3 | `Department` | `don_vi` / `phong_ban` | `server/models/department.model.js` | Đơn vị tổ chức (Khoa, Viện, Bộ môn), quan hệ cây đệ quy và trưởng/phó đơn vị |
-| 4 | `ShiftConfig` | `ca_lam_viec` | `server/models/shiftConfig.model.js` | Cấu hình ca làm việc/ca giảng dạy, khung giờ quẹt hợp lệ, buffer đi muộn/về sớm |
-| 5 | `Subject` | `mon_hoc` | `server/models/subject.model.js` | Danh mục môn học, học phần giảng dạy, số tín chỉ đào tạo, số tiết lý thuyết/thực hành |
-| 6 | `Schedule` | `lich_giang_day` / `lich_trinh` | `server/models/schedule.model.js` | Thời khóa biểu học kỳ phân công giảng viên, ca dạy, phòng học, dạy bù và ngoại lệ |
-| 7 | `Holiday` | `ngay_nghi_le` | `server/models/holiday.model.js` | Danh mục ngày nghỉ lễ toàn trường theo năm dương lịch, loại trừ ngày công chuẩn |
-| 8 | `PunchLog` | `luot_quet_cham_cong` / `luot_quet` | `server/models/punchLog.model.js` | Bằng chứng thô từng lượt quét thẻ/mặt (raw punches), AI score, cờ gian lận, GeoJSON GPS |
-| 9 | `AttendanceLog`| `nhat_ky_cham_cong` | `server/models/attendanceLog.model.js`| Bản ghi nhật ký chấm công ngày/ca (Check-in, Check-out, trạng thái, phút muộn, da_chot) |
-| 10 | `LeaveRequest` | `don_tu` / `don_nghi_phep` | `server/models/leaveRequest.model.js` | Đơn xin nghỉ phép, dạy bù, luồng duyệt 1-2 cấp Khoa -> BGH, khóa lạc quan 409 |
-| 11 | `Payroll` | `phieu_luong` | `server/models/payroll.model.js` | Phiếu lương snapshot năm 2026, thuế TNCN lũy tiến 5 bậc, khóa sổ lương isLocked |
-| 12 | `RefreshToken` | `ma_lam_moi` | `server/models/refreshToken.model.js`| Token làm mới phiên (Token Rotation Grace Period 15s, TTL Index tự hủy 30 ngày) |
-| 13 | `SystemConfig` | `cau_hinh_he_thong` | `server/models/systemConfig.model.js` | Bảng 19 tham số cấu hình động toàn trường (lương cơ sở, Geofence, ngưỡng AI...) |
-| 14 | `AuditLog` | `nhat_ky_kiem_toan` | `server/models/auditLog.model.js` | Nhật ký kiểm toán an toàn bất biến (Append-Only), cấm sửa xóa (lỗi 403) |
+| 1 | `User` | `nguoi_dung` | `server/models/nguoiDung.model.js` | Hồ sơ cán bộ, phân quyền RBAC đại học, nhiệm kỳ, `da_dang_ky_face` |
+| 2 | `FaceTemplate` | `mau_khuon_mat` | `server/models/mauKhuonMat.model.js` | Vector sinh trắc học 512D (ArcFace), 5 góc mặt và vector trọng tâm L2 norm |
+| 3 | `Department` | `phong_ban` | `server/models/phongBan.model.js` | Đơn vị tổ chức (Khoa, Viện, Bộ môn), quan hệ cây đệ quy và tọa độ GPS |
+| 4 | `ShiftConfig` | `ca_lam_viec` | `server/models/caLamViec.model.js` | Cấu hình ca làm việc/ca giảng dạy, khung giờ quẹt hợp lệ, ngưỡng đi muộn |
+| 5 | `Subject` | `mon_hoc` | `server/models/monHoc.model.js` | Danh mục môn học (`ma_mon`, `ten_mon`), số tín chỉ đào tạo |
+| 6 | `Schedule` | `lich_trinh` | `server/models/lichTrinh.model.js` | Thời khóa biểu học kỳ phân công giảng viên, ca dạy, phòng học, dạy bù và ngoại lệ |
+| 7 | `Holiday` | `ngay_nghi_le` | `server/models/ngayNghiLe.model.js` | Danh mục ngày nghỉ lễ toàn trường theo năm dương lịch, chế độ hưởng lương |
+| 8 | `PunchLog` | `luot_quet_cham_cong` | `server/models/luotQuetChamCong.model.js` | Bằng chứng thô từng lượt quét mặt (raw punches), AI score, cờ gian lận, GeoJSON GPS |
+| 9 | `AttendanceLog`| `nhat_ky_cham_cong` | `server/models/nhatKyChamCong.model.js`| Bản ghi nhật ký chấm công ngày/ca (`thoi_gian_vao`, `thoi_gian_ra`, `di_muon_phut`, `khoa_cong`) |
+| 10 | `LeaveRequest` | `don_nghi_phep` | `server/models/donNghiPhep.model.js` | Đơn xin nghỉ phép, dạy bù, đổi ca, luồng duyệt 1-2 cấp Khoa -> BGH, khóa lạc quan 409 |
+| 11 | `Payroll` | `phieu_luong` | `server/models/phieuLuong.model.js` | Phiếu lương snapshot năm 2026, thuế TNCN lũy tiến 5 bậc, khóa sổ lương |
+| 12 | `RefreshToken` | `ma_lam_moi` | `server/models/maLamMoi.model.js`| Token làm mới phiên (Token Rotation Grace Period, TTL Index) |
+| 13 | `SystemConfig` | `cau_hinh_he_thong` | `server/models/cauHinhHeThong.model.js` | Bảng tham số cấu hình động toàn trường (lương cơ sở, Geofence, ngưỡng AI...) |
+| 14 | `AuditLog` | `nhat_ky_kiem_toan` | `server/models/nhatKyKiemToan.model.js` | Nhật ký kiểm toán an toàn bất biến (Append-Only, SHA-256 Hash Chaining) |
+| 15 | `AiDocument` | `tai_lieu_rag` | `server/models/taiLieuRag.model.js` | *(AI RAG)* Metadata tài liệu tri thức, mã băm SHA-256 chống trùng, phạm vi `ca_nhan` / `toan_truong` |
+| 16 | `AiDocumentChunk` | `phan_doan_tai_lieu` | `server/models/phanDoanTaiLieu.model.js` | *(AI RAG)* Các phân đoạn văn bản, số trang ước lượng, `vector_nhung` và `tu_khoa` Hybrid Search |
 
 ---
 
@@ -676,6 +676,16 @@ Toàn bộ các endpoint đều được phục vụ đồng thời tại hai ti
 | `GET`/`POST` | `/api/schedules` | Có (Bearer) | Trưởng khoa | Phân công thời khóa biểu, kiểm tra xung đột phòng/giờ | `schedule.controller.js` |
 | `GET`/`POST` | `/api/departments` | Có (Bearer) | Admin | Quản trị cơ cấu Khoa, Viện, Bộ môn & tọa độ chi nhánh | `department.controller.js` |
 
+### 8.11. Nhóm Trợ Lý AI Đa Năng, Vision & Kho Tài Liệu RAG (`/api/ai`)
+| Phương thức | Đường dẫn Endpoint | Yêu cầu xác thực | Vai trò tối thiểu | Mục đích chức năng | Controller xử lý |
+| :---: | :--- | :---: | :---: | :--- | :--- |
+| `GET` | `/api/ai/modes` | Công khai | Mọi vai trò | Lấy 5 chế độ AI & danh sách gợi ý nhanh | `ai.controller.js` |
+| `GET` | `/api/ai/providers` | Công khai | Mọi vai trò | Kiểm tra trạng thái Gemini, Groq, DeepSeek, Offline | `ai.controller.js` |
+| `POST` | `/api/ai/chat` | Có (Bearer) | Mọi vai trò | Chat AI (JSON hoặc `multipart/form-data` đính kèm Ảnh/PDF/Word + RAG) | `ai.controller.js` |
+| `GET` | `/api/ai/documents` | Có (Bearer) | Mọi vai trò | Lấy danh sách tài liệu RAG (`toan_truong` + `ca_nhan`) | `ai.controller.js` |
+| `POST` | `/api/ai/documents` | Có (Bearer) | Mọi vai trò (`toan_truong`: Admin/BGH/TCCB/Đào tạo) | Tải lên, tách đoạn, embedding & nạp vào Kho RAG | `ai.controller.js` |
+| `GET`/`DELETE` | `/api/ai/documents/:id` | Có (Bearer) | Chính chủ / Admin | Xem chi tiết xem trước hoặc xóa tài liệu RAG & phân đoạn con | `ai.controller.js` |
+
 > [!TIP]
 > **Tài liệu Swagger OpenAPI 3.0 Tương tác:**
 > Xem đầy đủ 14 Tags và 26 Endpoints được chuẩn hóa kèm Schema Request/Response tại: `http://localhost:5000/api-docs`.
@@ -684,27 +694,29 @@ Toàn bộ các endpoint đều được phục vụ đồng thời tại hai ti
 
 ## 9. CẤU TRÚC FRONTEND VÀ PHÂN HỆ GIAO DIỆN
 
-Frontend được xây dựng trên nền tảng **React 19** với ngôn ngữ **TypeScript**, biên dịch qua **Vite 8** với cơ chế chia nhỏ gói mã nguồn (Code-Splitting qua `React.lazy` và `Suspense`):
+Frontend được xây dựng trên nền tảng **React 19** với ngôn ngữ **TypeScript**, biên dịch qua **Vite 8** (Code-Splitting qua `React.lazy` và `Suspense`) cùng chuẩn giao diện phẳng đồng bộ [`PageHeader.tsx`](src/components/ui/PageHeader.tsx) và widget Trợ lý AI nổi [`AiChatBox.tsx`](src/components/AiChatBox/AiChatBox.tsx) tích hợp nhân vật **Pug (`page-mascot`)**:
 
 ```text
-src/pages/
-├── Dashboard.tsx            # Bảng điều khiển trung tâm KPI, lịch dạy hôm nay, biểu đồ thống kê
-├── Users.tsx                # Quản trị hồ sơ cán bộ, phân quyền RBAC 4 cấp, trạng thái Face ID
-├── Departments.tsx          # Quản trị cơ cấu Khoa / Viện / Bộ môn & tọa độ ranh giới GPS
-├── Shifts.tsx               # Thiết lập danh mục ca làm việc, giờ bắt đầu/kết thúc & ngưỡng muộn
-├── Subjects.tsx             # Danh mục môn học, số tín chỉ & định mức số tiết chuẩn giảng dạy
-├── Schedules.tsx            # Phân công thời khóa biểu, phát hiện xung đột phòng/giờ 2 chiều
-├── AttendanceMe.tsx         # Chấm công cá nhân GPS (Geofencing), xem lịch sử cá nhân
-├── AttendanceManage.tsx     # Bảng giám sát công toàn trường/khoa, duyệt công, Camera Face ID
-├── FaceRegistrationPage.tsx # Thu thập Face ID 5 góc chuẩn với hình oval dẫn hướng & trợ lý âm thanh
-├── LeaveRequests.tsx        # Quản lý & phê duyệt đơn nghỉ phép, dạy bù, công tác (kèm upload minh chứng)
-├── Payroll.tsx              # Quản lý Bảng lương, quy đổi giờ chuẩn, Thuế TNCN 5 bậc 2026, Khóa sổ lương
-├── Reports.tsx              # Báo cáo chuyên cần đa chiều, thống kê vi phạm & xuất file Excel
-├── Holidays.tsx             # Quản lý danh mục ngày nghỉ lễ, tết, nghỉ bù toàn trường
-├── AIChat.tsx               # Trợ lý ảo AI Assistant đa LLM (Gemini/DeepSeek/Claude/Local) tra cứu quy chế
-├── Settings.tsx             # Cài đặt tham số hệ thống động: GPS campus, bán kính điểm danh, ngưỡng muộn
-├── AuditLogs.tsx            # Bảng tra cứu nhật ký kiểm toán hệ thống an ninh bất biến (Append-Only)
-└── Login.tsx                # Giao diện đăng nhập bảo mật kèm thanh chuyển vai trò nhanh (Quick Role Switcher)
+src/pages/ (18 trang) & src/components/
+├── pages/Dashboard.tsx            # Bảng điều khiển trung tâm KPI, lịch dạy hôm nay, biểu đồ thống kê
+├── pages/FaceAttendance.tsx       # Trạm điểm danh AI Kiosk trực tiếp qua Camera & QR
+├── pages/AttendanceMe.tsx         # Chấm công cá nhân GPS (Geofencing), xem lịch sử cá nhân
+├── pages/AttendanceManage.tsx     # Bảng giám sát công toàn trường/khoa, duyệt công
+├── pages/FaceRegistrationPage.tsx # Thu thập Face ID 5 góc chuẩn với hình oval dẫn hướng & trợ lý âm thanh
+├── pages/Schedules.tsx            # Phân công thời khóa biểu, phát hiện xung đột phòng/giờ 2 chiều
+├── pages/LeaveRequests.tsx        # Quản lý & phê duyệt đơn nghỉ phép, dạy bù, đổi ca (kèm upload minh chứng)
+├── pages/Payroll.tsx              # Quản lý Bảng lương, quy đổi giờ chuẩn, Thuế TNCN 5 bậc 2026, Khóa sổ lương
+├── pages/Profile.tsx              # Hồ sơ cá nhân, trạng thái Face ID và đổi mật khẩu bảo mật
+├── pages/Users.tsx                # Quản lý hồ sơ cán bộ, phân quyền RBAC, trạng thái Face ID
+├── pages/Departments.tsx          # Quản lý cơ cấu Khoa / Viện / Bộ môn & tọa độ ranh giới GPS
+├── pages/Shifts.tsx               # Thiết lập danh mục ca làm việc, giờ bắt đầu/kết thúc & ngưỡng muộn
+├── pages/Subjects.tsx             # Danh mục môn học, số tín chỉ & định mức tiết giảng dạy
+├── pages/Holidays.tsx             # Quản lý danh mục ngày nghỉ lễ, tết, nghỉ bù toàn trường
+├── pages/Reports.tsx              # Báo cáo chuyên sâu tỷ lệ chuyên cần theo đơn vị, thống kê vi phạm
+├── pages/AuditLogs.tsx            # Bảng tra cứu nhật ký kiểm toán bất biến (SHA-256 Hash Chaining)
+├── pages/Settings.tsx             # Cài đặt tham số hệ thống động: GPS campus, bán kính, ngưỡng AI
+├── pages/Login.tsx                # Giao diện đăng nhập bảo mật JWT & Quick Role Switcher
+└── components/AiChatBox/          # Widget Trợ lý AI Đa Năng (5 chế độ, RAG Drawer, Ảnh OCR, PDF/Word + Pug Mascot)
 ```
 
 ---
@@ -857,26 +869,25 @@ Hệ thống được thiết kế theo các tiêu chuẩn bảo vệ dữ liệ
 
 Hệ thống đã trải qua quá trình kiểm thử tự động toàn diện và đo đạc thực nghiệm định lượng trước khi nghiệm thu:
 
-### 12.1. Kết quả Bộ Kiểm thử Tự động Toàn diện (`npm test` & `npm run test:ai`)
-Chạy tự động thông qua toàn bộ 14 file kịch bản kiểm thử độc lập tại `server/tests/`:
+### 12.1. Danh Mục Bộ Kiểm Thử Tự Động (`server/tests/` & `npm test`)
+Hệ thống có **20 tệp kiểm thử độc lập** tại `server/tests/` (gồm **17 suite cốt lõi** chạy qua `npm test` trong `package.json` và **3 suite chuyên biệt cho module AI**):
 
-| STT | Tệp kiểm thử tự động | Phân hệ / Nghiệp vụ kiểm chứng | Số kịch bản | Kết quả | Trọng tâm kiểm tra |
-| :---: | :--- | :--- | :---: | :---: | :--- |
-| 1 | `server/tests/payroll.test.js` | Tính lương & Thuế TNCN 5 bậc 2026 | 7 kịch bản | **7/7 PASS** | Quy đổi giờ chuẩn, Hệ số chức vụ, Giảm trừ gia cảnh, Thuế 5 bậc 2026, Snapshot & Khóa lương |
-| 2 | `server/tests/attendanceEvidence.test.js` | Minh chứng chấm công bảo mật | 8 kịch bản | **8/8 PASS** | Quyền tệp `0o600`, Phân quyền truy cập ảnh qua JWT, Chặn truy cập trái phép |
-| 3 | `server/tests/aiAssistant.test.js` | Trợ lý ảo AI Assistant & NLU | 54 kịch bản | **54/54 PASS** | Date Parser UTC+7, Entity Recognition, Ma trận RBAC 4 cấp, 23 kịch bản nghiệp vụ chấm công |
-| 4 | `server/tests/modelValidation.test.js` | Toàn vẹn CSDL 14 Collections v2.6 | 14 kịch bản | **14/14 PASS** | Schema Mongoose, Schema Alias Plugin tiếng Việt/Anh, Unique Index, Enum validation |
-| 5 | `server/tests/config.test.js` | Cấu hình Hệ thống & Biến môi trường | 6 kịch bản | **6/6 PASS** | Biến môi trường `.env`, Secret JWT 32 ký tự, Thư mục chứng từ, Cổng kết nối microservice |
-| 6 | `server/tests/faceMatch.test.js` | So khớp Sinh trắc học & Liveness | 5 kịch bản | **5/5 PASS** | Nhân vô hướng Cosine NumPy, Ngưỡng $0.45$, Chênh lệch Top 1-2 $\ge 0.05$, Phản chiếu lóa màn hình |
-| 7 | `server/tests/leaveFlow.test.js` | Vòng đời Đơn phép & Liên thông | 8 kịch bản | **8/8 PASS** | Nộp đơn, Duyệt phép, Trừ quỹ phép qua Aggregation, Tự động liên thông bản ghi chấm công |
-| 8 | `server/tests/systemConfig.test.js` | Quản trị Cấu hình Động toàn trường | 6 kịch bản | **6/6 PASS** | Tọa độ GPS Campus, Bán kính geofencing, Ngưỡng đi muộn, Ghi vết Audit Log cấu hình |
-| 9 | `server/tests/holiday.test.js` | Ngày lễ, Nghỉ bù & Lương ngày lễ | 7 kịch bản | **7/7 PASS** | Danh mục ngày lễ, Nghỉ bù tự động, Tính công ngày lễ theo Bộ luật Lao động, Miễn quét vắng |
-| 10 | `server/tests/deanScope.test.js` | Phân quyền Phạm vi Trưởng khoa | 5 kịch bản | **5/5 PASS** | Kiểm soát `isUserInDeanScope`, Chặn xem dữ liệu khoa khác (403 Forbidden), Trưởng khoa & Admin |
-| 11 | `server/tests/cronJob.test.js` | Tự động Quét Vắng mặt cuối ngày | 4 kịch bản | **4/4 PASS** | Cron 23:59 quét ca chưa check-in, Đánh dấu `ABSENT`, Miễn trừ nếu có đơn phép hoặc ngày lễ |
-| 12 | `server/tests/auditLog.test.js` | Tính Bất biến Nhật ký Kiểm toán | 6 kịch bản | **6/6 PASS** | Middleware Mongoose chặn `updateOne`, `deleteOne`, `save`, Bảo toàn nguyên vẹn chuỗi sự kiện |
-| 13 | `server/tests/swaggerDocs.test.js` | Tài liệu OpenAPI 3.0 & Swagger UI | 5 kịch bản | **5/5 PASS** | Xác thực Schema OpenAPI 3.0, 14 Tags chuẩn hóa, 26 Endpoints, Tuyến giao diện `/api-docs` |
-| 14 | `server/tests/aiIntegration.test.js` | Multi-LLM Router & Quy chế 2026 | 8 kịch bản | **8/8 PASS** | Router Gemini/Claude/DeepSeek, 5 chuyên đề Quy chế Đào tạo 2026, Phân giải câu hỏi mơ hồ |
-| **Σ** | **TỔNG CỘNG 14 BỘ KIỂM THỬ** | **Toàn bộ hệ thống Backend API** | **143+ Test Cases** | **143+ PASS / 0 FAIL (100%)** | Toàn bộ 14/14 Suites vượt qua tuyệt đối 100% |
+* **17 Suite Cốt Lõi (`npm test`):**
+  1. `punchLogGeo.test.js` — Kiểm tra tọa độ GeoJSON GPS & Geofencing.
+  2. `rbacAndTokenRotation.test.js` — Phân quyền RBAC, Refresh Token Rotation & thu hồi token.
+  3. `payrollAndRevocation.test.js` & `payrollSnapshotAndLock.test.js` — Tính lương 2026, thuế TNCN 5 bậc, snapshot & khóa sổ lương.
+  4. `faceEnrollment.test.js` & `farFrrBiometrics.test.js` — Đăng ký mẫu khuôn mặt 5 góc, kiểm định FAR/FRR sinh trắc học.
+  5. `scheduleConflictAndRealtime.test.js` & `socketRealtime.test.js` — Chống xung đột lịch dạy 2 chiều & đồng bộ Socket.IO thời gian thực.
+  6. `modelValidation.test.js` — Toàn vẹn schema 14 collections CSDL v2.5 thuần tiếng Việt.
+  7. `attendanceEvidence.test.js` — Bảo mật ảnh minh chứng chấm công & kiểm tra quyền truy cập.
+  8. `config.test.js` — Cấu hình hệ thống, biến môi trường & tham số động.
+  9. `leaveValidation.test.js` & `leaveMultiLevelAndRetroactive.test.js` — Quy trình duyệt đơn phép đa cấp Khoa $\rightarrow$ BGH, hồi tố công.
+  10. `systemHealthAndAudit.test.js` — Endpoint `/api/health` & tính bất biến nhật ký kiểm toán SHA-256.
+  11. `redisAndDistributedCache.test.js`, `minioObjectStorage.test.js`, `bullmqPunchQueue.test.js` — Hạ tầng Redis cache phân tán, MinIO Object Storage và hàng đợi BullMQ.
+* **3 Suite Module AI & RAG (Đã chạy kiểm thử đạt 100%):**
+  18. `aiDocumentParser.test.js` (**5/5 PASS**) — Validate `AiDocument`/`AiDocumentChunk`, nhận diện tệp, tách từ khóa tiếng Việt, đọc PDF/TXT Buffer và chunking giữ số trang.
+  19. `aiRagAndVision.test.js` (**5/5 PASS**) — Phân quyền `toan_truong`/`ca_nhan`, Cosine Similarity & Hybrid Search, thẻ chống Prompt Injection, Gemini model chain & Offline Fallback.
+  20. `aiChatBoxComprehensive.test.js` (**100% PASS**) — 5 chế độ AI, Context Injector CSDL v2.5, Smart Mock, AI Gateway Failover, Controller validation đính kèm ảnh/tài liệu & PDF hỏng (`400`).
 
 ### 12.2. Kết quả Đo đạc Thực nghiệm Độ chính xác Face ID
 Dữ liệu trích xuất từ báo cáo thực nghiệm độc lập [`docs/FACE_ID_ACCURACY_REPORT.md`](./docs/FACE_ID_ACCURACY_REPORT.md) (thực hiện trên 300 lượt quét thử nghiệm thực tế):
@@ -922,7 +933,7 @@ Toàn bộ các nhận định kỹ thuật và kiến trúc trong tài liệu n
 | **Lưu ảnh minh chứng bảo mật**| `server/utils/attendanceEvidence.js` | `storeAttendanceEvidence()` | L66-L72 | Lưu ảnh chụp điểm danh vào thư mục `private/attendance-evidence/` với mode `0o600` |
 | **Bảo vệ ảnh minh chứng** | `server/controllers/attendance.controller.js` | `getAttendanceEvidence()` | L125-L137 | Trả về stream nhị phân của ảnh có kiểm tra JWT xác thực |
 | **Tính Quota phép Aggregation** | `server/services/leaveRequest.service.js` | `calculateLeaveBalance()` | L35-L95 | MongoDB Aggregation tính tổng số ngày phép đã dùng trong năm |
-| **Kiểm toán Bất biến (Append-Only)**| `server/models/auditLog.model.js` | `auditLogSchema.pre('updateOne')`... | L101-L121 | Chặn đứng 100% các thao tác sửa hoặc xóa dữ liệu nhật ký kiểm toán |
+| **Kiểm toán Bất biến (Append-Only)**| `server/models/nhatKyKiemToan.model.js` | `auditLogSchema.pre('updateOne')`... | L101-L121 | Chặn đứng 100% các thao tác sửa hoặc xóa dữ liệu nhật ký kiểm toán |
 | **Rate Limit Điểm danh Độc lập** | `server/middlewares/rateLimiter.middleware.js` | `attendanceRateLimit` | L118-L130 | Giới hạn riêng biệt 15 lượt quét/phút/IP, không chặn người dùng chấm công |
 | **Plugin đồng bộ Alias** | `server/utils/schemaAliasPlugin.js` | `schemaAliasPlugin()` | L1-L85 | Tự động dịch các trường tiếng Anh sang tiếng Việt trong truy vấn Mongoose |
 | **UI Hướng dẫn 5 Góc Chụp** | `src/pages/FaceRegistrationPage.tsx`| `FIVE_POSES`<br/>`detectFacePose()` | L57-L113<br/>L420-L455 | Khung oval hướng dẫn, vòng lặp quét góc mặt và tự động chụp snapshot |

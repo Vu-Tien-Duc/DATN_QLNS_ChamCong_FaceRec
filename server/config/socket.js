@@ -17,11 +17,12 @@
  */
 
 const { Server } = require('socket.io');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 let io = null;
 
-const JWT_SECRET = process.env.JWT_SECRET || 'datn_qlns_secret_key_2026';
+const getJwtSecret = () => process.env.JWT_SECRET || 'secret-jwt-fallback-key';
 
 /**
  * 1. Khởi tạo Socket.IO Server gắn với HTTP Server
@@ -43,11 +44,12 @@ const initSocketServer = (httpServer, customOptions = {}) => {
   io = new Server(httpServer, {
     cors: {
       origin: (origin, callback) => {
-        // Cho phép các request không có origin (mobile apps, Postman) hoặc nằm trong danh sách whitelist
         if (!origin || allowedOrigins.includes(origin)) {
           callback(null, true);
+        } else if (process.env.NODE_ENV === 'production') {
+          callback(new Error('Not allowed by Socket.IO CORS policy'), false);
         } else {
-          callback(null, true); // Trong môi trường dev chấp nhận linh hoạt
+          callback(null, true);
         }
       },
       credentials: true,
@@ -67,10 +69,16 @@ const initSocketServer = (httpServer, customOptions = {}) => {
       const token = socket.handshake.auth?.token || socket.handshake.query?.token || bearerToken;
 
       if (!token) {
-        // Nếu là thiết bị camera hoặc môi trường test không bắt buộc JWT
-        if (socket.handshake.auth?.isTerminal || socket.handshake.headers?.['x-terminal-key']) {
-          socket.user = { id: 'TERMINAL_DEVICE', role: 'terminal', isTerminal: true };
-          return next();
+        const providedTerminalKey =
+          socket.handshake.headers?.['x-terminal-key'] || socket.handshake.auth?.terminalKey;
+        const expectedTerminalKey = process.env.TERMINAL_KEY;
+        if (expectedTerminalKey && providedTerminalKey) {
+          const a = Buffer.from(String(providedTerminalKey));
+          const b = Buffer.from(String(expectedTerminalKey));
+          if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+            socket.user = { id: 'TERMINAL_DEVICE', role: 'terminal', isTerminal: true };
+            return next();
+          }
         }
 
         // Cho phép kết nối ẩn danh ở môi trường test nếu không có token
@@ -83,13 +91,13 @@ const initSocketServer = (httpServer, customOptions = {}) => {
       }
 
       // Xác minh chữ ký JWT
-      const decoded = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, getJwtSecret());
       socket.user = {
-        id: decoded.id || decoded.userId || decoded._id,
-        role: decoded.role || (Array.isArray(decoded.roles) ? decoded.roles[0] : 'nhan_vien'),
-        departmentId: decoded.departmentId || null,
+        id: decoded.id || decoded.userId || decoded._id || decoded.nguoi_dung_id,
+        role: decoded.vai_tro_chinh || decoded.role || (Array.isArray(decoded.danh_sach_vai_tro) ? decoded.danh_sach_vai_tro[0] : (Array.isArray(decoded.roles) ? decoded.roles[0] : 'nhan_vien')),
+        departmentId: decoded.don_vi_chinh_id || decoded.departmentId || null,
         email: decoded.email,
-        fullName: decoded.fullName,
+        fullName: decoded.ho_ten || decoded.fullName,
       };
 
       return next();
@@ -123,9 +131,22 @@ const initSocketServer = (httpServer, customOptions = {}) => {
       socket.join(`dept:${user.departmentId.toString()}`);
     }
 
-    // Cho phép client gửi yêu cầu gia nhập room bổ sung
+    // Cho phép client gửi yêu cầu gia nhập room bổ sung (kiểm tra quyền RBAC để chống IDOR)
     socket.on('room:join', (roomName) => {
-      if (typeof roomName === 'string' && roomName.length > 0) {
+      if (typeof roomName !== 'string' || roomName.length === 0) return;
+      const isGlobalAdmin = ['admin', 'bgh', 'tccb', 'kiem_toan'].includes(String(user.role || '').toLowerCase());
+      if (roomName === 'admin-room') {
+        if (isGlobalAdmin) socket.join(roomName);
+        return;
+      }
+      if (roomName.startsWith('dept:')) {
+        const targetDept = roomName.slice(5);
+        if (isGlobalAdmin || (user.departmentId && String(user.departmentId) === targetDept)) {
+          socket.join(roomName);
+        }
+        return;
+      }
+      if (roomName === `user:${userId}`) {
         socket.join(roomName);
       }
     });
@@ -164,23 +185,25 @@ const emitNewPunch = (punchData) => {
   if (!io) return false;
 
   try {
+    const userId = punchData.nguoi_dung_id || punchData.userId;
+    const departmentId = punchData.don_vi_chinh_id || punchData.departmentId;
     const payload = {
       event: 'NEW_PUNCH',
       punchId: punchData._id || punchData.punchId || punchData.id,
-      userId: punchData.userId,
-      userName: punchData.userName || punchData.fullName,
-      staffCode: punchData.staffCode,
-      avatar: punchData.avatar,
-      departmentId: punchData.departmentId,
-      departmentName: punchData.departmentName,
-      punchType: punchData.punchType || 'check_in',
-      method: punchData.method || 'face_ai',
-      punchTime: punchData.punchTime || new Date(),
-      status: punchData.status,
-      confidenceScore: punchData.confidenceScore,
-      isFraud: Boolean(punchData.isFraud),
-      fraudReason: punchData.fraudReason,
-      evidenceUrl: punchData.evidenceUrl || punchData.evidenceImage,
+      userId,
+      userName: punchData.ho_ten || punchData.userName || punchData.fullName,
+      staffCode: punchData.ma_can_bo || punchData.staffCode,
+      avatar: punchData.anh_dai_dien || punchData.avatar,
+      departmentId,
+      departmentName: punchData.ten_phong_ban || punchData.departmentName,
+      punchType: punchData.loai_quet || punchData.punchType || 'check_in',
+      method: punchData.phuong_thuc || punchData.method || 'face_ai',
+      punchTime: punchData.thoi_gian_quet || punchData.punchTime || new Date(),
+      status: punchData.trang_thai || punchData.status,
+      confidenceScore: punchData.do_chinh_xac || punchData.confidenceScore,
+      isFraud: Boolean(punchData.co_gian_lan !== undefined ? punchData.co_gian_lan : punchData.isFraud),
+      fraudReason: punchData.ly_do_gian_lan || punchData.fraudReason,
+      evidenceUrl: punchData.anh_minh_chung || punchData.evidenceUrl || punchData.evidenceImage,
       timestamp: Date.now(),
     };
 
@@ -188,13 +211,13 @@ const emitNewPunch = (punchData) => {
     io.to('admin-room').emit('attendance:new-punch', payload);
 
     // 2. Bắn cho Trưởng khoa tương ứng (DeanScope)
-    if (punchData.departmentId) {
-      io.to(`dept:${punchData.departmentId.toString()}`).emit('attendance:new-punch', payload);
+    if (departmentId) {
+      io.to(`dept:${departmentId.toString()}`).emit('attendance:new-punch', payload);
     }
 
     // 3. Bắn cho chính cán bộ đó
-    if (punchData.userId) {
-      io.to(`user:${punchData.userId.toString()}`).emit('attendance:new-punch', payload);
+    if (userId) {
+      io.to(`user:${userId.toString()}`).emit('attendance:new-punch', payload);
     }
 
     // 4. Nếu có dấu hiệu gian lận: Phát ngay cảnh báo bảo mật tức thì
@@ -222,25 +245,27 @@ const emitAttendanceUpdate = (attendanceData) => {
   if (!io) return false;
 
   try {
+    const userId = attendanceData.nguoi_dung_id || attendanceData.userId;
+    const departmentId = attendanceData.don_vi_chinh_id || attendanceData.departmentId;
     const payload = {
       event: 'ATTENDANCE_UPDATE',
       logId: attendanceData._id || attendanceData.id,
-      userId: attendanceData.userId,
-      checkInTime: attendanceData.checkInTime,
-      checkOutTime: attendanceData.checkOutTime,
-      status: attendanceData.status,
-      isManualOverride: Boolean(attendanceData.isManualOverride),
+      userId,
+      checkInTime: attendanceData.thoi_gian_check_in || attendanceData.checkInTime,
+      checkOutTime: attendanceData.thoi_gian_check_out || attendanceData.checkOutTime,
+      status: attendanceData.trang_thai || attendanceData.status,
+      isManualOverride: Boolean(attendanceData.chinh_sua_thu_cong !== undefined ? attendanceData.chinh_sua_thu_cong : attendanceData.isManualOverride),
       updatedAt: new Date(),
     };
 
     io.to('admin-room').emit('attendance:update', payload);
 
-    if (attendanceData.departmentId) {
-      io.to(`dept:${attendanceData.departmentId.toString()}`).emit('attendance:update', payload);
+    if (departmentId) {
+      io.to(`dept:${departmentId.toString()}`).emit('attendance:update', payload);
     }
 
-    if (attendanceData.userId) {
-      io.to(`user:${attendanceData.userId.toString()}`).emit('attendance:update', payload);
+    if (userId) {
+      io.to(`user:${userId.toString()}`).emit('attendance:update', payload);
     }
 
     return true;
@@ -283,25 +308,27 @@ const emitLeaveRequestUpdate = (leaveData) => {
   if (!io) return false;
 
   try {
+    const userId = leaveData.nguoi_dung_id || leaveData.userId;
+    const departmentId = leaveData.don_vi_id || leaveData.don_vi_chinh_id || leaveData.departmentId;
     const payload = {
       event: 'LEAVE_REQUEST_UPDATE',
       requestId: leaveData._id || leaveData.id,
-      userId: leaveData.userId,
-      applicantName: leaveData.applicantName,
-      requestType: leaveData.type || leaveData.requestType,
-      status: leaveData.status,
-      approverId: leaveData.approverId,
+      userId,
+      applicantName: leaveData.ho_ten_nguoi_tao || leaveData.applicantName,
+      requestType: leaveData.loai_don || leaveData.type || leaveData.requestType,
+      status: leaveData.trang_thai || leaveData.status,
+      approverId: leaveData.nguoi_duyet_id || leaveData.approverId,
       updatedAt: new Date(),
     };
 
     io.to('admin-room').emit('leave:status-changed', payload);
 
-    if (leaveData.departmentId) {
-      io.to(`dept:${leaveData.departmentId.toString()}`).emit('leave:status-changed', payload);
+    if (departmentId) {
+      io.to(`dept:${departmentId.toString()}`).emit('leave:status-changed', payload);
     }
 
-    if (leaveData.userId) {
-      io.to(`user:${leaveData.userId.toString()}`).emit('leave:status-changed', payload);
+    if (userId) {
+      io.to(`user:${userId.toString()}`).emit('leave:status-changed', payload);
     }
 
     return true;

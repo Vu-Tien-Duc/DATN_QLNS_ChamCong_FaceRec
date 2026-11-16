@@ -19,7 +19,8 @@
    - [4.8. Quản Lý Đơn Xin Nghỉ Phép (Leave Requests Workflow)](#48-quản-lý-đơn-xin-nghỉ-phép-leave-requests-workflow)
    - [4.9. Quản Lý Ca Làm Việc, Ngày Lễ & Cấu Hình (Shifts, Holidays, Settings)](#49-quản-lý-ca-làm-việc-ngày-lễ--cấu-hình-shifts-holidays-settings)
    - [4.10. Hồ Sơ Cá Nhân & Quản Trị Bảo Mật Sinh Trắc Học (Profile & Security)](#410-hồ-sơ-cá-nhân--quản-trị-bảo-mật-sinh-trắc-học-profile--security)
-5. [Quy Chuẩn CSDL v2.5 Thuần Việt & Ánh Xạ Alias (Canonical 1-to-1 Mapping)](#5-quy-chuẩn-csdl-v25-thuần-việt--ánh-xạ-alias-canonical-1-to-1-mapping)
+   - [4.11. Trợ Lý AI Đa Năng, Kho RAG & Mascot Tương Tác (`AiChatBox` + `page-mascot`)](#411-trợ-lý-ai-đa-năng-kho-rag--mascot-tương-tác-aichatbox--page-mascot)
+5. [Quy Chuẩn CSDL v2.5 Thuần Việt & Bộ Sưu Tập Hệ Thống](#5-quy-chuẩn-csdl-v25-thuần-việt--bộ-sưu-tập-hệ-thống)
 6. [Ma Trận Phân Quyền Vai Trò (RBAC Matrix)](#6-ma-trận-phân-quyền-vai-trò-rbac-matrix)
 
 ---
@@ -242,30 +243,44 @@ Xây dựng nền tảng Quản trị Nhân sự (HRM) và Điểm danh thông m
      - *Biểu mẫu đổi mật khẩu*: Trường "Mật khẩu hiện tại", "Mật khẩu mới" (bắt buộc $\ge 6$ ký tự), "Xác nhận mật khẩu mới".
      - *Bảo vệ giao diện*: Nút toggle Ẩn/Hiện mật khẩu (`Eye`/`EyeOff`), kiểm tra validation khớp mật khẩu ở Client trước khi gửi API.
      - *Luồng backend*: Gửi `POST /api/auth/change-password` $\rightarrow$ Xác thực hash bcrypt của mật khẩu cũ $\rightarrow$ Hash mật khẩu mới với Salt rounds $\rightarrow$ Thu hồi và cấp phát lại token mới (Token Rotation).
-- **Quy chuẩn thiết kế giao diện**: Header phẳng tối giản (~56px), Avatar 44px sắc nét, triệt tiêu 100% banner gradient màu mè, chuẩn responsive trên cả Desktop và Mobile.
+- **Quy chuẩn thiết kế giao diện**: Header phẳng tối giản (~56px), Avatar 44px sắc nét, triệt tiêu 100% banner gradient màu mè, chuẩn responsive trên cả Desktop và Mobile. Toàn bộ các trang quản trị (`Dashboard`, `AttendanceManage`, `Users`, `Departments`, `Schedules`, `LeaveRequests`, `Payroll`, `Holidays`, `Reports`, `AuditLogs`, `Settings`, `Shifts`, `Subjects`) được đồng bộ đầu trang qua component dùng chung [`PageHeader.tsx`](src/components/ui/PageHeader.tsx).
 
 ---
 
-## 5. QUY CHUẨN CSDL v2.5 THUẦN VIỆT & ÁNH XẠ ALIAS (CANONICAL 1-TO-1 MAPPING)
+### 4.11. TRỢ LÝ AI ĐA NĂNG, KHO RAG & MASCOT TƯƠNG TÁC (`AiChatBox` + `page-mascot`)
+- **Vị trí & Tích hợp**: Widget nổi gắn toàn cục trong [`MainLayout.tsx`](src/components/layout/MainLayout.tsx) thông qua component [`AiChatBox.tsx`](src/components/AiChatBox/AiChatBox.tsx), phục vụ mọi vai trò sau khi đăng nhập.
+- **Nhân vật Mascot tương tác (`page-mascot`)**:
+  - Sử dụng bộ sprite sheet Pug (`/mascots/pug-directions.webp`, `/mascots/pug-reactions.webp`) với `<Mascot />`: dõi mắt theo con trỏ chuột toàn màn hình khi thu gọn và ngồi phía trên khung chat khi mở rộng, nhấp chuột để kích hoạt phản ứng biểu cảm.
+- **Giao diện phẳng chuẩn hệ thống**:
+  - Header trắng/slate tối giản (`rounded-t-3xl`), bỏ hoàn toàn nền gradient màu mè.
+  - **Thanh 5 chế độ (Mode Tabs):** `Việc trường` (`hr_work`), `Học thuật` (`research`), `Khảo sát` (`survey`), `Tài liệu (RAG)` (`rag_doc`), `Mở rộng` (`general`).
+  - **Khay Kho Tài Liệu RAG:** Cho phép tải tệp (`.pdf`, `.docx`, `.doc`, `.txt`, `.md`), phân quyền `Cá nhân` / `Toàn trường`, tick chọn tài liệu nguồn cho câu hỏi, chống tải trùng lặp SHA-256 và hiển thị thẻ trích dẫn nguồn (`Tên tài liệu`, `Trang`) dưới câu trả lời.
+  - **Đính kèm trực tiếp (Multimodal & Document Summarizer):** Nút kẹp ghim (📎) hoặc dán ảnh từ clipboard (`Ctrl+V`) để OCR/dịch ảnh sang Tiếng Việt (Gemini Vision), đọc PDF scan, hoặc phân tích/rút gọn ý chính tệp PDF/Word kèm nút lưu nhanh `+ Lưu Kho RAG`.
 
-Hệ thống tuân thủ nghiêm ngặt nguyên tắc **duy nhất 14 collections tiếng Việt**, chuẩn hóa trường dữ liệu:
+---
+
+## 5. QUY CHUẨN CSDL v2.5 THUẦN VIỆT & BỘ SƯU TẬP HỆ THỐNG
+
+Hệ thống tuân thủ nghiêm ngặt **14 collections cốt lõi nghiệp vụ HRM/Chấm công** (kiểm tra bởi `/api/health`) cùng **2 collections mở rộng cho Kho Tri Thức AI RAG**, chuẩn hóa 100% tên trường tiếng Việt `snake_case`:
 
 | STT | Tên Collection MongoDB | Tên Model Mongoose | Mô Tả Nghiệp Vụ Cốt Lõi |
 | :---: | :--- | :--- | :--- |
 | **1** | `nguoi_dung` | `User` | Hồ sơ cán bộ giảng viên, tài khoản, ngạch bậc, `don_vi_chinh_id`. |
 | **2** | `phong_ban` | `Department` | Cây tổ chức: Khoa, Bộ môn, Phòng ban, `don_vi_cha_id`, Geofence GPS. |
 | **3** | `mau_khuon_mat` | `FaceTemplate` | Vector đặc trưng 512D, centroid vector, chất lượng ảnh sinh trắc. |
-| **4** | `luot_quet_cham_cong` | `AttendancePunch` | Dữ liệu chấm công thô: giờ quét, ảnh bằng chứng, tọa độ GPS, Face AI. |
-| **5** | `nhat_ky_cham_cong` | `AttendanceDaily` | Bảng công ngày tổng hợp: giờ vào, giờ ra, số công, đi muộn, về sớm. |
-| **6** | `ca_lam_viec` | `Shift` | Khung ca làm việc hành chính & ca giảng dạy tiết học đại học. |
+| **4** | `luot_quet_cham_cong` | `PunchLog` | Dữ liệu chấm công thô: giờ quét, ảnh bằng chứng, tọa độ GPS, Face AI. |
+| **5** | `nhat_ky_cham_cong` | `AttendanceLog` | Bảng công ngày tổng hợp: giờ vào, giờ ra, số công, đi muộn, về sớm. |
+| **6** | `ca_lam_viec` | `ShiftConfig` | Khung ca làm việc hành chính & ca giảng dạy tiết học đại học. |
 | **7** | `lich_trinh` | `Schedule` | Thời khóa biểu phân công giảng dạy môn học, phòng học, tuần học. |
 | **8** | `mon_hoc` | `Subject` | Danh mục học phần đào tạo, số tín chỉ, `phong_ban_id` bộ môn quản lý. |
-| **9** | `don_nghi_phep` | `LeaveRequest` | Đơn xin nghỉ phép, nghỉ ốm, công tác, quy trình phê duyệt. |
+| **9** | `don_nghi_phep` | `LeaveRequest` | Đơn xin nghỉ phép, dạy bù, đổi ca, quy trình phê duyệt đa cấp. |
 | **10** | `ngay_nghi_le` | `Holiday` | Lịch nghỉ lễ, tết, sự kiện trường học. |
 | **11** | `phieu_luong` | `Payroll` | Bảng tính lương, hệ số lương, phụ cấp, giảm trừ gia cảnh, bảo hiểm. |
 | **12** | `nhat_ky_kiem_toan` | `AuditLog` | Nhật ký bảo mật ghi vết toàn bộ hành vi CRUD trên hệ thống. |
 | **13** | `ma_lam_moi` | `RefreshToken` | Quản lý phiên đăng nhập an toàn, cơ chế luân phiên Refresh Token (RTR). |
 | **14** | `cau_hinh_he_thong` | `SystemConfig` | Cấu hình tham số AI, bán kính Geofence, chính sách chấm công. |
+| **15** | `tai_lieu_rag` *(AI RAG)* | `AiDocument` | Metadata tài liệu kho tri thức RAG, hash SHA-256 chống trùng, phạm vi `ca_nhan` / `toan_truong`. |
+| **16** | `phan_doan_tai_lieu` *(AI RAG)* | `AiDocumentChunk` | Các phân đoạn văn bản (~900 ký tự), số trang ước lượng, `vector_nhung` & `tu_khoa` Hybrid Search. |
 
 ---
 

@@ -14,11 +14,11 @@ try {
 
 const app = require('./app');
 const connectDB = require('./config/db');
-const { initCronJobs } = require('./services/cron.service');
+const { initCronJobs } = require('./services/heThong/tacVuDinhKy.service');
 
 const PORT = process.env.PORT || 5000;
 
-// Kết nối CSDL MongoDB và khởi chạy Server
+// Kết nối CSDL Microsoft SQL Server và khởi chạy Server
 const startServer = async () => {
   try {
     await connectDB();
@@ -27,14 +27,24 @@ const startServer = async () => {
     initCronJobs();
 
     // Khởi chạy Worker BullMQ xử lý hàng đợi điểm danh giờ cao điểm (5 luồng đồng thời)
-    const { startPunchWorker, closePunchQueue } = require('./queues/punchQueue');
-    startPunchWorker(5);
+    // Nếu Redis đang kết nối bất đồng bộ (lazyConnect), lắng nghe sự kiện 'ready' để tự động khởi động Worker
+    const { startPunchWorker, closePunchQueue } = require('./queues/hangDoiChamCong');
+    const { getRedisClient } = require('./config/redis');
+    const worker = startPunchWorker(5);
+    if (!worker) {
+      const redisCli = getRedisClient();
+      if (redisCli && typeof redisCli.once === 'function') {
+        redisCli.once('ready', () => {
+          startPunchWorker(5);
+        });
+      }
+    }
 
     // Tự động đồng bộ các vector khuôn mặt InsightFace vào FAISS RAM
     // Tự động đồng bộ các vector khuôn mặt InsightFace vào RAM
     setTimeout(async () => {
       try {
-        const { ensureRamCacheWarm } = require('./services/faceServiceClient');
+        const { ensureRamCacheWarm } = require('./services/khuonMat/ketNoiDichVuKhuonMat');
         await ensureRamCacheWarm();
       } catch (faissSyncErr) {
         console.warn('[Face Service] Bỏ qua đồng bộ vector lúc khởi động (Face Service có thể chưa sẵn sàng):', faissSyncErr.message);
@@ -52,7 +62,7 @@ const startServer = async () => {
       console.log(`===================================================`);
       console.log(`[Server] Máy chủ đang chạy tại: http://localhost:${PORT}`);
       console.log(`[Realtime] WebSocket Socket.IO Server: SẴN SÀNG`);
-      console.log(`[Swagger] Tài liệu API (Swagger UI): http://localhost:${PORT}/api-docs`);
+      console.log(`[Swagger] Tài liệu API (Swagger UI): http://localhost:${PORT}/tai-lieu-api`);
       console.log(`===================================================`);
     });
 

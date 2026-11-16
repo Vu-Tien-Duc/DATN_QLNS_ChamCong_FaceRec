@@ -4,7 +4,7 @@
  * Sinh viên thực hiện: Vũ Tiến Đức - MSV: 2310900023
  */
 
-const { normalizeRole } = require('../utils/roleUtils');
+const { normalizeRole } = require('../utils/vaiTro.utils');
 
 // 1. Danh mục các quyền hạt nhân (Granular Permissions)
 const PERMISSIONS = {
@@ -222,6 +222,15 @@ const CANONICAL_ROLE_PERMISSIONS = {
     PERMISSIONS.CONG_GIAI_TRINH,
     PERMISSIONS.LUONG_XEM_BAN_THAN,
   ],
+  quan_ly_xe: [
+    PERMISSIONS.DON_TU_TAO,
+    PERMISSIONS.DON_TU_XEM_BAN_THAN,
+    PERMISSIONS.DON_TU_HUY,
+    PERMISSIONS.CONG_QUET_MAT,
+    PERMISSIONS.CONG_XEM_BAN_THAN,
+    PERMISSIONS.CONG_GIAI_TRINH,
+    PERMISSIONS.LUONG_XEM_BAN_THAN,
+  ],
 };
 
 const ROLE_PERMISSIONS = CANONICAL_ROLE_PERMISSIONS;
@@ -232,45 +241,54 @@ const ROLE_PERMISSIONS = CANONICAL_ROLE_PERMISSIONS;
  * 2. Tính cả cờ isDelegated cho các chức danh phó trưởng.
  * 3. Hợp nhất (Union) toàn bộ quyền và khử trùng lặp.
  */
+function isRoleAssignmentActive(roleObj, todayKey) {
+  if (!roleObj || typeof roleObj !== 'object') return false;
+  const start = roleObj.tu_ngay || roleObj.startDate;
+  const expiry = roleObj.den_ngay || roleObj.endDate;
+  if (start && String(start).slice(0, 10) > todayKey) return false;
+  if (expiry && String(expiry).slice(0, 10) < todayKey) return false;
+  return true;
+}
+
 function getEffectivePermissions(user) {
   if (!user) return new Set();
 
   const permissions = new Set();
-  const now = new Date();
+  const todayKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 
-  // Kiểm tra mảng vai trò RBAC v2.5
-  const rolesList = user.roles || user.danh_sach_vai_tro || [];
+  // Luôn hợp nhất quyền từ vai trò chính (vai_tro_chinh)
+  const primaryRole = user.vai_tro_chinh || user.primaryRole || user.role;
+  if (primaryRole) {
+    const primaryCode = normalizeRole(primaryRole);
+    for (const p of ROLE_PERMISSIONS[primaryCode] || []) {
+      permissions.add(p);
+    }
+  }
+
+  // Kiểm tra mảng vai trò RBAC v2.5 đang còn hiệu lực (tu_ngay <= today <= den_ngay)
+  const rolesList = user.danh_sach_vai_tro || user.roles || [];
 
   if (Array.isArray(rolesList) && rolesList.length > 0) {
     for (const r of rolesList) {
       if (!r) continue;
-      // Bỏ qua vai trò đã hết nhiệm kỳ (endDate / den_ngay)
-      const expiry = r.endDate || r.den_ngay;
-      if (expiry && new Date(expiry) < now) {
+      if (typeof r === 'object' && !isRoleAssignmentActive(r, todayKey)) {
         continue;
       }
 
-      const roleCode = normalizeRole(r.role || r.ma_vai_tro);
+      const roleCode = normalizeRole(typeof r === 'string' ? r : r.ma_vai_tro || r.role);
       const rolePerms = ROLE_PERMISSIONS[roleCode] || [];
       for (const p of rolePerms) {
         permissions.add(p);
       }
 
-      // Xử lý ủy quyền cho phó trưởng
-      const isDelegated = r.isDelegated || r.duoc_uy_quyen;
-      if (isDelegated && ['pho_khoa', 'pho_bo_mon', 'pho_phong'].includes(roleCode)) {
+      if (typeof r === 'object' && r.isDelegated && ['pho_khoa', 'pho_bo_mon', 'pho_phong'].includes(roleCode)) {
         permissions.add(PERMISSIONS.DON_TU_DUYET_CAP_1);
       }
-    }
-  }
-
-  // Fallback vai trò phẳng nếu chưa có trong permissions
-  const fallbackRole = user.role || user.primaryRole || user.vai_tro_chinh;
-  if (fallbackRole && permissions.size === 0) {
-    const roleCode = normalizeRole(fallbackRole);
-    const fallbackPerms = ROLE_PERMISSIONS[roleCode] || [];
-    for (const p of fallbackPerms) {
-      permissions.add(p);
     }
   }
 

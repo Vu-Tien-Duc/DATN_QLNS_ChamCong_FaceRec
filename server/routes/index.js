@@ -1,76 +1,94 @@
 const express = require('express');
 const router = express.Router();
 
-const authRoutes = require('./auth.routes');
-const userRoutes = require('./user.routes');
-const departmentRoutes = require('./department.routes');
-const shiftConfigRoutes = require('./shiftConfig.routes');
-const scheduleRoutes = require('./schedule.routes');
-const subjectRoutes = require('./subject.routes');
-const attendanceRoutes = require('./attendance.routes');
-const leaveRequestRoutes = require('./leaveRequest.routes');
-const auditLogRoutes = require('./auditLog.routes');
-const reportRoutes = require('./report.routes');
-const uploadRoutes = require('./upload.routes');
-const aiRoutes = require('./ai.routes');
-const notificationRoutes = require('./notification.routes');
-const holidayRoutes = require('./holiday.routes');
-const systemConfigRoutes = require('./systemConfig.routes');
-const faceRoutes = require('./face.routes');
-const payrollRoutes = require('./payroll.routes');
+const authRoutes = require('./xacThuc.routes');
+const userRoutes = require('./nguoiDung.routes');
+const departmentRoutes = require('./phongBan.routes');
+const shiftConfigRoutes = require('./caLamViec.routes');
+const scheduleRoutes = require('./lichTrinh.routes');
+const subjectRoutes = require('./monHoc.routes');
+const attendanceRoutes = require('./chamCong.routes');
+const leaveRequestRoutes = require('./donNghiPhep.routes');
+const auditLogRoutes = require('./nhatKyKiemToan.routes');
+const reportRoutes = require('./baoCao.routes');
+const uploadRoutes = require('./taiTep.routes');
+const notificationRoutes = require('./thongBao.routes');
+const holidayRoutes = require('./ngayNghiLe.routes');
+const systemConfigRoutes = require('./cauHinhHeThong.routes');
+const faceRoutes = require('./khuonMat.routes');
+const payrollRoutes = require('./phieuLuong.routes');
+const aiRoutes = require('./troLyAi.routes');
+const publicFacultyRoutes = require('./public_giangvien/giangVien.routes');
 
-const mongoose = require('mongoose');
+const { sequelize } = require('../config/db');
 
 /**
- * Health check endpoint - Chuẩn hóa 14 Collections CSDL v2.5
+ * Health check endpoint - Chuẩn hóa 16 Bảng CSDL SQL Server v2.5
  */
-router.get('/health', (req, res) => {
-  const dbStatus = mongoose.connection.readyState === 1 ? 'CONNECTED' : 'CONNECTING_OR_DISCONNECTED';
+router.get('/suc-khoe', async (req, res) => {
+  let dbStatus = 'CONNECTING_OR_DISCONNECTED';
+  try {
+    await sequelize.authenticate();
+    dbStatus = 'CONNECTED';
+  } catch (_) {
+    dbStatus = 'DISCONNECTED';
+  }
   res.status(200).json({
     status: 'OK',
     database: dbStatus,
+    databaseEngine: 'Microsoft SQL Server',
     uptimeSeconds: Math.floor(process.uptime()),
     environment: process.env.NODE_ENV || 'development',
     message: 'Hệ thống Quản lý Chấm công Trường Đại học đang hoạt động bình thường.',
-    collectionsCount: 14,
-    collections: [
-      'nguoi_dung',
-      'mau_khuon_mat',
-      'phong_ban',
+    tablesCount: 24,
+    tables: [
+      'cau_hinh_he_thong',
+      'ngay_nghi_le',
       'ca_lam_viec',
+      'phong_ban',
+      'nguoi_dung',
+      'ho_so_can_bo',
+      'vai_tro_nguoi_dung',
+      'xac_thuc_otp',
+      'mau_khuon_mat',
       'mon_hoc',
       'lich_trinh',
-      'ngay_nghi_le',
-      'luot_quet_cham_cong',
+      'lich_trinh_tuan',
+      'ngoai_le_lich_trinh',
       'nhat_ky_cham_cong',
+      'luot_quet_cham_cong',
       'don_nghi_phep',
+      'lich_su_duyet_don',
       'phieu_luong',
+      'phu_cap_luong',
+      'giam_tru_luong',
       'ma_lam_moi',
-      'cau_hinh_he_thong',
       'nhat_ky_kiem_toan',
+      'tai_lieu_rag',
+      'phan_doan_tai_lieu',
     ],
     timestamp: new Date().toISOString(),
   });
 });
 
-// Gắn các submodule routes
-router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
-router.use('/departments', departmentRoutes);
-router.use('/shifts', shiftConfigRoutes); // Chuẩn theo mục 3.3
-router.use('/shift-configs', shiftConfigRoutes); // Alias hỗ trợ tên cũ
-router.use('/schedules', scheduleRoutes);
-router.use('/subjects', subjectRoutes);
-router.use('/attendance', attendanceRoutes);
-router.use('/leave-requests', leaveRequestRoutes);
-router.use('/audit-logs', auditLogRoutes);
-router.use('/reports', reportRoutes);
-router.use('/upload', uploadRoutes);
-router.use('/ai', aiRoutes);
-router.use('/notifications', notificationRoutes);
-router.use('/holidays', holidayRoutes);
-router.use('/system', systemConfigRoutes);
-router.use('/face', faceRoutes);
-router.use('/payrolls', payrollRoutes);
+// Gắn các phân hệ API chuẩn hóa 100% tiếng Việt (không dùng alias)
+router.use('/xac-thuc', authRoutes);
+router.use('/nguoi-dung', userRoutes);
+router.use('/phong-ban', departmentRoutes);
+router.use('/ca-lam-viec', shiftConfigRoutes);
+router.use('/lich-trinh', scheduleRoutes);
+router.use('/mon-hoc', subjectRoutes);
+router.use('/cham-cong', attendanceRoutes);
+router.use('/don-nghi-phep', leaveRequestRoutes);
+router.use('/nhat-ky-kiem-toan', auditLogRoutes);
+router.use('/bao-cao', reportRoutes);
+router.use('/tai-tep', uploadRoutes);
+router.use('/thong-bao', notificationRoutes);
+router.use('/ngay-nghi-le', holidayRoutes);
+router.use('/he-thong', systemConfigRoutes);
+router.use('/khuon-mat', faceRoutes);
+router.use('/phieu-luong', payrollRoutes);
+router.use('/tro-ly-ai', aiRoutes);
+router.use('/cong-khai/giang-vien', publicFacultyRoutes);
 
 module.exports = router;

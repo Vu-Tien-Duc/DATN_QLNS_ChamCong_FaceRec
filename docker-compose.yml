@@ -1,42 +1,40 @@
 # =============================================================================
 # Docker Compose Orchestration - Toàn Diện Hệ Thống Quản Lý Chấm Công Đại Học
 # Đồ án tốt nghiệp: Vũ Tiến Đức - MSV: 2310900023
-# Kiến trúc 3 Containers:
-#   1. mongo: MongoDB 7.0 Replica Set (Hỗ trợ ACID Multi-Document Transactions)
+# Kiến trúc Containers:
+#   1. sqlserver: Microsoft SQL Server 2022 (Hỗ trợ ACID Multi-Document Transactions)
 #   2. face-service: FastAPI + InsightFace + ArcFace 512D + FAISS RAM
-#   3. web: Node.js Express Backend + React Vite Static Frontend (Single-Port 5000)
+#   3. redis: Redis 7 In-Memory Cache & Message Broker
+#   4. minio: MinIO S3-Compatible Object Storage
+#   5. web: Node.js Express Backend + React Vite Static Frontend (Single-Port 5000)
 # =============================================================================
 
 version: '3.8'
 
 services:
   # -------------------------------------------------------------
-  # 1. Cơ sở dữ liệu MongoDB 7.0 (Replica Set rs0)
+  # 1. Cơ sở dữ liệu Microsoft SQL Server 2022
   # -------------------------------------------------------------
-  mongo:
-    image: mongo:7.0
-    container_name: qlns_mongo
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: qlns_sqlserver
     restart: unless-stopped
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
-      - "27017:27017"
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${DB_PASSWORD:-ducyb12398}
+      - MSSQL_PID=Developer
     volumes:
-      - mongo_data:/data/db
+      - sqlserver_data:/var/opt/mssql
     networks:
       - app_network
     healthcheck:
-      test: >
-        mongosh --quiet --eval "
-          try {
-            rs.status().ok
-          } catch(e) {
-            rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: '127.0.0.1:27017' }] }).ok
-          }
-        "
-      interval: 10s
-      timeout: 5s
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q \"SELECT 1\" || exit 1"]
+      interval: 15s
+      timeout: 10s
       retries: 5
-      start_period: 10s
+      start_period: 20s
 
   # -------------------------------------------------------------
   # 2. Python FastAPI InsightFace Biometrics Service
@@ -48,13 +46,14 @@ services:
     container_name: qlns_face_service
     restart: unless-stopped
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     environment:
       - PORT=8001
       - PYTHONUNBUFFERED=1
       - FACE_MODEL_NAME=buffalo_s
       - FACE_DETECTION_SIZE=320
       - FACE_MATCH_THRESHOLD=0.45
+      - FACE_SERVICE_API_KEY=${FACE_SERVICE_API_KEY:-internal_face_service_secret_key_2026_datn_qlns}
     volumes:
       - insightface_models:/root/.insightface
       - ./uploads:/app/uploads
@@ -125,7 +124,7 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      mongo:
+      sqlserver:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -136,7 +135,14 @@ services:
     environment:
       - PORT=5000
       - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongo:27017/qlns_chamcong?replicaSet=rs0&directConnection=true
+      - DB_DIALECT=mssql
+      - DB_HOST=sqlserver
+      - DB_PORT=1433
+      - DB_NAME=DATN_QLNS_ChamCong_FaceRec
+      - DB_USER=sa
+      - DB_PASSWORD=${DB_PASSWORD:-ducyb12398}
+      - DB_ENCRYPT=false
+      - DB_TRUST_SERVER_CERTIFICATE=true
       - REDIS_URL=redis://redis:6379
       - STORAGE_DRIVER=minio
       - MINIO_ENDPOINT=minio
@@ -146,17 +152,20 @@ services:
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=datn-qlns-storage
       - FACE_SERVICE_URL=http://face-service:8001
+      - FACE_SERVICE_API_KEY=${FACE_SERVICE_API_KEY:-internal_face_service_secret_key_2026_datn_qlns}
+      - ATTENDANCE_EVIDENCE_DIR=/app/uploads/attendance-evidence
       - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_daihoc_2026_datn_qlns}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-super_secret_refresh_key_daihoc_2026_datn_qlns}
+      - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET:-super_secret_refresh_key_daihoc_2026_datn_qlns}
+      - TERMINAL_KEY=${TERMINAL_KEY:-super_secret_terminal_key_daihoc_2026_datn_qlns}
       - JWT_EXPIRES_IN=1d
-      - REFRESH_TOKEN_EXPIRES_IN=7d
+      - REFRESH_TOKEN_EXPIRES_DAYS=7
       - CORS_WHITELIST=http://localhost:5000,http://localhost:3000,http://localhost:5173,http://127.0.0.1:5500,https://chamcongdh.io.vn
     volumes:
       - ./uploads:/app/uploads
     networks:
       - app_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/suc-khoe"]
       interval: 20s
       timeout: 10s
       retries: 3
@@ -166,8 +175,8 @@ services:
 # Volumes lưu trữ dữ liệu vĩnh cửu
 # -------------------------------------------------------------
 volumes:
-  mongo_data:
-    name: qlns_mongo_data
+  sqlserver_data:
+    name: qlns_sqlserver_data
   redis_data:
     name: qlns_redis_data
   minio_data:

@@ -35,14 +35,15 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
-import { departmentApi } from '../api/department.api';
-import { userApi, UserListResponse } from '../api/user.api';
+import { departmentApi } from '../api/phongBan.api';
+import { userApi, UserListResponse } from '../api/nguoiDung.api';
 import {
   DepartmentItem,
   DepartmentType,
   UserProfile,
 } from '../types';
 import { Card, CardContent } from '../components/ui/Card';
+import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { hasRole } from '../utils/rbac';
@@ -571,56 +572,48 @@ export const Departments: React.FC = () => {
   return (
     <div className="space-y-5 pb-12 animate-fade-in">
       {/* =========================================================================
-          PAGE HEADER
+          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
          ========================================================================= */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 flex items-center justify-center flex-shrink-0">
-            <FolderTree className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              Quản Lý Cơ Cấu Tổ Chức Phòng Ban (Sơ Đồ Cây)
-            </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Cây phân cấp cơ cấu đại học: Ban Giám Hiệu ➔ Khối Khoa (Bộ Môn) & Khối Phòng Ban Chức Năng.
-            </p>
-          </div>
-        </div>
+      <PageHeader
+        title="Quản Lý Cơ Cấu Tổ Chức & Phòng Ban"
+        subtitle="Cây phân cấp cơ cấu đại học: Ban Giám Hiệu ➔ Khối Khoa (Bộ Môn) & Khối Phòng Ban Chức Năng."
+        icon={<FolderTree className="w-5 h-5 text-brand-600" />}
+        badge="CSDL v2.5"
+        badgeVariant="brand"
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />}
+              onClick={loadData}
+            >
+              Làm mới
+            </Button>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />}
-            onClick={loadData}
-          >
-            Làm mới
-          </Button>
-
-          {isAdmin && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                leftIcon={<Plus className="w-3.5 h-3.5 text-indigo-500" />}
-                onClick={() => openCreateModal('bo_mon')}
-              >
-                Thêm Bộ Môn
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                leftIcon={<Plus className="w-3.5 h-3.5" />}
-                onClick={() => openCreateModal('khoa')}
-              >
-                Thêm Khoa / Phòng Ban
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
+            {isAdmin && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<Plus className="w-3.5 h-3.5 text-indigo-500" />}
+                  onClick={() => openCreateModal('bo_mon')}
+                >
+                  Thêm Bộ Môn
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Plus className="w-3.5 h-3.5" />}
+                  onClick={() => openCreateModal('khoa')}
+                >
+                  Thêm Khoa / Phòng Ban
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
 
       {/* =========================================================================
           EXECUTIVE KPI STRIP

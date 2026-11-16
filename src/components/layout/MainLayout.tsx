@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
+import { AiChatBox } from '../AiChatBox';
 import { cameraManager } from '../../utils/cameraManager';
 
 export const MainLayout: React.FC = () => {
@@ -68,6 +69,9 @@ export const MainLayout: React.FC = () => {
           <Footer />
         </main>
       </div>
+
+      {/* Trợ lý AI Đa Năng (NTU AI Hub Floating Bubble) */}
+      <AiChatBox />
     </div>
   );
 };

@@ -20,6 +20,9 @@ import { AuditLogs } from './pages/AuditLogs';
 import { Settings } from './pages/Settings';
 import { Profile } from './pages/Profile';
 import { Login } from './pages/Login';
+import { PublicLayout } from './pages/public_giangvien/PublicLayout';
+import { FacultyDirectory } from './pages/public_giangvien/FacultyDirectory';
+import { FacultyDetail } from './pages/public_giangvien/FacultyDetail';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useThemeStore } from './store/useThemeStore';
 import { useAuthStore } from './store/useAuthStore';
@@ -54,6 +57,13 @@ export const App: React.FC = () => {
       <Routes>
         {/* Tuyến Đăng nhập công khai */}
         <Route path="/login" element={<Login />} />
+
+        {/* Cổng Thông Tin & Danh Bạ Giảng Viên Công Khai (Phenikaa Showcase) */}
+        <Route path="/giang-vien" element={<PublicLayout />}>
+          <Route index element={<FacultyDirectory />} />
+          <Route path=":id" element={<FacultyDetail />} />
+        </Route>
+        <Route path="/public-giangvien" element={<Navigate to="/giang-vien" replace />} />
 
         {/* Các tuyến được bảo vệ bởi ProtectedRoute */}
         <Route
@@ -125,7 +135,7 @@ export const App: React.FC = () => {
           <Route
             path="face-registration"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'tccb']}>
                 <FaceRegistrationPage />
               </ProtectedRoute>
             }
@@ -133,7 +143,7 @@ export const App: React.FC = () => {
           <Route
             path="face-templates"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'tccb']}>
                 <FaceRegistrationPage />
               </ProtectedRoute>
             }

@@ -32,7 +32,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { userApi } from '../api/user.api';
+import { userApi } from '../api/nguoiDung.api';
 import {
   UserProfile,
   DepartmentItem,
@@ -48,6 +48,7 @@ import {
 import { useAuthStore } from '../store/useAuthStore';
 import { normalizeRoleKey, hasRole } from '../utils/rbac';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { PageHeader } from '../components/ui/PageHeader';
 import { DepartmentSelect, getDeptCategory } from '../components/ui/DepartmentSelect';
 import { Portal } from '../components/ui/Portal';
 
@@ -999,6 +1000,48 @@ export const Users: React.FC = () => {
 
   return (
     <div className="space-y-5">
+      {/* ── 0. TIÊU ĐỀ TRANG CHUẨN HOÁ (PAGE HEADER - CHUẨN GIAO DIỆN) ── */}
+      <PageHeader
+        title="Danh Sách Hồ Sơ Cán Bộ & Giảng Viên"
+        subtitle="Quản lý thông tin viên chức, học hàm học vị, phân bổ khoa phòng ban và tình trạng đăng ký sinh trắc học Face ID 512D."
+        icon={<UsersIcon className="w-5 h-5 text-brand-600" />}
+        badge="Đại Học Nguyễn Trãi (NTU)"
+        badgeVariant="brand"
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={fetchAllData}
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-all shadow-2xs hover:shadow-xs cursor-pointer group"
+              title="Làm mới dữ liệu hồ sơ"
+            >
+              <RefreshCw className={`w-4 h-4 transition-transform group-hover:rotate-45 ${loading ? 'animate-spin text-brand-600' : ''}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportUsersExcel}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-xs font-bold transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+              title="Xuất danh sách nhân sự ra file Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden sm:inline">Xuất Excel (.xlsx)</span>
+            </button>
+
+            {canCreateOrDelete && (
+              <button
+                type="button"
+                onClick={handleOpenCreateModal}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-sm shadow-brand-500/20 transition-all cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Thêm Cán Bộ Mới</span>
+              </button>
+            )}
+          </>
+        }
+      />
+
       {/* ── 1. DẢI THẺ THỐNG KÊ TỔNG QUAN (EXECUTIVE KPI BAR - CHUẨN GIAO DIỆN) ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs flex items-center gap-3.5">
@@ -1078,57 +1121,16 @@ export const Users: React.FC = () => {
 
       {/* ── 2. KHUNG QUẢN TRỊ DANH SÁCH CÁN BỘ & GIẢNG VIÊN (CHUẨN GIAO DIỆN) ── */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-xs space-y-4">
-        {/* 1. Header Quản Trị & Cụm Nút Hành Động Chính */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-500 via-indigo-600 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-brand-500/20 ring-4 ring-brand-500/10">
-              <UsersIcon className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
-                  Danh Sách Hồ Sơ Cán Bộ & Giảng Viên
-                </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 border border-brand-200/60 dark:border-brand-800/60">
-                  Đại Học Nguyễn Trãi (NTU)
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                Quản lý biên chế, học hàm/học vị, ngạch lương viên chức và sinh trắc học Face ID 512D
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto">
-            <button
-              type="button"
-              onClick={fetchAllData}
-              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-all shadow-2xs hover:shadow-xs cursor-pointer group"
-              title="Làm mới dữ liệu hồ sơ"
-            >
-              <RefreshCw className={`w-4 h-4 transition-transform group-hover:rotate-45 ${loading ? 'animate-spin text-brand-600' : ''}`} />
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExportUsersExcel}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-xs font-bold transition-all shadow-2xs hover:shadow-xs cursor-pointer"
-              title="Xuất danh sách nhân sự ra file Excel (.xlsx)"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span className="hidden sm:inline">Xuất Excel (.xlsx)</span>
-            </button>
-
-            {canCreateOrDelete && (
-              <button
-                type="button"
-                onClick={handleOpenCreateModal}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 via-indigo-600 to-purple-600 hover:from-brand-700 hover:via-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-brand-500/25 hover:shadow-lg hover:shadow-brand-500/35 transition-all duration-200 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>Thêm Cán Bộ Mới</span>
-              </button>
-            )}
+        {/* 1. Thanh Tiêu Đề Bảng Dữ Liệu */}
+        <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
+              Tra Cứu &amp; Bộ Lọc Hồ Sơ
+            </span>
+            <span className="text-slate-300 dark:text-slate-700">•</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              Hiển thị <strong className="text-slate-800 dark:text-slate-200">{filteredUsers.length}</strong> / {users.length} cán bộ
+            </span>
           </div>
         </div>
 

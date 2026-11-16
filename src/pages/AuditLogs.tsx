@@ -35,12 +35,13 @@ import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Portal } from '../components/ui/Portal';
+import { PageHeader } from '../components/ui/PageHeader';
 import {
   auditLogApi,
   AuditLogItem,
   AuditLogPagination,
   IntegrityCheckResponse,
-} from '../api/auditLog.api';
+} from '../api/nhatKyKiemToan.api';
 
 // =============================================================================
 // HELPER FUNCTIONS & FORMATTERS
@@ -297,104 +298,108 @@ export const AuditLogs: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* 1. HEADER SECTION */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          Nhật Ký Kiểm Toán Hệ Thống (Audit Logs)
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-            SHA-256 Hash Chaining
-          </span>
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Lưu vết toàn bộ thao tác, hành vi truy cập và bảo vệ tính bất biến dữ liệu theo chuẩn an toàn thông tin CSDL v2.5.
-        </p>
-      </div>
+      {/* 1. HEADER SECTION (Chuẩn hóa Typography & Bố cục CSDL v2.5) */}
+      <PageHeader
+        title="Nhật Ký Kiểm Toán Hệ Thống (Audit Logs)"
+        subtitle="Lưu vết toàn bộ thao tác, hành vi truy cập và bảo vệ tính bất biến dữ liệu theo chuẩn an toàn thông tin CSDL v2.5."
+        icon={<ShieldCheck className="w-5 h-5 text-indigo-600" />}
+        badge="SHA-256 Hash Chaining"
+        badgeVariant="indigo"
+      />
 
       {/* 2. BỘ 4 THẺ KPI KIỂM TOÁN */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Tổng số bản ghi */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-indigo-400 dark:hover:border-indigo-600 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Tổng Số Bản Ghi
             </span>
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-              <Layers className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+              <Layers className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-slate-900 dark:text-white">
-              {kpis.totalRecords.toLocaleString()}
-            </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">sự kiện đã ghi</span>
-          </div>
-          <div className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1">
-            <Lock className="w-3.5 h-3.5" />
-            <span>Cơ chế Append-Only (Bất biến)</span>
+          <div className="mt-1.5">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-bold font-mono text-slate-900 dark:text-white leading-none">
+                {kpis.totalRecords.toLocaleString()}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">sự kiện đã ghi</span>
+            </div>
+            <div className="mt-1 text-xs text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1 truncate">
+              <Lock className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Cơ chế Append-Only (Bất biến)</span>
+            </div>
           </div>
         </div>
 
         {/* KPI 2: Tỷ lệ thành công */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-emerald-400 dark:hover:border-emerald-600 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
               Thao Tác Hợp Lệ
             </span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-              {kpis.successRate}%
-            </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">tỷ lệ trang này</span>
-          </div>
-          <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-            {kpis.successCount} thao tác SUCCESS
+          <div className="mt-1.5">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 leading-none">
+                {kpis.successRate}%
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">tỷ lệ trang này</span>
+            </div>
+            <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-300 font-medium truncate">
+              {kpis.successCount} thao tác SUCCESS
+            </div>
           </div>
         </div>
 
         {/* KPI 3: Thao tác thất bại / Cảnh báo */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-rose-400 dark:hover:border-rose-600 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
               Cảnh Báo / Thất Bại
             </span>
-            <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-              <ShieldAlert className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+              <ShieldAlert className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className={`text-3xl font-extrabold ${kpis.failedCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
-              {kpis.failedCount}
-            </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">thao tác FAILED</span>
-          </div>
-          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400 font-medium">
-            {kpis.failedCount === 0 ? 'An toàn, không có sự cố' : 'Cần kiểm tra chi tiết lỗi'}
+          <div className="mt-1.5">
+            <div className="flex items-baseline gap-1.5">
+              <span className={`text-2xl font-bold font-mono leading-none ${kpis.failedCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
+                {kpis.failedCount}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">thao tác FAILED</span>
+            </div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium truncate">
+              {kpis.failedCount === 0 ? 'An toàn, không có sự cố' : 'Cần kiểm tra chi tiết lỗi'}
+            </div>
           </div>
         </div>
 
         {/* KPI 4: Tính toàn vẹn chuỗi Hash */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-cyan-400 dark:hover:border-cyan-600 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
               Chuỗi Hash Chaining
             </span>
-            <div className="w-9 h-9 rounded-xl bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
-              <Hash className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-lg bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
+              <Hash className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-cyan-600 dark:text-cyan-400">
-              SHA-256
-            </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">liên kết chuỗi</span>
-          </div>
-          <div className="mt-2 text-xs text-cyan-700 dark:text-cyan-300 font-medium flex items-center gap-1">
-            <Link2 className="w-3.5 h-3.5" />
-            <span>Chống sửa lén &amp; xóa bản ghi</span>
+          <div className="mt-1.5">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-bold font-mono text-cyan-600 dark:text-cyan-400 leading-none">
+                SHA-256
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">liên kết chuỗi</span>
+            </div>
+            <div className="mt-1 text-xs text-cyan-700 dark:text-cyan-300 font-medium flex items-center gap-1 truncate">
+              <Link2 className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Chống sửa lén &amp; xóa bản ghi</span>
+            </div>
           </div>
         </div>
       </div>
@@ -623,30 +628,49 @@ export const AuditLogs: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="w-full overflow-hidden">
+            <table className="table-fixed w-full text-left border-collapse">
+              <colgroup>
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '7%' }} />
+              </colgroup>
               <thead>
-                <tr className="bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                  <th className="py-3.5 px-4">Thời Điểm</th>
-                  <th className="py-3.5 px-4">Người Thực Hiện</th>
-                  <th className="py-3.5 px-4">Hành Động</th>
-                  <th className="py-3.5 px-4">Đối Tượng Tác Động</th>
-                  <th className="py-3.5 px-4">Địa Chỉ IP</th>
-                  <th className="py-3.5 px-4 text-center">Kết Quả</th>
-                  <th className="py-3.5 px-4">Mã Băm SHA-256</th>
-                  <th className="py-3.5 px-4 text-right">Chi Tiết</th>
+                <tr className="bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <th className="py-3 px-3 whitespace-nowrap">Thời Điểm</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Người Thực Hiện</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Hành Động</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Đối Tượng Tác Động</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Địa Chỉ IP</th>
+                  <th className="py-3 px-3 text-center whitespace-nowrap">Kết Quả</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Mã Băm SHA-256</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">Chi Tiết</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-sm">
-                {logs.map((log) => {
-                  const actStyle = getActionColor(log.action);
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
+                {logs.map((log: any) => {
+                  const actVal = log.action || log.hanh_dong || 'THAO TÁC';
+                  const actStyle = getActionColor(actVal);
+                  const actorObj = typeof log.actor === 'object' && log.actor
+                    ? log.actor
+                    : (typeof log.nguoi_thuc_hien_id === 'object' && log.nguoi_thuc_hien_id ? log.nguoi_thuc_hien_id : null);
                   const actorName =
-                    typeof log.actor === 'object' && log.actor
-                      ? log.actor.fullName
-                      : log.actorType === 'system'
+                    actorObj
+                      ? actorObj.fullName || actorObj.ho_ten || 'Quản trị viên Hệ thống'
+                      : (log.actorType === 'system' || log.loai_chu_the === 'system')
                       ? 'HỆ THỐNG'
                       : 'Ẩn danh / Không xác định';
-                  const actorRole = typeof log.actor === 'object' && log.actor ? log.actor.role : log.actorType;
+                  const actorRole = actorObj ? (actorObj.role || actorObj.vai_tro_chinh || 'admin') : (log.actorType || log.loai_chu_the || 'system');
+                  const timestampVal = log.timestamp || log.thoi_diem || log.tao_luc;
+                  const targetTypeVal = log.targetType || log.loai_doi_tuong || 'he_thong';
+                  const targetIdVal = log.targetId || log.doi_tuong_id || '';
+                  const statusVal = (log.status || log.ket_qua || 'success').toString().toLowerCase();
+                  const isSuccess = statusVal === 'success' || statusVal === 'thanh_cong';
 
                   return (
                     <tr
@@ -654,28 +678,28 @@ export const AuditLogs: React.FC = () => {
                       className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors group"
                     >
                       {/* Thời điểm */}
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 font-mono">
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-700 dark:text-slate-300 font-mono">
                           <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span>{formatDateTimeVN(log.timestamp)}</span>
+                          <span>{formatDateTimeVN(timestampVal)}</span>
                         </div>
                       </td>
 
                       {/* Người thực hiện */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
+                      <td className="py-3 px-3 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
                           <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs shrink-0">
-                            {log.actorType === 'system' ? (
+                            {log.actorType === 'system' || log.loai_chu_the === 'system' ? (
                               <Server className="w-3.5 h-3.5 text-indigo-500" />
                             ) : (
                               <User className="w-3.5 h-3.5 text-slate-500" />
                             )}
                           </div>
-                          <div>
-                            <div className="font-medium text-xs text-slate-900 dark:text-white line-clamp-1">
+                          <div className="min-w-0 truncate">
+                            <div className="font-semibold text-xs text-slate-900 dark:text-white truncate">
                               {actorName}
                             </div>
-                            <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono uppercase tracking-wider truncate">
                               {actorRole || 'system'}
                             </div>
                           </div>
@@ -683,42 +707,42 @@ export const AuditLogs: React.FC = () => {
                       </td>
 
                       {/* Hành động */}
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-3 whitespace-nowrap">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold border ${actStyle.bg} ${actStyle.text} ${actStyle.border}`}
+                          className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border tracking-wide uppercase ${actStyle.bg} ${actStyle.text} ${actStyle.border}`}
                         >
-                          {log.action}
+                          {actVal}
                         </span>
                       </td>
 
                       {/* Đối tượng tác động */}
-                      <td className="py-3 px-4">
-                        <div className="text-xs">
+                      <td className="py-3 px-3 min-w-0">
+                        <div className="text-xs truncate">
                           <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            {log.targetType}
+                            {targetTypeVal}
                           </span>
-                          <span className="text-[11px] font-mono text-slate-400 ml-1.5 block sm:inline">
-                            #{log.targetId ? log.targetId.slice(-8) : '--'}
+                          <span className="text-[11px] font-mono text-slate-400 ml-1.5">
+                            #{targetIdVal ? String(targetIdVal).slice(-8) : '--'}
                           </span>
                         </div>
                       </td>
 
                       {/* IP Address */}
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                          {log.ipAddress || '127.0.0.1'}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                          {log.ipAddress || log.dia_chi_ip || '127.0.0.1'}
                         </span>
                       </td>
 
                       {/* Kết quả */}
-                      <td className="py-3 px-4 text-center">
-                        {log.status === 'success' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        {isSuccess ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                             SUCCESS
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
                             <XCircle className="w-3 h-3 text-rose-500" />
                             FAILED
                           </span>
@@ -726,17 +750,17 @@ export const AuditLogs: React.FC = () => {
                       </td>
 
                       {/* Mã băm SHA-256 */}
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-3 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <code
-                            title={log.currentHash || ''}
+                            title={log.currentHash || log.ma_bam_hien_tai || ''}
                             className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/40"
                           >
-                            {truncateHash(log.currentHash, 6)}
+                            {truncateHash(log.currentHash || log.ma_bam_hien_tai, 6)}
                           </code>
-                          {log.currentHash && (
+                          {(log.currentHash || log.ma_bam_hien_tai) && (
                             <button
-                              onClick={() => copyToClipboard(log.currentHash || '', log._id)}
+                              onClick={() => copyToClipboard(log.currentHash || log.ma_bam_hien_tai || '', log._id)}
                               title="Sao chép toàn bộ mã băm"
                               className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
                             >

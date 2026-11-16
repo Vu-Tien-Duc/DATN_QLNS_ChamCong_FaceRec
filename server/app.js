@@ -26,8 +26,8 @@ try {
 
 const swaggerSpec = require('./config/swagger');
 const apiRoutes = require('./routes');
-const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
-const { downloadFile } = require('./controllers/upload.controller');
+const { errorHandler, notFoundHandler } = require('./middlewares/xuLyLoi.middleware');
+const { downloadFile } = require('./controllers/taiTep.controller');
 
 const app = express();
 
@@ -103,33 +103,10 @@ app.use(cookieParser());
 
 // File upload chỉ được phục vụ qua controller để kiểm tra quyền truy cập.
 app.get('/uploads/:filename', downloadFile);
+app.get('/uploads/faces/:filename', downloadFile);
 app.get('/api/uploads/:filename', downloadFile);
-app.get('/api/v1/uploads/:filename', downloadFile);
-app.get('/upload/file/:filename', downloadFile);
-app.get('/api/upload/file/:filename', downloadFile);
-app.get('/api/v1/upload/file/:filename', downloadFile);
-app.get('/uploads/faces/:filename', (req, res, next) => {
-  req.params.filename = `face-${req.params.filename.replace(/^face-/, '')}`;
-  return downloadFile(req, res, next);
-});
-app.get('/api/uploads/faces/:filename', (req, res, next) => {
-  req.params.filename = `face-${req.params.filename.replace(/^face-/, '')}`;
-  return downloadFile(req, res, next);
-});
-app.get('/uploads/avatars/:filename', (req, res, next) => {
-  req.params.filename = `avatar-${req.params.filename.replace(/^avatar-/, '')}`;
-  return downloadFile(req, res, next);
-});
-app.get('/api/uploads/avatars/:filename', (req, res, next) => {
-  req.params.filename = `avatar-${req.params.filename.replace(/^avatar-/, '')}`;
-  return downloadFile(req, res, next);
-});
-app.get('/uploads/evidence/:filename', downloadFile);
-app.get('/api/uploads/evidence/:filename', downloadFile);
-app.get('/api/v1/uploads/evidence/:filename', downloadFile);
-app.get('/api/attendance/evidence/:filename', downloadFile);
-app.get('/api/v1/attendance/evidence/:filename', downloadFile);
-
+app.get('/api/uploads/faces/:filename', downloadFile);
+app.get('/api/tai-tep/tep/:filename', downloadFile);
 
 // 4. Swagger UI Documentation Route
 const swaggerUiOptions = {
@@ -138,58 +115,79 @@ const swaggerUiOptions = {
     persistAuthorization: true,
   },
 };
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
+app.use('/tai-lieu-api', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
 
 // 5. Health Check Route
-app.get('/health', (req, res) => {
-  const mongoose = require('mongoose');
-  const dbStatus = mongoose.connection.readyState === 1 ? 'CONNECTED' : 'CONNECTING_OR_DISCONNECTED';
+app.get('/suc-khoe', async (req, res) => {
+  const { sequelize } = require('./config/db');
+  let dbStatus = 'CONNECTING_OR_DISCONNECTED';
+  try {
+    await sequelize.authenticate();
+    dbStatus = 'CONNECTED';
+  } catch (_) {
+    dbStatus = 'DISCONNECTED';
+  }
   res.status(200).json({
     status: 'OK',
     database: dbStatus,
+    databaseEngine: 'Microsoft SQL Server',
     uptimeSeconds: Math.floor(process.uptime()),
     environment: process.env.NODE_ENV || 'development',
     message: 'Hệ thống Quản lý Chấm công Trường Đại học đang hoạt động bình thường.',
-    collectionsCount: 14,
-    collections: [
-      'nguoi_dung',
-      'mau_khuon_mat',
-      'phong_ban',
+    tablesCount: 24,
+    tables: [
+      'cau_hinh_he_thong',
+      'ngay_nghi_le',
       'ca_lam_viec',
+      'phong_ban',
+      'nguoi_dung',
+      'ho_so_can_bo',
+      'vai_tro_nguoi_dung',
+      'xac_thuc_otp',
+      'mau_khuon_mat',
       'mon_hoc',
       'lich_trinh',
-      'ngay_nghi_le',
-      'luot_quet_cham_cong',
+      'lich_trinh_tuan',
+      'ngoai_le_lich_trinh',
       'nhat_ky_cham_cong',
+      'luot_quet_cham_cong',
       'don_nghi_phep',
+      'lich_su_duyet_don',
       'phieu_luong',
+      'phu_cap_luong',
+      'giam_tru_luong',
       'ma_lam_moi',
-      'cau_hinh_he_thong',
       'nhat_ky_kiem_toan',
+      'tai_lieu_rag',
+      'phan_doan_tai_lieu',
     ],
     timestamp: new Date().toISOString(),
   });
 });
 
-// 6. Main API Routes (Chuẩn tiền tố /api và /api/v1)
+// 6. Main API Routes (Chuẩn hóa duy nhất tiền tố /api tiếng Việt)
 app.use('/api', apiRoutes);
-app.use('/api/v1', apiRoutes);
 
 // 7. Phục vụ Frontend tĩnh (Chuẩn Single-Port 5000: Express Backend + React Frontend)
 const distPath = path.join(__dirname, '../dist');
 const indexHtml = path.join(distPath, 'index.html');
 
+const isBrowserPageRequest = (req) => {
+  const accept = String(req.headers.accept || '').toLowerCase();
+  return req.method === 'GET' && !req.headers.authorization && accept.includes('text/html');
+};
+
 if (fs.existsSync(distPath) && fs.existsSync(indexHtml)) {
   app.use(express.static(distPath));
 
-  // SPA Fallback: Mọi yêu cầu từ trình duyệt đều trả về index.html của React Router
+  // SPA Fallback: Chỉ trả về index.html cho request trang HTML từ trình duyệt
   app.use((req, res, next) => {
-    if (req.method !== 'GET') return next();
+    if (!isBrowserPageRequest(req)) return next();
     if (
       req.path.startsWith('/api') ||
       req.path.startsWith('/uploads') ||
-      req.path.startsWith('/api-docs') ||
-      req.path.startsWith('/health') ||
+      req.path.startsWith('/tai-lieu-api') ||
+      req.path.startsWith('/suc-khoe') ||
       req.path.startsWith('/socket.io')
     ) {
       return next();
@@ -199,12 +197,12 @@ if (fs.existsSync(distPath) && fs.existsSync(indexHtml)) {
 } else {
   // Khi chưa build thư mục dist: Tự động chuyển hướng về Vite dev server
   app.use((req, res, next) => {
-    if (req.method !== 'GET') return next();
+    if (!isBrowserPageRequest(req)) return next();
     if (
       req.path.startsWith('/api') ||
       req.path.startsWith('/uploads') ||
-      req.path.startsWith('/api-docs') ||
-      req.path.startsWith('/health') ||
+      req.path.startsWith('/tai-lieu-api') ||
+      req.path.startsWith('/suc-khoe') ||
       req.path.startsWith('/socket.io')
     ) {
       return next();

@@ -39,15 +39,16 @@ import { Button } from '../components/ui/Button';
 import { UserAvatar } from '../components/ui/UserAvatar';
 import { Portal } from '../components/ui/Portal';
 import { DepartmentSelect } from '../components/ui/DepartmentSelect';
+import { PageHeader } from '../components/ui/PageHeader';
 import {
   leaveRequestApi,
   LeaveRequestData,
   LeaveBalanceData,
   CreateLeavePayload,
   BackendLeaveType,
-} from '../api/leaveRequest.api';
-import { departmentApi } from '../api/department.api';
-import { scheduleApi } from '../api/schedule.api';
+} from '../api/donNghiPhep.api';
+import { departmentApi } from '../api/phongBan.api';
+import { scheduleApi } from '../api/lichTrinh.api';
 import { extractArray } from '../api/apiClient';
 import { DepartmentItem } from '../types';
 import { isAdmin as checkIsAdmin, hasRole } from '../utils/rbac';
@@ -160,6 +161,13 @@ function getLeaveTypeMeta(type?: string) {
         badgeClass: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700',
         dotColor: 'bg-slate-500',
         icon: FileText,
+      };
+    case 'giai_trinh_cong':
+      return {
+        label: 'Giải Trình Chấm Công',
+        badgeClass: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+        dotColor: 'bg-amber-500',
+        icon: Clock,
       };
     default:
       return {
@@ -281,10 +289,9 @@ export const LeaveRequests: React.FC = () => {
     if (!url) return '';
     let finalUrl = url;
     if (!finalUrl.startsWith('http')) {
-      if (!finalUrl.startsWith('/api') && !finalUrl.startsWith('/uploads')) {
-        finalUrl = `/api/uploads/${finalUrl.replace(/^\/+/, '')}`;
-      } else if (finalUrl.startsWith('/uploads')) {
-        finalUrl = `/api${finalUrl}`;
+      if (!finalUrl.startsWith('/api/tai-tep/tep/')) {
+        const clean = finalUrl.split('/').pop()?.replace(/^\/+/, '') || '';
+        finalUrl = clean ? `/api/tai-tep/tep/${clean}` : '';
       }
     }
     const token = localStorage.getItem('token');
@@ -728,49 +735,64 @@ export const LeaveRequests: React.FC = () => {
   return (
     <div className="flex flex-col w-full space-y-4">
       {/* =========================================================================
+          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+         ========================================================================= */}
+      <PageHeader
+        title="Quản Lý Đơn Xin Nghỉ Phép & Giải Trình"
+        subtitle="Quy trình phê duyệt 2 cấp (Khoa/Viện trưởng ➔ Ban Giám Hiệu), tự động khấu trừ quỹ phép năm và khóa ca giảng dạy trên Thời khóa biểu."
+        icon={<FileText className="w-5 h-5 text-brand-600" />}
+        badge="Quy Trình 2 Cấp"
+        badgeVariant="brand"
+      />
+
+      {/* =========================================================================
           SECTION 0: THẺ HẠN MỨC NGÀY PHÉP NĂM & SỐ NGÀY CÒN LẠI CỦA BẠN
          ========================================================================= */}
       {leaveBalance && !leaveBalance.isAdmin && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-brand-700 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner">
-              <CalendarDays className="w-6 h-6 text-white" />
+            <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-100 dark:border-blue-900/50 shadow-xs">
+              <CalendarDays className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold tracking-tight">
-                  Quỹ Nghỉ Phép Năm {leaveBalance.year || new Date().getFullYear()} Của Bạn
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                  Quỹ Nghỉ Phép Năm {leaveBalance.year || (leaveBalance as any).nam || new Date().getFullYear()} Của Bạn
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/20 text-white border border-white/30">
-                  {leaveBalance.availableDays > 0 ? 'Khả dụng' : 'Hết phép năm'}
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wider uppercase border ${
+                  (leaveBalance.availableDays ?? (leaveBalance as any).so_ngay_kha_dung ?? 0) > 0
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                    : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                }`}>
+                  {(leaveBalance.availableDays ?? (leaveBalance as any).so_ngay_kha_dung ?? 0) > 0 ? 'Khả dụng' : 'Hết phép năm'}
                 </span>
               </div>
-              <p className="text-xs text-blue-100 mt-0.5">
-                Chính sách đại học: Cán bộ được hưởng tối đa <strong>{leaveBalance.annualLeaveQuota} ngày phép năm</strong> có hưởng lương.
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Chính sách đại học: Cán bộ được hưởng tối đa <strong className="text-slate-700 dark:text-slate-200">{leaveBalance.annualLeaveQuota ?? (leaveBalance as any).han_muc_phep_nam ?? 12} ngày phép năm</strong> có hưởng lương.
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-2.5 sm:gap-3.5 shrink-0 text-center">
-            <div className="px-3 py-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/20">
-              <span className="text-[10px] sm:text-[11px] text-blue-200 block uppercase font-medium">Hạn mức</span>
-              <strong className="text-base sm:text-lg font-bold font-mono">{leaveBalance.annualLeaveQuota}</strong>
-              <span className="text-[10px] text-blue-200 block">ngày</span>
+          <div className="grid grid-cols-4 gap-2 sm:gap-2.5 shrink-0 text-center">
+            <div className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 block uppercase font-bold tracking-wider">Hạn mức</span>
+              <strong className="text-base sm:text-lg font-bold font-mono text-slate-800 dark:text-slate-100">{leaveBalance.annualLeaveQuota ?? (leaveBalance as any).han_muc_phep_nam ?? 12}</strong>
+              <span className="text-[10px] text-slate-400 block">ngày</span>
             </div>
-            <div className="px-3 py-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/20">
-              <span className="text-[10px] sm:text-[11px] text-blue-200 block uppercase font-medium">Đã dùng</span>
-              <strong className="text-base sm:text-lg font-bold font-mono">{leaveBalance.daysUsed}</strong>
-              <span className="text-[10px] text-blue-200 block">ngày</span>
+            <div className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 block uppercase font-bold tracking-wider">Đã dùng</span>
+              <strong className="text-base sm:text-lg font-bold font-mono text-slate-800 dark:text-slate-100">{leaveBalance.daysUsed ?? (leaveBalance as any).so_ngay_da_nghi ?? 0}</strong>
+              <span className="text-[10px] text-slate-400 block">ngày</span>
             </div>
-            <div className="px-3 py-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/20">
-              <span className="text-[10px] sm:text-[11px] text-blue-200 block uppercase font-medium">Chờ duyệt</span>
-              <strong className="text-base sm:text-lg font-bold font-mono text-amber-300">{leaveBalance.pendingAnnualLeaveDays}</strong>
-              <span className="text-[10px] text-blue-200 block">ngày</span>
+            <div className="px-3 py-2 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800">
+              <span className="text-[10px] sm:text-[11px] text-amber-700 dark:text-amber-300 block uppercase font-bold tracking-wider">Chờ duyệt</span>
+              <strong className="text-base sm:text-lg font-bold font-mono text-amber-600 dark:text-amber-400">{leaveBalance.pendingAnnualLeaveDays ?? (leaveBalance as any).so_ngay_cho_duyet ?? 0}</strong>
+              <span className="text-[10px] text-amber-600/80 dark:text-amber-400/80 block">ngày</span>
             </div>
-            <div className="px-3 py-2 rounded-xl bg-white/25 backdrop-blur-md border border-white/30 shadow-inner">
-              <span className="text-[10px] sm:text-[11px] text-emerald-200 block uppercase font-bold">Còn lại</span>
-              <strong className="text-base sm:text-lg font-bold font-mono text-emerald-300">{leaveBalance.availableDays}</strong>
-              <span className="text-[10px] text-emerald-200 block">ngày</span>
+            <div className="px-3 py-2 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800 shadow-xs">
+              <span className="text-[10px] sm:text-[11px] text-emerald-700 dark:text-emerald-300 block uppercase font-bold tracking-wider">Còn lại</span>
+              <strong className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">{leaveBalance.availableDays ?? (leaveBalance as any).so_ngay_kha_dung ?? 0}</strong>
+              <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 block">ngày</span>
             </div>
           </div>
         </div>
@@ -781,110 +803,110 @@ export const LeaveRequests: React.FC = () => {
          ========================================================================= */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {/* Metric 1: Tổng đơn tháng */}
-        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
+        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Tổng Đơn Tháng
             </span>
-            <span className="p-1 rounded-md bg-slate-100 dark:bg-slate-800 text-brand-600 dark:text-brand-400 flex items-center justify-center">
+            <span className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center">
               <FileText className="w-4 h-4" />
             </span>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
+              <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono leading-none">
                 {metrics.totalMonth}
               </span>
-              <span className="text-xs text-slate-400">đơn</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">đơn</span>
             </div>
             <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
               <TrendingUp className="w-3.5 h-3.5" /> +12%
             </span>
           </div>
-          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 text-[11px]">
+          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
             <span>Hạn mức ĐH NTU</span>
-            <span className="text-brand-600 dark:text-brand-400 font-medium">82.4% khả dụng</span>
+            <span className="text-blue-600 dark:text-blue-400 font-medium">82.4% khả dụng</span>
           </div>
         </div>
 
         {/* Metric 2: Chờ duyệt Cấp 1 */}
-        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
+        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
               Chờ duyệt Cấp 1
             </span>
-            <span className="px-1.5 py-0.2 rounded-full bg-amber-50 dark:bg-amber-950/60 text-[10px] text-amber-700 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800">
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-[10px] text-amber-700 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800">
               {metrics.step1Count} CẦN XỬ LÝ
             </span>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-amber-600 dark:text-amber-400 font-mono">
+              <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono leading-none">
                 {String(metrics.step1Count).padStart(2, '0')}
               </span>
-              <span className="text-xs text-slate-400">đơn</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">đơn</span>
             </div>
             {metrics.step1Count > 0 && (
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
             )}
           </div>
-          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 text-[11px]">
+          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
             <span>Khoa / Viện trưởng</span>
             <span className="font-mono text-amber-600 dark:text-amber-400 font-medium">&lt; 24h quy định</span>
           </div>
         </div>
 
         {/* Metric 3: Chờ duyệt Cấp 2 */}
-        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
+        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
               Chờ duyệt Cấp 2
             </span>
-            <span className="px-1.5 py-0.2 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200 dark:border-indigo-800">
+            <span className="px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200 dark:border-indigo-800">
               {metrics.step2Count} TIẾP NHẬN
             </span>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+              <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono leading-none">
                 {String(metrics.step2Count).padStart(2, '0')}
               </span>
-              <span className="text-xs text-slate-400">đơn</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">đơn</span>
             </div>
             <span className="p-1 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
               <ShieldAlert className="w-3.5 h-3.5" />
             </span>
           </div>
-          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 text-[11px]">
+          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
             <span>Phòng TCCB &amp; BGH</span>
             <span className="font-medium text-indigo-600 dark:text-indigo-400">Hồ sơ thẩm định</span>
           </div>
         </div>
 
         {/* Metric 4: Đã Phê Duyệt */}
-        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
+        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
               Đã Duyệt / Hợp Lệ
             </span>
-            <span className="px-1.5 py-0.2 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-800">
+            <span className="px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-800">
               {metrics.approvalRate}% TỶ LỆ
             </span>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+              <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono leading-none">
                 {metrics.approvedCount}
               </span>
-              <span className="text-xs text-slate-400">đơn</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">đơn</span>
             </div>
             {metrics.rejectedCount > 0 && (
-              <span className="text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-1.5 py-0.2 rounded font-medium border border-rose-200 dark:border-rose-900">
+              <span className="text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-1.5 py-0.5 rounded font-medium border border-rose-200 dark:border-rose-900">
                 {metrics.rejectedCount} Từ chối
               </span>
             )}
           </div>
-          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 text-[11px]">
+          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
             <span>Đồng bộ TKB &amp; Kiosk</span>
             <span className="text-emerald-600 dark:text-emerald-400 font-medium">100% Khớp</span>
           </div>
@@ -1050,6 +1072,7 @@ export const LeaveRequests: React.FC = () => {
               <option value="doi_ca">Đơn xin đổi ca dạy</option>
               <option value="nghi_om">Nghỉ ốm / Thai sản (Có BHXH)</option>
               <option value="viec_rieng">Việc riêng / Không hưởng lương</option>
+              <option value="giai_trinh_cong">Giải trình chấm công (Quên quẹt thẻ)</option>
             </select>
           </div>
 
@@ -1541,6 +1564,7 @@ export const LeaveRequests: React.FC = () => {
                     <option value="doi_ca">Xin đổi ca dạy với giảng viên khác</option>
                     <option value="nghi_om">Nghỉ ốm đau / Y tế / Thai sản (Có xác nhận y tế)</option>
                     <option value="viec_rieng">Việc riêng không hưởng lương</option>
+                    <option value="giai_trinh_cong">Giải trình chấm công (Quên quẹt thẻ / Bổ sung giờ dạy)</option>
                   </select>
                 </div>
 
@@ -1783,48 +1807,48 @@ export const LeaveRequests: React.FC = () => {
                   <span>Đang tải thông tin hạn mức phép năm của cán bộ...</span>
                 </div>
               ) : selectedApplicantBalance ? (
-                <div className="p-3.5 rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-blue-50/70 dark:from-blue-950/20 dark:via-indigo-950/20 dark:to-blue-950/20 space-y-2.5">
+                <div className="p-3.5 rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-blue-900 dark:text-blue-300 flex items-center gap-1.5 uppercase tracking-wide">
                       <CalendarDays className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                      Quỹ nghỉ phép năm {selectedApplicantBalance.year || new Date().getFullYear()} của cán bộ
+                      Quỹ nghỉ phép năm {selectedApplicantBalance.year || (selectedApplicantBalance as any).nam || new Date().getFullYear()} của cán bộ
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                      selectedApplicantBalance.availableDays > 0 
+                      (selectedApplicantBalance.availableDays ?? (selectedApplicantBalance as any).so_ngay_kha_dung ?? 0) > 0 
                         ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' 
                         : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                     }`}>
-                      {selectedApplicantBalance.availableDays > 0 ? `Còn ${selectedApplicantBalance.availableDays} ngày khả dụng` : 'Đã hết hạn mức'}
+                      {(selectedApplicantBalance.availableDays ?? (selectedApplicantBalance as any).so_ngay_kha_dung ?? 0) > 0 ? `Còn ${selectedApplicantBalance.availableDays ?? (selectedApplicantBalance as any).so_ngay_kha_dung} ngày khả dụng` : 'Đã hết hạn mức'}
                     </span>
                   </div>
                   <div className="grid grid-cols-4 gap-2 text-center">
                     <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-blue-100 dark:border-blue-900/40">
-                      <span className="text-[10px] text-slate-500 block">Được hưởng</span>
+                      <span className="text-[10px] text-slate-500 block uppercase font-medium">Được hưởng</span>
                       <strong className="text-sm font-bold text-slate-900 dark:text-slate-100 font-mono">
-                        {selectedApplicantBalance.annualLeaveQuota}
+                        {selectedApplicantBalance.annualLeaveQuota ?? (selectedApplicantBalance as any).han_muc_phep_nam ?? 12}
                       </strong>
                       <span className="text-[9px] text-slate-400 block">ngày</span>
                     </div>
                     <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-blue-100 dark:border-blue-900/40">
-                      <span className="text-[10px] text-slate-500 block">Đã nghỉ</span>
+                      <span className="text-[10px] text-slate-500 block uppercase font-medium">Đã nghỉ</span>
                       <strong className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
-                        {selectedApplicantBalance.daysUsed}
+                        {selectedApplicantBalance.daysUsed ?? (selectedApplicantBalance as any).so_ngay_da_nghi ?? 0}
                       </strong>
                       <span className="text-[9px] text-slate-400 block">ngày</span>
                     </div>
                     <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-blue-100 dark:border-blue-900/40">
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 block">Chờ duyệt</span>
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 block uppercase font-medium">Chờ duyệt</span>
                       <strong className="text-sm font-bold text-amber-600 dark:text-amber-400 font-mono">
-                        {selectedApplicantBalance.pendingAnnualLeaveDays}
+                        {selectedApplicantBalance.pendingAnnualLeaveDays ?? (selectedApplicantBalance as any).so_ngay_cho_duyet ?? 0}
                       </strong>
                       <span className="text-[9px] text-slate-400 block">ngày</span>
                     </div>
                     <div className="p-2 rounded-xl bg-white/90 dark:bg-slate-900/80 border border-emerald-200 dark:border-emerald-800/60 shadow-xs">
-                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold block">Còn lại</span>
+                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold block uppercase">Còn lại</span>
                       <strong className="text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                        {selectedApplicantBalance.availableDays}
+                        {selectedApplicantBalance.availableDays ?? (selectedApplicantBalance as any).so_ngay_kha_dung ?? 0}
                       </strong>
-                      <span className="text-[9px] text-emerald-600 dark:text-emerald-400 block">ngày</span>
+                      <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block">ngày</span>
                     </div>
                   </div>
                 </div>

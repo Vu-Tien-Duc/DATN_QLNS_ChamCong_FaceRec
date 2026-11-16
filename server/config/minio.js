@@ -339,7 +339,7 @@ const deleteObject = async (objectKey) => {
 /**
  * 8.1. Xóa toàn bộ ảnh khuôn mặt thuộc về người dùng (MinIO & Local Fallback)
  * Hỗ trợ xóa theo Mã cán bộ (StaffCode), ID hoặc Đường dẫn ảnh cụ thể
- * @param {string|mongoose.Types.ObjectId} userId
+ * @param {string} userId
  * @param {string} [staffCode]
  * @param {string} [photoPath]
  */
@@ -425,11 +425,7 @@ const getPresignedUrl = async (objectKey, expirySeconds = 900) => {
   }
 
   // Fallback: Trả về endpoint API proxy an toàn nội bộ
-  if (cleanKey.startsWith('evidence/')) {
-    const filename = cleanKey.replace(/^evidence[/\\]+/, '');
-    return `/api/v1/attendance/evidence/${filename}`;
-  }
-  return `/api/upload/file/${path.basename(cleanKey)}`;
+  return `/api/tai-tep/tep/${path.basename(cleanKey)}`;
 };
 
 /**

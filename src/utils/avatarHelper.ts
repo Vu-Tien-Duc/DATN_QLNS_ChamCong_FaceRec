@@ -115,11 +115,13 @@ export function getCleanAvatarUrl(userOrUrl: any): string | null {
 
   // Chuẩn hoá URL
   if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-  if (raw.startsWith('/api/')) return raw;
-  if (raw.startsWith('/uploads/')) return `/api${raw}`;
-  if (raw.startsWith('uploads/')) return `/api/${raw}`;
+  if (raw.startsWith('/api/tai-tep/tep/')) return raw;
+  if (raw.startsWith('/uploads/') || raw.startsWith('uploads/')) {
+    const fileName = raw.split('/').pop();
+    return fileName ? `/api/tai-tep/tep/${fileName}` : '';
+  }
 
-  return `/api/upload/file/${raw}`;
+  return `/api/tai-tep/tep/${raw}`;
 }
 
 /**

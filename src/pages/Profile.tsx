@@ -33,8 +33,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
-import { authApi } from '../api/auth.api';
-import { userApi } from '../api/user.api';
+import { authApi } from '../api/xacThuc.api';
+import { userApi } from '../api/nguoiDung.api';
 import { UserAvatar } from '../components/ui/UserAvatar';
 
 export const Profile: React.FC = () => {
@@ -56,6 +56,9 @@ export const Profile: React.FC = () => {
     address: '',
     dateOfBirth: '',
     gender: 'nam',
+    bio: '',
+    researchInterests: '',
+    officeRoom: '',
   });
 
   // Form đổi mật khẩu
@@ -78,6 +81,11 @@ export const Profile: React.FC = () => {
         address: user.address || '',
         dateOfBirth: user.dateOfBirth ? user.dateOfBirth.slice(0, 10) : '',
         gender: user.gender || 'nam',
+        bio: (user as any)?.tieu_su || (user as any)?.bio || '',
+        researchInterests: Array.isArray((user as any)?.huong_nghien_cuu)
+          ? (user as any).huong_nghien_cuu.join(', ')
+          : ((user as any)?.researchInterests || ''),
+        officeRoom: (user as any)?.phong_lam_viec || (user as any)?.officeRoom || '',
       });
       setPreviewAvatar(user.avatar || null);
     }
@@ -158,6 +166,11 @@ export const Profile: React.FC = () => {
         address: formData.address,
         gender: formData.gender as any,
         dateOfBirth: formData.dateOfBirth,
+        tieu_su: formData.bio,
+        huong_nghien_cuu: formData.researchInterests
+          ? formData.researchInterests.split(',').map((s) => s.trim()).filter(Boolean)
+          : [],
+        phong_lam_viec: formData.officeRoom,
       });
       await fetchMe();
       toast.success('Cập nhật hồ sơ cá nhân thành công!');
@@ -699,6 +712,69 @@ export const Profile: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75 disabled:cursor-not-allowed"
                   />
+                </div>
+
+                {/* Phần Hồ Sơ Khoa Học Công Khai (Phenikaa Showcase) */}
+                <div className="md:col-span-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <GraduationCap className="w-4 h-4 text-amber-500" />
+                      <span>Hồ Sơ Khoa Học & Danh Bạ Công Khai (ĐH Nguyễn Trãi - NTU)</span>
+                    </span>
+                    <a
+                      href={`/giang-vien/${user?._id || (user as any)?.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Xem trang công khai của tôi</span>
+                    </a>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Phòng Làm Việc Tại Campus
+                      </label>
+                      <input
+                        type="text"
+                        disabled={!isEditing}
+                        placeholder="VD: Phòng 402, Tòa A1, ĐH Nguyễn Trãi (NTU)"
+                        value={formData.officeRoom}
+                        onChange={(e) => setFormData({ ...formData, officeRoom: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75 disabled:cursor-not-allowed"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Hướng Nghiên Cứu Chính (Cách nhau bằng dấu phẩy)
+                      </label>
+                      <input
+                        type="text"
+                        disabled={!isEditing}
+                        placeholder="VD: Trí tuệ Nhân tạo, Thị giác máy tính, IoT"
+                        value={formData.researchInterests}
+                        onChange={(e) => setFormData({ ...formData, researchInterests: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75 disabled:cursor-not-allowed"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Tiểu Sử Khoa Học & Giới Thiệu Bản Thân
+                      </label>
+                      <textarea
+                        rows={3}
+                        disabled={!isEditing}
+                        placeholder="Tóm tắt quá trình đào tạo, chuyên ngành và các thành tựu khoa học tiêu biểu..."
+                        value={formData.bio}
+                        onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75 disabled:cursor-not-allowed resize-none"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 

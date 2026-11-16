@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
-import { departmentApi } from '../api/department.api';
+import { departmentApi } from '../api/phongBan.api';
 import * as XLSX from 'xlsx';
 import { DepartmentSelect, DepartmentItem } from '../components/ui/DepartmentSelect';
 import { Portal } from '../components/ui/Portal';
@@ -41,9 +41,10 @@ import {
   PayrollRecord,
   PayrollSummaryData,
   GeneratePayrollPayload,
-} from '../api/payroll.api';
+} from '../api/phieuLuong.api';
 import { hasRole, isAdmin } from '../utils/rbac';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { PageHeader } from '../components/ui/PageHeader';
 
 // =============================================================================
 // PRINT STYLES FOR PAYSLIP
@@ -489,42 +490,34 @@ export const Payroll: React.FC = () => {
     <div className="space-y-4" data-purpose="payroll-management-dashboard">
       <style>{printStyles}</style>
       {/* =========================================================================
-          TOP CONTEXT HEADER BAR (Matching code.html)
+          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
          ========================================================================= */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex flex-col gap-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-base font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-              Quản Lý Bảng Lương &amp; Phiếu Lương
-            </h1>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800">
-              Nghị Định 73/2024/NĐ-CP
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-3xl">
-            Tính lương tự động, phụ cấp chức vụ, thâm niên nhà giáo, thù lao vượt giờ giảng dạy và khấu trừ thuế TNCN lũy tiến 5 bậc.
-          </p>
-        </div>
-
-        {/* Reference Badges on Right */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 font-medium shadow-xs">
-            <span className="text-slate-400 font-mono text-[11px]">Lương cơ sở:</span>
-            <span className="font-mono font-bold text-slate-900 dark:text-slate-100">2.340.000 đ</span>
-          </div>
-          {summary?.isLocked ? (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-semibold shadow-xs">
-              <Lock className="w-3.5 h-3.5" />
-              <span>Đã Khóa Sổ</span>
+      <PageHeader
+        title="Quản Lý Bảng Lương & Phiếu Lương Cán Bộ"
+        subtitle="Tính lương tự động, phụ cấp chức vụ, thâm niên nhà giáo, thù lao vượt giờ giảng dạy và khấu trừ thuế TNCN lũy tiến theo Nghị Định 73/2024/NĐ-CP."
+        icon={<CreditCard className="w-5 h-5 text-emerald-600" />}
+        badge="Nghị Định 73/2024/NĐ-CP"
+        badgeVariant="emerald"
+        actions={
+          <>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 font-medium shadow-xs">
+              <span className="text-slate-400 font-mono text-[11px]">Lương cơ sở:</span>
+              <span className="font-mono font-bold text-slate-900 dark:text-slate-100">2.340.000 đ</span>
             </div>
-          ) : (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-semibold shadow-xs">
-              <FileText className="w-3.5 h-3.5" />
-              <span>Sổ Dự Thảo (Chưa Khóa)</span>
-            </div>
-          )}
-        </div>
-      </div>
+            {summary?.isLocked ? (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-semibold shadow-xs">
+                <Lock className="w-3.5 h-3.5" />
+                <span>Đã Khóa Sổ</span>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-semibold shadow-xs">
+                <FileText className="w-3.5 h-3.5" />
+                <span>Sổ Dự Thảo</span>
+              </div>
+            )}
+          </>
+        }
+      />
 
       {/* =========================================================================
           NAVIGATION TABS (Matching code.html)

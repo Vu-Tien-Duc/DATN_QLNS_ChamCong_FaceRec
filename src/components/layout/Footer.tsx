@@ -8,7 +8,7 @@ export const Footer: React.FC = () => {
         <div className="flex items-center gap-2">
           <img src="/logo.png" alt="NTU" className="w-5 h-5 object-contain" />
           <span className="font-semibold text-slate-700 dark:text-slate-300">
-            Hệ Thống Quản Lý Nhân Sự & Chấm Công - Đại Học Nguyễn Trãi (NTU)
+            Ứng dụng thị giác máy tính xây dựng hệ thống chấm công nhân sự - Đại Học Nguyễn Trãi (NTU)
           </span>
           <span className="hidden md:inline">• Đồ Án Tốt Nghiệp 2026</span>
         </div>

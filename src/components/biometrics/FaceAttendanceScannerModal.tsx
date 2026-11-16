@@ -18,8 +18,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import confetti from 'canvas-confetti';
-import { attendanceApi } from '../../api/attendance.api';
-import { faceApi, DetectPoseResponse } from '../../api/face.api';
+import { attendanceApi } from '../../api/chamCong.api';
+import { faceApi, DetectPoseResponse } from '../../api/khuonMat.api';
 import { audioFeedback } from '../../utils/audioFeedback';
 import { useAuthStore } from '../../store/useAuthStore';
 import { getRoleLabel, isSuperAdmin } from '../../utils/rbac';

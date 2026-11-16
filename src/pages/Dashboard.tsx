@@ -40,10 +40,10 @@ import { DepartmentSelect, DepartmentItem } from '../components/ui/DepartmentSel
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { apiClient, extractArray } from '../api/apiClient';
-import { attendanceApi, AttendanceHistoryItem } from '../api/attendance.api';
-import { leaveRequestApi, LeaveRequestData } from '../api/leaveRequest.api';
-import { payrollApi } from '../api/payroll.api';
-import { scheduleApi } from '../api/schedule.api';
+import { attendanceApi, AttendanceHistoryItem } from '../api/chamCong.api';
+import { leaveRequestApi, LeaveRequestData } from '../api/donNghiPhep.api';
+import { payrollApi } from '../api/phieuLuong.api';
+import { scheduleApi } from '../api/lichTrinh.api';
 import { useSocketEvent, useSocketStatus } from '../api/socket';
 import { FaceAttendanceScannerModal } from '../components/biometrics/FaceAttendanceScannerModal';
 import { ScheduleItem } from '../types';
@@ -191,8 +191,8 @@ export const Dashboard: React.FC = () => {
 
       // 1. Tải danh sách nhân sự & đơn vị
       const [usersRes, deptsRes] = await Promise.all([
-        apiClient.get('/users?limit=100').catch(() => ({ data: { data: [] } })),
-        apiClient.get('/departments?tree=false').catch(() => ({ data: { data: [] } })),
+        apiClient.get('/nguoi-dung?gioi_han=100').catch(() => ({ data: { data: [] } })),
+        apiClient.get('/phong-ban?cay=false').catch(() => ({ data: { data: [] } })),
       ]);
       const usersList = extractArray(usersRes.data);
       const deptsList = extractArray(deptsRes.data);
@@ -562,20 +562,20 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* =====================================================================
-          1. CLEAN COMPACT PAGE HEADER & ACTIONS (Tối giản, không màu mè)
+          1. CLEAN COMPACT PAGE HEADER & ACTIONS (Chuẩn hóa Typography & Bố cục CSDL v2.5)
       ===================================================================== */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-              Bảng Điều Khiển Giám Sát
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+              Bảng Điều Khiển Giám Sát Trung Tâm
             </h1>
-            <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
               CSDL v2.5
             </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Giám sát chấm công nhận diện khuôn mặt AI, phê duyệt đơn từ và lịch trình toàn trường
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-3xl">
+            Giám sát chấm công nhận diện khuôn mặt AI, phê duyệt đơn từ và lịch trình toàn trường Đại học Nguyễn Trãi.
           </p>
         </div>
 

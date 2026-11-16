@@ -15,7 +15,7 @@ class LivenessChecker:
         x1, y1, x2, y2 = [int(v) for v in bbox]
         crop = image_bgr[max(0, y1) : min(h, y2), max(0, x1) : min(w, x2)]
         if crop.size == 0 or crop.shape[0] < 10 or crop.shape[1] < 10:
-            return {"is_live": True, "score": 1.0, "status": "bypass"}
+            return {"is_live": False, "score": 0.0, "status": "invalid_crop"}
 
         # 1. Độ sắc nét và moiré qua Laplacian
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)

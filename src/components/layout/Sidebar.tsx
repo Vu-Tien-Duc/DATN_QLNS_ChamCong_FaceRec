@@ -20,6 +20,7 @@ import {
   LogOut,
   X,
   CalendarDays,
+  GraduationCap,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { apiClient } from '../../api/apiClient';
@@ -72,8 +73,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     let isMounted = true;
     const fetchPendingLeave = async () => {
       try {
-        const res = await apiClient.get('/leave-requests', {
-          params: { status: 'pending' },
+        const res = await apiClient.get('/don-nghi-phep', {
+          params: { trang_thai: 'pending' },
         });
         const raw = res.data?.data || res.data;
         const list = Array.isArray(raw) ? raw : raw?.items || raw?.leaveRequests || [];
@@ -104,10 +105,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       (user as any).anh_khuon_mat;
     if (!raw || typeof raw !== 'string') return null;
     if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-    if (raw.startsWith('/api/')) return raw;
-    if (raw.startsWith('/uploads/')) return `/api${raw}`;
-    if (raw.startsWith('uploads/')) return `/api/${raw}`;
-    return `/api/upload/file/${raw}`;
+    if (raw.startsWith('/api/tai-tep/tep/')) return raw;
+    if (raw.startsWith('/uploads/') || raw.startsWith('uploads/')) {
+      const fileName = raw.split('/').pop();
+      return fileName ? `/api/tai-tep/tep/${fileName}` : null;
+    }
+    return `/api/tai-tep/tep/${raw}`;
   }, [user, avatarLoadError]);
 
   // Check if current user has access to a menu item based on allowed & excluded roles
@@ -127,6 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { name: 'Bảng Điều Khiển', path: '/', icon: LayoutDashboard },
         { name: 'Điểm Danh AI Live', path: '/face-attendance', icon: Camera, badge: 'Live', badgeVariant: 'danger' },
+        { name: 'Cổng Giảng Viên (Public)', path: '/giang-vien', icon: GraduationCap, badge: 'NTU', badgeVariant: 'brand' },
       ],
     },
     {
@@ -142,7 +146,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           name: 'Đăng Ký Face ID (5 Góc)',
           path: '/face-registration',
           icon: Sparkles,
-          roles: ['admin', 'bgh'],
+          roles: ['admin', 'bgh', 'tccb'],
         },
         {
           name: 'Quản Lý Điểm Danh',

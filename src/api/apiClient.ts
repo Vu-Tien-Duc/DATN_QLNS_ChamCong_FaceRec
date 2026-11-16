@@ -1,4 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { normalizeBackendData, normalizeFrontendPayload, normalizeQueryParams } from '../utils/normalizeBackendData';
 
 // Định nghĩa kiểu phản hồi chuẩn từ Backend CSDL v2.5
 export interface ApiResponse<T = any> {
@@ -17,12 +18,18 @@ export const apiClient = axios.create({
   },
 });
 
-// Request Interceptor: Gắn Bearer Token
+// Request Interceptor: Gắn Bearer Token & Chuẩn hóa Payload / Query Params
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('token');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    if (config.data && !(config.data instanceof FormData)) {
+      config.data = normalizeFrontendPayload(config.data);
+    }
+    if (config.params) {
+      config.params = normalizeQueryParams(config.params);
     }
     return config;
   },
@@ -109,7 +116,12 @@ export function formatFriendlyErrorMessage(msg?: string): string {
 }
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response?.data) {
+      response.data = normalizeBackendData(response.data);
+    }
+    return response;
+  },
   async (error: AxiosError<ApiResponse>) => {
     // Tự động làm sạch và chuẩn hóa thông báo lỗi từ máy chủ
     if (error.response?.data?.message) {
@@ -122,8 +134,8 @@ apiClient.interceptors.response.use(
     if (
       !error.response ||
       error.response.status !== 401 ||
-      originalRequest?.url?.includes('/auth/login') ||
-      originalRequest?.url?.includes('/auth/refresh')
+      originalRequest?.url?.includes('/xac-thuc/dang-nhap') ||
+      originalRequest?.url?.includes('/xac-thuc/lam-moi-token')
     ) {
       return Promise.reject(error);
     }
@@ -162,12 +174,12 @@ apiClient.interceptors.response.use(
 
     try {
       const res = await axios.post<ApiResponse<{ token: string; refreshToken?: string }>>(
-        '/api/auth/refresh-token',
-        { refreshToken }
+        '/api/xac-thuc/lam-moi-token',
+        { ma_lam_moi: refreshToken }
       );
 
       const newToken = res.data.data?.token;
-      const newRefreshToken = res.data.data?.refreshToken;
+      const newRefreshToken = (res.data.data as any)?.ma_lam_moi || res.data.data?.refreshToken;
 
       if (newToken) {
         localStorage.setItem('token', newToken);

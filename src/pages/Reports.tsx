@@ -13,6 +13,7 @@ import {
   Search,
   Filter,
   FileSpreadsheet,
+  BarChart3,
   Layers,
   ChevronDown,
   PieChart as PieIcon,
@@ -43,10 +44,11 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { PageHeader } from '../components/ui/PageHeader';
 import { UserAvatar } from '../components/ui/UserAvatar';
 import { DepartmentSelect } from '../components/ui/DepartmentSelect';
 import * as XLSX from 'xlsx';
-import { departmentApi } from '../api/department.api';
+import { departmentApi } from '../api/phongBan.api';
 import { DepartmentItem } from '../types';
 import {
   reportApi,
@@ -54,7 +56,7 @@ import {
   MonthlyReportResponse,
   ExportReportDataResponse,
   MonthlyUserReportItem,
-} from '../api/report.api';
+} from '../api/baoCao.api';
 
 // =============================================================================
 // FORMATTERS & CONSTANTS
@@ -317,7 +319,7 @@ export const Reports: React.FC = () => {
       // 1. SHEET 1: BÁO CÁO TỔNG QUAN
       const overviewRows = [
         ['BÁO CÁO TỔNG QUAN CHẤM CÔNG VÀ CHUYÊN CẦN'],
-        ['Hệ Thống Quản Lý Nhân Sự & Chấm Công Face Recognition (CSDL v2.5)'],
+        ['Ứng dụng thị giác máy tính xây dựng hệ thống chấm công nhân sự - Đại Học Nguyễn Trãi (NTU)'],
         [],
         ['CHỈ TIÊU BÁO CÁO', 'GIÁ TRỊ'],
         ['Kỳ báo cáo', overview.period || `Tháng ${selectedMonth}/${selectedYear}`],
@@ -487,20 +489,14 @@ export const Reports: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 animate-fade-in">
-      {/* =====================================================================
-          1. HEADER CARD: BÁO CÁO & THỐNG KÊ
-      ===================================================================== */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          Báo Cáo & Thống Kê Chuyên Sâu
-          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800">
-            Tháng {String(selectedMonth).padStart(2, '0')}/{selectedYear}
-          </span>
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Tổng hợp tỷ lệ chuyên cần, phân tích tần suất đi muộn, thống kê nghỉ phép và hỗ trợ trích xuất báo cáo Excel 5 Sheets chuẩn hóa phục vụ Ban Giám Hiệu và các Khoa.
-        </p>
-      </div>
+      {/* 1. HEADER CARD: BÁO CÁO & THỐNG KÊ (Chuẩn hóa Typography & Bố cục CSDL v2.5) */}
+      <PageHeader
+        title="Báo Cáo & Thống Kê Chuyên Sâu"
+        subtitle="Tổng hợp tỷ lệ chuyên cần, phân tích tần suất đi muộn, thống kê nghỉ phép và hỗ trợ trích xuất báo cáo Excel 5 Sheets chuẩn hóa phục vụ Ban Giám Hiệu và các Khoa."
+        icon={<BarChart3 className="w-5 h-5 text-brand-600" />}
+        badge={`Tháng ${String(selectedMonth).padStart(2, '0')}/${selectedYear}`}
+        badgeVariant="brand"
+      />
 
       {/* =====================================================================
           2. FILTER CONTROL BAR (THÁNG, NĂM, KHOA / PHÒNG BAN)
@@ -1072,7 +1068,7 @@ export const Reports: React.FC = () => {
                   Xem Trước Cấu Trúc File Excel 5 Sheets
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Dữ liệu trích xuất trực tiếp từ API `/api/reports/export-data` theo CSDL v2.5.
+                  Dữ liệu trích xuất trực tiếp từ API `/api/bao-cao/du-lieu-xuat` theo CSDL v2.5.
                 </p>
               </div>
 

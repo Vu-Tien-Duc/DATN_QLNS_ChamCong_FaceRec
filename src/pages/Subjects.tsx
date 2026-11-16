@@ -27,16 +27,17 @@ import * as XLSX from 'xlsx';
 import { DepartmentSelect } from '../components/ui/DepartmentSelect';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
-import { departmentApi } from '../api/department.api';
+import { departmentApi } from '../api/phongBan.api';
 import { DepartmentItem } from '../types';
 import {
   subjectApi,
   SubjectItem,
   CreateSubjectPayload,
   UpdateSubjectPayload,
-} from '../api/subject.api';
+} from '../api/monHoc.api';
 import { isAdmin, hasRole } from '../utils/rbac';
 import { Portal } from '../components/ui/Portal';
+import { PageHeader } from '../components/ui/PageHeader';
 
 export const Subjects: React.FC = () => {
   const { user } = useAuthStore();
@@ -356,6 +357,17 @@ export const Subjects: React.FC = () => {
 
   return (
     <div className="space-y-5" data-purpose="academic-courses-dashboard">
+      {/* =========================================================================
+          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+         ========================================================================= */}
+      <PageHeader
+        title="Quản Lý Học Phần & Môn Học Đào Tạo"
+        subtitle="Danh mục học phần tín chỉ, số tiết lý thuyết, thực hành và phân bổ theo từng Khoa / Bộ môn chuyên trách."
+        icon={<BookOpen className="w-5 h-5 text-indigo-600" />}
+        badge="CSDL v2.5"
+        badgeVariant="indigo"
+      />
+
       {/* =========================================================================
           BEGIN: KpiMetricsCards (4 Cards matching code.html - Dark Mode Enabled)
          ========================================================================= */}

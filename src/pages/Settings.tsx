@@ -33,10 +33,11 @@ import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
 import { Portal } from '../components/ui/Portal';
 import { Badge } from '../components/ui/Badge';
+import { PageHeader } from '../components/ui/PageHeader';
 import {
   systemConfigApi,
   SystemConfigItem,
-} from '../api/systemConfig.api';
+} from '../api/cauHinhHeThong.api';
 
 // =============================================================================
 // GROUP METADATA & HELPER FORMATTERS
@@ -503,18 +504,14 @@ export const Settings: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* 1. HEADER SECTION */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          Cấu Hình 19 Tham Số Hệ Thống Tập Trung
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-            CSDL v2.5
-          </span>
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Quản trị toàn bộ tham số vận hành: Ngưỡng AI, Geofence GPS, Lương cơ sở 2.53tr, Thuế TNCN và Thời hạn lưu trữ.
-        </p>
-      </div>
+      {/* 1. HEADER SECTION (Chuẩn hóa Typography & Bố cục CSDL v2.5) */}
+      <PageHeader
+        title="Cấu Hình Tham Số Hệ Thống Tập Trung"
+        subtitle="Quản trị toàn bộ tham số vận hành: Ngưỡng AI, Geofence GPS, Lương cơ sở 2.53tr, Thuế TNCN và Thời hạn lưu trữ."
+        icon={<SettingsIcon className="w-5 h-5 text-indigo-600" />}
+        badge="CSDL v2.5"
+        badgeVariant="indigo"
+      />
 
       {/* 2. BỘ 4 THẺ KPI CẤU HÌNH TỔNG QUAN */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -30,12 +30,13 @@ import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/useAuthStore';
 import { Portal } from '../components/ui/Portal';
+import { PageHeader } from '../components/ui/PageHeader';
 import {
   shiftApi,
   ShiftItem,
   CreateShiftPayload,
   UpdateShiftPayload,
-} from '../api/shift.api';
+} from '../api/caLamViec.api';
 import { hasRole } from '../utils/rbac';
 
 // =============================================================================
@@ -407,6 +408,17 @@ export const Shifts: React.FC = () => {
 
   return (
     <div className="space-y-4" data-purpose="shift-configuration-dashboard">
+      {/* =========================================================================
+          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+         ========================================================================= */}
+      <PageHeader
+        title="Quản Lý Ca Làm Việc & Khung Giờ Giảng Dạy"
+        subtitle="Cấu hình khung giờ bắt đầu, kết thúc, giới hạn đi muộn về sớm và khoảng cách cho phép chấm công theo từng ca."
+        icon={<Clock className="w-5 h-5 text-indigo-600" />}
+        badge="CSDL v2.5"
+        badgeVariant="indigo"
+      />
+
       {/* =========================================================================
           KPI METRICS STRIP (4 Compact Cards matching code.html)
          ========================================================================= */}

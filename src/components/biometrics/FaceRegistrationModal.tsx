@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import toast from 'react-hot-toast';
-import { faceApi, DetectPoseResponse } from '../../api/face.api';
+import { faceApi, DetectPoseResponse } from '../../api/khuonMat.api';
 import { audioFeedback } from '../../utils/audioFeedback';
 import { Portal } from '../ui/Portal';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -1399,9 +1399,9 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
 
     try {
       const formData = new FormData();
-      formData.append('employee_id', currentEmployee._id || currentEmployee.email || currentEmployee.staffCode);
-      if (currentEmployee.fullName) formData.append('full_name', currentEmployee.fullName);
-      formData.append('consentAgreed', 'true');
+      formData.append('ma_can_bo', currentEmployee._id || currentEmployee.email || currentEmployee.staffCode);
+      if (currentEmployee.fullName) formData.append('ho_ten', currentEmployee.fullName);
+      formData.append('dong_y_thu_thap', 'true');
 
       for (const [key, item] of Object.entries(capturedImages)) {
         if (!item) continue;

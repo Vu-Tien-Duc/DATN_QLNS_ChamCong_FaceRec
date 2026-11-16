@@ -41,7 +41,7 @@ import {
   attendanceApi,
   AttendanceHistoryItem,
   AttendancePunchLogItem,
-} from '../api/attendance.api';
+} from '../api/chamCong.api';
 import { FaceAttendanceScannerModal } from '../components/biometrics/FaceAttendanceScannerModal';
 
 // =============================================================================
@@ -189,11 +189,9 @@ function resolveMediaUrl(url?: string): string {
   if (!url) return '';
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   if (url.startsWith('data:image/')) return url;
-  if (url.startsWith('/api/')) return url;
-  if (url.startsWith('/uploads/')) return `/api${url}`;
-  if (url.startsWith('uploads/')) return `/api/${url}`;
-  const clean = url.replace(/^\/+/, '');
-  return `/api/uploads/${clean}`;
+  if (url.startsWith('/api/tai-tep/tep/')) return url;
+  const clean = url.split('/').pop()?.replace(/^\/+/, '') || '';
+  return clean ? `/api/tai-tep/tep/${clean}` : '';
 }
 
 // =============================================================================

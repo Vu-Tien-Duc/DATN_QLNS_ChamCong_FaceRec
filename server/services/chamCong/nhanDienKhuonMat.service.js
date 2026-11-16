@@ -1,0 +1,531 @@
+/**
+ * Service Điểm Danh Nhận Diện Khuôn Mặt (Face Recognition Attendance Service)
+ * Chuẩn hóa Sequelize + SQL Server 3NF: Động cơ 1:N RAM Index, Bộ lọc Margin Top 1-2 >= 0.05,
+ * Cooldown 60s chống quét lặp, Geofence GPS Haversine và Lưu vết Audit/PunchLog.
+ */
+const { Op } = require('sequelize');
+const {
+  NhatKyChamCong,
+  LuotQuetChamCong,
+  LichTrinh,
+  CaLamViec,
+  NguoiDung,
+  PhongBan,
+  NhatKyKiemToan,
+} = require('../../models');
+const { recognizeFace, ensureRamCacheWarm } = require('../khuonMat/ketNoiDichVuKhuonMat');
+const { validateGeofence, resolveUserGeofenceTargets } = require('../../utils/hoTroChamCong');
+const { storeAttendanceEvidence, removeAttendanceEvidence } = require('../../utils/anhMinhChungChamCong');
+const { runInTransaction } = require('../../utils/giaoDichDb');
+const { isValidUuid } = require('../../utils/hoTroSequelize');
+const { evaluateUserScheduleForCheckIn } = require('./dieuKienLichChamCong.service');
+const {
+  ServiceError,
+  calculateActualTeachingPeriods,
+  getVietnamDayRange,
+  calculateCheckOutStatus,
+} = require('../../utils/thoiGianChamCong.utils');
+const {
+  checkAndSetCooldown,
+  getCooldownRemaining,
+  resetCooldown,
+} = require('../../config/redis');
+const { addPunchJob } = require('../../queues/hangDoiChamCong');
+
+// In-memory Map quản lý Cooldown chống quét lặp 60 giây (Fallback song song cùng Redis)
+const scanCooldownMap = new Map();
+const COOLDOWN_MS = 60 * 1000;
+
+/**
+ * Xử lý luồng Điểm danh Khuôn mặt Realtime (1:N qua Face Service)
+ */
+const processFaceAttendance = async ({
+  imageBuffer,
+  location = null,
+  deviceId = 'MAY_CHAM_CONG_CAMERA',
+  reqIp = '127.0.0.1',
+  verifyOnly = false,
+  useQueue = false,
+  requestedAction = null,
+}) => {
+  if (!imageBuffer) {
+    throw new ServiceError('Vui lòng cung cấp hình ảnh khuôn mặt từ camera.', 400);
+  }
+
+  // 1. Tự phục hồi RAM Cache nếu Face Service vừa khởi động lại
+  await ensureRamCacheWarm();
+
+  // 2. Gọi Face Service nhận diện 1:N trên RAM Vector Store
+  const aiResult = await recognizeFace({ imageBuffer });
+
+  if (!aiResult.matched) {
+    const primaryReason = (aiResult.reasons && aiResult.reasons[0]) || 'Khuôn mặt không khớp với hồ sơ nhân sự nào.';
+
+    let errorCode = 'FACE_NOT_MATCHED';
+    let message = primaryReason;
+
+    if (primaryReason.includes('AMBIGUOUS_MATCH')) {
+      errorCode = 'AMBIGUOUS_MATCH';
+      message =
+        'Nhận diện mơ hồ: Độ chênh lệch giữa 2 ứng viên tương đồng nhất nhỏ hơn 0.05. Hệ thống từ chối để chống nhận diện nhầm.';
+    } else if (primaryReason.includes('SPOOF_DETECTED')) {
+      errorCode = 'LIVENESS_FAILED';
+      message = 'Phát hiện dấu hiệu giả mạo sinh trắc học (ảnh in hoặc màn hình kỹ thuật số).';
+    } else if (primaryReason.includes('MULTIPLE_FACES')) {
+      errorCode = 'MULTIPLE_FACES';
+      message = 'Phát hiện nhiều người trong khung hình. Vui lòng chấm công từng người.';
+    }
+
+    return {
+      success: false,
+      matched: false,
+      message,
+      errorCode,
+      similarity: aiResult.similarity || 0,
+    };
+  }
+
+  const rawUserId = aiResult.userId || aiResult.employee_id;
+  let user = null;
+  if (rawUserId) {
+    const userInclude = [{ model: PhongBan, as: 'don_vi_chinh', attributes: ['id', 'ten_phong_ban'] }];
+    if (isValidUuid(String(rawUserId))) {
+      user = await NguoiDung.findByPk(String(rawUserId), { include: userInclude });
+    }
+    if (!user) {
+      user = await NguoiDung.findOne({
+        where: {
+          [Op.or]: [
+            { ma_can_bo: String(rawUserId) },
+            { email: String(rawUserId) },
+          ],
+        },
+        include: userInclude,
+      });
+    }
+  }
+
+  if (!user || user.kich_hoat === false) {
+    throw new ServiceError('Tài khoản người dùng không tồn tại hoặc đã bị khóa.', 403);
+  }
+
+  const userId = user.id;
+
+  // Nếu là chế độ verifyOnly: Chỉ trả về thông tin nhận diện để hiển thị popup xác nhận
+  if (verifyOnly) {
+    const departmentName = user.don_vi_chinh?.ten_phong_ban || '';
+
+    return {
+      success: true,
+      matched: true,
+      userId,
+      user: {
+        id: userId,
+        fullName: user.ho_ten,
+        email: user.email,
+        role: user.vai_tro_chinh,
+        avatar: user.anh_dai_dien,
+        staffCode: user.ma_can_bo || '',
+        department: departmentName,
+      },
+      similarity: aiResult.similarity,
+      confidence: aiResult.confidence,
+      message: `Đã nhận diện: ${user.ho_ten}`,
+    };
+  }
+
+  // 3. Kiểm tra Cooldown 60 giây chống quét lặp liên tiếp
+  const userKey = String(userId);
+  const redisRemaining = await getCooldownRemaining(userKey);
+  const lastScanTime = scanCooldownMap.get(userKey);
+  const nowMs = Date.now();
+  const memoryRemaining =
+    lastScanTime && nowMs - lastScanTime < COOLDOWN_MS
+      ? Math.ceil((COOLDOWN_MS - (nowMs - lastScanTime)) / 1000)
+      : 0;
+
+  const remainingSeconds = Math.max(redisRemaining, memoryRemaining);
+  if (remainingSeconds > 0) {
+    throw new ServiceError(
+      `Bạn vừa quét chấm công thành công cách đây chưa đầy 60 giây. Vui lòng chờ ${remainingSeconds}s để tránh trùng lặp.`,
+      409,
+      'RECENTLY_SCANNED',
+      { retryAfterSeconds: remainingSeconds }
+    );
+  }
+
+  const now = new Date();
+  const { dateStr } = getVietnamDayRange(now);
+  const yesterdayStr = getVietnamDayRange(new Date(now.getTime() - 24 * 60 * 60 * 1000)).dateStr;
+  const overnightCutoff = new Date(now.getTime() - 18 * 60 * 60 * 1000);
+
+  // Tra cứu bản ghi chấm công đang mở (hỗ trợ cả ca qua đêm)
+  let openLog = await NhatKyChamCong.findOne({
+    where: {
+      nguoi_dung_id: userId,
+      ngay_cong: dateStr,
+      thoi_gian_vao: { [Op.ne]: null },
+      thoi_gian_ra: null,
+    },
+    include: [{ model: CaLamViec, as: 'ca' }],
+    order: [['tao_luc', 'DESC']],
+  });
+
+  if (!openLog) {
+    openLog = await NhatKyChamCong.findOne({
+      where: {
+        nguoi_dung_id: userId,
+        ngay_cong: { [Op.in]: [dateStr, yesterdayStr] },
+        thoi_gian_vao: { [Op.gte]: overnightCutoff },
+        thoi_gian_ra: null,
+      },
+      include: [{ model: CaLamViec, as: 'ca' }],
+      order: [['thoi_gian_vao', 'DESC']],
+    });
+  }
+
+  // Bản ghi hoàn thành gần nhất trong ngày (nếu có)
+  const lastFinishedLog = await NhatKyChamCong.findOne({
+    where: {
+      nguoi_dung_id: userId,
+      ngay_cong: dateStr,
+      thoi_gian_ra: { [Op.ne]: null },
+    },
+    include: [{ model: CaLamViec, as: 'ca' }],
+    order: [['thoi_gian_ra', 'DESC']],
+  });
+
+  // Quyết định hành động: check_in hay check_out (kiểm tra trước khi ghi cooldown/ảnh minh chứng)
+  let actionType = requestedAction;
+
+  if (actionType === 'check_in') {
+    if (openLog) {
+      const inTimeStr = new Date(openLog.thoi_gian_vao).toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      throw new ServiceError(
+        `Cán bộ ${user.ho_ten} đang có một ca làm việc (vào ca lúc ${inTimeStr}) chưa được tan ca. Vui lòng chuyển sang 'Tan Ca' nếu muốn check-out.`,
+        409,
+        'ATTENDANCE_ALREADY_CHECKED_IN'
+      );
+    }
+    actionType = 'check_in';
+  } else if (actionType === 'check_out') {
+    if (!openLog) {
+      if (lastFinishedLog) {
+        const outTimeStr = new Date(lastFinishedLog.thoi_gian_ra).toLocaleTimeString('vi-VN', {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        throw new ServiceError(
+          `Cán bộ ${user.ho_ten} đã thực hiện tan ca gần nhất hôm nay lúc ${outTimeStr} rồi.`,
+          409,
+          'ATTENDANCE_ALREADY_CHECKED_OUT'
+        );
+      }
+      throw new ServiceError(
+        `Không tìm thấy lượt vào ca nào hôm nay của cán bộ ${user.ho_ten} để tan ca. Vui lòng điểm danh vào ca trước.`,
+        404,
+        'ATTENDANCE_NO_OPEN_RECORD'
+      );
+    }
+    actionType = 'check_out';
+  } else {
+    actionType = openLog ? 'check_out' : 'check_in';
+  }
+
+  if (actionType === 'check_out' && openLog && openLog.da_chot) {
+    throw new ServiceError('Bản ghi chấm công đã bị khóa sổ lương, không thể check-out.', 409, 'ATTENDANCE_LOCKED');
+  }
+
+  let scheduleEval = null;
+  if (actionType === 'check_in') {
+    scheduleEval = await evaluateUserScheduleForCheckIn(userId, null, user);
+    if (!scheduleEval || !scheduleEval.canCheckIn) {
+      const r = (user.vai_tro_chinh || '').toLowerCase();
+      const userPrefix = r === 'giang_vien' ? 'Giảng viên' : 'Cán bộ';
+      throw new ServiceError(
+        scheduleEval?.message ||
+          `${userPrefix} ${user.ho_ten} hôm nay không có lịch phân công giảng dạy hoặc ca làm việc nào trên hệ thống. Không thể chấm công.`,
+        400,
+        scheduleEval?.status || 'NO_SCHEDULE'
+      );
+    }
+  }
+
+  // 4. Xác thực Geofence GPS & Mạng trường (ưu tiên tọa độ phòng học nếu có lịch)
+  const targetScheduleId = actionType === 'check_out' ? openLog?.lich_trinh_id : scheduleEval?.selectedSchedule?.id;
+  const geoTargets = await resolveUserGeofenceTargets(userId, targetScheduleId);
+  const geoCheck = validateGeofence(location, geoTargets, null, reqIp);
+
+  // Chỉ ghi cooldown và lưu ảnh minh chứng sau khi qua toàn bộ bước kiểm tra hợp lệ
+  scanCooldownMap.set(userKey, Date.now());
+  const storedEvidencePath = await storeAttendanceEvidence(imageBuffer);
+
+  // Nếu người dùng yêu cầu xử lý qua Hàng đợi
+  if (useQueue) {
+    await checkAndSetCooldown(userKey, 60).catch(() => {});
+
+    const queueResponse = await addPunchJob({
+      type: 'face_ai',
+      userId,
+      requestedAction: actionType,
+      punchTime: now,
+      location,
+      reqIp,
+      deviceId,
+      aiResult: {
+        similarity: aiResult.similarity,
+        liveness_score: aiResult.liveness_score,
+        pose: aiResult.pose || aiResult.angle || null,
+      },
+      evidenceRef: storedEvidencePath,
+    });
+
+    if (queueResponse.success === false || queueResponse.status === 'FAILED_SYNC') {
+      scanCooldownMap.delete(userKey);
+      await resetCooldown(userKey).catch(() => {});
+      await removeAttendanceEvidence(storedEvidencePath).catch(() => {});
+      throw new ServiceError(
+        queueResponse.message || 'Xử lý điểm danh qua hàng đợi thất bại.',
+        400,
+        'ATTENDANCE_QUEUE_FAILED'
+      );
+    }
+
+    return {
+      success: true,
+      action: queueResponse.queued ? 'QUEUED' : queueResponse.result?.action || actionType,
+      queued: queueResponse.queued,
+      jobId: queueResponse.jobId,
+      message: queueResponse.message,
+      user: {
+        id: userId,
+        fullName: user.ho_ten,
+        staffCode: user.ma_can_bo,
+        role: user.vai_tro_chinh,
+        avatar: user.anh_dai_dien,
+      },
+      similarity: aiResult.similarity,
+      livenessScore: aiResult.liveness_score,
+      isFraud: geoCheck.isFraud,
+      fraudReason: geoCheck.fraudReason,
+      result: queueResponse.result,
+    };
+  }
+
+  let attendanceRecord = null;
+
+  if (actionType === 'check_out' && openLog) {
+    if (openLog.da_chot) {
+      throw new ServiceError('Bản ghi chấm công đã bị khóa sổ lương, không thể check-out.', 409, 'ATTENDANCE_LOCKED');
+    }
+    // 6. Thực hiện CHECK-OUT
+    const checkOutTime = new Date();
+    let shiftConfig = openLog.ca || null;
+    if (!shiftConfig && openLog.ca_id) {
+      shiftConfig = await CaLamViec.findByPk(openLog.ca_id);
+    }
+    if (!shiftConfig || !shiftConfig.gio_ket_thuc) {
+      shiftConfig = await CaLamViec.findOne({ where: { kich_hoat: true } });
+    }
+
+    let durationMins = openLog.thoi_luong_lam_viec_phut || 0;
+    if (openLog.thoi_gian_vao) {
+      const diffMs = checkOutTime.getTime() - new Date(openLog.thoi_gian_vao).getTime();
+      durationMins = Math.max(0, Math.round(diffMs / 60000));
+    }
+
+    const { finalStatus, earlyMinutes } = calculateCheckOutStatus(
+      checkOutTime,
+      shiftConfig,
+      openLog.trang_thai
+    );
+
+    const teachingPeriods = await calculateActualTeachingPeriods(
+      {
+        lichTrinhId: openLog.lich_trinh_id,
+        workingMinutes: durationMins,
+        earlyMinutes: earlyMinutes || 0,
+      },
+      LichTrinh
+    );
+
+    attendanceRecord = await runInTransaction(async (transaction) => {
+      openLog.thoi_gian_ra = checkOutTime;
+      openLog.thoi_luong_lam_viec_phut = durationMins;
+      openLog.trang_thai = finalStatus;
+      openLog.ve_som_phut = earlyMinutes || 0;
+      openLog.so_tiet_thuc_day = teachingPeriods;
+      if (geoCheck.isFraud) openLog.co_gian_lan = true;
+
+      await openLog.save({ transaction });
+
+      await LuotQuetChamCong.create(
+        {
+          cham_cong_id: openLog.id,
+          nguoi_dung_id: userId,
+          loai_quet: 'check_out',
+          thoi_gian_quet: checkOutTime,
+          phuong_thuc: 'face_ai',
+          do_tin_cay_ai: aiResult.similarity ?? null,
+          diem_mat_that: aiResult.liveness_score ?? null,
+          goc_mat_nhan_dien: aiResult.pose || aiResult.angle || 'chinh_dien',
+          anh_minh_chung: storedEvidencePath,
+          vi_do: location?.lat ?? null,
+          kinh_do: location?.lng ?? null,
+          vi_tri_gia_lap: Boolean(geoCheck.isSuspicious),
+          khoang_cach_met: geoCheck.distance != null ? Math.max(0, Number(geoCheck.distance)) : null,
+          hop_le: !geoCheck.isFraud,
+          ly_do_khong_hop_le: geoCheck.fraudReason || geoCheck.suspiciousReason || null,
+          ma_thiet_bi: deviceId,
+        },
+        { transaction }
+      );
+
+      return openLog;
+    });
+  } else {
+    // 7. Thực hiện CHECK-IN (tái sử dụng scheduleEval đã thẩm định ở bước trên)
+    const checkInTime = now;
+    const selectedSchedule = scheduleEval.selectedSchedule;
+    const selectedShift = scheduleEval.shift;
+    const effectiveCaId = selectedShift?.id || null;
+    if (!effectiveCaId) {
+      scanCooldownMap.delete(userKey);
+      await removeAttendanceEvidence(storedEvidencePath).catch(() => {});
+      throw new ServiceError('Không xác định được ca làm việc hợp lệ để chấm công.', 400, 'SHIFT_NOT_FOUND');
+    }
+
+    const selectedScheduleId = selectedSchedule?.id || null;
+    const calculatedStatus = scheduleEval.status || 'on_time';
+    const lateMinutes = scheduleEval.lateMinutes || 0;
+
+    try {
+      attendanceRecord = await runInTransaction(async (transaction) => {
+        const createdAttendance = await NhatKyChamCong.create(
+          {
+            nguoi_dung_id: userId,
+            ca_id: effectiveCaId,
+            lich_trinh_id: selectedScheduleId,
+            ngay_cong: dateStr,
+            thoi_gian_vao: checkInTime,
+            di_muon_phut: lateMinutes,
+            trang_thai: calculatedStatus,
+            co_gian_lan: Boolean(geoCheck.isFraud),
+          },
+          { transaction }
+        );
+
+        await LuotQuetChamCong.create(
+          {
+            cham_cong_id: createdAttendance.id,
+            nguoi_dung_id: userId,
+            loai_quet: 'check_in',
+            thoi_gian_quet: checkInTime,
+            phuong_thuc: 'face_ai',
+            do_tin_cay_ai: aiResult.similarity ?? null,
+            diem_mat_that: aiResult.liveness_score ?? null,
+            goc_mat_nhan_dien: aiResult.pose || aiResult.angle || null,
+            anh_minh_chung: storedEvidencePath,
+            vi_do: location?.lat ?? null,
+            kinh_do: location?.lng ?? null,
+            vi_tri_gia_lap: Boolean(geoCheck.isSuspicious),
+            khoang_cach_met: geoCheck.distance != null ? Math.max(0, Number(geoCheck.distance)) : null,
+            hop_le: !geoCheck.isFraud,
+            ly_do_khong_hop_le: geoCheck.fraudReason || geoCheck.suspiciousReason || null,
+            ma_thiet_bi: deviceId,
+          },
+          { transaction }
+        );
+
+        return createdAttendance;
+      });
+    } catch (createErr) {
+      scanCooldownMap.delete(userKey);
+      await removeAttendanceEvidence(storedEvidencePath).catch(() => {});
+      if (
+        createErr.name === 'SequelizeUniqueConstraintError' ||
+        createErr?.parent?.number === 2627 ||
+        createErr?.parent?.number === 2601
+      ) {
+        throw new ServiceError(
+          `Cán bộ ${user.ho_ten} đã có bản ghi điểm danh ca làm việc ngày hôm nay rồi.`,
+          409,
+          'ATTENDANCE_RECORD_EXISTS'
+        );
+      }
+      throw createErr;
+    }
+  }
+
+  // 8. Cập nhật Cooldown 60s
+  scanCooldownMap.set(userKey, Date.now());
+  await checkAndSetCooldown(userKey, 60).catch(() => {});
+
+  // Ghi AuditLog
+  NhatKyKiemToan.create({
+    nguoi_thuc_hien_id: userId,
+    loai_chu_the: 'user',
+    hanh_dong: `ATTENDANCE_FACE_${actionType}`,
+    doi_tuong_id: String(attendanceRecord.id),
+    loai_doi_tuong: 'nhat_ky_cham_cong',
+    dia_chi_ip: reqIp,
+    chi_tiet: {
+      do_tin_cay_ai: aiResult.similarity,
+      diem_mat_that: aiResult.liveness_score,
+      co_gian_lan: geoCheck.isFraud,
+      ly_do_gian_lan: geoCheck.fraudReason,
+    },
+  }).catch((err) => console.error('[AuditLog Error]:', err.message));
+
+  // Phát sự kiện Realtime Socket.IO tới Admin Dashboard & Trưởng khoa
+  try {
+    const { emitNewPunch } = require('../../config/socket');
+    emitNewPunch({
+      id: attendanceRecord.id,
+      userId,
+      userName: user.ho_ten || 'Cán bộ',
+      staffCode: user.ma_can_bo,
+      avatar: user.anh_dai_dien,
+      departmentId: user.don_vi_chinh_id,
+      punchType: actionType,
+      method: 'face_ai',
+      punchTime: new Date(),
+      status: attendanceRecord.trang_thai,
+      confidenceScore: aiResult.similarity,
+      isFraud: geoCheck.isFraud,
+      fraudReason: geoCheck.fraudReason,
+      evidenceUrl: storedEvidencePath,
+    });
+  } catch (_) {}
+
+  return {
+    success: true,
+    action: actionType,
+    message: `${actionType === 'check_in' ? 'Check-in (Điểm danh vào)' : 'Check-out (Ra về)'} thành công: ${user.ho_ten}`,
+    user: {
+      id: userId,
+      ho_ten: user.ho_ten,
+      ma_can_bo: user.ma_can_bo,
+      vai_tro_chinh: user.vai_tro_chinh,
+      anh_dai_dien: user.anh_dai_dien,
+    },
+    co_gian_lan: geoCheck.isFraud,
+    ly_do_gian_lan: geoCheck.fraudReason,
+    diem_tin_cay: aiResult.similarity,
+    diem_nguoi_that: aiResult.liveness_score,
+    similarity: aiResult.similarity,
+    livenessScore: aiResult.liveness_score,
+    isFraud: geoCheck.isFraud,
+    fraudReason: geoCheck.fraudReason,
+    record: attendanceRecord,
+  };
+};
+
+module.exports = {
+  processFaceAttendance,
+  scanCooldownMap,
+  resetCooldown,
+};

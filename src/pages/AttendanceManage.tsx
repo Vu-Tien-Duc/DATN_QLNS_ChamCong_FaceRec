@@ -36,12 +36,13 @@ import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
 import { UserAvatar } from '../components/ui/UserAvatar';
 import { Portal } from '../components/ui/Portal';
+import { PageHeader } from '../components/ui/PageHeader';
 import {
   attendanceApi,
   AttendanceHistoryItem,
-} from '../api/attendance.api';
-import { departmentApi } from '../api/department.api';
-import { userApi } from '../api/user.api';
+} from '../api/chamCong.api';
+import { departmentApi } from '../api/phongBan.api';
+import { userApi } from '../api/nguoiDung.api';
 import { DepartmentItem, UserProfile } from '../types';
 import { useSocketEvent, useSocketStatus } from '../api/socket';
 import { hasRole } from '../utils/rbac';
@@ -670,6 +671,17 @@ export const AttendanceManage: React.FC = () => {
 
   return (
     <div className="flex flex-col w-full space-y-4 pb-12 animate-fade-in">
+      {/* =====================================================================
+          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+      ===================================================================== */}
+      <PageHeader
+        title="Quản Lý Chấm Công & Điểm Danh Toàn Trường"
+        subtitle="Theo dõi trực tiếp nhật ký quẹt thẻ Face ID 512D, đối soát GPS Geofence, cảnh báo gian lận và tự động tổng hợp công nhật."
+        icon={<Clock className="w-5 h-5 text-brand-600" />}
+        badge="InsightFace 512D"
+        badgeVariant="brand"
+      />
+
       {/* =====================================================================
           1. TOP STATS ROW (4 KPI METRIC CARDS) - MATCHING CODE.HTML
       ===================================================================== */}

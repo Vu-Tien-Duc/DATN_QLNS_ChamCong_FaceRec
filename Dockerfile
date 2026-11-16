@@ -58,7 +58,7 @@ EXPOSE 5000
 
 # Kiểm tra sức khỏe container định kỳ
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
+    CMD curl -f http://localhost:5000/suc-khoe || exit 1
 
 # Khởi chạy máy chủ Express
 CMD ["node", "server/server.js"]

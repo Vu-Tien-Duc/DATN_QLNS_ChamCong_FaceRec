@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import toast from 'react-hot-toast';
 import { UserProfile, UserRoleLegacy } from '../types';
-import { authApi, LoginPayload } from '../api/auth.api';
+import { authApi, LoginPayload } from '../api/xacThuc.api';
+import { normalizeBackendData } from '../utils/normalizeBackendData';
 
 interface AuthState {
   user: UserProfile | null;
@@ -31,7 +32,7 @@ const getStoredUser = (): UserProfile | null => {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem('user');
-    return raw ? JSON.parse(raw) : null;
+    return raw ? normalizeBackendData<UserProfile>(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
@@ -84,7 +85,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isLoading: false,
         });
 
-        toast.success(`Chào mừng ${user.fullName} đăng nhập thành công!`);
+        const displayName = user.fullName || user.ho_ten || 'Quý Thầy/Cô';
+        toast.success(`Chào mừng ${displayName} đăng nhập thành công!`);
         return true;
       } else {
         toast.error(res.message || 'Đăng nhập không thành công.');

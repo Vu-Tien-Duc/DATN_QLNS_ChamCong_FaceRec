@@ -9,7 +9,7 @@ const swaggerComponents = {
       type: 'http',
       scheme: 'bearer',
       bearerFormat: 'JWT',
-      description: 'Nhập Token JWT (sau khi login tại /api/auth/login) theo định dạng: Bearer <token>',
+      description: 'Nhập Token JWT (sau khi login tại /api/xac-thuc/dang-nhap) theo định dạng: Bearer <token>',
     },
   },
   schemas: {
@@ -24,7 +24,7 @@ const swaggerComponents = {
     User: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         fullName: { type: 'string', example: 'TS. Trần Thị Bích' },
         email: { type: 'string', example: 'giangvien.bich@university.edu.vn' },
         staffCode: { type: 'string', example: 'GV001' },
@@ -35,7 +35,7 @@ const swaggerComponents = {
           enum: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'giang_vien', 'nhan_vien'],
           example: 'giang_vien',
         },
-        departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+        departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         annualLeaveQuota: { type: 'number', example: 12 },
         isActive: { type: 'boolean', example: true },
         createdAt: { type: 'string', format: 'date-time' },
@@ -45,11 +45,11 @@ const swaggerComponents = {
     Department: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         name: { type: 'string', example: 'Khoa Công nghệ Thông tin' },
         type: { type: 'string', enum: ['khoa', 'bo_mon', 'phong_ban'], example: 'khoa' },
         parentId: { type: 'string', nullable: true, example: null },
-        managerId: { type: 'string', nullable: true, example: '6a9d57378cf3a6165de25dd7' },
+        managerId: { type: 'string', nullable: true, example: '00000000-0000-4000-8000-000000000' },
         location: {
           type: 'object',
           properties: {
@@ -62,7 +62,7 @@ const swaggerComponents = {
     ShiftConfig: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25ddc' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         name: { type: 'string', example: 'Tiết 1-3 (Sáng)' },
         code: { type: 'string', example: 'T1_3' },
         startTime: { type: 'string', example: '07:00' },
@@ -76,10 +76,10 @@ const swaggerComponents = {
     Schedule: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25de0' },
-        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
-        shiftId: { type: 'string', example: '6a9d57378cf3a6165de25ddc' },
-        subjectId: { type: 'string', example: '6a9d57378cf3a6165de25d01' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        shiftId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        subjectId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         roomId: { type: 'string', example: 'A1-402' },
         latitude: { type: 'number', example: 21.028511 },
         longitude: { type: 'number', example: 105.854444 },
@@ -91,11 +91,11 @@ const swaggerComponents = {
     Subject: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25d01' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         code: { type: 'string', example: 'INT3105' },
         name: { type: 'string', example: 'Lập trình Web nâng cao' },
         credits: { type: 'number', example: 3 },
-        departmentId: { type: 'string', nullable: true, example: '6a9d57378cf3a6165de25dd1' },
+        departmentId: { type: 'string', nullable: true, example: '00000000-0000-4000-8000-000000000' },
         description: { type: 'string', example: 'Học phần Lập trình Web chuyên ngành CNTT' },
         isActive: { type: 'boolean', example: true },
       },
@@ -103,10 +103,10 @@ const swaggerComponents = {
     AttendanceLog: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25deb' },
-        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
-        shiftId: { type: 'string', example: '6a9d57378cf3a6165de25ddc' },
-        scheduleId: { type: 'string', example: '6a9d57378cf3a6165de25de0' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        shiftId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        scheduleId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         checkInTime: { type: 'string', format: 'date-time' },
         checkOutTime: { type: 'string', format: 'date-time', nullable: true },
         status: {
@@ -129,8 +129,8 @@ const swaggerComponents = {
     LeaveRequest: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25dea' },
-        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd9' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         type: {
           type: 'string',
           enum: ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om'],
@@ -152,8 +152,8 @@ const swaggerComponents = {
     AuditLog: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25ded' },
-        actor: { type: 'string', example: '6a9d57378cf3a6165de25dd6' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        actor: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         action: { type: 'string', example: 'USER_LOGIN' },
         targetType: { type: 'string', example: 'User' },
         targetId: { type: 'string', nullable: true },
@@ -166,8 +166,8 @@ const swaggerComponents = {
     Payroll: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25df1' },
-        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         month: { type: 'integer', example: 10 },
         year: { type: 'integer', example: 2026 },
         baseSalary: { type: 'number', example: 18000000 },
@@ -189,8 +189,8 @@ const swaggerComponents = {
     FaceTemplate: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25df2' },
-        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         angles: {
           type: 'array',
           items: {
@@ -210,7 +210,7 @@ const swaggerComponents = {
     SystemConfig: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25df3' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         key: { type: 'string', example: 'CAMPUS_GPS_RADIUS_METERS' },
         value: { type: 'object', example: 100 },
         dataType: { type: 'string', enum: ['NUMBER', 'STRING', 'BOOLEAN', 'JSON'], example: 'NUMBER' },
@@ -221,7 +221,7 @@ const swaggerComponents = {
     Holiday: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25df5' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         name: { type: 'string', example: 'Tết Nguyên Đán 2026' },
         startDate: { type: 'string', format: 'date', example: '2026-02-15' },
         endDate: { type: 'string', format: 'date', example: '2026-02-22' },
@@ -236,9 +236,9 @@ const swaggerComponents = {
     PunchLog: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25df6' },
-        attendanceLogId: { type: 'string', example: '6a9d57378cf3a6165de25deb' },
-        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        attendanceLogId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         punchType: { type: 'string', enum: ['check_in', 'check_out'], example: 'check_in' },
         punchTime: { type: 'string', format: 'date-time' },
         method: { type: 'string', enum: ['face_ai', 'qr_code', 'gps_mobile', 'thu_cong_admin', 'system_auto'], example: 'face_ai' },
@@ -260,8 +260,8 @@ const swaggerComponents = {
     Notification: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '6a9d57378cf3a6165de25df9' },
-        userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
+        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
         title: { type: 'string', example: 'Nhắc nhở chấm công' },
         message: { type: 'string', example: 'Bạn có tiết giảng dạy lúc 07:00 tại phòng A1-402.' },
         type: { type: 'string', enum: ['info', 'warning', 'success', 'error'], example: 'info' },
@@ -276,10 +276,10 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 17. SYSTEM & HEALTH CHECK
   // -------------------------------------------------------------
-  '/api/health': {
+  '/api/suc-khoe': {
     get: {
       tags: ['17 - Hạ Tầng & Kiểm Tra Hệ Thống (Health Check)'],
-      summary: '[🔓 Public] Kiểm tra trạng thái máy chủ và 14 Collections MongoDB CSDL v2.6',
+      summary: '[🔓 Public] Kiểm tra trạng thái máy chủ và 24 bảng SQL Server CSDL 3NF',
       responses: {
         200: {
           description: 'Hệ thống hoạt động bình thường',
@@ -320,7 +320,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 01. AUTHENTICATION & SESSIONS
   // -------------------------------------------------------------
-  '/api/auth/login': {
+  '/api/xac-thuc/dang-nhap': {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Đăng nhập người dùng (Rate Limit 5 lần/15p, JWT Access & Refresh Token)',
@@ -353,11 +353,11 @@ const swaggerPaths = {
                   token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
                   refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
                   user: {
-                    _id: '6a9d57378cf3a6165de25dd6',
+                    _id: '00000000-0000-4000-8000-000000000',
                     fullName: 'Quản Trị Viên Hệ Thống (Admin Trường)',
                     email: 'daihocdtd@gmail.com',
                     role: 'admin',
-                    departmentId: '6a9d57378cf3a6165de25dd4',
+                    departmentId: '00000000-0000-4000-8000-000000000',
                     annualLeaveQuota: 15,
                     isActive: true,
                   },
@@ -371,7 +371,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/auth/me': {
+  '/api/xac-thuc/ho-so': {
     get: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔒 Cá nhân] Lấy thông tin cá nhân hiện tại của người dùng đang đăng nhập',
@@ -390,11 +390,11 @@ const swaggerPaths = {
     },
   },
 
-  '/api/auth/refresh': {
+  '/api/xac-thuc/lam-moi-token': {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
-      summary: '[🔓 Public] Cấp mới Access Token từ Refresh Token (Alias)',
-      description: 'Hệ thống tự động đọc Refresh Token từ httpOnly cookie hoặc JSON Request Body để cấp mới Access Token 15 phút.',
+      summary: '[🔓 Public] Cấp mới Access Token từ Refresh Token',
+      description: 'Đọc Refresh Token (ma_lam_moi) từ httpOnly cookie hoặc JSON Request Body để cấp mới Access Token 15 phút.',
       security: [],
       requestBody: {
         required: false,
@@ -403,7 +403,7 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                refreshToken: { type: 'string', example: 'eyJhbGciOiJIUzI1Ni...' },
+                ma_lam_moi: { type: 'string', example: 'eyJhbGciOiJIUzI1Ni...' },
               },
             },
           },
@@ -417,34 +417,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/auth/refresh-token': {
-    post: {
-      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
-      summary: '[🔓 Public] Cấp mới Access Token từ Refresh Token (Tuyến đường chuẩn)',
-      description: 'Đọc Refresh Token từ httpOnly cookie hoặc JSON Request Body để cấp mới Access Token 15 phút.',
-      security: [],
-      requestBody: {
-        required: false,
-        content: {
-          'application/json': {
-            schema: {
-              type: 'object',
-              properties: {
-                refreshToken: { type: 'string', example: 'eyJhbGciOiJIUzI1Ni...' },
-              },
-            },
-          },
-        },
-      },
-      responses: {
-        200: { description: 'Cấp token mới thành công' },
-        400: { description: 'Thiếu Refresh Token trong Cookie hoặc Body' },
-        403: { description: 'Refresh token không hợp lệ hoặc đã hết hạn' },
-      },
-    },
-  },
-
-  '/api/auth/logout': {
+  '/api/xac-thuc/dang-xuat': {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔒 Xác thực] Đăng xuất khỏi hệ thống (Blacklist Access Token, xóa Refresh Token & clear Cookie)',
@@ -469,7 +442,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/auth/forgot-password': {
+  '/api/xac-thuc/quen-mat-khau': {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Yêu cầu mã OTP đặt lại mật khẩu (Hạn 10 phút)',
@@ -498,7 +471,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/auth/reset-password': {
+  '/api/xac-thuc/dat-lai-mat-khau': {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Xác thực OTP và đặt lại mật khẩu mới',
@@ -528,7 +501,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/auth/change-password': {
+  '/api/xac-thuc/doi-mat-khau': {
     put: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔒 Cá nhân] Đổi mật khẩu tài khoản đang đăng nhập',
@@ -555,7 +528,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/auth/avatar': {
+  '/api/xac-thuc/anh-dai-dien': {
     put: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔒 Cá nhân] Cập nhật ảnh đại diện cá nhân (PUT - Upload file hoặc URL)',
@@ -617,7 +590,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 3.1 USERS MANAGEMENT
   // -------------------------------------------------------------
-  '/api/users': {
+  '/api/nguoi-dung': {
     get: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
       summary: '[🔒 Admin / Trưởng khoa] Lấy danh sách người dùng (Admin xem toàn trường, Trưởng khoa chỉ xem khoa mình)',
@@ -649,7 +622,7 @@ const swaggerPaths = {
                 email: { type: 'string', example: 'lethanhson@university.edu.vn' },
                 password: { type: 'string', example: 'password123' },
                 role: { type: 'string', enum: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'giang_vien', 'nhan_vien'], example: 'giang_vien' },
-                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+                departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
                 annualLeaveQuota: { type: 'number', example: 12 },
                 staffCode: { type: 'string', example: 'GV001' },
                 phoneNumber: { type: 'string', example: '0901234567' },
@@ -667,7 +640,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/users/{id}': {
+  '/api/nguoi-dung/{id}': {
     get: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
       summary: '[🔒 Admin / Trưởng khoa] Xem thông tin chi tiết một người dùng',
@@ -691,7 +664,7 @@ const swaggerPaths = {
               type: 'object',
               properties: {
                 fullName: { type: 'string', example: 'TS. Trần Thị Bích (Cập nhật)' },
-                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+                departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
                 role: { type: 'string', enum: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'giang_vien', 'nhan_vien'] },
                 isActive: { type: 'boolean' },
                 annualLeaveQuota: { type: 'number', example: 14 },
@@ -720,7 +693,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/users/{id}/face-descriptor': {
+  '/api/nguoi-dung/{id}/khuon-mat': {
     post: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
       summary: '[🔒 Admin] Đăng ký Face ID đa góc từ ảnh bằng InsightFace (512 chiều)',
@@ -768,7 +741,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 3.2 DEPARTMENTS
   // -------------------------------------------------------------
-  '/api/departments': {
+  '/api/phong-ban': {
     get: {
       tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
       summary: '[🔒 Xác thực] Lấy danh sách Khoa / Viện / Phòng ban (Cây phân cấp)',
@@ -796,8 +769,8 @@ const swaggerPaths = {
               properties: {
                 name: { type: 'string', example: 'Bộ môn Khoa học Dữ liệu' },
                 type: { type: 'string', enum: ['khoa', 'bomon', 'phongban'], example: 'bomon' },
-                parentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1', nullable: true },
-                managerId: { type: 'string', example: '6a9d57378cf3a6165de25dd7', nullable: true },
+                parentId: { type: 'string', example: '00000000-0000-4000-8000-000000000', nullable: true },
+                managerId: { type: 'string', example: '00000000-0000-4000-8000-000000000', nullable: true },
                 location: {
                   type: 'object',
                   properties: {
@@ -817,7 +790,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/departments/tree': {
+  '/api/phong-ban/cay': {
     get: {
       tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
       summary: '[🔒 Xác thực] Lấy cây cơ cấu tổ chức phân cấp (Trường > Khoa > Bộ môn)',
@@ -828,7 +801,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/departments/{id}': {
+  '/api/phong-ban/{id}': {
     get: {
       tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
       summary: '[🔒 Xác thực] Lấy chi tiết Khoa / Phòng ban',
@@ -851,7 +824,7 @@ const swaggerPaths = {
               type: 'object',
               properties: {
                 name: { type: 'string', example: 'Khoa CNTT & Truyền thông' },
-                managerId: { type: 'string', example: '6a9d57378cf3a6165de25dd7' },
+                managerId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
                 location: {
                   type: 'object',
                   properties: {
@@ -883,7 +856,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 3.3 SHIFT CONFIGS
   // -------------------------------------------------------------
-  '/api/shifts': {
+  '/api/ca-lam-viec': {
     get: {
       tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
       summary: '[🔒 Xác thực] Danh sách cấu hình ca làm việc / tiết học',
@@ -923,7 +896,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/shifts/{id}': {
+  '/api/ca-lam-viec/{id}': {
     get: {
       tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
       summary: '[🔒 Xác thực] Chi tiết ca làm việc theo ID',
@@ -972,7 +945,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 3.3 SCHEDULES
   // -------------------------------------------------------------
-  '/api/schedules': {
+  '/api/lich-trinh': {
     get: {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Xác thực] Tra cứu lịch giảng dạy và lịch làm việc',
@@ -999,8 +972,8 @@ const swaggerPaths = {
               type: 'object',
               required: ['userId', 'shiftId', 'roomId', 'weekday', 'startDate', 'endDate'],
               properties: {
-                userId: { type: 'string', example: '6a9d57378cf3a6165de25dd8' },
-                shiftId: { type: 'string', example: '6a9d57378cf3a6165de25ddc' },
+                userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
+                shiftId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
                 roomId: { type: 'string', example: 'A1-402' },
                 weekday: { type: 'integer', example: 2 },
                 startDate: { type: 'string', format: 'date', example: '2026-09-01' },
@@ -1018,7 +991,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/schedules/today': {
+  '/api/lich-trinh/hom-nay': {
     get: {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Xác thực] Lấy danh sách lịch giảng dạy hiệu lực trong ngày hôm nay',
@@ -1033,7 +1006,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/schedules/{id}': {
+  '/api/lich-trinh/{id}': {
     get: {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Xác thực] Xem chi tiết một lịch giảng dạy',
@@ -1069,9 +1042,38 @@ const swaggerPaths = {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Admin / Trưởng khoa] Xóa lịch giảng dạy',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Xóa thành công' },
+      },
+    },
+  },
+
+  '/api/lich-trinh/{id}/ngoai-le': {
+    post: {
+      tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
+      summary: '[🔒 Giảng viên / Trưởng khoa / Admin] Ghi nhận ngoại lệ lịch giảng dạy (Nghỉ / Dạy bù)',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['ngay'],
+              properties: {
+                ngay: { type: 'string', format: 'date', example: '2026-09-18' },
+                trang_thai: { type: 'string', enum: ['nghi', 'day_bu'], default: 'nghi' },
+                ly_do: { type: 'string', example: 'Công tác hội đồng khoa học' },
+                ngay_day_bu: { type: 'string', format: 'date', nullable: true },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Ghi nhận ngoại lệ lịch thành công' },
       },
     },
   },
@@ -1079,7 +1081,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 3.4 ATTENDANCE
   // -------------------------------------------------------------
-  '/api/attendance/check-in': {
+  '/api/cham-cong/vao-ca': {
     post: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Cá nhân] Điểm danh đầu ca (Check-in GPS / QR / Manual)',
@@ -1112,7 +1114,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/check-out': {
+  '/api/cham-cong/tan-ca': {
     post: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Cá nhân] Điểm danh kết thúc ca (Check-out)',
@@ -1125,7 +1127,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/history': {
+  '/api/cham-cong/lich-su': {
     get: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Xác thực] Lịch sử chấm công (Phân quyền: GV cá nhân, Trưởng khoa xem khoa, Admin toàn trường)',
@@ -1145,33 +1147,47 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/{id}': {
+  '/api/cham-cong/lich-su-cua-toi': {
+    get: {
+      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
+      summary: '[🔒 Cá nhân] Tra cứu lịch sử chấm công của chính tài khoản đang đăng nhập',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: { description: 'Lấy lịch sử chấm công cá nhân thành công' },
+      },
+    },
+  },
+
+  '/api/cham-cong/{id}': {
     get: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Xác thực] Xem chi tiết bản ghi chấm công',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Lấy thông tin thành công' },
       },
     },
+  },
+
+  '/api/cham-cong/{id}/dieu-chinh': {
     put: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
-      summary: '[🔒 Admin] Điều chỉnh bản ghi chấm công (Ghi Audit Log)',
+      summary: '[🔒 Admin / BGH / Trưởng khoa] Điều chỉnh bản ghi chấm công (Ghi Audit Log)',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       requestBody: {
         required: true,
         content: {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['reason'],
+              required: ['ly_do_ghi_de'],
               properties: {
-                status: { type: 'string', enum: ['on_time', 'late', 'early_leave', 'absent', 'excused_absence'], example: 'on_time' },
-                checkInTime: { type: 'string', format: 'date-time' },
-                checkOutTime: { type: 'string', format: 'date-time' },
-                reason: { type: 'string', example: 'Điều chỉnh bổ sung do giảng viên quên quẹt thẻ có sự xác nhận' },
+                trang_thai: { type: 'string', enum: ['on_time', 'late', 'early_leave', 'absent', 'excused_absence'], example: 'on_time' },
+                thoi_gian_vao: { type: 'string', format: 'date-time' },
+                thoi_gian_ra: { type: 'string', format: 'date-time' },
+                ly_do_ghi_de: { type: 'string', example: 'Điều chỉnh bổ sung do giảng viên quên quẹt thẻ có sự xác nhận' },
               },
             },
           },
@@ -1183,15 +1199,15 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/cron/test-daily-check': {
+  '/api/cham-cong/quet-vang-mat': {
     post: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
-      summary: '[🔒 Admin] Kích hoạt thủ công tiến trình quét vắng mặt (Test Demo)',
-      description: 'Kích hoạt thủ công tiến trình cron kiểm tra vắng mặt ngay lập tức mà không cần đợi 23:59 đêm để phục vụ test demo.',
+      summary: '[🔒 Admin] Kích hoạt thủ công tiến trình quét vắng mặt',
+      description: 'Kích hoạt thủ công tiến trình cron kiểm tra vắng mặt ngay lập tức mà không cần đợi cuối ngày.',
       security: [{ BearerAuth: [] }],
       parameters: [
         {
-          name: 'date',
+          name: 'ngay',
           in: 'query',
           schema: { type: 'string', format: 'date', example: '2026-09-14' },
           description: 'Ngày cần kiểm tra (YYYY-MM-DD). Mặc định là hôm nay.',
@@ -1204,28 +1220,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/trigger-absent-cron': {
-    post: {
-      tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
-      summary: '[🔒 Admin] Kích hoạt thủ công tiến trình quét vắng mặt (Alias URL)',
-      description: 'Kích hoạt thủ công tiến trình cron kiểm tra vắng mặt ngay lập tức (Alias của /api/attendance/cron/test-daily-check).',
-      security: [{ BearerAuth: [] }],
-      parameters: [
-        {
-          name: 'date',
-          in: 'query',
-          schema: { type: 'string', format: 'date', example: '2026-09-14' },
-          description: 'Ngày cần kiểm tra (YYYY-MM-DD). Mặc định là hôm nay.',
-        },
-      ],
-      responses: {
-        200: { description: 'Kích hoạt tiến trình quét vắng mặt thành công' },
-        403: { description: 'Không có quyền truy cập (Chỉ Admin)' },
-      },
-    },
-  },
-
-  '/api/attendance/face-checkin': {
+  '/api/cham-cong/khuon-mat': {
     post: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Máy chấm công] Điểm danh nhận diện khuôn mặt qua Máy chấm công Face ID',
@@ -1281,7 +1276,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/face-checkin-batch': {
+  '/api/cham-cong/khuon-mat-hang-loat': {
     post: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Máy chấm công] Điểm danh nhận diện khuôn mặt hàng loạt (Batch)',
@@ -1323,7 +1318,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/qr/generate': {
+  '/api/cham-cong/qr/tao-ma': {
     get: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔓 Public] Sinh mã QR Động TOTP (Hiệu lực 15-20s) phục vụ điểm danh Máy chấm công / Lớp học',
@@ -1350,7 +1345,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/qr/scan': {
+  '/api/cham-cong/qr/quet-ma': {
     post: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Cá nhân] Quét mã QR Động trên di động để điểm danh vào ca',
@@ -1385,7 +1380,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/campus-config': {
+  '/api/cham-cong/cau-hinh-khuon-vien': {
     get: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔓 Public] Lấy cấu hình tọa độ khuôn viên trường & bán kính Geofencing GPS',
@@ -1437,7 +1432,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/{id}/evidence': {
+  '/api/cham-cong/{id}/minh-chung': {
     get: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Xác thực] Lấy ảnh chụp minh chứng điểm danh của bản ghi chấm công',
@@ -1450,7 +1445,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/queue/stats': {
+  '/api/cham-cong/hang-doi/thong-ke': {
     get: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Admin/Kiểm tra] Thống kê hàng đợi chấm công bất đồng bộ BullMQ Redis',
@@ -1461,7 +1456,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/faiss/stats': {
+  '/api/cham-cong/chi-so-vector/thong-ke': {
     get: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔒 Admin/Kiểm tra] Trạng thái RAM FAISS Index 512D tìm kiếm siêu tốc',
@@ -1472,10 +1467,10 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/faiss/sync': {
+  '/api/cham-cong/chi-so-vector/dong-bo': {
     post: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
-      summary: '[🔒 Admin] Đồng bộ lại FAISS Index từ CSDL MongoDB lên RAM',
+      summary: '[🔒 Admin] Đồng bộ lại FAISS Index từ CSDL SQL Server lên RAM',
       security: [{ BearerAuth: [] }],
       responses: {
         200: { description: 'Đồng bộ FAISS Index thành công' },
@@ -1483,7 +1478,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/liveness/challenge': {
+  '/api/cham-cong/thu-thach-mat-that': {
     get: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔓 Public] Sinh thử thách cử động sống (Liveness Challenge)',
@@ -1495,7 +1490,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/attendance/liveness/verify-challenge': {
+  '/api/cham-cong/xac-thuc-mat-that': {
     post: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
       summary: '[🔓 Public] Xác minh ảnh khuôn mặt theo thử thách cử động sống',
@@ -1525,7 +1520,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 10. LEAVE REQUESTS & SHIFT EXCHANGES
   // -------------------------------------------------------------
-  '/api/leave-requests': {
+  '/api/don-nghi-phep': {
     post: {
       tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Cá nhân] Tạo đơn xin nghỉ phép / dạy bù / đổi ca',
@@ -1568,7 +1563,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/leave-requests/balance': {
+  '/api/don-nghi-phep/so-du': {
     get: {
       tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Cá nhân / Xác thực] Xem số ngày phép còn lại trong năm (Leave Balance)',
@@ -1586,7 +1581,7 @@ const swaggerPaths = {
                 success: true,
                 message: 'Lấy thông tin số ngày phép thành công.',
                 data: {
-                  userId: '6a9d57378cf3a6165de25dd8',
+                  userId: '00000000-0000-4000-8000-000000000',
                   year: 2026,
                   quota: 12,
                   usedDays: 3,
@@ -1600,7 +1595,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/leave-requests/{id}': {
+  '/api/don-nghi-phep/{id}': {
     get: {
       tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Xác thực] Xem chi tiết một đơn xin nghỉ',
@@ -1613,7 +1608,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/leave-requests/{id}/approve': {
+  '/api/don-nghi-phep/{id}/phe-duyet': {
     put: {
       tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Admin / Trưởng khoa] Phê duyệt đơn xin nghỉ (Hỗ trợ Optimistic Locking qua version)',
@@ -1639,7 +1634,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/leave-requests/{id}/reject': {
+  '/api/don-nghi-phep/{id}/tu-choi': {
     put: {
       tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Admin / Trưởng khoa] Từ chối đơn xin nghỉ',
@@ -1664,7 +1659,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/leave-requests/{id}/cancel': {
+  '/api/don-nghi-phep/{id}/huy': {
     put: {
       tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Người tạo đơn / Admin] Hủy đơn xin nghỉ phép đã nộp',
@@ -1681,7 +1676,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 10.1 UPLOAD ATTACHMENT
   // -------------------------------------------------------------
-  '/api/upload': {
+  '/api/tai-tep': {
     post: {
       tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
       summary: '[🔒 Đã đăng nhập] Tải file minh chứng đính kèm (ảnh, PDF, tài liệu)',
@@ -1718,7 +1713,7 @@ const swaggerPaths = {
                   filename: 'attachment-1726410000000-123456789.pdf',
                   mimetype: 'application/pdf',
                   size: 204800,
-                  fileUrl: '/uploads/attachment-1726410000000-123456789.pdf',
+                  fileUrl: '/api/tai-tep/tep/attachment-1726410000000-123456789.pdf',
                 },
               },
             },
@@ -1729,10 +1724,23 @@ const swaggerPaths = {
     },
   },
 
+  '/api/tai-tep/tep/{filename}': {
+    get: {
+      tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
+      summary: '[🔓 Public] Tải xuống hoặc xem tệp đính kèm / ảnh minh chứng đã tải lên',
+      security: [],
+      parameters: [{ name: 'filename', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        200: { description: 'Nội dung tệp tin' },
+        404: { description: 'Không tìm thấy tệp' },
+      },
+    },
+  },
+
   // -------------------------------------------------------------
   // 3.7 REPORTS
   // -------------------------------------------------------------
-  '/api/reports/attendance': {
+  '/api/bao-cao/cham-cong': {
     get: {
       tags: ['12 - Báo Cáo & Thống Kê (Reports)'],
       summary: '[🔒 Cá nhân / Trưởng khoa / Admin] Báo cáo tổng hợp số liệu chấm công và ngày phép',
@@ -1769,7 +1777,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/reports/monthly': {
+  '/api/bao-cao/hang-thang': {
     get: {
       tags: ['12 - Báo Cáo & Thống Kê (Reports)'],
       summary: '[🔒 Admin / Trưởng khoa] Báo cáo tổng hợp ngày công chi tiết theo tháng',
@@ -1795,7 +1803,7 @@ const swaggerPaths = {
                   report: [
                     {
                       user: {
-                        id: '6a9d57378cf3a6165de25dd8',
+                        id: '00000000-0000-4000-8000-000000000',
                         fullName: 'TS. Trần Thị Bích',
                         email: 'giangvien.bich@university.edu.vn',
                         role: 'giang_vien',
@@ -1817,7 +1825,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/reports/export-data': {
+  '/api/bao-cao/du-lieu-xuat': {
     get: {
       tags: ['12 - Báo Cáo & Thống Kê (Reports)'],
       summary: '[🔒 Xác thực] Trích xuất dữ liệu đa chiều 5 Sheets phục vụ xuất file Excel tổng hợp',
@@ -1852,51 +1860,10 @@ const swaggerPaths = {
   },
 
   // -------------------------------------------------------------
-  // 16. AI ASSISTANT
-  // -------------------------------------------------------------
-  '/api/ai/chat': {
-    post: {
-      tags: ['16 - Trợ Lý Thông Minh AI (AI Assistant)'],
-      summary: '[🔒 Xác thực] Hỏi đáp & Tra cứu thống kê chấm công thông minh qua AI Chatbot (Gemini / Analytics Engine)',
-      security: [{ BearerAuth: [] }],
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: {
-              type: 'object',
-              required: ['question'],
-              properties: {
-                question: { type: 'string', example: 'Hôm nay có bao nhiêu giảng viên đi muộn và vắng mặt?' },
-              },
-            },
-          },
-        },
-      },
-      responses: {
-        200: {
-          description: 'Phản hồi từ AI Assistant',
-          content: {
-            'application/json': {
-              example: {
-                success: true,
-                message: 'Phản hồi từ AI thành công.',
-                data: {
-                  reply: '### Báo cáo nhanh hôm nay:\n- **Đi muộn:** 1 trường hợp\n- **Vắng mặt:** 0 trường hợp',
-                  source: 'gemini-1.5-flash',
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-
   // -------------------------------------------------------------
   // 15. NOTIFICATIONS
   // -------------------------------------------------------------
-  '/api/notifications': {
+  '/api/thong-bao': {
     get: {
       tags: ['15 - Hệ Thống Thông Báo (Notifications)'],
       summary: '[🔒 Cá nhân] Lấy danh sách thông báo của người dùng (kết quả duyệt đơn, cảnh báo đi muộn/vắng mặt)',
@@ -1914,7 +1881,7 @@ const swaggerPaths = {
                 success: true,
                 data: [
                   {
-                    _id: '6a9d57378cf3a6165de25df9',
+                    _id: '00000000-0000-4000-8000-000000000',
                     title: 'Đơn nghỉ phép đã được phê duyệt',
                     message: 'Đơn nghỉ phép ngày 25/09/2026 của Thầy/Cô đã được Trưởng khoa phê duyệt.',
                     type: 'LEAVE_APPROVED',
@@ -1933,7 +1900,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 13. AUDIT LOGS
   // -------------------------------------------------------------
-  '/api/audit-logs': {
+  '/api/nhat-ky-kiem-toan': {
     get: {
       tags: ['13 - Nhật Ký Kiểm Toán (Audit Logs)'],
       summary: '[🔒 Admin/BGH] Tra cứu nhật ký kiểm toán hệ thống (Audit Logs)',
@@ -1962,8 +1929,8 @@ const swaggerPaths = {
                   totalRecords: 1,
                   logs: [
                     {
-                      _id: '6a9d57378cf3a6165de25ded',
-                      actor: { _id: '6a9d57378cf3a6165de25dd6', fullName: 'Quản trị viên', email: 'admin@university.edu.vn', role: 'admin' },
+                      _id: '00000000-0000-4000-8000-000000000',
+                      actor: { _id: '00000000-0000-4000-8000-000000000', fullName: 'Quản trị viên', email: 'admin@university.edu.vn', role: 'admin' },
                       action: 'UPDATE_SYSTEM_CONFIG',
                       targetType: 'SystemConfig',
                       targetId: 'CAMPUS_GPS_RADIUS_METERS',
@@ -1981,7 +1948,7 @@ const swaggerPaths = {
     },
   },
 
-  '/api/audit-logs/verify-integrity': {
+  '/api/nhat-ky-kiem-toan/xac-minh-toan-ven': {
     get: {
       tags: ['13 - Nhật Ký Kiểm Toán (Audit Logs)'],
       summary: '[🔒 Admin/BGH] Xác thực tính toàn vẹn chuỗi hash SHA-256 nhật ký kiểm toán',
@@ -2011,7 +1978,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 11. PAYROLLS & SALARY SNAPSHOT
   // -------------------------------------------------------------
-  '/api/payrolls/generate': {
+  '/api/phieu-luong/khoi-tao': {
     post: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH/Trưởng khoa] Tạo & tính toán Snapshot bảng lương năm 2026',
@@ -2027,7 +1994,7 @@ const swaggerPaths = {
               properties: {
                 month: { type: 'integer', example: 10, description: 'Tháng tính lương (1-12) hoặc thang' },
                 year: { type: 'integer', example: 2026, description: 'Năm tính lương hoặc nam' },
-                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1', description: 'Mã khoa (tùy chọn) hoặc phong_ban_id' },
+                departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000', description: 'Mã khoa (tùy chọn) hoặc phong_ban_id' },
               },
             },
           },
@@ -2041,7 +2008,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/payrolls': {
+  '/api/phieu-luong': {
     get: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH/Trưởng khoa] Lấy danh sách bảng lương toàn trường/khoa',
@@ -2062,7 +2029,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/payrolls/my-payroll': {
+  '/api/phieu-luong/cua-toi': {
     get: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Cá nhân] Giảng viên/Nhân viên tra cứu bảng lương của chính mình',
@@ -2079,7 +2046,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/payrolls/summary': {
+  '/api/phieu-luong/tong-hop': {
     get: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH] Tổng hợp thống kê quỹ lương, tổng giờ vượt chuẩn và thuế TNCN',
@@ -2096,7 +2063,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/payrolls/lock': {
+  '/api/phieu-luong/khoa': {
     post: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH] Khóa sổ bảng lương theo tháng & chốt công',
@@ -2121,7 +2088,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/payrolls/unlock': {
+  '/api/phieu-luong/mo-khoa': {
     post: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH] Mở khóa sổ bảng lương theo tháng kèm lý do',
@@ -2147,7 +2114,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/payrolls/{id}': {
+  '/api/phieu-luong/{id}': {
     get: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Chi tiết] Xem chi tiết một phiếu lương kèm snapshot các buổi dạy',
@@ -2161,7 +2128,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/payrolls/{id}/lock': {
+  '/api/phieu-luong/{id}/khoa': {
     put: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH] Khóa bảng lương chống sửa đổi (qua ID phiếu lương)',
@@ -2175,7 +2142,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/payrolls/{id}/unlock': {
+  '/api/phieu-luong/{id}/mo-khoa': {
     put: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH] Mở khóa bảng lương (qua ID phiếu lương)',
@@ -2201,7 +2168,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/payrolls/export/excel': {
+  '/api/phieu-luong/xuat-excel': {
     get: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH/Trưởng khoa] Xuất file Excel bảng lương toàn trường/khoa',
@@ -2219,25 +2186,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/payrolls/export/pdf': {
-    get: {
-      tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
-      summary: '[🔒 Admin/BGH/Cá nhân] Xuất file PDF phiếu lương chi tiết',
-      security: [{ BearerAuth: [] }],
-      parameters: [
-        { name: 'id', in: 'query', schema: { type: 'string' }, description: 'ID phiếu lương (hoặc dùng /api/payrolls/{id}/export/pdf)' },
-        { name: 'month', in: 'query', schema: { type: 'integer', example: 10 } },
-        { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 } },
-      ],
-      responses: {
-        200: {
-          description: 'Dữ liệu in ấn phiếu lương PDF',
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
-        },
-      },
-    },
-  },
-  '/api/payrolls/{id}/export/pdf': {
+  '/api/phieu-luong/{id}/xuat-pdf': {
     get: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
       summary: '[🔒 Admin/BGH/Cá nhân] Xuất dữ liệu in ấn phiếu lương PDF theo ID',
@@ -2255,7 +2204,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 08. FACE BIOMETRICS
   // -------------------------------------------------------------
-  '/api/face/detect-pose': {
+  '/api/khuon-mat/phat-hien-tu-the': {
     post: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔒 Điểm danh/Đăng ký] Kiểm tra tư thế đầu 3D (Pitch, Yaw, Roll) & độ nét khuôn mặt',
@@ -2281,7 +2230,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/face/enroll-multi-angle': {
+  '/api/khuon-mat/dang-ky-da-goc': {
     post: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔒 Admin/Trưởng khoa/Tự đăng ký] Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D',
@@ -2313,7 +2262,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/face/registration-status': {
+  '/api/khuon-mat/trang-thai-dang-ky': {
     get: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔒 Cá nhân] Kiểm tra trạng thái đã đăng ký khuôn mặt của chính mình',
@@ -2326,7 +2275,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/face/registration-status/{userId}': {
+  '/api/khuon-mat/trang-thai-dang-ky/{nguoiDungId}': {
     get: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔒 Admin/Trưởng khoa] Kiểm tra trạng thái đã đăng ký khuôn mặt của người dùng',
@@ -2340,7 +2289,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/face/my-template': {
+  '/api/khuon-mat/du-lieu-cua-toi': {
     delete: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔒 Cá nhân] Tự xóa dữ liệu mẫu khuôn mặt của bản thân (Tuân thủ quyền xóa dữ liệu cá nhân)',
@@ -2353,7 +2302,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/face/faces/{userId}': {
+  '/api/khuon-mat/du-lieu/{nguoiDungId}': {
     delete: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔒 Admin/Trưởng khoa] Xóa toàn bộ dữ liệu mẫu khuôn mặt của nhân sự và xóa khỏi RAM FAISS',
@@ -2367,7 +2316,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/face/checkin': {
+  '/api/khuon-mat/vao-ca': {
     post: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔒 Điểm danh] Check-in điểm danh qua Camera nhận diện khuôn mặt Face ID',
@@ -2399,7 +2348,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/face/checkout': {
+  '/api/khuon-mat/tan-ca': {
     post: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔒 Điểm danh] Check-out kết thúc ca qua Camera nhận diện khuôn mặt Face ID',
@@ -2424,7 +2373,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/face/health': {
+  '/api/khuon-mat/suc-khoe': {
     get: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
       summary: '[🔓 Public/Kiểm tra] Kiểm tra tình trạng kết nối tới Python FastAPI InsightFace Microservice',
@@ -2437,10 +2386,35 @@ const swaggerPaths = {
     },
   },
 
+  '/api/khuon-mat/kiem-thu-nhan-dien': {
+    post: {
+      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
+      summary: '[🔒 Admin] Kiểm thử nhận diện khuôn mặt 1:N trực tiếp với ảnh mẫu',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['image'],
+              properties: {
+                image: { type: 'string', format: 'binary' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Trả về kết quả nhận diện kiểm thử' },
+      },
+    },
+  },
+
   // -------------------------------------------------------------
   // 14. SYSTEM CONFIGS
   // -------------------------------------------------------------
-  '/api/system/configs': {
+  '/api/he-thong/cau-hinh': {
     get: {
       tags: ['14 - Cấu Hình Hệ Thống Tập Trung (System Configs)'],
       summary: '[🔒 Admin] Lấy toàn bộ tham số cấu hình hệ thống (In-memory Cache)',
@@ -2482,7 +2456,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 05. SUBJECTS (MÔN HỌC / HỌC PHẦN)
   // -------------------------------------------------------------
-  '/api/subjects': {
+  '/api/mon-hoc': {
     get: {
       tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
       summary: '[🔒 Xác thực] Lấy danh sách môn học/học phần đào tạo',
@@ -2513,7 +2487,7 @@ const swaggerPaths = {
                 code: { type: 'string', example: 'INT3105' },
                 name: { type: 'string', example: 'Lập trình Web nâng cao' },
                 credits: { type: 'number', example: 3 },
-                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+                departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
                 description: { type: 'string', example: 'Học phần Lập trình Web chuyên ngành CNTT' },
               },
             },
@@ -2528,7 +2502,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/subjects/{id}': {
+  '/api/mon-hoc/{id}': {
     get: {
       tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
       summary: '[🔒 Xác thực] Lấy thông tin chi tiết một môn học',
@@ -2556,7 +2530,7 @@ const swaggerPaths = {
                 code: { type: 'string', example: 'INT3105' },
                 name: { type: 'string', example: 'Lập trình Web nâng cao (2026)' },
                 credits: { type: 'number', example: 3 },
-                departmentId: { type: 'string', example: '6a9d57378cf3a6165de25dd1' },
+                departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
                 description: { type: 'string', example: 'Cập nhật đề cương học phần' },
                 isActive: { type: 'boolean', example: true },
               },
@@ -2588,7 +2562,7 @@ const swaggerPaths = {
   // -------------------------------------------------------------
   // 07. HOLIDAYS (DANH MỤC NGÀY NGHỈ LỄ)
   // -------------------------------------------------------------
-  '/api/holidays': {
+  '/api/ngay-nghi-le': {
     get: {
       tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
       summary: '[🔒 Admin] Lấy danh sách ngày nghỉ lễ toàn trường',
@@ -2634,7 +2608,7 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/holidays/{id}': {
+  '/api/ngay-nghi-le/{id}': {
     get: {
       tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
       summary: '[🔒 Admin] Lấy chi tiết một ngày nghỉ lễ',
@@ -2689,6 +2663,116 @@ const swaggerPaths = {
       },
     },
   },
+
+  // -------------------------------------------------------------
+  // 17. PUBLIC FACULTY SHOWCASE (PHENIKAA UNIVERSITY)
+  // -------------------------------------------------------------
+  '/api/cong-khai/giang-vien/thong-ke': {
+    get: {
+      tags: ['17 - Cổng Thông Tin Giảng Viên Công Khai (Public Faculty)'],
+      summary: '[🌐 Public] Lấy số liệu thống kê tổng quan danh bạ giảng viên',
+      description: 'Trả về tổng số giảng viên, số GS, PGS, Tiến sĩ, tỷ lệ TS trở lên và danh sách các khoa đào tạo.',
+      security: [],
+      responses: {
+        200: { description: 'Lấy số liệu thống kê thành công' },
+      },
+    },
+  },
+  '/api/cong-khai/giang-vien': {
+    get: {
+      tags: ['17 - Cổng Thông Tin Giảng Viên Công Khai (Public Faculty)'],
+      summary: '[🌐 Public] Lấy danh bạ giảng viên (hỗ trợ phân trang, tìm kiếm & bộ lọc)',
+      description: 'Lấy danh sách giảng viên đang công tác, hỗ trợ lọc theo Khoa, Học hàm, Học vị, từ khóa tìm kiếm. Áp dụng chuẩn bảo mật Zero Data Leakage.',
+      security: [],
+      parameters: [
+        { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Từ khóa tìm kiếm theo họ tên, email, hướng nghiên cứu' },
+        { name: 'phong_ban_id', in: 'query', schema: { type: 'string' }, description: 'Mã định danh Khoa/Viện' },
+        { name: 'hoc_ham', in: 'query', schema: { type: 'string', enum: ['tat_ca', 'giao_su', 'pho_giao_su'] } },
+        { name: 'hoc_vi', in: 'query', schema: { type: 'string', enum: ['tat_ca', 'tien_si', 'thac_si'] } },
+        { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+        { name: 'limit', in: 'query', schema: { type: 'integer', default: 12 } },
+      ],
+      responses: {
+        200: { description: 'Lấy danh bạ giảng viên thành công' },
+      },
+    },
+  },
+  '/api/cong-khai/giang-vien/{id}': {
+    get: {
+      tags: ['17 - Cổng Thông Tin Giảng Viên Công Khai (Public Faculty)'],
+      summary: '[🌐 Public] Lấy chi tiết hồ sơ khoa học của giảng viên theo ID',
+      description: 'Trả về tiểu sử khoa học, chức vụ, học vị, hướng nghiên cứu, phòng làm việc và danh sách môn học đảm nhiệm.',
+      security: [],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Mã ID giảng viên' }],
+      responses: {
+        200: { description: 'Lấy hồ sơ giảng viên thành công' },
+        404: { description: 'Không tìm thấy hồ sơ giảng viên' },
+      },
+    },
+  },
+  '/api/tro-ly-ai/che-do': {
+    get: {
+      tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
+      summary: 'Lấy danh sách chế độ trò chuyện AI hỗ trợ',
+      security: [],
+      responses: {
+        200: { description: 'Thành công' },
+      },
+    },
+  },
+  '/api/tro-ly-ai/nha-cung-cap': {
+    get: {
+      tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
+      summary: 'Lấy danh sách nhà cung cấp AI khả dụng (Gemini / Groq / OpenAI)',
+      security: [],
+      responses: {
+        200: { description: 'Thành công' },
+      },
+    },
+  },
+  '/api/tro-ly-ai/tro-chuyen': {
+    post: {
+      tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
+      summary: 'Trò chuyện với Trợ lý AI tích hợp RAG và đính kèm tệp',
+      responses: {
+        200: { description: 'Phản hồi AI kèm nguồn trích dẫn RAG' },
+      },
+    },
+  },
+  '/api/tro-ly-ai/tai-lieu': {
+    get: {
+      tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
+      summary: 'Liệt kê tài liệu trong Kho tri thức RAG',
+      responses: {
+        200: { description: 'Danh sách tài liệu RAG' },
+      },
+    },
+    post: {
+      tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
+      summary: 'Tải lên và phân đoạn tài liệu vào Kho tri thức RAG (PDF/DOCX/DOC/TXT/MD)',
+      responses: {
+        201: { description: 'Nạp tài liệu thành công' },
+      },
+    },
+  },
+  '/api/tro-ly-ai/tai-lieu/{id}': {
+    get: {
+      tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
+      summary: 'Xem chi tiết tài liệu RAG',
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+      responses: {
+        200: { description: 'Chi tiết tài liệu' },
+      },
+    },
+    delete: {
+      tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
+      summary: 'Xóa tài liệu khỏi Kho tri thức RAG',
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+      responses: {
+        200: { description: 'Xóa thành công' },
+      },
+    },
+  },
 };
 
 const swaggerTags = [
@@ -2707,8 +2791,9 @@ const swaggerTags = [
   { name: '13 - Nhật Ký Kiểm Toán (Audit Logs)', description: 'Lưu vết lịch sử thao tác quan trọng để giám sát' },
   { name: '14 - Cấu Hình Hệ Thống Tập Trung (System Configs)', description: 'Quản lý các tham số vận hành: ngưỡng AI, cooldown, bán kính GPS, hạn mức nghỉ phép' },
   { name: '15 - Hệ Thống Thông Báo (Notifications)', description: 'Quản lý thông báo người dùng, cảnh báo chấm công và kết quả phê duyệt đơn' },
-  { name: '16 - Trợ Lý Thông Minh AI (AI Assistant)', description: 'Chatbot AI hỗ trợ thanh tra đào tạo & truy vấn dữ liệu chấm công' },
-  { name: '17 - Hạ Tầng & Kiểm Tra Hệ Thống (Health Check)', description: 'Kiểm tra trạng thái máy chủ và kết nối CSDL MongoDB' },
+  { name: '16 - Hạ Tầng & Kiểm Tra Hệ Thống (Health Check)', description: 'Kiểm tra trạng thái máy chủ và kết nối CSDL SQL Server' },
+  { name: '17 - Cổng Thông Tin Giảng Viên Công Khai (Public Faculty)', description: 'Website Phenikaa: Danh bạ giảng viên, hồ sơ khoa học, môn học và số liệu thống kê công khai' },
+  { name: '18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)', description: 'Trò chuyện AI đa phương thức và quản lý kho tri thức quy chế RAG' },
 ];
 
 module.exports = {

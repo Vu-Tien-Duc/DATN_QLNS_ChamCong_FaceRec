@@ -22,14 +22,15 @@ import {
   X,
   ArrowRight,
   Check,
+  GraduationCap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/useAuthStore';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { Portal } from '../ui/Portal';
 import { UserRoleLegacy } from '../../types';
-import { attendanceApi, AttendanceHistoryItem } from '../../api/attendance.api';
-import { leaveRequestApi } from '../../api/leaveRequest.api';
+import { attendanceApi, AttendanceHistoryItem } from '../../api/chamCong.api';
+import { leaveRequestApi } from '../../api/donNghiPhep.api';
 
 interface NavbarProps {
   onMobileOpen: () => void;
@@ -45,6 +46,14 @@ interface QuickSearchItem {
 }
 
 const SEARCH_ITEMS: QuickSearchItem[] = [
+  {
+    id: 'public-faculty',
+    title: 'Cổng Thông Tin & Danh Bạ Giảng Viên (ĐH Nguyễn Trãi - NTU)',
+    category: 'Trang Chức Năng',
+    path: '/giang-vien',
+    icon: GraduationCap,
+    description: 'Website giới thiệu trường, đào tạo, tuyển sinh và danh bạ giảng viên công khai',
+  },
   {
     id: 'face-att',
     title: 'Điểm Danh AI Live (Kiosk)',
@@ -526,7 +535,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
                     src={
                       user.avatar.startsWith('http') || user.avatar.startsWith('/api/')
                         ? user.avatar
-                        : `/api/upload/file/${user.avatar}`
+                        : `/api/tai-tep/tep/${user.avatar.split('/').pop()}`
                     }
                     alt={user?.fullName || 'User'}
                     className="w-9 h-9 rounded-full object-cover ring-2 ring-brand-500/30 shadow-xs"

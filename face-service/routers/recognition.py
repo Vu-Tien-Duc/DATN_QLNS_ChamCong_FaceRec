@@ -220,16 +220,32 @@ async def identify_face(
         return {"status": "no_face", "faceCount": 0, "matched": False, "match": None}
 
     face = face_engine.select_dominant_face(faces) or faces[0]
+    bbox = face.bbox.astype(float).tolist() if hasattr(face, "bbox") else [0, 0, 0, 0]
+    liveness_res = LivenessChecker.check_liveness(decoded, bbox)
+    if not liveness_res.get("is_live", False):
+        return {
+            "status": "spoof_detected",
+            "faceCount": len(faces),
+            "matched": False,
+            "match": None,
+            "liveness": liveness_res,
+            "reasons": ["SPOOF_DETECTED"],
+        }
+
     query_emb = face_engine.get_embedding(face)
+    expected_dim = int(query_emb.shape[0])
 
     user_ids = []
     matrix_rows = []
     for t in raw_templates:
         uid = str(t.get("userId", "")).strip()
         emb = t.get("embedding")
-        if uid and emb:
+        if uid and isinstance(emb, list) and len(emb) == expected_dim:
             user_ids.append(uid)
             matrix_rows.append(emb)
+
+    if not matrix_rows:
+        raise HTTPException(status_code=400, detail=f"Không có vector mẫu hợp lệ {expected_dim} chiều.")
 
     candidates = np.asarray(matrix_rows, dtype=np.float32)
     norms = np.linalg.norm(candidates, axis=1, keepdims=True)

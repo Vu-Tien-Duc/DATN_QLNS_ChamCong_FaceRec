@@ -35,12 +35,13 @@ import {
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { DepartmentSelect } from '../components/ui/DepartmentSelect';
-import { scheduleApi } from '../api/schedule.api';
+import { scheduleApi } from '../api/lichTrinh.api';
 import { apiClient, extractArray } from '../api/apiClient';
 import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
 import { hasRole } from '../utils/rbac';
 import { Portal } from '../components/ui/Portal';
+import { PageHeader } from '../components/ui/PageHeader';
 
 // =============================================================================
 // TYPES & DATA STRUCTURES
@@ -498,7 +499,7 @@ export const Schedules: React.FC = () => {
         scheduleApi.getShifts().catch(() => ({ data: [] })),
         scheduleApi.getSubjects().catch(() => ({ data: [] })),
         scheduleApi.getUsers({ limit: 200 }).catch(() => ({ data: [] })),
-        apiClient.get('/departments').catch(() => ({ data: [] })),
+        apiClient.get('/phong-ban').catch(() => ({ data: [] })),
       ]);
 
       const shiftList = extractArray<ShiftItem>(shiftsRes);
@@ -1979,7 +1980,18 @@ export const Schedules: React.FC = () => {
   // =============================================================================
 
   return (
-    <div className="space-y-3 font-sans pb-12 select-none">
+    <div className="space-y-4 font-sans pb-12 select-none">
+      {/* =========================================================================
+          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+         ========================================================================= */}
+      <PageHeader
+        title="Lịch Giảng Dạy & Thời Khóa Biểu Học Phần"
+        subtitle="Quản trị thời khóa biểu học kỳ, phân bổ phòng học, giảng viên phụ trách và đối soát chống xung đột lịch dạy 2 chiều."
+        icon={<CalendarDays className="w-5 h-5 text-brand-600" />}
+        badge="Học Kỳ 1 - 2026"
+        badgeVariant="brand"
+      />
+
       {/* =========================================================================
           BAR 1: HEADER & VIEW MODE SELECTOR (4 MODES)
          ========================================================================= */}
