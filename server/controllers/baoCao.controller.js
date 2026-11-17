@@ -1,7 +1,4 @@
-/**
- * Nhận tham số báo cáo từ HTTP, gọi service tổng hợp và trả dữ liệu báo cáo cho client.
- * Chuẩn hóa 100% CSDL v2.5 tiếng Việt snake_case
- */
+// Tổng hợp và xuất dữ liệu báo cáo chấm công theo kỳ, theo đơn vị hoặc cá nhân
 const {
   ServiceError,
   getAttendanceReportData,
@@ -10,6 +7,7 @@ const {
 } = require('../services/baoCao/baoCao.service');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -17,6 +15,7 @@ const handleError = (res, error, next) => {
   return next(error);
 };
 
+// Chuẩn hóa tham số lọc báo cáo từ query string
 const normalizeReportQuery = (query = {}) => {
   return {
     nguoi_dung_id: query?.nguoi_dung_id,
@@ -30,6 +29,7 @@ const normalizeReportQuery = (query = {}) => {
   };
 };
 
+// Lấy báo cáo thống kê chấm công tổng hợp theo khoảng thời gian
 const getAttendanceReport = async (req, res, next) => {
   try {
     const summary = await getAttendanceReportData({
@@ -42,6 +42,7 @@ const getAttendanceReport = async (req, res, next) => {
   }
 };
 
+// Lấy báo cáo chấm công tổng hợp theo tháng và xu hướng từng tuần
 const getMonthlyReport = async (req, res, next) => {
   try {
     const { month, year, result } = await getMonthlyReportData({
@@ -61,6 +62,7 @@ const getMonthlyReport = async (req, res, next) => {
   }
 };
 
+// Trích xuất dữ liệu phục vụ xuất báo cáo Excel
 const getExportReportData = async (req, res, next) => {
   try {
     const exportData = await getExportReportDataForUser({

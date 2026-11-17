@@ -1,9 +1,8 @@
-/**
- * Xử lý API tra cứu, tạo, cập nhật và xóa danh mục môn học.
- */
+// Quản lý danh mục môn học / học phần phục vụ xếp lịch giảng dạy
 const subjectService = require('../services/nhanSu/monHoc.service');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleError = (res, error, next) => {
   if (error instanceof subjectService.ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -11,6 +10,7 @@ const handleError = (res, error, next) => {
   return next(error);
 };
 
+// Lọc các trường hợp lệ của môn học từ request body
 const mapSubjectBodyToCanonical = (body) => {
   if (!body || typeof body !== 'object') return {};
   const { ma_mon, ten_mon, so_tin_chi, phong_ban_id, mo_ta, kich_hoat } = body;
@@ -24,17 +24,18 @@ const mapSubjectBodyToCanonical = (body) => {
   return res;
 };
 
+// Lấy danh sách môn học theo bộ lọc và phân trang
 const getSubjects = async (req, res, next) => {
   try {
-    const { tim_kiem, phong_ban_id, kich_hoat, so_tin_chi, page, limit } = req.query;
+    const { tim_kiem, phong_ban_id, kich_hoat, so_tin_chi, trang, gioi_han, page, limit } = req.query;
 
     const result = await subjectService.getSubjects({
       tim_kiem,
       phong_ban_id,
       kich_hoat,
       so_tin_chi,
-      page,
-      limit,
+      page: trang ?? page,
+      limit: gioi_han ?? limit,
     });
     return sendSuccess(res, 'Lấy danh sách môn học thành công.', result);
   } catch (error) {
@@ -42,6 +43,7 @@ const getSubjects = async (req, res, next) => {
   }
 };
 
+// Lấy chi tiết một môn học theo ID
 const getSubjectById = async (req, res, next) => {
   try {
     const subject = await subjectService.getSubjectById(req.params.id);
@@ -51,26 +53,29 @@ const getSubjectById = async (req, res, next) => {
   }
 };
 
+// Tạo môn học mới
 const createSubject = async (req, res, next) => {
   try {
     const canonicalBody = mapSubjectBodyToCanonical(req.body);
-    const subject = await subjectService.createSubject(canonicalBody);
+    const subject = await subjectService.createSubject(canonicalBody, req.user);
     return sendSuccess(res, 'Tạo mới môn học thành công.', subject, 201);
   } catch (error) {
     return handleError(res, error, next);
   }
 };
 
+// Cập nhật thông tin môn học
 const updateSubject = async (req, res, next) => {
   try {
     const canonicalBody = mapSubjectBodyToCanonical(req.body);
-    const subject = await subjectService.updateSubject(req.params.id, canonicalBody);
+    const subject = await subjectService.updateSubject(req.params.id, canonicalBody, req.user);
     return sendSuccess(res, 'Cập nhật môn học thành công.', subject);
   } catch (error) {
     return handleError(res, error, next);
   }
 };
 
+// Xóa môn học
 const deleteSubject = async (req, res, next) => {
   try {
     const subject = await subjectService.deleteSubject(req.params.id);

@@ -1,3 +1,4 @@
+// Định tuyến API quản lý danh mục ngày nghỉ lễ trong năm (/api/ngay-nghi-le)
 const express = require('express');
 const router = express.Router();
 const {
@@ -11,17 +12,13 @@ const { verifyToken, authorizeRoles } = require('../middlewares/xacThuc.middlewa
 
 router.use(verifyToken);
 
-// GET /api/holidays?year=2026 - Lấy danh sách ngày nghỉ lễ (Tất cả cán bộ đã đăng nhập đều được xem)
+// Tra cứu ngày nghỉ lễ (toàn bộ cán bộ đã đăng nhập đều được xem)
 router.get('/', getHolidays);
 router.get('/:id', getHolidayById);
 
-// POST /api/holidays - Tạo ngày nghỉ lễ mới (Admin & BGH)
+// Thêm, sửa, xóa ngày nghỉ lễ (Admin & BGH)
 router.post('/', authorizeRoles('admin', 'bgh'), createHoliday);
-
-// PUT /api/holidays/:id - Cập nhật ngày nghỉ lễ
 router.put('/:id', authorizeRoles('admin', 'bgh'), updateHoliday);
-
-// DELETE /api/holidays/:id - Xóa ngày nghỉ lễ
 router.delete('/:id', authorizeRoles('admin', 'bgh'), deleteHoliday);
 
 module.exports = router;

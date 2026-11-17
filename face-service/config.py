@@ -12,3 +12,16 @@ MAX_IMAGE_PIXELS = int(os.getenv("FACE_MAX_IMAGE_PIXELS", "20000000"))
 MAX_TEMPLATES = int(os.getenv("FACE_MAX_TEMPLATES", "2000"))
 MAX_TEMPLATES_JSON_BYTES = int(os.getenv("FACE_MAX_TEMPLATES_JSON_BYTES", str(10 * 1024 * 1024)))
 INTERNAL_API_KEY = os.getenv("FACE_SERVICE_API_KEY", "").strip()
+FACE_SERVICE_ENV = os.getenv("FACE_SERVICE_ENV", os.getenv("NODE_ENV", "development")).strip().lower()
+REQUIRE_INTERNAL_API_KEY = os.getenv(
+    "FACE_SERVICE_REQUIRE_API_KEY",
+    "true" if FACE_SERVICE_ENV == "production" else "false",
+).strip().lower() == "true"
+CORS_ALLOW_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOW_ORIGINS",
+        "http://localhost:5000,http://127.0.0.1:5000,http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]

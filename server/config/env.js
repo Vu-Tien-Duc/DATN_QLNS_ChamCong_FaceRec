@@ -1,6 +1,4 @@
-/**
- * Kiểm tra các biến môi trường bắt buộc trước khi khởi động máy chủ.
- */
+// Kiểm tra biến môi trường và khóa bảo mật bắt buộc trước khi khởi động server
 const validateEnvironment = () => {
   const errors = [];
   const weakSecrets = new Set([
@@ -48,6 +46,20 @@ const validateEnvironment = () => {
     }
     if (!process.env.ATTENDANCE_EVIDENCE_DIR) {
       errors.push('ATTENDANCE_EVIDENCE_DIR bắt buộc phải trỏ tới storage ảnh minh chứng bền vững trong production.');
+    }
+    if (!process.env.FACE_SERVICE_API_KEY) {
+      errors.push('FACE_SERVICE_API_KEY bắt buộc phải được cấu hình trong production.');
+    } else if (/^(replace_with|your_)/i.test(process.env.FACE_SERVICE_API_KEY) || process.env.FACE_SERVICE_API_KEY.length < 16) {
+      errors.push('FACE_SERVICE_API_KEY phải là khóa bảo mật thực tế dài tối thiểu 16 ký tự trong production.');
+    }
+    if (!process.env.BIOMETRIC_ENCRYPTION_KEY) {
+      errors.push('BIOMETRIC_ENCRYPTION_KEY bắt buộc phải được cấu hình trong production để mã hóa dữ liệu khuôn mặt AES-256-GCM.');
+    } else if (
+      process.env.BIOMETRIC_ENCRYPTION_KEY.length < 32 ||
+      weakSecrets.has(process.env.BIOMETRIC_ENCRYPTION_KEY) ||
+      /^(replace_with|your_)/i.test(process.env.BIOMETRIC_ENCRYPTION_KEY)
+    ) {
+      errors.push('BIOMETRIC_ENCRYPTION_KEY phải là khóa riêng dài tối thiểu 32 ký tự trong production.');
     }
     if (!process.env.CORS_WHITELIST) {
       errors.push('CORS_WHITELIST bắt buộc phải liệt kê các nguồn được phép trong production.');

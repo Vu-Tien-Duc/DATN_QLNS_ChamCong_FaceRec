@@ -1,11 +1,7 @@
-/**
- * Chuẩn hóa phản hồi lỗi và 404 trước khi trả kết quả về client.
- */
+// Xử lý lỗi tập trung (Sequelize, Multer, JWT, ServiceError) và phản hồi 404 chuẩn hóa
 const { sendError } = require('../utils/phanHoiHttp');
 
-/**
- * Bản đồ ánh xạ tên trường kỹ thuật CSDL sang tên Tiếng Việt thân thiện
- */
+// Quy đổi tên cột CSDL sang nhãn tiếng Việt khi trả thông báo lỗi trùng lặp dữ liệu
 const FIELD_LABEL_MAP = {
   // Người dùng & Hồ sơ cán bộ
   email: 'Địa chỉ Email',
@@ -40,9 +36,7 @@ const FIELD_LABEL_MAP = {
   nam: 'Năm',
 };
 
-/**
- * Middleware xử lý lỗi hệ thống tập trung
- */
+// Middleware xử lý lỗi tập trung và chuẩn hóa mã HTTP/thông báo trả về client
 const errorHandler = (err, req, res, next) => {
   if (res.headersSent) {
     return next(err);
@@ -65,7 +59,6 @@ const errorHandler = (err, req, res, next) => {
     errorCode = err.code || 'INVALID_FILE_UPLOAD';
   }
 
-  // 1. Lỗi trùng lặp dữ liệu duy nhất (SQL Server UNIQUE)
   if (err.name === 'SequelizeUniqueConstraintError') {
     statusCode = 409;
     const field = err.errors && err.errors[0] ? err.errors[0].path : 'dữ liệu';
@@ -74,7 +67,6 @@ const errorHandler = (err, req, res, next) => {
     errorCode = 'DUPLICATE_KEY_ERROR';
   }
 
-  // 2. Lỗi xác thực Schema (SequelizeValidationError)
   if (err.name === 'SequelizeValidationError') {
     statusCode = 400;
     const errors = err.errors ? err.errors.map((e) => e.message) : [];
@@ -88,7 +80,6 @@ const errorHandler = (err, req, res, next) => {
     errorCode = 'FOREIGN_KEY_CONSTRAINT_ERROR';
   }
 
-  // 4. Lỗi JWT
   if (err.name === 'JsonWebTokenError') {
     statusCode = 401;
     message = 'Token không hợp lệ hoặc đã bị chỉnh sửa.';
@@ -113,9 +104,7 @@ const errorHandler = (err, req, res, next) => {
   );
 };
 
-/**
- * Middleware xử lý đường dẫn không tồn tại (404 Not Found)
- */
+// Middleware trả lỗi 404 khi đường dẫn API không tồn tại
 const notFoundHandler = (req, res) => {
   return sendError(
     res,

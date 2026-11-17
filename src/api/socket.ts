@@ -3,7 +3,7 @@
  */
 import { io, Socket } from 'socket.io-client';
 import { useEffect, useState } from 'react';
-import { useAuthStore } from '../store/useAuthStore';
+import { useAuthStore } from '../stores/useXacThucStore';
 
 let socketInstance: Socket | null = null;
 

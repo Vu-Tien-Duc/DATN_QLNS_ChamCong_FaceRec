@@ -1,9 +1,8 @@
-/**
- * Tiếp nhận các API tra cứu và quản lý cấu hình ca làm việc, trả kết quả theo chuẩn HTTP.
- */
+// Quản lý danh mục ca làm việc (giờ vào, giờ ra, ngưỡng đi muộn)
 const shiftService = require('../services/nhanSu/caLamViec.service');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleError = (res, error, next) => {
   if (error instanceof shiftService.ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -11,6 +10,7 @@ const handleError = (res, error, next) => {
   return next(error);
 };
 
+// Lọc các trường hợp lệ của ca làm việc từ request body
 const mapShiftBodyToCanonical = (body) => {
   if (!body || typeof body !== 'object') return {};
   const { ten_ca, gio_bat_dau, gio_ket_thuc, nguong_di_muon_phut, kich_hoat } = body;
@@ -23,6 +23,7 @@ const mapShiftBodyToCanonical = (body) => {
   return res;
 };
 
+// Lấy danh sách toàn bộ ca làm việc
 const getAllShiftConfigs = async (req, res, next) => {
   try {
     const shifts = await shiftService.getAllShiftConfigs();
@@ -32,6 +33,7 @@ const getAllShiftConfigs = async (req, res, next) => {
   }
 };
 
+// Lấy chi tiết một ca làm việc theo ID
 const getShiftConfigById = async (req, res, next) => {
   try {
     const shift = await shiftService.getShiftConfigById(req.params.id);
@@ -41,6 +43,7 @@ const getShiftConfigById = async (req, res, next) => {
   }
 };
 
+// Tạo ca làm việc mới
 const createShiftConfig = async (req, res, next) => {
   try {
     const shift = await shiftService.createShiftConfig(mapShiftBodyToCanonical(req.body));
@@ -50,6 +53,7 @@ const createShiftConfig = async (req, res, next) => {
   }
 };
 
+// Cập nhật thông tin ca làm việc
 const updateShiftConfig = async (req, res, next) => {
   try {
     const shift = await shiftService.updateShiftConfig(req.params.id, mapShiftBodyToCanonical(req.body));
@@ -59,6 +63,7 @@ const updateShiftConfig = async (req, res, next) => {
   }
 };
 
+// Xóa ca làm việc
 const deleteShiftConfig = async (req, res, next) => {
   try {
     await shiftService.deleteShiftConfig(req.params.id);

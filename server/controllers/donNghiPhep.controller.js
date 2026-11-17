@@ -1,10 +1,4 @@
-/**
- * LeaveRequest Controller (server/controllers/leaveRequest.controller.js)
- * Mã nguồn sạch 100% chuẩn CSDL v2.5 cho môi trường Đại Học:
- * - Tiếp nhận và xử lý HTTP cho quy trình duyệt đơn nhiều cấp (Khoa -> BGH).
- * - Chặn tự duyệt đơn và chống xung đột phiên bản (Optimistic Locking).
- * - Kích hoạt hồi tố và hoàn tác công (Retroactive Sync & Rollback).
- */
+// Điều phối nghiệp vụ đơn xin nghỉ phép / dạy bù / đổi ca (quy trình duyệt Khoa -> BGH và hoàn tác công)
 const {
   ServiceError,
   createLeaveRequestDomain,
@@ -17,9 +11,7 @@ const {
 } = require('../services/donNghiPhep/donNghiPhep.service');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
-/**
- * Xử lý lỗi từ tầng Service đồng bộ mã lỗi & HTTP status code
- */
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleServiceError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -27,10 +19,7 @@ const handleServiceError = (res, error, next) => {
   next(error);
 };
 
-/**
- * 1. Tạo đơn xin nghỉ phép / dạy bù / đổi ca
- * @route POST /api/don-nghi-phep
- */
+// POST /api/don-nghi-phep - Tạo đơn xin nghỉ phép / dạy bù / đổi ca / giải trình công
 const createLeaveRequest = async (req, res, next) => {
   try {
     const {
@@ -68,10 +57,7 @@ const createLeaveRequest = async (req, res, next) => {
   }
 };
 
-/**
- * 2. Lấy danh sách đơn xin nghỉ phép/dạy bù
- * @route GET /api/don-nghi-phep
- */
+// GET /api/don-nghi-phep - Danh sách đơn xin nghỉ phép / dạy bù
 const getLeaveRequests = async (req, res, next) => {
   try {
     const trang_thai = req.query?.trang_thai;
@@ -89,10 +75,7 @@ const getLeaveRequests = async (req, res, next) => {
   }
 };
 
-/**
- * 3. Lấy chi tiết đơn theo ID
- * @route GET /api/leave-requests/:id
- */
+// GET /api/don-nghi-phep/:id - Chi tiết đơn theo ID
 const getLeaveRequestById = async (req, res, next) => {
   try {
     const request = await fetchLeaveRequestById(req.params.id, req.user);
@@ -102,10 +85,7 @@ const getLeaveRequestById = async (req, res, next) => {
   }
 };
 
-/**
- * 4. Xem số ngày phép còn lại
- * @route GET /api/don-nghi-phep/so-du
- */
+// GET /api/don-nghi-phep/so-du - Xem số ngày phép năm còn lại
 const getLeaveBalance = async (req, res, next) => {
   try {
     const nguoi_dung_id = req.query?.nguoi_dung_id;
@@ -117,10 +97,7 @@ const getLeaveBalance = async (req, res, next) => {
   }
 };
 
-/**
- * 5. Phê duyệt đơn (Hỗ trợ Optimistic Locking qua phien_ban)
- * @route PUT /api/don-nghi-phep/:id/phe-duyet
- */
+// PUT /api/don-nghi-phep/:id/phe-duyet - Phê duyệt đơn (kiểm tra phien_ban chống xung đột)
 const approveLeaveRequest = async (req, res, next) => {
   try {
     const ghi_chu_duyet = req.body?.ghi_chu_duyet || 'Đã phê duyệt đơn.';
@@ -138,10 +115,7 @@ const approveLeaveRequest = async (req, res, next) => {
   }
 };
 
-/**
- * 6. Từ chối đơn xin nghỉ phép/dạy bù
- * @route PUT /api/don-nghi-phep/:id/tu-choi
- */
+// PUT /api/don-nghi-phep/:id/tu-choi - Từ chối đơn xin nghỉ phép / dạy bù
 const rejectLeaveRequest = async (req, res, next) => {
   try {
     const ly_do_tu_choi = req.body?.ly_do_tu_choi || 'Từ chối đơn.';
@@ -159,10 +133,7 @@ const rejectLeaveRequest = async (req, res, next) => {
   }
 };
 
-/**
- * 7. Hủy đơn xin nghỉ phép/dạy bù & Hoàn tác công
- * @route PUT /api/don-nghi-phep/:id/huy
- */
+// PUT /api/don-nghi-phep/:id/huy - Hủy đơn và hoàn tác công liên quan
 const cancelLeaveRequest = async (req, res, next) => {
   try {
     const phien_ban = req.body?.phien_ban;

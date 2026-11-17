@@ -1,8 +1,4 @@
-/**
- * AI Document Parser & Chunker Service
- * Trích xuất văn bản thuần từ các tệp PDF, DOCX, DOC, TXT, MD trên RAM Buffer,
- * phát hiện PDF scan dạng ảnh và chia đoạn (chunking) thông minh phục vụ RAG.
- */
+// Trích xuất văn bản thuần (PDF, DOCX, DOC, TXT, MD), phát hiện PDF scan và chia đoạn phục vụ RAG
 
 const path = require('path');
 const { PDFParse } = require('pdf-parse');
@@ -17,9 +13,7 @@ const VIETNAMESE_STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'that', 'this', 'from', 'are', 'was', 'were',
 ]);
 
-/**
- * Chuẩn hóa chuỗi tiếng Việt: bỏ dấu, chuyển chữ thường
- */
+// Chuẩn hóa chuỗi tiếng Việt về không dấu, chữ thường để đối chiếu từ khóa
 const normalizeVietnameseText = (str = '') =>
   String(str)
     .normalize('NFD')
@@ -28,9 +22,7 @@ const normalizeVietnameseText = (str = '') =>
     .replace(/Đ/g, 'D')
     .toLowerCase();
 
-/**
- * Làm sạch văn bản trích xuất từ tài liệu
- */
+// Làm sạch ký tự thừa, khoảng trắng và xuống dòng sau khi trích xuất văn bản
 const cleanExtractedText = (rawText = '') => {
   if (!rawText || typeof rawText !== 'string') return '';
   return rawText
@@ -43,9 +35,7 @@ const cleanExtractedText = (rawText = '') => {
     .trim();
 };
 
-/**
- * Xác định loại tệp hợp lệ từ tên gốc và MIME type
- */
+// Nhận diện định dạng tài liệu (pdf, docx, doc, md, txt) từ tên tệp hoặc MIME type
 const detectDocumentType = (originalname = '', mimetype = '') => {
   const ext = path.extname(String(originalname)).toLowerCase();
   const mime = String(mimetype).toLowerCase();
@@ -64,9 +54,7 @@ const detectDocumentType = (originalname = '', mimetype = '') => {
   return null;
 };
 
-/**
- * Trích xuất danh sách từ khóa chuẩn hóa (không dấu) phục vụ Hybrid Search / Offline RAG
- */
+// Trích xuất danh sách từ khóa nổi bật (loại bỏ từ dừng) từ đoạn văn bản
 const extractKeywords = (text = '', maxKeywords = 30) => {
   const normalized = normalizeVietnameseText(text);
   const tokens = normalized.match(/[a-z0-9]{2,}/g) || [];
@@ -83,9 +71,7 @@ const extractKeywords = (text = '', maxKeywords = 30) => {
     .map(([word]) => word);
 };
 
-/**
- * Trích xuất văn bản từ Buffer tài liệu (PDF, DOCX, DOC, TXT, MD)
- */
+// Trích xuất văn bản từ Buffer tài liệu (PDF, DOCX, DOC, TXT, MD)
 const extractTextFromBuffer = async (buffer, { originalname = '', mimetype = '' } = {}) => {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
     throw new Error('Nội dung tệp rỗng hoặc không hợp lệ.');
@@ -166,9 +152,7 @@ const extractTextFromBuffer = async (buffer, { originalname = '', mimetype = '' 
   };
 };
 
-/**
- * Tìm vị trí cắt tự nhiên gần endIdx nhất (ưu tiên hết đoạn, hết câu, khoảng trắng)
- */
+// Tìm điểm cắt tự nhiên gần cuối đoạn (ưu tiên hết đoạn, hết câu, khoảng trắng)
 const findNaturalSplitIndex = (text, startIdx, maxEndIdx) => {
   if (maxEndIdx >= text.length) return text.length;
 
@@ -193,9 +177,7 @@ const findNaturalSplitIndex = (text, startIdx, maxEndIdx) => {
   return maxEndIdx;
 };
 
-/**
- * Chia văn bản thành các đoạn (chunks) có chồng lấn ngữ cảnh để phục vụ RAG
- */
+// Chia văn bản thành các đoạn (chunks) có phần chồng lấn để giữ ngữ cảnh khi truy xuất RAG
 const chunkDocumentText = ({ text = '', pages = [], chunkSize = 900, overlap = 150 } = {}) => {
   const cleanText = cleanExtractedText(text);
   if (!cleanText) return [];

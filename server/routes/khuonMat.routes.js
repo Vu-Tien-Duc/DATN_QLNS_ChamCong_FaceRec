@@ -1,8 +1,6 @@
-/**
- * Face API Routes
- * Xử lý đăng ký khuôn mặt 5 góc, phát hiện tư thế đầu, và kiểm tra trạng thái FaceID.
- */
+// Định tuyến API sinh trắc học khuôn mặt: phát hiện tư thế 3D, đăng ký 5 góc, kiểm tra trạng thái & xóa (/api/khuon-mat)
 const express = require('express');
+const path = require('path');
 const router = express.Router();
 const multer = require('multer');
 const {
@@ -18,10 +16,27 @@ const { faceCheckInRateLimit } = require('../middlewares/gioiHanTruyCap.middlewa
 const { isUserInDeanScope } = require('../utils/phamViTruongKhoa');
 const { UNIT_LEADER_ROLES } = require('../utils/vaiTro.utils');
 
-// Memory storage - không ghi ra đĩa, xử lý nhanh
+const ALLOWED_FACE_IMAGE_EXT = {
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/webp': ['.webp'],
+};
+
+// Memory storage - không ghi ra đĩa, chỉ cho phép ảnh JPEG/PNG/WebP
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  fileFilter: (req, file, callback) => {
+    const allowedExts = ALLOWED_FACE_IMAGE_EXT[file.mimetype];
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!allowedExts || !allowedExts.includes(ext)) {
+      const error = new Error('Chỉ chấp nhận tệp ảnh JPEG, PNG hoặc WebP.');
+      error.statusCode = 400;
+      error.errorCode = 'UNSUPPORTED_FACE_IMAGE_TYPE';
+      return callback(error);
+    }
+    return callback(null, true);
+  },
 });
 
 // Các file ảnh 5 góc mà FaceRegistrationModal gửi lên (Chuẩn hóa duy nhất 5 góc)
@@ -37,10 +52,10 @@ const angleFields = [
 router.get('/suc-khoe', getFaceHealth);
 
 // Phát hiện tư thế đầu 3D realtime
-router.post('/phat-hien-tu-the', verifyTerminalKey, upload.single('image'), detectPose);
+router.post('/phat-hien-tu-the', faceCheckInRateLimit, verifyTerminalKey, upload.single('image'), detectPose);
 
-// Kiểm thử nhận diện khuôn mặt Realtime (không tạo bản ghi chấm công, không geofence)
-router.post('/kiem-thu-nhan-dien', verifyToken, faceCheckInRateLimit, upload.single('image'), testFaceRecognition);
+// Kiểm thử nhận diện khuôn mặt Realtime (chỉ Admin / BGH / TCCB)
+router.post('/kiem-thu-nhan-dien', verifyToken, verifyRole(['admin', 'bgh', 'tccb']), faceCheckInRateLimit, upload.single('image'), testFaceRecognition);
 
 
 // Đăng ký 5 góc khuôn mặt (Quản trị viên Admin / BGH / Cán bộ TCCB)
@@ -55,6 +70,7 @@ router.post(
 // Kiểm tra trạng thái đã đăng ký FaceID của bản thân
 router.get('/trang-thai-dang-ky', verifyToken, getRegistrationStatus);
 
+// Kiểm tra quyền truy cập dữ liệu khuôn mặt của chính chủ hoặc quản trị nhân sự
 const canAccessTargetFace = async (req, res, next, forbiddenCode, forbiddenMessage) => {
   try {
     const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();

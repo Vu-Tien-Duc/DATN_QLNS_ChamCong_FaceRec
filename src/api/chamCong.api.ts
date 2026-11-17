@@ -445,4 +445,29 @@ export const attendanceApi = {
     const res = await apiClient.post<any>('/cham-cong/quet-vang-mat', { ngay: date });
     return res.data?.data || res.data;
   },
+
+  async getAttendanceEvidence(id: string): Promise<any> {
+    const res = await apiClient.get<any>(`/cham-cong/${id}/minh-chung`);
+    return res.data?.data || res.data;
+  },
+
+  async getVectorIndexStats(): Promise<any> {
+    const res = await apiClient.get<any>('/cham-cong/chi-so-vector/thong-ke');
+    return res.data?.data || res.data;
+  },
+
+  async syncVectorIndex(): Promise<any> {
+    const res = await apiClient.post<any>('/cham-cong/chi-so-vector/dong-bo');
+    return res.data?.data || res.data;
+  },
+
+  async getQueueStats(): Promise<any> {
+    const res = await apiClient.get<any>('/cham-cong/hang-doi/thong-ke');
+    return res.data?.data || res.data;
+  },
+
+  async updateCampusConfig(payload: { vi_do: number; kinh_do: number; ban_kinh_met: number }): Promise<any> {
+    const res = await apiClient.post<any>('/cham-cong/cau-hinh-khuon-vien', payload);
+    return res.data?.data || res.data;
+  },
 };

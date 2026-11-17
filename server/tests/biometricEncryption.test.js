@@ -1,3 +1,4 @@
+// Kiểm thử mã hóa/giải mã AES-256-GCM cho dữ liệu vector sinh trắc học.
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 

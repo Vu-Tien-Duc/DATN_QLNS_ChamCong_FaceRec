@@ -1,8 +1,8 @@
+// Mô hình bảng mon_hoc: danh mục môn học và học phần.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, trimmedString } = require('./modelHelpers');
 
-/** Bảng mon_hoc: danh mục môn học / học phần. */
 class MonHoc extends Model {}
 
 MonHoc.init(

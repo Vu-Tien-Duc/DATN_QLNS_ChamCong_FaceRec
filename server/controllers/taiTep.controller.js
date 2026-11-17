@@ -1,6 +1,4 @@
-/**
- * Controller Tải Lên & Tải Xuống Tệp Tin (server/controllers/taiTep.controller.js)
- */
+// Tải lên tệp đính kèm và phân quyền stream tải tệp từ MinIO / lưu trữ cục bộ
 const path = require('path');
 const { sendSuccess, sendError, getBaseUrl } = require('../utils/phanHoiHttp');
 const minioStorage = require('../config/minio');
@@ -8,6 +6,7 @@ const { verifyToken } = require('../middlewares/xacThuc.middleware');
 const { normalizeRole } = require('../utils/vaiTro.utils');
 const taiTepService = require('../services/heThong/taiTep.service');
 
+// Tải lên một tệp đính kèm lên MinIO hoặc lưu trữ cục bộ
 const uploadSingleFile = async (req, res, next) => {
   try {
     const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
@@ -42,6 +41,7 @@ const uploadSingleFile = async (req, res, next) => {
   }
 };
 
+// Kiểm tra quyền truy cập và tải tệp xuống theo chính sách của tệp
 const downloadFile = async (req, res, next) => {
   try {
     const rawFilename = req.params.filename;
@@ -114,6 +114,7 @@ const downloadFile = async (req, res, next) => {
   }
 };
 
+// Đọc và truyền luồng dữ liệu tệp từ MinIO/cục bộ về HTTP response
 const streamMinioFile = async (res, objectKey, isPublic) => {
   try {
     const fileStream = await minioStorage.getObjectStream(objectKey);
@@ -122,7 +123,22 @@ const streamMinioFile = async (res, objectKey, isPublic) => {
       'Content-Type': fileStream.contentType || 'application/octet-stream',
       'Cache-Control': isPublic ? 'public, max-age=86400' : 'private, no-store',
     });
-    return fileStream.stream.pipe(res);
+
+    const stream = fileStream.stream;
+    stream.on('error', (streamError) => {
+      console.error('[Stream MinIO Error]:', streamError?.message || streamError);
+      if (!res.headersSent) {
+        return sendError(res, 'Lỗi đọc luồng tệp từ hệ thống lưu trữ.', null, 500);
+      }
+      res.destroy(streamError);
+    });
+    res.on('close', () => {
+      if (typeof stream.destroy === 'function' && !stream.destroyed) {
+        stream.destroy();
+      }
+    });
+
+    return stream.pipe(res);
   } catch (storageError) {
     return sendError(res, 'Không tìm thấy tệp trên hệ thống lưu trữ Object Storage.', null, 404);
   }

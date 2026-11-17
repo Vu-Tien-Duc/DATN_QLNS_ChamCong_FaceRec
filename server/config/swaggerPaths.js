@@ -1,7 +1,4 @@
-/**
- * Định nghĩa chi tiết các Endpoints và Schemas cho OpenAPI 3.0 (Swagger UI)
- * Đầy đủ 9 phân hệ chức năng + Health check
- */
+// Đặc tả các endpoint và schema cho OpenAPI 3.0 (Swagger UI)
 
 const swaggerComponents = {
   securitySchemes: {
@@ -24,237 +21,203 @@ const swaggerComponents = {
     User: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        fullName: { type: 'string', example: 'TS. Trần Thị Bích' },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000001' },
+        ho_ten: { type: 'string', example: 'TS. Trần Thị Bích' },
         email: { type: 'string', example: 'giangvien.bich@university.edu.vn' },
-        staffCode: { type: 'string', example: 'GV001' },
-        phoneNumber: { type: 'string', example: '0901234567' },
-        academicTitle: { type: 'string', example: 'Tiến sĩ' },
-        role: {
+        ma_can_bo: { type: 'string', example: 'GV001' },
+        so_dien_thoai: { type: 'string', example: '0901234567' },
+        hoc_vi: { type: 'string', example: 'tien_si' },
+        vai_tro_chinh: {
           type: 'string',
           enum: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'giang_vien', 'nhan_vien'],
           example: 'giang_vien',
         },
-        departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        annualLeaveQuota: { type: 'number', example: 12 },
-        isActive: { type: 'boolean', example: true },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
+        don_vi_chinh_id: { type: 'string', example: '00000000-0000-4000-8000-000000000002' },
+        han_muc_phep_nam: { type: 'number', example: 12 },
+        kich_hoat: { type: 'boolean', example: true },
+        tao_luc: { type: 'string', format: 'date-time' },
+        cap_nhat_luc: { type: 'string', format: 'date-time' },
       },
     },
     Department: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        name: { type: 'string', example: 'Khoa Công nghệ Thông tin' },
-        type: { type: 'string', enum: ['khoa', 'bo_mon', 'phong_ban'], example: 'khoa' },
-        parentId: { type: 'string', nullable: true, example: null },
-        managerId: { type: 'string', nullable: true, example: '00000000-0000-4000-8000-000000000' },
-        location: {
-          type: 'object',
-          properties: {
-            lat: { type: 'number', example: 21.028511 },
-            lng: { type: 'number', example: 105.854444 },
-          },
-        },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000002' },
+        ten_phong_ban: { type: 'string', example: 'Khoa Công nghệ Thông tin' },
+        loai_don_vi: { type: 'string', enum: ['khoa', 'bo_mon', 'phong_ban'], example: 'khoa' },
+        don_vi_cha_id: { type: 'string', nullable: true, example: null },
+        truong_don_vi_id: { type: 'string', nullable: true, example: '00000000-0000-4000-8000-000000000001' },
+        vi_do: { type: 'number', example: 20.9752 },
+        kinh_do: { type: 'number', example: 105.7628 },
       },
     },
     ShiftConfig: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        name: { type: 'string', example: 'Tiết 1-3 (Sáng)' },
-        code: { type: 'string', example: 'T1_3' },
-        startTime: { type: 'string', example: '07:00' },
-        endTime: { type: 'string', example: '09:30' },
-        lateThresholdMinutes: { type: 'number', example: 15 },
-        earlyLeaveThresholdMinutes: { type: 'number', example: 15 },
-        type: { type: 'string', enum: ['tietday', 'hanhchinh'], example: 'tietday' },
-        description: { type: 'string', example: 'Ca học buổi sáng tiết 1 đến tiết 3' },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000003' },
+        ten_ca: { type: 'string', example: 'Tiết 1-3 (Sáng)' },
+        gio_bat_dau: { type: 'string', example: '07:00' },
+        gio_ket_thuc: { type: 'string', example: '09:30' },
+        nguong_di_muon_phut: { type: 'number', example: 15 },
+        kich_hoat: { type: 'boolean', example: true },
       },
     },
     Schedule: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        shiftId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        subjectId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        roomId: { type: 'string', example: 'A1-402' },
-        latitude: { type: 'number', example: 21.028511 },
-        longitude: { type: 'number', example: 105.854444 },
-        weekday: { type: 'integer', description: '0: CN, 1: T2, ..., 6: T7', example: 2 },
-        startDate: { type: 'string', format: 'date', example: '2026-01-01' },
-        endDate: { type: 'string', format: 'date', example: '2026-12-31' },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000004' },
+        nguoi_dung_id: { type: 'string', example: '00000000-0000-4000-8000-000000000001' },
+        ca_id: { type: 'string', example: '00000000-0000-4000-8000-000000000003' },
+        mon_hoc_id: { type: 'string', example: '00000000-0000-4000-8000-000000000005' },
+        phong_hoc: { type: 'string', example: 'A1-402' },
+        vi_do: { type: 'number', example: 20.9752 },
+        kinh_do: { type: 'number', example: 105.7628 },
+        thu_trong_tuan: { type: 'integer', description: '0: CN, 1: T2, ..., 6: T7', example: 2 },
+        ngay_bat_dau: { type: 'string', format: 'date', example: '2026-01-01' },
+        ngay_ket_thuc: { type: 'string', format: 'date', example: '2026-12-31' },
       },
     },
     Subject: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        code: { type: 'string', example: 'INT3105' },
-        name: { type: 'string', example: 'Lập trình Web nâng cao' },
-        credits: { type: 'number', example: 3 },
-        departmentId: { type: 'string', nullable: true, example: '00000000-0000-4000-8000-000000000' },
-        description: { type: 'string', example: 'Học phần Lập trình Web chuyên ngành CNTT' },
-        isActive: { type: 'boolean', example: true },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000005' },
+        ma_mon: { type: 'string', example: 'INT3105' },
+        ten_mon: { type: 'string', example: 'Lập trình Web nâng cao' },
+        so_tin_chi: { type: 'number', example: 3 },
+        phong_ban_id: { type: 'string', nullable: true, example: '00000000-0000-4000-8000-000000000002' },
+        mo_ta: { type: 'string', example: 'Học phần Lập trình Web chuyên ngành CNTT' },
+        kich_hoat: { type: 'boolean', example: true },
       },
     },
     AttendanceLog: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        shiftId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        scheduleId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        checkInTime: { type: 'string', format: 'date-time' },
-        checkOutTime: { type: 'string', format: 'date-time', nullable: true },
-        status: {
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000006' },
+        nguoi_dung_id: { type: 'string', example: '00000000-0000-4000-8000-000000000001' },
+        ca_id: { type: 'string', example: '00000000-0000-4000-8000-000000000003' },
+        lich_trinh_id: { type: 'string', nullable: true, example: '00000000-0000-4000-8000-000000000004' },
+        thoi_gian_vao: { type: 'string', format: 'date-time' },
+        thoi_gian_ra: { type: 'string', format: 'date-time', nullable: true },
+        trang_thai: {
           type: 'string',
           enum: ['on_time', 'late', 'early_leave', 'absent', 'excused_absence'],
           example: 'on_time',
         },
-        method: { type: 'string', enum: ['GPS', 'QR', 'MANUAL'], example: 'GPS' },
-        checkInLocation: {
-          type: 'object',
-          properties: {
-            lat: { type: 'number', example: 21.028511 },
-            lng: { type: 'number', example: 105.854444 },
-          },
+        phuong_thuc: {
+          type: 'string',
+          enum: ['face_ai', 'qr_code', 'gps_mobile', 'thu_cong_admin', 'system_auto'],
+          example: 'gps_mobile',
         },
-        isFraud: { type: 'boolean', example: false },
-        fraudReason: { type: 'string', nullable: true, example: 'Sai vị trí: ngoài bán kính geofence cho phép' },
+        co_gian_lan: { type: 'boolean', example: false },
       },
     },
     LeaveRequest: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        type: {
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000007' },
+        nguoi_dung_id: { type: 'string', example: '00000000-0000-4000-8000-000000000001' },
+        loai_don: {
           type: 'string',
-          enum: ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om'],
+          enum: ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om', 'viec_rieng', 'giai_trinh_cong'],
           example: 'nghi_phep',
         },
-        startDate: { type: 'string', format: 'date', example: '2026-09-10' },
-        endDate: { type: 'string', format: 'date', example: '2026-09-12' },
-        reason: { type: 'string', example: 'Bận việc gia đình cá nhân' },
-        attachmentUrl: { type: 'string', nullable: true },
-        status: {
+        ngay_bat_dau: { type: 'string', format: 'date', example: '2026-09-10' },
+        ngay_ket_thuc: { type: 'string', format: 'date', example: '2026-09-12' },
+        ly_do: { type: 'string', example: 'Bận việc gia đình cá nhân' },
+        tep_dinh_kem: { type: 'string', nullable: true },
+        trang_thai: {
           type: 'string',
-          enum: ['pending', 'approved', 'rejected'],
+          enum: ['pending', 'pending_dean', 'pending_bgh', 'approved', 'rejected', 'cancelled'],
           example: 'pending',
         },
-        approvedBy: { type: 'string', nullable: true },
-        approvalNote: { type: 'string', nullable: true },
+        nguoi_duyet_id: { type: 'string', nullable: true },
+        ly_do_tu_choi: { type: 'string', nullable: true },
       },
     },
     AuditLog: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        actor: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        action: { type: 'string', example: 'USER_LOGIN' },
-        targetType: { type: 'string', example: 'User' },
-        targetId: { type: 'string', nullable: true },
-        ipAddress: { type: 'string', example: '127.0.0.1' },
-        status: { type: 'string', enum: ['success', 'failed'], example: 'success' },
-        timestamp: { type: 'string', format: 'date-time' },
-        details: { type: 'object' },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000008' },
+        nguoi_thuc_hien_id: { type: 'string', nullable: true },
+        hanh_dong: { type: 'string', example: 'USER_LOGIN' },
+        loai_doi_tuong: { type: 'string', example: 'nguoi_dung' },
+        doi_tuong_id: { type: 'string', nullable: true },
+        dia_chi_ip: { type: 'string', example: '127.0.0.1' },
+        ket_qua: { type: 'string', enum: ['success', 'failed'], example: 'success' },
+        thoi_diem: { type: 'string', format: 'date-time' },
+        chi_tiet: { type: 'object' },
       },
     },
     Payroll: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        month: { type: 'integer', example: 10 },
-        year: { type: 'integer', example: 2026 },
-        baseSalary: { type: 'number', example: 18000000 },
-        standardTeachingHours: { type: 'number', example: 45 },
-        actualTeachingHours: { type: 'number', example: 52 },
-        overtimeTeachingHours: { type: 'number', example: 7 },
-        overtimeHourlyRate: { type: 'number', example: 120000 },
-        overtimePay: { type: 'number', example: 840000 },
-        positionAllowance: { type: 'number', example: 1500000 },
-        socialInsuranceDeduction: { type: 'number', example: 1890000 },
-        taxableIncome: { type: 'number', example: 7450000 },
-        personalIncomeTax: { type: 'number', example: 372500 },
-        netSalary: { type: 'number', example: 21327500 },
-        status: { type: 'string', enum: ['CHUA_KHOA', 'da_khoa'], example: 'da_khoa' },
-        isLocked: { type: 'boolean', example: true },
-        snapshotTime: { type: 'string', format: 'date-time' },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000009' },
+        nguoi_dung_id: { type: 'string', example: '00000000-0000-4000-8000-000000000001' },
+        thang: { type: 'integer', example: 10 },
+        nam: { type: 'integer', example: 2026 },
+        luong_co_ban: { type: 'number', example: 2530000 },
+        he_so_luong: { type: 'number', example: 2.34 },
+        so_tiet_nghia_vu: { type: 'number', example: 45 },
+        so_tiet_thuc_day: { type: 'number', example: 52 },
+        so_tiet_vuot_gio: { type: 'number', example: 7 },
+        don_gia_tiet_vuot: { type: 'number', example: 120000 },
+        tien_vuot_gio: { type: 'number', example: 840000 },
+        tong_phu_cap: { type: 'number', example: 1500000 },
+        dong_bao_hiem: { type: 'number', example: 1890000 },
+        thue_thu_nhap_ca_nhan: { type: 'number', example: 372500 },
+        thuc_linh: { type: 'number', example: 21327500 },
+        trang_thai: { type: 'string', enum: ['nhap', 'cho_duyet', 'da_duyet', 'da_chi_tra'], example: 'da_duyet' },
+        da_khoa: { type: 'boolean', example: true },
+        thoi_gian_duyet: { type: 'string', format: 'date-time', nullable: true },
       },
     },
     FaceTemplate: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        angles: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              angle: { type: 'string', enum: ['front', 'left', 'right', 'up', 'down'] },
-              embedding: { type: 'array', items: { type: 'number' } },
-              quality: { type: 'number', example: 0.98 },
-            },
-          },
-        },
-        centroidEmbedding: { type: 'array', items: { type: 'number' } },
-        isRegistered: { type: 'boolean', example: true },
-        registeredAt: { type: 'string', format: 'date-time' },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000010' },
+        nguoi_dung_id: { type: 'string', example: '00000000-0000-4000-8000-000000000001' },
+        so_luong_mau: { type: 'integer', example: 5 },
+        so_chieu_vector: { type: 'integer', example: 512 },
+        mac_dinh: { type: 'boolean', example: true },
+        ngay_dang_ky: { type: 'string', format: 'date-time' },
       },
     },
     SystemConfig: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        key: { type: 'string', example: 'CAMPUS_GPS_RADIUS_METERS' },
-        value: { type: 'object', example: 100 },
-        dataType: { type: 'string', enum: ['NUMBER', 'STRING', 'BOOLEAN', 'JSON'], example: 'NUMBER' },
-        description: { type: 'string', example: 'Bán kính GPS hợp lệ quanh khuôn viên cơ sở (mét)' },
-        group: { type: 'string', example: 'CHAM_CONG' },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000011' },
+        khoa_cau_hinh: { type: 'string', example: 'GEOFENCE_TRUONG' },
+        gia_tri: { type: 'object', example: 150 },
+        mo_ta: { type: 'string', example: 'Bán kính GPS hợp lệ quanh khuôn viên cơ sở (mét)' },
+        nhom: { type: 'string', example: 'CHAM_CONG' },
       },
     },
     Holiday: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        name: { type: 'string', example: 'Tết Nguyên Đán 2026' },
-        startDate: { type: 'string', format: 'date', example: '2026-02-15' },
-        endDate: { type: 'string', format: 'date', example: '2026-02-22' },
-        year: { type: 'integer', example: 2026 },
-        isPaid: { type: 'boolean', example: true },
-        description: { type: 'string', example: 'Nghỉ Tết Âm lịch theo quy định Nhà nước' },
-        createdBy: { type: 'string', nullable: true },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000012' },
+        ten_ngay_le: { type: 'string', example: 'Tết Nguyên Đán 2026' },
+        ngay_bat_dau: { type: 'string', format: 'date', example: '2026-02-15' },
+        ngay_ket_thuc: { type: 'string', format: 'date', example: '2026-02-22' },
+        nam: { type: 'integer', example: 2026 },
+        huong_luong: { type: 'boolean', example: true },
+        mo_ta: { type: 'string', example: 'Nghỉ Tết Âm lịch theo quy định Nhà nước' },
       },
     },
     PunchLog: {
       type: 'object',
       properties: {
-        _id: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        attendanceLogId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-        punchType: { type: 'string', enum: ['check_in', 'check_out'], example: 'check_in' },
-        punchTime: { type: 'string', format: 'date-time' },
-        method: { type: 'string', enum: ['face_ai', 'qr_code', 'gps_mobile', 'thu_cong_admin', 'system_auto'], example: 'face_ai' },
-        aiConfidenceScore: { type: 'number', example: 0.95 },
-        isRealFace: { type: 'boolean', example: true },
-        gpsPoint: {
-          type: 'object',
-          properties: {
-            type: { type: 'string', example: 'Point' },
-            coordinates: { type: 'array', items: { type: 'number' }, example: [105.854444, 21.028511] },
-          },
-        },
-        isMockLocation: { type: 'boolean', example: false },
-        isFraud: { type: 'boolean', example: false },
-        fraudReason: { type: 'string', nullable: true },
-        status: { type: 'string', enum: ['success', 'failed'], example: 'success' },
+        id: { type: 'string', example: '00000000-0000-4000-8000-000000000013' },
+        cham_cong_id: { type: 'string', example: '00000000-0000-4000-8000-000000000006' },
+        nguoi_dung_id: { type: 'string', example: '00000000-0000-4000-8000-000000000001' },
+        loai_quet: { type: 'string', enum: ['check_in', 'check_out'], example: 'check_in' },
+        thoi_gian_quet: { type: 'string', format: 'date-time' },
+        phuong_thuc: { type: 'string', enum: ['face_ai', 'qr_code', 'gps_mobile', 'thu_cong_admin', 'system_auto'], example: 'face_ai' },
+        do_tin_cay_ai: { type: 'number', example: 0.95 },
+        diem_mat_that: { type: 'number', example: 0.92 },
+        vi_tri_gia_lap: { type: 'boolean', example: false },
+        hop_le: { type: 'boolean', example: true },
+        ly_do_khong_hop_le: { type: 'string', nullable: true },
       },
     },
     Notification: {
@@ -273,9 +236,7 @@ const swaggerComponents = {
 };
 
 const swaggerPaths = {
-  // -------------------------------------------------------------
-  // 17. SYSTEM & HEALTH CHECK
-  // -------------------------------------------------------------
+  // 1. Kiểm tra trạng thái hệ thống
   '/api/suc-khoe': {
     get: {
       tags: ['17 - Hạ Tầng & Kiểm Tra Hệ Thống (Health Check)'],
@@ -317,9 +278,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 01. AUTHENTICATION & SESSIONS
-  // -------------------------------------------------------------
+  // 2. Xác thực & Phiên đăng nhập
   '/api/xac-thuc/dang-nhap': {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
@@ -587,9 +546,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 3.1 USERS MANAGEMENT
-  // -------------------------------------------------------------
+  // 3. Quản lý nhân sự
   '/api/nguoi-dung': {
     get: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
@@ -738,9 +695,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 3.2 DEPARTMENTS
-  // -------------------------------------------------------------
+  // 4. Khoa & Phòng ban
   '/api/phong-ban': {
     get: {
       tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
@@ -853,9 +808,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 3.3 SHIFT CONFIGS
-  // -------------------------------------------------------------
+  // 5. Ca làm việc
   '/api/ca-lam-viec': {
     get: {
       tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
@@ -877,14 +830,11 @@ const swaggerPaths = {
               type: 'object',
               required: ['name', 'code', 'startTime', 'endTime'],
               properties: {
-                name: { type: 'string', example: 'Tiết 10-12 (Tối)' },
-                code: { type: 'string', example: 'T10_12' },
-                startTime: { type: 'string', example: '18:00' },
-                endTime: { type: 'string', example: '20:30' },
-                lateThresholdMinutes: { type: 'number', default: 15, example: 15 },
-                earlyLeaveThresholdMinutes: { type: 'number', default: 15, example: 15 },
-                type: { type: 'string', enum: ['tietday', 'hanhchinh'], example: 'tietday' },
-                description: { type: 'string', example: 'Ca học buổi tối' },
+                ten_ca: { type: 'string', example: 'Tiết 10-12 (Tối)' },
+                gio_bat_dau: { type: 'string', example: '18:00' },
+                gio_ket_thuc: { type: 'string', example: '20:30' },
+                nguong_di_muon_phut: { type: 'number', default: 15, example: 15 },
+                kich_hoat: { type: 'boolean', default: true, example: true },
               },
             },
           },
@@ -942,9 +892,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 3.3 SCHEDULES
-  // -------------------------------------------------------------
+  // 6. Lịch trình & Thời khóa biểu
   '/api/lich-trinh': {
     get: {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
@@ -1078,9 +1026,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 3.4 ATTENDANCE
-  // -------------------------------------------------------------
+  // 7. Chấm công & Điểm danh
   '/api/cham-cong/vao-ca': {
     post: {
       tags: ['09 - Quản Lý Chấm Công (Attendance & PunchLog)'],
@@ -1093,15 +1039,10 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                method: { type: 'string', enum: ['GPS', 'QR', 'MANUAL'], default: 'GPS', example: 'GPS' },
-                deviceId: { type: 'string', example: 'BROWSER-CHROME-122' },
-                location: {
-                  type: 'object',
-                  properties: {
-                    lat: { type: 'number', example: 21.028511 },
-                    lng: { type: 'number', example: 105.854444 },
-                  },
-                },
+                phuong_thuc: { type: 'string', enum: ['gps_mobile', 'thu_cong_admin'], default: 'gps_mobile', example: 'gps_mobile' },
+                thiet_bi_id: { type: 'string', example: 'MOBILE_APP' },
+                vi_do: { type: 'number', example: 20.9752 },
+                kinh_do: { type: 'number', example: 105.7628 },
               },
             },
           },
@@ -1517,9 +1458,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 10. LEAVE REQUESTS & SHIFT EXCHANGES
-  // -------------------------------------------------------------
+  // 8. Đơn nghỉ phép, dạy bù & đổi ca
   '/api/don-nghi-phep': {
     post: {
       tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
@@ -1673,9 +1612,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 10.1 UPLOAD ATTACHMENT
-  // -------------------------------------------------------------
+  // 9. Tải lên tệp đính kèm
   '/api/tai-tep': {
     post: {
       tags: ['10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)'],
@@ -1737,9 +1674,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 3.7 REPORTS
-  // -------------------------------------------------------------
+  // 10. Báo cáo & Thống kê
   '/api/bao-cao/cham-cong': {
     get: {
       tags: ['12 - Báo Cáo & Thống Kê (Reports)'],
@@ -1859,10 +1794,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // -------------------------------------------------------------
-  // 15. NOTIFICATIONS
-  // -------------------------------------------------------------
+  // 11. Thông báo người dùng
   '/api/thong-bao': {
     get: {
       tags: ['15 - Hệ Thống Thông Báo (Notifications)'],
@@ -1897,9 +1829,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 13. AUDIT LOGS
-  // -------------------------------------------------------------
+  // 12. Nhật ký kiểm toán (Audit Logs)
   '/api/nhat-ky-kiem-toan': {
     get: {
       tags: ['13 - Nhật Ký Kiểm Toán (Audit Logs)'],
@@ -1975,9 +1905,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 11. PAYROLLS & SALARY SNAPSHOT
-  // -------------------------------------------------------------
+  // 13. Phiếu lương & Khóa sổ lương
   '/api/phieu-luong/khoi-tao': {
     post: {
       tags: ['11 - Quản Lý Bảng Lương & Snapshot (Payrolls)'],
@@ -2201,9 +2129,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 08. FACE BIOMETRICS
-  // -------------------------------------------------------------
+  // 14. Sinh trắc học khuôn mặt (Face AI)
   '/api/khuon-mat/phat-hien-tu-the': {
     post: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
@@ -2411,9 +2337,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 14. SYSTEM CONFIGS
-  // -------------------------------------------------------------
+  // 15. Cấu hình hệ thống tập trung
   '/api/he-thong/cau-hinh': {
     get: {
       tags: ['14 - Cấu Hình Hệ Thống Tập Trung (System Configs)'],
@@ -2453,9 +2377,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 05. SUBJECTS (MÔN HỌC / HỌC PHẦN)
-  // -------------------------------------------------------------
+  // 16. Danh mục môn học
   '/api/mon-hoc': {
     get: {
       tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
@@ -2559,9 +2481,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 07. HOLIDAYS (DANH MỤC NGÀY NGHỈ LỄ)
-  // -------------------------------------------------------------
+  // 17. Danh mục ngày nghỉ lễ
   '/api/ngay-nghi-le': {
     get: {
       tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
@@ -2664,9 +2584,7 @@ const swaggerPaths = {
     },
   },
 
-  // -------------------------------------------------------------
-  // 17. PUBLIC FACULTY SHOWCASE (PHENIKAA UNIVERSITY)
-  // -------------------------------------------------------------
+  // 18. Cổng thông tin công khai Giảng viên
   '/api/cong-khai/giang-vien/thong-ke': {
     get: {
       tags: ['17 - Cổng Thông Tin Giảng Viên Công Khai (Public Faculty)'],

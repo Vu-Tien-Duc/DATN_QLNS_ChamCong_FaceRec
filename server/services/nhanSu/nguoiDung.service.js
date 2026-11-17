@@ -1,7 +1,4 @@
-/**
- * User Management Service (server/services/user.service.js)
- * Chuẩn hóa Sequelize + SQL Server 3NF: NguoiDung + HoSoCanBo (1:1) + VaiTroNguoiDung (1:n) + MauKhuonMat.
- */
+// Quản lý tài khoản nhân sự, hồ sơ cán bộ, vai trò theo khoa và khóa mềm tài khoản.
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 const {
@@ -20,21 +17,13 @@ const {
 } = require('../khuonMat/mauKhuonMat.service');
 const { getDeanDepartmentIds } = require('../../utils/phamViTruongKhoa');
 const { runInTransaction } = require('../../utils/giaoDichDb');
-const { UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES, normalizeRole } = require('../../utils/vaiTro.utils');
+const { UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES, normalizeRole, hasAnyActiveRole, getActiveUserRoles } = require('../../utils/vaiTro.utils');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
+const ServiceError = require('../../utils/loiNghiepVu');
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
-class ServiceError extends Error {
-  constructor(message, statusCode = 400, errorCode = null, data = null) {
-    super(message);
-    this.name = 'ServiceError';
-    this.statusCode = statusCode;
-    this.errorCode = errorCode;
-    this.data = data;
-  }
-}
-
+// Tạo mảng vai trò mặc định tương ứng với vai trò chính và đơn vị
 const buildDefaultRolesArray = (roleStr, don_vi_id = null) => {
   const norm = normalizeRole(roleStr);
   let pham_vi = don_vi_id ? 'khoa' : 'toan_truong';
@@ -52,6 +41,7 @@ const buildDefaultRolesArray = (roleStr, don_vi_id = null) => {
   return [{ ma_vai_tro: norm, pham_vi, don_vi_id: don_vi_id || null }];
 };
 
+// Kiểm tra ràng buộc loại đơn vị (Khoa/Bộ môn/Ban Giám Hiệu) phù hợp với vai trò
 const validateDepartmentRoleRule = async (roleVal, deptId) => {
   if (!deptId) return;
   const dept = await PhongBan.findByPk(deptId);
@@ -86,6 +76,7 @@ const USER_INCLUDES = [
   { model: VaiTroNguoiDung, as: 'danh_sach_vai_tro' },
 ];
 
+// Gộp dữ liệu tài khoản, hồ sơ cán bộ và trạng thái Face ID để trả về client
 const formatUserDetail = (userInstance, faceTemplate = null) => {
   const raw = userInstance.toJSON ? userInstance.toJSON() : { ...userInstance };
   delete raw.mat_khau_ma_hoa;
@@ -117,14 +108,12 @@ const formatUserDetail = (userInstance, faceTemplate = null) => {
   };
 };
 
-/**
- * 1. Lấy danh sách người dùng (Phân trang, tìm kiếm, lọc theo khoa và vai trò)
- */
+// Lấy danh sách người dùng có phân trang, tìm kiếm và lọc theo khoa, vai trò
 const fetchUsers = async ({ vai_tro, don_vi_id, dang_hoat_dong, kich_hoat, tim_kiem, page = 1, limit = 20, trang, gioi_han, currentUser }) => {
   const where = {};
-  const userRole = normalizeRole(currentUser?.vai_tro_chinh);
+  const isUnitLeaderOnly = hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES) && !hasAnyActiveRole(currentUser, [...GLOBAL_ADMIN_ROLES, 'dao_tao']);
 
-  if (UNIT_LEADER_ROLES.includes(userRole)) {
+  if (isUnitLeaderOnly) {
     const departmentIds = await getDeanDepartmentIds(currentUser);
     if (!departmentIds.length) {
       throw new ServiceError('Tài khoản Lãnh đạo đơn vị chưa được gán mã khoa / phòng ban trực thuộc.', 403);
@@ -188,9 +177,7 @@ const fetchUsers = async ({ vai_tro, don_vi_id, dang_hoat_dong, kich_hoat, tim_k
   };
 };
 
-/**
- * 2. Xem chi tiết người dùng
- */
+// Xem chi tiết một người dùng
 const fetchUserById = async (id, currentUser) => {
   if (!isValidUuid(id)) {
     throw new ServiceError('Mã người dùng không hợp lệ.', 400);
@@ -202,8 +189,8 @@ const fetchUserById = async (id, currentUser) => {
   }
 
   const isSelf = String(currentUser.id) === String(id);
-  const viewerRole = normalizeRole(currentUser.vai_tro_chinh);
-  if (!isSelf && ['truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong'].includes(viewerRole)) {
+  const isUnitLeaderOnly = hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES) && !hasAnyActiveRole(currentUser, [...GLOBAL_ADMIN_ROLES, 'dao_tao']);
+  if (!isSelf && isUnitLeaderOnly) {
     const allowedDeptIds = (await getDeanDepartmentIds(currentUser)).map(String);
     const userDeptId = String(user.don_vi_chinh_id || '');
     if (!allowedDeptIds.includes(userDeptId)) {
@@ -219,6 +206,7 @@ const fetchUserById = async (id, currentUser) => {
   return formatUserDetail(user, template);
 };
 
+// Trích xuất danh sách mã vai trò chuẩn hóa từ yêu cầu tạo/cập nhật tài khoản
 const extractRequestedRoleCodes = (primaryRole, roleList) => {
   const roles = [];
   if (primaryRole !== undefined && primaryRole !== null) {
@@ -235,11 +223,12 @@ const extractRequestedRoleCodes = (primaryRole, roleList) => {
   return roles;
 };
 
+// Kiểm tra người thực hiện có đủ thẩm quyền gán các vai trò cấp cao (bgh, admin)
 const assertRoleAssignmentAllowed = (currentUser, requestedRoles) => {
-  const currentRole = normalizeRole(currentUser?.vai_tro_chinh);
-  const isTopAdmin = ['admin', 'bgh'].includes(currentRole);
+  const activeRoles = getActiveUserRoles(currentUser);
+  const isTopAdmin = activeRoles.has('admin') || activeRoles.has('bgh');
 
-  if (currentRole !== 'bgh' && requestedRoles.includes('bgh')) {
+  if (!activeRoles.has('bgh') && requestedRoles.includes('bgh')) {
     throw new ServiceError('Chỉ Ban Giám Hiệu mới có quyền gán vai trò Ban Giám Hiệu.', 403);
   }
   if (!isTopAdmin && requestedRoles.includes('admin')) {
@@ -247,9 +236,7 @@ const assertRoleAssignmentAllowed = (currentUser, requestedRoles) => {
   }
 };
 
-/**
- * 3. Tạo mới tài khoản cán bộ / giảng viên (Ghi đồng bộ NguoiDung + HoSoCanBo + VaiTroNguoiDung)
- */
+// Tạo tài khoản nhân sự mới và đồng bộ hồ sơ cán bộ, vai trò
 const createNewUser = async (data, currentUser, dia_chi_ip = null) => {
   const finalName = (data.ho_ten || '').trim();
   const finalEmail = (data.email || '').trim().toLowerCase();
@@ -334,6 +321,7 @@ const createNewUser = async (data, currentUser, dia_chi_ip = null) => {
       ma_vai_tro: normalizeRole(r.ma_vai_tro || finalRole),
       pham_vi: r.pham_vi || (finalDeptId ? 'khoa' : 'toan_truong'),
       don_vi_id: r.don_vi_id !== undefined ? r.don_vi_id : finalDeptId,
+      duoc_uy_quyen: Boolean(r.duoc_uy_quyen),
       tu_ngay: r.tu_ngay || new Date().toISOString().slice(0, 10),
       den_ngay: r.den_ngay || null,
     }));
@@ -353,9 +341,7 @@ const createNewUser = async (data, currentUser, dia_chi_ip = null) => {
   return fetchUserById(createdId, currentUser);
 };
 
-/**
- * 4. Cập nhật thông tin tài khoản & hồ sơ cán bộ
- */
+// Cập nhật tài khoản và hồ sơ cán bộ
 const updateExistingUser = async (id, data, currentUser, dia_chi_ip = null) => {
   if (!isValidUuid(id)) {
     throw new ServiceError('Mã người dùng không hợp lệ.', 400);
@@ -367,8 +353,10 @@ const updateExistingUser = async (id, data, currentUser, dia_chi_ip = null) => {
   }
 
   const isSelf = String(currentUser.id) === String(id);
-  const editorRole = normalizeRole(currentUser.vai_tro_chinh);
-  const isTopAdmin = ['admin', 'bgh'].includes(editorRole);
+  const editorRoles = getActiveUserRoles(currentUser);
+  const isTopAdmin = editorRoles.has('admin') || editorRoles.has('bgh');
+  const isGlobalHrEditor = isTopAdmin || editorRoles.has('tccb');
+  const isUnitLeaderOnly = hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES) && !isGlobalHrEditor;
 
   const payload = { ...data };
   if (isSelf && !isTopAdmin) {
@@ -383,7 +371,9 @@ const updateExistingUser = async (id, data, currentUser, dia_chi_ip = null) => {
     delete payload.danh_sach_vai_tro;
     delete payload.trang_thai_lam_viec;
     delete payload.ngay_vao_lam;
-  } else if (['truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong'].includes(editorRole)) {
+    delete payload.mat_khau;
+    delete payload.password;
+  } else if (isUnitLeaderOnly) {
     const allowedDeptIds = (await getDeanDepartmentIds(currentUser)).map(String);
     if (!allowedDeptIds.includes(String(user.don_vi_chinh_id || ''))) {
       throw new ServiceError('Bạn không có quyền sửa thông tin nhân sự ngoài khoa của mình.', 403);
@@ -391,20 +381,31 @@ const updateExistingUser = async (id, data, currentUser, dia_chi_ip = null) => {
     delete payload.vai_tro_chinh;
     delete payload.danh_sach_vai_tro;
     delete payload.don_vi_chinh_id;
+    delete payload.ma_can_bo;
     delete payload.he_so_luong;
+    delete payload.ngach_luong;
+    delete payload.han_muc_phep_nam;
+    delete payload.trang_thai_lam_viec;
+    delete payload.ngay_vao_lam;
+    delete payload.so_cccd;
+    delete payload.ma_so_thue;
+    delete payload.so_tai_khoan_ngan_hang;
+    delete payload.ngay_het_han_hop_dong;
     delete payload.kich_hoat;
+    delete payload.dang_hoat_dong;
+    delete payload.mat_khau;
+    delete payload.password;
   }
 
   const targetRole = normalizeRole(user.vai_tro_chinh);
-  const currentRole = normalizeRole(currentUser.vai_tro_chinh);
   const requestedRoles = extractRequestedRoleCodes(payload.vai_tro_chinh, payload.danh_sach_vai_tro);
   assertRoleAssignmentAllowed(currentUser, requestedRoles);
 
   if (!isSelf) {
-    if (targetRole === 'bgh' && currentRole !== 'bgh' && (payload.kich_hoat !== undefined || payload.dang_hoat_dong !== undefined || payload.vai_tro_chinh !== undefined || payload.danh_sach_vai_tro !== undefined || payload.mat_khau !== undefined || payload.email !== undefined)) {
+    if (targetRole === 'bgh' && !editorRoles.has('bgh') && (payload.kich_hoat !== undefined || payload.dang_hoat_dong !== undefined || payload.vai_tro_chinh !== undefined || payload.danh_sach_vai_tro !== undefined || payload.mat_khau !== undefined || payload.email !== undefined)) {
       throw new ServiceError('Chỉ Ban Giám Hiệu mới có quyền thay đổi thông tin nhạy cảm, trạng thái hoặc vai trò của tài khoản Ban Giám Hiệu.', 403);
     }
-    if (targetRole === 'admin' && currentRole !== 'bgh' && (payload.kich_hoat !== undefined || payload.dang_hoat_dong !== undefined || payload.vai_tro_chinh !== undefined || payload.danh_sach_vai_tro !== undefined || payload.mat_khau !== undefined || payload.email !== undefined)) {
+    if (targetRole === 'admin' && !editorRoles.has('bgh') && (payload.kich_hoat !== undefined || payload.dang_hoat_dong !== undefined || payload.vai_tro_chinh !== undefined || payload.danh_sach_vai_tro !== undefined || payload.mat_khau !== undefined || payload.email !== undefined)) {
       throw new ServiceError('Chỉ Ban Giám Hiệu mới có quyền thay đổi thông tin nhạy cảm, trạng thái hoặc vai trò của tài khoản Quản trị viên.', 403);
     }
   }
@@ -488,6 +489,7 @@ const updateExistingUser = async (id, data, currentUser, dia_chi_ip = null) => {
             ma_vai_tro: normalizeRole(r.ma_vai_tro || user.vai_tro_chinh),
             pham_vi: r.pham_vi || (user.don_vi_chinh_id ? 'khoa' : 'toan_truong'),
             don_vi_id: r.don_vi_id !== undefined ? r.don_vi_id : user.don_vi_chinh_id,
+            duoc_uy_quyen: Boolean(r.duoc_uy_quyen),
             tu_ngay: r.tu_ngay || new Date().toISOString().slice(0, 10),
             den_ngay: r.den_ngay || null,
           })),
@@ -532,9 +534,7 @@ const updateExistingUser = async (id, data, currentUser, dia_chi_ip = null) => {
   return fetchUserById(user.id, currentUser);
 };
 
-/**
- * 5. Khóa / Vô hiệu hóa tài khoản (Soft delete)
- */
+// Khóa mềm tài khoản người dùng
 const softDeleteUser = async (id, currentUser, dia_chi_ip = null) => {
   if (!isValidUuid(id)) {
     throw new ServiceError('Mã người dùng không hợp lệ.', 400);
@@ -547,12 +547,12 @@ const softDeleteUser = async (id, currentUser, dia_chi_ip = null) => {
   if (!user) throw new ServiceError('Không tìm thấy người dùng.', 404);
 
   const targetRole = normalizeRole(user.vai_tro_chinh);
-  const currentRole = normalizeRole(currentUser.vai_tro_chinh);
+  const editorRoles = getActiveUserRoles(currentUser);
 
-  if (targetRole === 'bgh' && currentRole !== 'bgh') {
+  if (targetRole === 'bgh' && !editorRoles.has('bgh')) {
     throw new ServiceError('Chỉ Lãnh đạo Ban Giám Hiệu mới có quyền vô hiệu hóa tài khoản Ban Giám Hiệu.', 403);
   }
-  if (targetRole === 'admin' && currentRole !== 'bgh') {
+  if (targetRole === 'admin' && !editorRoles.has('bgh')) {
     throw new ServiceError('Chỉ Lãnh đạo Ban Giám Hiệu mới có quyền vô hiệu hóa tài khoản Quản trị viên.', 403);
   }
 

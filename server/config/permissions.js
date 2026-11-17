@@ -1,12 +1,7 @@
-/**
- * HỆ THỐNG PHÂN QUYỀN RBAC CHUẨN (Role-Based Access Control)
- * Đề tài: Hệ thống Quản lý Nhân sự & Chấm công ứng dụng Thị giác Máy tính
- * Sinh viên thực hiện: Vũ Tiến Đức - MSV: 2310900023
- */
+// Phân quyền RBAC: danh sách quyền chi tiết, ma trận vai trò -> quyền và hàm kiểm tra quyền hiệu lực
 
 const { normalizeRole } = require('../utils/vaiTro.utils');
 
-// 1. Danh mục các quyền hạt nhân (Granular Permissions)
 const PERMISSIONS = {
   // Đơn từ
   DON_TU_TAO: 'DON_TU:TAO',
@@ -46,9 +41,9 @@ const PERMISSIONS = {
   HE_THONG_KIEM_TOAN: 'HE_THONG:KIEM_TOAN',
 };
 
-// 2. Ma trận Ánh xạ Vai trò -> Tập quyền (Chuẩn canonical lowercase snake_case)
+// Bảng ánh xạ mỗi vai trò sang tập quyền tương ứng
 const CANONICAL_ROLE_PERMISSIONS = {
-  admin: Object.values(PERMISSIONS), // Admin toàn quyền
+  admin: Object.values(PERMISSIONS),
 
   bgh: [
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
@@ -235,12 +230,7 @@ const CANONICAL_ROLE_PERMISSIONS = {
 
 const ROLE_PERMISSIONS = CANONICAL_ROLE_PERMISSIONS;
 
-/**
- * Tính toán tập quyền thực tế (Effective Permissions) của người dùng:
- * 1. Lọc qua mảng roles[] còn hiệu lực (nhiệm kỳ hợp lệ: expiresAt === null hoặc expiresAt >= now).
- * 2. Tính cả cờ isDelegated cho các chức danh phó trưởng.
- * 3. Hợp nhất (Union) toàn bộ quyền và khử trùng lặp.
- */
+// Tổng hợp quyền thực tế từ vai_tro_chinh và các vai trò phụ còn hiệu lực (tu_ngay..den_ngay)
 function isRoleAssignmentActive(roleObj, todayKey) {
   if (!roleObj || typeof roleObj !== 'object') return false;
   const start = roleObj.tu_ngay || roleObj.startDate;
@@ -250,6 +240,7 @@ function isRoleAssignmentActive(roleObj, todayKey) {
   return true;
 }
 
+// Tổng hợp toàn bộ quyền hiệu lực của người dùng từ vai trò chính và các vai trò phụ còn hạn
 function getEffectivePermissions(user) {
   if (!user) return new Set();
 
@@ -261,7 +252,6 @@ function getEffectivePermissions(user) {
     day: '2-digit',
   }).format(new Date());
 
-  // Luôn hợp nhất quyền từ vai trò chính (vai_tro_chinh)
   const primaryRole = user.vai_tro_chinh || user.primaryRole || user.role;
   if (primaryRole) {
     const primaryCode = normalizeRole(primaryRole);
@@ -270,7 +260,6 @@ function getEffectivePermissions(user) {
     }
   }
 
-  // Kiểm tra mảng vai trò RBAC v2.5 đang còn hiệu lực (tu_ngay <= today <= den_ngay)
   const rolesList = user.danh_sach_vai_tro || user.roles || [];
 
   if (Array.isArray(rolesList) && rolesList.length > 0) {
@@ -286,7 +275,7 @@ function getEffectivePermissions(user) {
         permissions.add(p);
       }
 
-      if (typeof r === 'object' && r.isDelegated && ['pho_khoa', 'pho_bo_mon', 'pho_phong'].includes(roleCode)) {
+      if (typeof r === 'object' && Boolean(r.duoc_uy_quyen) && ['pho_khoa', 'pho_bo_mon', 'pho_phong'].includes(roleCode)) {
         permissions.add(PERMISSIONS.DON_TU_DUYET_CAP_1);
       }
     }
@@ -295,9 +284,7 @@ function getEffectivePermissions(user) {
   return permissions;
 }
 
-/**
- * Kiểm tra xem người dùng có quyền cụ thể hay không
- */
+// Kiểm tra người dùng có sở hữu một quyền cụ thể hay không
 function hasPermission(user, requiredPermission) {
   if (!user || !requiredPermission) return false;
   const effective = getEffectivePermissions(user);

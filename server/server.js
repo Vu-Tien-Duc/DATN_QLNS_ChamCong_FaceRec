@@ -1,3 +1,4 @@
+// Điểm khởi chạy chính của máy chủ: kiểm tra cấu hình, kết nối CSDL, chạy nền, Socket.IO và HTTP server.
 const dns = require('dns');
 if (dns.setDefaultResultOrder) {
   dns.setDefaultResultOrder('ipv4first');
@@ -15,19 +16,22 @@ try {
 const app = require('./app');
 const connectDB = require('./config/db');
 const { initCronJobs } = require('./services/heThong/tacVuDinhKy.service');
+const { loadConfigsIntoCache } = require('./services/heThong/cauHinhHeThong.service');
 
 const PORT = process.env.PORT || 5000;
 
-// Kết nối CSDL Microsoft SQL Server và khởi chạy Server
+// Kết nối CSDL, khởi chạy tiến trình nền, Socket.IO và lắng nghe HTTP
 const startServer = async () => {
   try {
     await connectDB();
+    await loadConfigsIntoCache(true).catch((err) => {
+      console.warn('[SystemConfig] Không thể nạp cache cấu hình lúc khởi động:', err.message);
+    });
 
-    // Khởi tạo các tiến trình chạy nền (node-cron)
+    // Khởi chạy các tác vụ định kỳ (node-cron)
     initCronJobs();
 
-    // Khởi chạy Worker BullMQ xử lý hàng đợi điểm danh giờ cao điểm (5 luồng đồng thời)
-    // Nếu Redis đang kết nối bất đồng bộ (lazyConnect), lắng nghe sự kiện 'ready' để tự động khởi động Worker
+    // Khởi chạy worker xử lý hàng đợi chấm công khi Redis sẵn sàng
     const { startPunchWorker, closePunchQueue } = require('./queues/hangDoiChamCong');
     const { getRedisClient } = require('./config/redis');
     const worker = startPunchWorker(5);
@@ -40,8 +44,7 @@ const startServer = async () => {
       }
     }
 
-    // Tự động đồng bộ các vector khuôn mặt InsightFace vào FAISS RAM
-    // Tự động đồng bộ các vector khuôn mặt InsightFace vào RAM
+    // Nạp sẵn vector khuôn mặt vào RAM dịch vụ AI sau khi khởi động
     setTimeout(async () => {
       try {
         const { ensureRamCacheWarm } = require('./services/khuonMat/ketNoiDichVuKhuonMat');
@@ -54,7 +57,7 @@ const startServer = async () => {
     const http = require('http');
     const server = http.createServer(app);
 
-    // Khởi tạo Realtime Socket.IO Server
+    // Khởi tạo máy chủ WebSocket Socket.IO
     const { initSocketServer, closeSocketServer } = require('./config/socket');
     initSocketServer(server);
 

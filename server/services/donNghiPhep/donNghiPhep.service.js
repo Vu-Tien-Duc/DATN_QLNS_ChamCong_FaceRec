@@ -1,17 +1,15 @@
-/**
- * Dịch vụ Đơn nghỉ phép & Dạy bù (server/services/donNghiPhep.service.js)
- * Xử lý tạo đơn, tra cứu danh sách/chi tiết, xem số dư phép năm và re-export module phê duyệt.
- */
+// Tạo đơn nghỉ phép / dạy bù / đổi ca / giải trình công, tra cứu số dư phép năm và điều phối phê duyệt đơn
 const path = require('path');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const minioStorage = require('../../config/minio');
-const { DonNghiPhep, NguoiDung, HoSoCanBo, LichTrinh } = require('../../models');
+const { DonNghiPhep, NguoiDung, HoSoCanBo, LichTrinh, CaLamViec } = require('../../models');
 const { timeStringToMinutes } = require('../../utils/thoiGianChamCong.utils');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 const { getDeanScopedUserIds, isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
-const { normalizeRole, UNIT_LEADER_ROLES } = require('../../utils/vaiTro.utils');
+const { normalizeRole, UNIT_LEADER_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
+const { detectScheduleConflicts } = require('../nhanSu/lichTrinh.service');
 const { withDistributedLock } = require('../../utils/khoaPhanTan');
 const {
   ServiceError,
@@ -24,6 +22,7 @@ const {
 } = require('./tinhPhepNam.helper');
 const pheDuyetDonService = require('./pheDuyetDon.service');
 
+// Tạo mới đơn nghỉ phép, dạy bù, đổi ca hoặc giải trình công
 const createLeaveRequestDomain = async ({
   loai_don,
   ly_do,
@@ -47,12 +46,7 @@ const createLeaveRequestDomain = async ({
       lockKey,
       20,
       async () => {
-    const userRole = normalizeRole(currentUser?.vai_tro_chinh || currentUser?.role);
-    const hasAdminRole =
-      userRole === 'admin' ||
-      (Array.isArray(currentUser?.roles) &&
-        currentUser.roles.some((r) => normalizeRole(r.role || r.ma_vai_tro || r) === 'admin'));
-    if (hasAdminRole) {
+    if (hasAnyActiveRole(currentUser, ['admin'])) {
       throw new ServiceError(
         'Quản trị viên (Admin) phụ trách quản trị và xét duyệt đơn toàn trường, không áp dụng nộp đơn xin nghỉ phép cá nhân.',
         403,
@@ -161,6 +155,10 @@ const createLeaveRequestDomain = async ({
     }
     const parsedLeavePeriods = Math.max(0, parseInt(so_tiet_nghi, 10) || 0);
 
+    if (canonicalType === 'doi_ca' && !validScheduleId) {
+      throw new ServiceError('Đơn xin đổi ca bắt buộc phải chọn lịch trình giảng dạy (lich_trinh_id).', 400);
+    }
+
     if (canonicalType === 'day_bu') {
       if (!validScheduleId) {
         throw new ServiceError('Đơn đăng ký dạy bù bắt buộc phải chọn lịch trình giảng dạy (lich_trinh_id).', 400);
@@ -174,6 +172,35 @@ const createLeaveRequestDomain = async ({
         throw new ServiceError('Ngày dạy bù không hợp lệ.', 400);
       }
       makeupDateStr = getVietnamDateKey(parsedMakeupDate);
+
+      const targetSchedule = await LichTrinh.findByPk(validScheduleId);
+      if (!targetSchedule) {
+        throw new ServiceError('Không tìm thấy lịch trình giảng dạy được chọn để dạy bù.', 404);
+      }
+      let makeupStartTime = targetSchedule.gio_bat_dau;
+      let makeupEndTime = targetSchedule.gio_ket_thuc;
+      if (validSubstituteShiftId) {
+        const subShift = await CaLamViec.findByPk(validSubstituteShiftId);
+        if (subShift) {
+          makeupStartTime = subShift.gio_bat_dau;
+          makeupEndTime = subShift.gio_ket_thuc;
+        }
+      }
+      const makeupWeekday = new Date(`${makeupDateStr}T12:00:00+07:00`).getDay();
+      await detectScheduleConflicts({
+        nguoi_dung_id: validSubstituteLecturerId || userId,
+        phong_hoc: targetSchedule.phong_hoc,
+        thu_trong_tuan: makeupWeekday,
+        tiet_bat_dau: targetSchedule.tiet_bat_dau,
+        so_tiet: targetSchedule.so_tiet,
+        gio_bat_dau: makeupStartTime,
+        gio_ket_thuc: makeupEndTime,
+        ngay_bat_dau: makeupDateStr,
+        ngay_ket_thuc: makeupDateStr,
+        nam_hoc: targetSchedule.nam_hoc,
+        hoc_ky: targetSchedule.hoc_ky,
+        excludeScheduleId: validScheduleId,
+      });
     }
 
     const normalizedReason = ly_do.trim();
@@ -200,12 +227,10 @@ const createLeaveRequestDomain = async ({
     const holidaySet = await getHolidayDateSet(start, end);
     const serverCalculatedDays = calculateLeaveDays(start, end, Boolean(isHalfDay), holidaySet);
 
-    const isLeadership =
-      ['truong_khoa', 'pho_khoa'].includes(userRole) ||
-      (Array.isArray(currentUser?.roles) &&
-        currentUser.roles.some((r) => ['truong_khoa', 'pho_khoa'].includes(normalizeRole(r.role || r.ma_vai_tro || r))));
+    const isLeadership = hasAnyActiveRole(currentUser, ['truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong']);
     const initialStatus = isLeadership ? 'pending_bgh' : 'pending';
 
+    let applicantInfo = null;
     const leaveRequest = await runInTransaction(async (transaction) => {
       const user = await NguoiDung.findByPk(userId, {
         include: [{ model: HoSoCanBo, as: 'ho_so', attributes: ['han_muc_phep_nam'] }],
@@ -214,6 +239,10 @@ const createLeaveRequestDomain = async ({
       if (!user) {
         throw new ServiceError('Không tìm thấy người dùng gửi đơn.', 404);
       }
+      applicantInfo = {
+        don_vi_chinh_id: user.don_vi_chinh_id,
+        ho_ten: user.ho_ten,
+      };
 
       const overlappingLeave = await DonNghiPhep.findOne({
         where: {
@@ -237,30 +266,35 @@ const createLeaveRequestDomain = async ({
       }
 
       if (canonicalType === 'nghi_phep') {
-        const targetYear = start.getFullYear();
-        const yearStart = new Date(targetYear, 0, 1);
-        const yearEnd = new Date(targetYear, 11, 31, 23, 59, 59, 999);
-        const targetYearLeavesStart = new Date(Math.max(start.getTime(), yearStart.getTime()));
-        const targetYearLeavesEnd = new Date(Math.min(end.getTime(), yearEnd.getTime()));
-        const requestedDaysInYear = calculateLeaveDays(targetYearLeavesStart, targetYearLeavesEnd, Boolean(isHalfDay), holidaySet);
-
         const quota = user.ho_so?.han_muc_phep_nam !== undefined ? Number(user.ho_so.han_muc_phep_nam) : 12;
-        const { daysUsed, pendingAnnualLeaveDays } = await getLeaveStatsByYear(userId, targetYear, { transaction });
-        const availableDays = Math.max(0, quota - daysUsed - pendingAnnualLeaveDays);
+        const startYear = start.getFullYear();
+        const endYear = end.getFullYear();
 
-        if (availableDays <= 0) {
-          throw new ServiceError(
-            `Bạn đã sử dụng hoặc đang có đơn chờ duyệt hết ${quota} ngày phép của năm ${targetYear}. Vui lòng chọn loại đơn "Đăng ký dạy bù" hoặc "Xin đổi ca dạy".`,
-            400,
-            'LEAVE_QUOTA_EXHAUSTED'
-          );
-        }
-        if (requestedDaysInYear > availableDays) {
-          throw new ServiceError(
-            `Số ngày xin nghỉ thuộc năm ${targetYear} (${requestedDaysInYear} ngày) vượt quá số ngày phép khả dụng (${availableDays} ngày, đã bao gồm các đơn đang chờ duyệt).`,
-            400,
-            'LEAVE_QUOTA_EXCEEDED'
-          );
+        for (let targetYear = startYear; targetYear <= endYear; targetYear += 1) {
+          const yearStart = new Date(targetYear, 0, 1);
+          const yearEnd = new Date(targetYear, 11, 31, 23, 59, 59, 999);
+          const targetYearLeavesStart = new Date(Math.max(start.getTime(), yearStart.getTime()));
+          const targetYearLeavesEnd = new Date(Math.min(end.getTime(), yearEnd.getTime()));
+          const requestedDaysInYear = calculateLeaveDays(targetYearLeavesStart, targetYearLeavesEnd, Boolean(isHalfDay), holidaySet);
+          if (requestedDaysInYear <= 0) continue;
+
+          const { daysUsed, pendingAnnualLeaveDays } = await getLeaveStatsByYear(userId, targetYear, { transaction });
+          const availableDays = Math.max(0, quota - daysUsed - pendingAnnualLeaveDays);
+
+          if (availableDays <= 0) {
+            throw new ServiceError(
+              `Bạn đã sử dụng hoặc đang có đơn chờ duyệt hết ${quota} ngày phép của năm ${targetYear}. Vui lòng chọn loại đơn "Đăng ký dạy bù" hoặc "Xin đổi ca dạy".`,
+              400,
+              'LEAVE_QUOTA_EXHAUSTED'
+            );
+          }
+          if (requestedDaysInYear > availableDays) {
+            throw new ServiceError(
+              `Số ngày xin nghỉ thuộc năm ${targetYear} (${requestedDaysInYear} ngày) vượt quá số ngày phép khả dụng (${availableDays} ngày, đã bao gồm các đơn đang chờ duyệt).`,
+              400,
+              'LEAVE_QUOTA_EXCEEDED'
+            );
+          }
         }
       }
 
@@ -284,7 +318,18 @@ const createLeaveRequestDomain = async ({
       );
     });
 
-    return formatLeaveRequestDoc(leaveRequest);
+    const createdDoc = formatLeaveRequestDoc(leaveRequest);
+    try {
+      const { emitLeaveRequestUpdate } = require('../../config/socket');
+      emitLeaveRequestUpdate({
+        ...createdDoc,
+        nguoi_dung_id: userId,
+        don_vi_chinh_id: applicantInfo?.don_vi_chinh_id || null,
+        ho_ten_nguoi_tao: applicantInfo?.ho_ten || null,
+      });
+    } catch (_) {}
+
+    return createdDoc;
       },
       { throwOnBusy: true, logPrefix: '[LeaveSubmit]' }
     );
@@ -312,6 +357,7 @@ const createLeaveRequestDomain = async ({
   }
 };
 
+// Lấy danh sách đơn từ theo bộ lọc và phạm vi quyền hạn
 const fetchLeaveRequests = async ({ trang_thai, loai_don, nguoi_dung_id, currentUser }) => {
   const where = {};
 
@@ -332,12 +378,11 @@ const fetchLeaveRequests = async ({ trang_thai, loai_don, nguoi_dung_id, current
     }
   }
 
-  const role = normalizeRole(currentUser.vai_tro_chinh);
   const currentUserId = String(currentUser.id);
 
-  if (['admin', 'bgh', 'tccb'].includes(role)) {
+  if (hasAnyActiveRole(currentUser, ['admin', 'bgh', 'tccb'])) {
     if (nguoi_dung_id) where.nguoi_dung_id = nguoi_dung_id;
-  } else if (UNIT_LEADER_ROLES.includes(role)) {
+  } else if (hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES)) {
     const facultyUserIds = await getDeanScopedUserIds(currentUser);
     if (nguoi_dung_id) {
       if (!facultyUserIds.map(String).includes(String(nguoi_dung_id))) {
@@ -360,6 +405,7 @@ const fetchLeaveRequests = async ({ trang_thai, loai_don, nguoi_dung_id, current
   return requests.map(formatLeaveRequestDoc);
 };
 
+// Xem chi tiết một đơn từ kèm kiểm tra quyền truy cập
 const fetchLeaveRequestById = async (id, currentUser) => {
   if (!id || !isValidUuid(String(id))) {
     throw new ServiceError('Mã đơn (id) không hợp lệ.', 400);
@@ -370,13 +416,12 @@ const fetchLeaveRequestById = async (id, currentUser) => {
     throw new ServiceError('Không tìm thấy đơn xin.', 404);
   }
 
-  const role = normalizeRole(currentUser.vai_tro_chinh || currentUser.role);
   const currentUserId = String(currentUser.id);
   const applicantId = String(request.nguoi_dung_id);
 
-  if (['admin', 'bgh', 'tccb'].includes(role)) {
+  if (hasAnyActiveRole(currentUser, ['admin', 'bgh', 'tccb'])) {
     // Quản trị viên / BGH / TCCB xem toàn trường
-  } else if (UNIT_LEADER_ROLES.includes(role)) {
+  } else if (hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES)) {
     const inScope = await isUserInDeanScope(currentUser, applicantId);
     if (!inScope && applicantId !== currentUserId) {
       throw new ServiceError('Bạn không có quyền xem đơn của nhân sự ngoài đơn vị.', 403);
@@ -388,6 +433,7 @@ const fetchLeaveRequestById = async (id, currentUser) => {
   return formatLeaveRequestDoc(request);
 };
 
+// Tính số dư phép năm còn lại theo từng nhân sự
 const fetchLeaveBalance = async (nguoi_dung_id, currentUser, nam) => {
   const currentYear = Number(nam) || new Date().getFullYear();
   const currentUserId = String(currentUser.id);
@@ -398,10 +444,9 @@ const fetchLeaveBalance = async (nguoi_dung_id, currentUser, nam) => {
       throw new ServiceError('Mã người dùng không hợp lệ.', 400);
     }
 
-    const role = normalizeRole(currentUser.vai_tro_chinh);
-    if (['admin', 'bgh', 'tccb'].includes(role)) {
+    if (hasAnyActiveRole(currentUser, ['admin', 'bgh', 'tccb'])) {
       targetUserId = nguoi_dung_id;
-    } else if (UNIT_LEADER_ROLES.includes(role)) {
+    } else if (hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES)) {
       const inScope = await isUserInDeanScope(currentUser, nguoi_dung_id);
       if (!inScope) {
         throw new ServiceError('Bạn không có quyền xem số dư ngày phép của nhân sự ngoài đơn vị.', 403);

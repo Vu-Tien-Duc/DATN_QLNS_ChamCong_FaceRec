@@ -1,3 +1,4 @@
+// Mô hình bảng don_nghi_phep: lưu đơn nghỉ phép, dạy bù, đổi ca và giải trình công.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, decimalColumn } = require('./modelHelpers');
@@ -5,11 +6,6 @@ const { uuidPk, uuidFk, decimalColumn } = require('./modelHelpers');
 const LOAI_DON = ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om', 'viec_rieng', 'giai_trinh_cong'];
 const TRANG_THAI_DON = ['pending', 'pending_dean', 'pending_bgh', 'approved', 'rejected', 'cancelled'];
 
-/**
- * Bảng don_nghi_phep: đơn nghỉ phép / dạy bù / đổi ca.
- * Trạng thái hiện tại nằm ở đây; toàn bộ lịch sử phê duyệt nằm ở lich_su_duyet_don (association `lich_su_duyet`).
- * so_ngay là số ngày công nghỉ thực tế được duyệt (đã loại trừ Chủ nhật/lễ, hỗ trợ nửa ngày).
- */
 class DonNghiPhep extends Model {}
 
 DonNghiPhep.init(
@@ -31,7 +27,7 @@ DonNghiPhep.init(
     },
     ngay_bat_dau: { type: DataTypes.DATEONLY, allowNull: false },
     ngay_ket_thuc: { type: DataTypes.DATEONLY, allowNull: false },
-    so_ngay: { ...decimalColumn('so_ngay', 4, 1, 1.0), validate: { min: 0.5 } },
+    so_ngay: { ...decimalColumn('so_ngay', 4, 1, 1.0), validate: { min: 0 } },
     so_tiet_nghi: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, validate: { min: 0 } },
     lich_trinh_id: uuidFk(true),
     ca_thay_the_id: uuidFk(true),

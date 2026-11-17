@@ -1,10 +1,4 @@
-/**
- * Payroll Controller (server/controllers/payroll.controller.js)
- * Mã nguồn sạch 100% chuẩn CSDL v2.5 cho môi trường Đại Học:
- * - Tiếp nhận HTTP cho khởi tạo, tính toán bảng lương snapshot 2026.
- * - Khóa lương (isLocked) và mở khóa lương có lưu vết AuditLog.
- * - Trích xuất xuất dữ liệu bảng tính Excel và phiếu lương in ấn PDF.
- */
+// Quản lý tính lương tháng, khóa/mở sổ lương và xuất phiếu lương Excel/PDF
 const {
   ServiceError,
   generateMonthlyPayroll,
@@ -17,6 +11,7 @@ const {
 } = require('../services/phieuLuong/phieuLuong.service');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleServiceError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -24,10 +19,7 @@ const handleServiceError = (res, error, next) => {
   next(error);
 };
 
-/**
- * 1. Khởi tạo/tính toán bảng lương tháng
- * @route POST /api/payrolls/generate
- */
+// POST /api/phieu-luong/khoi-tao - Khởi tạo/tính toán bảng lương tháng
 const generatePayroll = async (req, res, next) => {
   try {
     const thang = req.body?.thang;
@@ -48,10 +40,7 @@ const generatePayroll = async (req, res, next) => {
   }
 };
 
-/**
- * 2. Khóa lương tháng & chốt công (Hỗ trợ cả POST /khoa và PUT /:id/khoa)
- * @route POST /api/phieu-luong/khoa hoặc PUT /api/phieu-luong/:id/khoa
- */
+// POST /api/phieu-luong/khoa | PUT /api/phieu-luong/:id/khoa - Khóa lương tháng và chốt công
 const lockPayroll = async (req, res, next) => {
   try {
     let month = req.body?.thang;
@@ -79,10 +68,7 @@ const lockPayroll = async (req, res, next) => {
   }
 };
 
-/**
- * 3. Mở khóa lương tháng (Hỗ trợ cả POST /mo-khoa và PUT /:id/mo-khoa)
- * @route POST /api/phieu-luong/mo-khoa hoặc PUT /api/phieu-luong/:id/mo-khoa
- */
+// POST /api/phieu-luong/mo-khoa | PUT /api/phieu-luong/:id/mo-khoa - Mở khóa lương tháng đã chốt
 const unlockPayroll = async (req, res, next) => {
   try {
     let month = req.body?.thang;
@@ -112,10 +98,7 @@ const unlockPayroll = async (req, res, next) => {
   }
 };
 
-/**
- * 4. Lấy danh sách bảng lương
- * @route GET /api/phieu-luong
- */
+// GET /api/phieu-luong - Danh sách bảng lương theo tháng / năm / đơn vị
 const getPayrolls = async (req, res, next) => {
   try {
     const thang = req.query?.thang;
@@ -137,10 +120,7 @@ const getPayrolls = async (req, res, next) => {
   }
 };
 
-/**
- * 5. Xem chi tiết phiếu lương cá nhân
- * @route GET /api/payrolls/:id
- */
+// GET /api/phieu-luong/:id - Xem chi tiết phiếu lương cá nhân
 const getPayrollById = async (req, res, next) => {
   try {
     const payroll = await fetchPayrollById(req.params.id, req.user);
@@ -150,10 +130,7 @@ const getPayrollById = async (req, res, next) => {
   }
 };
 
-/**
- * 6. Xem phiếu lương của chính mình
- * @route GET /api/payrolls/my-payroll
- */
+// GET /api/phieu-luong/cua-toi - Xem phiếu lương của chính mình
 const getMyPayroll = async (req, res, next) => {
   try {
     const role = String(req.user?.role || req.user?.primaryRole || '').toLowerCase();
@@ -183,10 +160,7 @@ const getMyPayroll = async (req, res, next) => {
   }
 };
 
-/**
- * 7. Tổng hợp thống kê quỹ lương tháng
- * @route GET /api/phieu-luong/tong-hop
- */
+// GET /api/phieu-luong/tong-hop - Thống kê tổng quỹ lương tháng
 const getPayrollSummary = async (req, res, next) => {
   try {
     const now = new Date();
@@ -225,10 +199,7 @@ const getPayrollSummary = async (req, res, next) => {
   }
 };
 
-/**
- * 8. Xuất dữ liệu bảng lương định dạng Excel
- * @route GET /api/phieu-luong/xuat-excel
- */
+// GET /api/phieu-luong/xuat-excel - Xuất bảng lương Excel
 const exportPayrollExcel = async (req, res, next) => {
   try {
     const thang = req.query?.thang;
@@ -249,10 +220,7 @@ const exportPayrollExcel = async (req, res, next) => {
   }
 };
 
-/**
- * 9. Trích xuất dữ liệu in ấn phiếu lương PDF
- * @route GET /api/payrolls/:id/export/pdf hoặc GET /api/payrolls/export/pdf?id=...
- */
+// GET /api/phieu-luong/:id/xuat-pdf - Trích xuất dữ liệu in ấn phiếu lương PDF
 const exportPayrollPdf = async (req, res, next) => {
   try {
     const id = req.params?.id || req.query?.id;

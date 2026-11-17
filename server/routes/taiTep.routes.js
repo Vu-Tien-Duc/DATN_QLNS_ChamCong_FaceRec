@@ -1,3 +1,4 @@
+// Định tuyến API tải lên tệp đính kèm (/api/tai-tep)
 const express = require('express');
 const router = express.Router();
 const { uploadSingleFile } = require('../controllers/taiTep.controller');

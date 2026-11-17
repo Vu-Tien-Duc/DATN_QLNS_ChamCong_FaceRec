@@ -1,11 +1,10 @@
-/**
- * Dịch vụ Tra cứu & Xuất dữ liệu Phiếu lương Excel/PDF (server/services/phieuLuong/xuatPhieuLuong.service.js)
- */
+// Tra cứu phiếu lương theo phân quyền và trích xuất dữ liệu xuất Excel / in PDF
 const { Op } = require('sequelize');
 const { PhieuLuong, NguoiDung } = require('../../models');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 const { getDeanScopedUserIds } = require('../../utils/phamViTruongKhoa');
-const { normalizeRole, UNIT_LEADER_ROLES } = require('../../utils/vaiTro.utils');
+const { UNIT_LEADER_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
+const { sanitizeExcelRow } = require('../baoCao/dinhDangBaoCao.helper');
 const {
   ServiceError,
   isSystemAdminUser,
@@ -14,16 +13,16 @@ const {
   formatPayrollDoc,
 } = require('./tinhThueVaLuong.helper');
 
+// Lấy danh sách phiếu lương theo tháng/năm/đơn vị và phạm vi phân quyền
 const fetchPayrolls = async ({ thang, nam, don_vi_id, trang_thai, nguoi_dung_id, currentUser }) => {
   const currentUserId = String(currentUser.id);
-  const role = normalizeRole(currentUser.vai_tro_chinh);
   const where = {};
 
   if (thang) where.thang = Number(thang);
   if (nam) where.nam = Number(nam);
   if (trang_thai) where.trang_thai = trang_thai;
 
-  if (['admin', 'bgh', 'ke_toan'].includes(role)) {
+  if (hasAnyActiveRole(currentUser, ['admin', 'bgh', 'ke_toan'])) {
     if (nguoi_dung_id) {
       where.nguoi_dung_id = nguoi_dung_id;
     } else if (don_vi_id) {
@@ -35,7 +34,7 @@ const fetchPayrolls = async ({ thang, nam, don_vi_id, trang_thai, nguoi_dung_id,
       const ids = deptUsers.map((u) => u.id);
       where.nguoi_dung_id = { [Op.in]: ids.length ? ids : ['00000000-0000-0000-0000-000000000000'] };
     }
-  } else if (UNIT_LEADER_ROLES.includes(role)) {
+  } else if (hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES)) {
     const deanUserIds = await getDeanScopedUserIds(currentUser);
     if (nguoi_dung_id) {
       if (!deanUserIds.map(String).includes(String(nguoi_dung_id))) {
@@ -67,6 +66,7 @@ const fetchPayrolls = async ({ thang, nam, don_vi_id, trang_thai, nguoi_dung_id,
     .map((doc) => formatPayrollDoc(doc, configParams));
 };
 
+// Xem chi tiết một phiếu lương kèm kiểm tra quyền truy cập
 const fetchPayrollById = async (id, currentUser) => {
   if (!id || !isValidUuid(String(id))) {
     throw new ServiceError('Mã phiếu lương (id) không hợp lệ.', 400);
@@ -78,12 +78,11 @@ const fetchPayrollById = async (id, currentUser) => {
   }
 
   const currentUserId = String(currentUser.id);
-  const role = normalizeRole(currentUser.vai_tro_chinh);
   const ownerId = String(payroll.nguoi_dung_id);
 
-  if (['admin', 'bgh', 'ke_toan'].includes(role)) {
+  if (hasAnyActiveRole(currentUser, ['admin', 'bgh', 'ke_toan'])) {
     // Quản trị viên / BGH / Kế toán được quyền tra cứu chi tiết phiếu lương toàn trường
-  } else if (UNIT_LEADER_ROLES.includes(role)) {
+  } else if (hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES)) {
     if (ownerId !== currentUserId) {
       const deanUserIds = await getDeanScopedUserIds(currentUser);
       if (!deanUserIds.map(String).includes(ownerId)) {
@@ -98,6 +97,7 @@ const fetchPayrollById = async (id, currentUser) => {
   return formatPayrollDoc(payroll, configParams);
 };
 
+// Chuẩn bị cấu trúc cột và các dòng dữ liệu phục vụ xuất bảng lương Excel
 const exportPayrollExcelData = async ({ thang, nam, don_vi_id, currentUser }) => {
   const month = Number(thang);
   const year = Number(nam);
@@ -125,27 +125,29 @@ const exportPayrollExcelData = async ({ thang, nam, don_vi_id, currentUser }) =>
     { key: 'status', label: 'Trạng Thái' },
   ];
 
-  const rows = payrolls.map((p, idx) => ({
-    stt: idx + 1,
-    code: p.nguoi_dung?.ma_can_bo || '',
-    fullName: p.nguoi_dung?.ho_ten || '',
-    role: p.nguoi_dung?.vai_tro_chinh || '',
-    salaryCoefficient: p.he_so_luong,
-    baseSalary: p.luong_co_so,
-    primarySalary: p.luong_chinh,
-    positionAllowance: p.phu_cap_chuc_vu,
-    seniorityAllowance: p.phu_cap_tham_nien,
-    vocationalAllowance: p.phu_cap_uu_dai_nghe,
-    overtimeTeachingFee: p.gio_giang?.thu_lao_vuot_gio || 0,
-    grossIncome: p.tong_thu_nhap_gross,
-    bhxh: p.bao_hiem?.bhxh || 0,
-    bhyt: p.bao_hiem?.bhyt || 0,
-    bhtn: p.bao_hiem?.bhtn || 0,
-    totalInsurance: p.bao_hiem?.tong_bao_hiem || 0,
-    pitTax: p.thue_tncn?.tien_thue || 0,
-    netSalary: p.thuc_linh_net,
-    status: p.trang_thai,
-  }));
+  const rows = payrolls.map((p, idx) =>
+    sanitizeExcelRow({
+      stt: idx + 1,
+      code: p.nguoi_dung?.ma_can_bo || '',
+      fullName: p.nguoi_dung?.ho_ten || '',
+      role: p.nguoi_dung?.vai_tro_chinh || '',
+      salaryCoefficient: p.he_so_luong,
+      baseSalary: p.luong_co_so,
+      primarySalary: p.luong_chinh,
+      positionAllowance: p.phu_cap_chuc_vu,
+      seniorityAllowance: p.phu_cap_tham_nien,
+      vocationalAllowance: p.phu_cap_uu_dai_nghe,
+      overtimeTeachingFee: p.gio_giang?.thu_lao_vuot_gio || 0,
+      grossIncome: p.tong_thu_nhap_gross,
+      bhxh: p.bao_hiem?.bhxh || 0,
+      bhyt: p.bao_hiem?.bhyt || 0,
+      bhtn: p.bao_hiem?.bhtn || 0,
+      totalInsurance: p.bao_hiem?.tong_bao_hiem || 0,
+      pitTax: p.thue_tncn?.tien_thue || 0,
+      netSalary: p.thuc_linh_net,
+      status: p.trang_thai,
+    })
+  );
 
   return {
     title: `BẢNG THANH TOÁN TIỀN LƯƠNG THÁNG ${month}/${year}`,
@@ -157,6 +159,7 @@ const exportPayrollExcelData = async ({ thang, nam, don_vi_id, currentUser }) =>
   };
 };
 
+// Lấy dữ liệu chi tiết một phiếu lương phục vụ in PDF
 const exportPayrollPdfData = async (id, currentUser) => {
   const payroll = await fetchPayrollById(id, currentUser);
 

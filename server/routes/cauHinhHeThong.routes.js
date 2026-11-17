@@ -1,3 +1,4 @@
+// Định tuyến API xem và cập nhật cấu hình hệ thống tập trung (/api/he-thong)
 const express = require('express');
 const router = express.Router();
 const {

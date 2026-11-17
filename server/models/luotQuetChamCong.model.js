@@ -1,3 +1,4 @@
+// Mô hình bảng luot_quet_cham_cong: nhật ký thô từng lượt quét khuôn mặt, QR hoặc GPS.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, decimalColumn } = require('./modelHelpers');
@@ -13,7 +14,6 @@ const unitInterval = (extra = {}) => ({
   ...extra,
 });
 
-/** Bảng luot_quet_cham_cong: nhật ký thô từng lượt quét khuôn mặt / GPS (Punch Log). */
 class LuotQuetChamCong extends Model {}
 
 LuotQuetChamCong.init(

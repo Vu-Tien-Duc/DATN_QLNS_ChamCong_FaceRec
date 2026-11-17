@@ -1,3 +1,4 @@
+// Định tuyến API quản lý thời khóa biểu giảng dạy, lịch hôm nay và ngoại lệ buổi học (/api/lich-trinh)
 const express = require('express');
 const router = express.Router();
 const {

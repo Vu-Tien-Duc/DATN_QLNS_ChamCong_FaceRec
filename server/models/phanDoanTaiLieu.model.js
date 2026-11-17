@@ -1,8 +1,8 @@
+// Mô hình bảng phan_doan_tai_lieu: các đoạn văn bản và vector nhúng phục vụ tìm kiếm RAG.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, jsonText } = require('./modelHelpers');
 
-/** Bảng phan_doan_tai_lieu: đoạn văn bản + vector nhúng ngữ nghĩa của tài liệu RAG. */
 class PhanDoanTaiLieu extends Model {}
 
 PhanDoanTaiLieu.init(

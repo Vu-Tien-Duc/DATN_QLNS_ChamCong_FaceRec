@@ -1,8 +1,4 @@
-/**
- * Database Seeder (server/utils/khoiTaoDuLieuMau.js)
- * Khởi tạo dữ liệu mẫu chuẩn 3NF cho 24 bảng Microsoft SQL Server 2022 + Sequelize.
- * Lưu ý: KHÔNG gọi sequelize.sync({ force: true }); giả định schema đã được tạo từ docs/schema_3nf_sqlserver.sql.
- */
+// Khởi tạo dữ liệu mẫu ban đầu cho các bảng hệ thống trong SQL Server.
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const {
@@ -17,6 +13,7 @@ const {
 } = require('../models');
 const { runInTransaction } = require('./giaoDichDb');
 
+// Chạy khởi tạo dữ liệu mẫu ban đầu trong transaction
 const seedDatabase = async ({ silent = false } = {}) => {
   const log = (...args) => {
     if (!silent) console.log(...args);

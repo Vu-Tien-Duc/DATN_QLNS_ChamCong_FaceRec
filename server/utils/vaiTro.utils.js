@@ -1,11 +1,4 @@
-/**
- * QUY CHUẨN ĐỒNG NHẤT VAI TRÒ HỆ THỐNG (Canonical Snake_Case Lowercase)
- * Đề tài: Hệ thống Quản lý Nhân sự & Chấm công ứng dụng Thị giác Máy tính
- * Sinh viên thực hiện: Vũ Tiến Đức - MSV: 2310900023
- *
- * Tiêu chuẩn: Duy nhất chữ thường snake_case, loại bỏ hoàn toàn alias và biến thể viết hoa/viết liền.
- * Duy nhất 1 chuẩn chuẩn hóa: truong_khoa, pho_khoa, truong_bo_mon, giang_vien, admin...
- */
+// Định nghĩa danh sách vai trò chuẩn (snake_case chữ thường) và hàm chuẩn hóa, lấy vai trò hiệu lực.
 
 const ROLES = {
   ADMIN: 'admin',
@@ -47,14 +40,58 @@ const GLOBAL_ADMIN_ROLES = [
   ROLES.KIEM_TOAN,
 ];
 
-/**
- * Chuẩn hóa vai trò: duy nhất chữ thường snake_case (loại bỏ hoàn toàn danh sách alias)
- * @param {string} roleInput 
- * @returns {string} ví dụ: 'truong_khoa', 'giang_vien'
- */
+// Chuẩn hóa tên vai trò sang chữ thường snake_case
 function normalizeRole(roleInput) {
   if (!roleInput || typeof roleInput !== 'string') return '';
   return roleInput.trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+// Tập hợp các vai trò đang còn hiệu lực của người dùng (vai trò chính và vai trò phụ)
+function getActiveUserRoles(user) {
+  const roles = new Set();
+  if (!user) return roles;
+
+  const todayKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+
+  const primary = normalizeRole(user.vai_tro_chinh || user.role);
+  if (primary) roles.add(primary);
+
+  const list = user.danh_sach_vai_tro || user.roles || [];
+  if (Array.isArray(list)) {
+    for (const item of list) {
+      if (!item) continue;
+      if (typeof item === 'string') {
+        const code = normalizeRole(item);
+        if (code) roles.add(code);
+        continue;
+      }
+      if (typeof item === 'object') {
+        const start = item.tu_ngay ? String(item.tu_ngay).slice(0, 10) : null;
+        const end = item.den_ngay ? String(item.den_ngay).slice(0, 10) : null;
+        if (start && start > todayKey) continue;
+        if (end && end < todayKey) continue;
+        const code = normalizeRole(item.ma_vai_tro || item.role);
+        if (code) roles.add(code);
+      }
+    }
+  }
+  return roles;
+}
+
+// Kiểm tra người dùng có ít nhất một vai trò thuộc danh sách cho phép
+function hasAnyActiveRole(user, allowedRoles = []) {
+  const active = getActiveUserRoles(user);
+  return allowedRoles.some((r) => active.has(normalizeRole(r)));
+}
+
+// Kiểm tra người dùng có phải quản trị hệ thống (admin hoặc bgh)
+function isSystemAdminUser(user) {
+  return hasAnyActiveRole(user, [ROLES.ADMIN, ROLES.BGH]);
 }
 
 module.exports = {
@@ -63,4 +100,7 @@ module.exports = {
   UNIT_LEADER_ROLES,
   GLOBAL_ADMIN_ROLES,
   normalizeRole,
+  getActiveUserRoles,
+  hasAnyActiveRole,
+  isSystemAdminUser,
 };

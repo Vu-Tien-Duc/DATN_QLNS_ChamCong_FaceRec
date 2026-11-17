@@ -1,7 +1,4 @@
-/**
- * Tổng hợp thông báo của người dùng từ các sự kiện chấm công, lịch và đơn nghỉ.
- * Chuẩn hóa Sequelize + SQL Server 3NF.
- */
+// Tổng hợp thông báo cho người dùng từ sự kiện chấm công, lịch trình và đơn nghỉ.
 const { Op } = require('sequelize');
 const {
   NhatKyChamCong,
@@ -15,6 +12,7 @@ const { getDeanScopedUserIds } = require('../../utils/phamViTruongKhoa');
 const { getVietnamTime, getVietnamDayRange } = require('../../utils/thoiGianChamCong.utils');
 const { normalizeRole, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES } = require('../../utils/vaiTro.utils');
 
+// Định dạng ngày giờ HH:mm DD/MM/YYYY theo giờ Việt Nam
 const formatDateTimeVN = (date) =>
   date
     ? new Date(date).toLocaleString('vi-VN', {
@@ -27,6 +25,7 @@ const formatDateTimeVN = (date) =>
       })
     : '';
 
+// Định dạng giờ HH:mm theo giờ Việt Nam
 const formatTimeVN = (date) =>
   date
     ? new Date(date).toLocaleTimeString('vi-VN', {
@@ -36,6 +35,7 @@ const formatTimeVN = (date) =>
       })
     : '';
 
+// Định dạng ngày DD/MM/YYYY theo giờ Việt Nam
 const formatDateVN = (date) =>
   date
     ? new Date(date).toLocaleDateString('vi-VN', {
@@ -46,6 +46,7 @@ const formatDateVN = (date) =>
       })
     : '';
 
+// Tổng hợp danh sách thông báo gần đây và số lượng chưa đọc cho người dùng
 const getNotifications = async ({ nguoi_dung_id, userId, thoi_diem_doc_gan_nhat, lastReadAt: lastReadAtInput }) => {
   const targetUserId = nguoi_dung_id || userId;
   if (!targetUserId) return { total: 0, unreadCount: 0, notifications: [] };

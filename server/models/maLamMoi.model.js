@@ -1,9 +1,10 @@
+// Mô hình bảng ma_lam_moi: quản lý Refresh Token theo nhóm để xoay vòng và chống dùng lại.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk } = require('./modelHelpers');
 
-/** Bảng ma_lam_moi: Refresh Token Rotation (nhóm token chống Replay Attack). */
 class MaLamMoi extends Model {
+  // Kiểm tra refresh token đã hết hạn hay chưa
   daHetHan(at = new Date()) {
     return new Date(this.het_han_luc).getTime() <= at.getTime();
   }

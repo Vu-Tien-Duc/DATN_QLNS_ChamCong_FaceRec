@@ -1,11 +1,10 @@
-/**
- * Truy vấn nhật ký kiểm toán với bộ lọc, phân trang và kiểm tra toàn vẹn chuỗi băm.
- */
+// Truy vấn nhật ký kiểm toán và kiểm tra tính toàn vẹn chuỗi băm.
 const { Op } = require('sequelize');
 const { NhatKyKiemToan, NguoiDung } = require('../../models');
 const ServiceError = require('../../utils/loiNghiepVu');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
 
+// Truy vấn nhật ký kiểm toán có lọc theo người thực hiện, hành động, ngày và phân trang
 const getAuditLogs = async (params = {}) => {
   const {
     nguoi_thuc_hien_id,
@@ -135,6 +134,7 @@ const getAuditLogs = async (params = {}) => {
   };
 };
 
+// Kiểm tra tính toàn vẹn chuỗi băm SHA-256 của nhật ký kiểm toán gần nhất
 const verifyAuditLogIntegrity = async (limit = 1000) => {
   const parsedLimit = Math.max(10, Math.min(parseInt(limit, 10) || 1000, 5000));
   return NhatKyKiemToan.xacMinhChuoi({ limit: parsedLimit });

@@ -1,10 +1,10 @@
+// Mô hình bảng phong_ban: cơ cấu khoa, bộ môn và phòng ban theo cây phân cấp.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, trimmedString, decimalColumn } = require('./modelHelpers');
 
 const LOAI_DON_VI = ['khoa', 'bo_mon', 'phong_ban'];
 
-/** Bảng phong_ban: Khoa / Bộ môn / Phòng ban (cây đệ quy qua don_vi_cha_id). */
 class PhongBan extends Model {}
 
 PhongBan.init(

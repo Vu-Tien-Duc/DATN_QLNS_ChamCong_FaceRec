@@ -1,16 +1,4 @@
-/**
- * Module Cấu Hình & Quản Lý Lưu Trữ Đối Tượng MinIO / S3 (server/config/minio.js)
- * Chuẩn Enterprise cho Hệ Thống QLNS & Chấm Công Đại Học:
- * - Hỗ trợ lưu trữ Object Storage tương thích AWS S3 (MinIO on-premise / AWS S3 / Cloudflare R2).
- * - Phân vùng lưu trữ (Bucket / Prefixes):
- *   + 'evidence/'   : Ảnh minh chứng chấm công, bằng chứng phát hiện gian lận.
- *   + 'attachments/': File scan đơn nghỉ phép, giấy tờ khám bệnh, hồ sơ minh chứng.
- *   + 'faces/'      : Ảnh khuôn mặt đăng ký 5 góc & ảnh đại diện sinh trắc học.
- *   + 'avatars/'    : Ảnh đại diện người dùng.
- * - Cơ chế Hybrid Fallback: Khi MinIO service offline, tự động chuyển đổi sang Local Disk Storage
- *   đảm bảo Zero Downtime cho môi trường phát triển & kiểm thử.
- * - Hỗ trợ tạo Presigned URL (Signed URL) có thời hạn (15-60 phút) để xem tệp bảo mật.
- */
+// Lưu trữ tệp lên MinIO/S3 (evidence/, attachments/, faces/, avatars/) và tự động fallback ổ đĩa cục bộ khi MinIO offline
 
 const Minio = require('minio');
 const fs = require('fs');
@@ -18,7 +6,6 @@ const fsp = require('fs/promises');
 const path = require('path');
 const stream = require('stream');
 
-// 1. Đọc cấu hình môi trường
 const MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || 'localhost';
 const MINIO_PORT = parseInt(process.env.MINIO_PORT, 10) || 9000;
 const MINIO_USE_SSL = process.env.MINIO_USE_SSL === 'true';
@@ -28,14 +15,14 @@ const MINIO_BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'datn-qlns-storage';
 const MINIO_REGION = process.env.MINIO_REGION || 'us-east-1';
 const STORAGE_DRIVER = (process.env.STORAGE_DRIVER || 'minio').toLowerCase();
 
-// Thư mục cục bộ dùng cho Local Fallback (Lưu bên ngoài project tránh nặng repository)
+// Thư mục lưu cục bộ bên ngoài repo khi fallback
 const LOCAL_STORAGE_ROOT = process.env.STORAGE_LOCAL_DIR
   ? path.resolve(process.env.STORAGE_LOCAL_DIR)
   : path.resolve('D:/DATN_VuTienDuc_2310900023/storage-uploads');
+// Lấy đường dẫn lưu ảnh minh chứng điểm danh cục bộ
 const getLocalEvidenceDir = () =>
   path.resolve(process.env.ATTENDANCE_EVIDENCE_DIR || 'D:/DATN_VuTienDuc_2310900023/attendance-evidence');
 
-// Đảm bảo thư mục fallback cục bộ tồn tại
 for (const dir of [LOCAL_STORAGE_ROOT, getLocalEvidenceDir(), path.join(LOCAL_STORAGE_ROOT, 'faces'), path.join(LOCAL_STORAGE_ROOT, 'attachments')]) {
   if (!fs.existsSync(dir)) {
     try {
@@ -48,9 +35,7 @@ let minioClient = null;
 let isMinioAvailable = false;
 let bucketInitialized = false;
 
-/**
- * 2. Khởi tạo MinIO Client
- */
+// Khởi tạo hoặc tái sử dụng MinIO Client
 const getMinioClient = () => {
   if (minioClient) return minioClient;
 
@@ -77,9 +62,7 @@ const getMinioClient = () => {
   return minioClient;
 };
 
-/**
- * 3. Kiểm tra kết nối và tạo Bucket nếu chưa có
- */
+// Kiểm tra và tự động tạo bucket MinIO nếu chưa tồn tại
 const ensureBucketExists = async (bucketName = MINIO_BUCKET_NAME) => {
   if (bucketInitialized && isMinioAvailable) return true;
 
@@ -107,9 +90,7 @@ const ensureBucketExists = async (bucketName = MINIO_BUCKET_NAME) => {
   }
 };
 
-/**
- * 4. Phân giải đường dẫn cục bộ khi fallback
- */
+// Quy đổi objectKey thành đường dẫn lưu trữ cục bộ an toàn
 const resolveLocalPath = (objectKey) => {
   const cleanKey = objectKey.replace(/^[/\\]+/, '');
   if (cleanKey.startsWith('evidence/')) {
@@ -131,14 +112,7 @@ const resolveLocalPath = (objectKey) => {
   return externalPath;
 };
 
-/**
- * 5. Lưu trữ tệp tin (Put Object)
- * @param {string} objectKey Đường dẫn định danh tệp (vd: 'evidence/attendance-xxx.jpg', 'attachments/file-xxx.pdf')
- * @param {Buffer} buffer Dữ liệu nhị phân của tệp
- * @param {string} contentType MIME type của tệp (vd: 'image/jpeg', 'application/pdf')
- * @param {object} metaData Thông tin metadata đi kèm
- * @returns {Promise<{ objectKey: string, bucket: string, size: number, storage: 'minio' | 'local' }>}
- */
+// Ghi tệp lên MinIO; nếu MinIO offline thì ghi vào ổ đĩa cục bộ
 const putObject = async (objectKey, buffer, contentType = 'application/octet-stream', metaData = {}) => {
   if (!Buffer.isBuffer(buffer)) {
     throw new Error('Dữ liệu tải lên phải là một Buffer nhị phân.');
@@ -174,7 +148,6 @@ const putObject = async (objectKey, buffer, contentType = 'application/octet-str
     }
   }
 
-  // Fallback: Ghi vào ổ cứng cục bộ
   const localPath = resolveLocalPath(cleanKey);
   await fsp.mkdir(path.dirname(localPath), { recursive: true });
   await fsp.writeFile(localPath, buffer);
@@ -189,11 +162,7 @@ const putObject = async (objectKey, buffer, contentType = 'application/octet-str
   };
 };
 
-/**
- * 6. Đọc tệp tin thành Buffer (Get Object)
- * @param {string} objectKey Đường dẫn định danh tệp
- * @returns {Promise<{ buffer: Buffer, contentType: string, size: number, storage: 'minio' | 'local' }>}
- */
+// Đọc tệp thành Buffer từ MinIO hoặc thư mục cục bộ
 const getObject = async (objectKey) => {
   const cleanKey = objectKey.replace(/^[/\\]+/, '');
   const hasMinio = await ensureBucketExists();
@@ -222,11 +191,9 @@ const getObject = async (objectKey) => {
         storage: 'minio',
       };
     } catch (error) {
-      // Nếu MinIO không tìm thấy hoặc lỗi, thử tìm trong local fallback
     }
   }
 
-  // Đọc từ local fallback
   const localPath = resolveLocalPath(cleanKey);
   if (!fs.existsSync(localPath)) {
     const error = new Error(`Không tìm thấy tệp '${cleanKey}' trong hệ thống lưu trữ.`);
@@ -255,11 +222,7 @@ const getObject = async (objectKey) => {
   };
 };
 
-/**
- * 7. Lấy Readable Stream của tệp (Get Object Stream)
- * @param {string} objectKey Đường dẫn định danh tệp
- * @returns {Promise<{ stream: stream.Readable, contentType: string, size?: number, storage: 'minio' | 'local' }>}
- */
+// Lấy luồng đọc (Readable Stream) để stream trực tiếp về client
 const getObjectStream = async (objectKey) => {
   const cleanKey = objectKey.replace(/^[/\\]+/, '');
   const hasMinio = await ensureBucketExists();
@@ -284,7 +247,6 @@ const getObjectStream = async (objectKey) => {
     } catch (error) {}
   }
 
-  // Fallback stream từ local file
   const localPath = resolveLocalPath(cleanKey);
   if (!fs.existsSync(localPath)) {
     const error = new Error(`Không tìm thấy tệp '${cleanKey}'.`);
@@ -313,10 +275,7 @@ const getObjectStream = async (objectKey) => {
   };
 };
 
-/**
- * 8. Xóa tệp tin (Delete Object)
- * @param {string} objectKey Đường dẫn định danh tệp
- */
+// Xóa tệp trên cả MinIO và bản sao cục bộ (nếu có)
 const deleteObject = async (objectKey) => {
   const cleanKey = objectKey.replace(/^[/\\]+/, '');
   const hasMinio = await ensureBucketExists();
@@ -327,7 +286,6 @@ const deleteObject = async (objectKey) => {
     } catch (error) {}
   }
 
-  // Xóa thêm trong local fallback nếu có
   const localPath = resolveLocalPath(cleanKey);
   if (fs.existsSync(localPath)) {
     try {
@@ -336,13 +294,7 @@ const deleteObject = async (objectKey) => {
   }
 };
 
-/**
- * 8.1. Xóa toàn bộ ảnh khuôn mặt thuộc về người dùng (MinIO & Local Fallback)
- * Hỗ trợ xóa theo Mã cán bộ (StaffCode), ID hoặc Đường dẫn ảnh cụ thể
- * @param {string} userId
- * @param {string} [staffCode]
- * @param {string} [photoPath]
- */
+// Xóa toàn bộ ảnh khuôn mặt của một nhân sự (trên cả MinIO và thư mục cục bộ)
 const deleteUserFaceFiles = async (userId, staffCode = null, photoPath = null) => {
   if (!userId && !staffCode && !photoPath) return;
   const idStr = userId ? userId.toString() : '';
@@ -352,13 +304,11 @@ const deleteUserFaceFiles = async (userId, staffCode = null, photoPath = null) =
   if (codeStr) prefixes.push(`faces/face-${codeStr}-`);
   if (idStr) prefixes.push(`faces/face-${idStr}-`);
 
-  // 1. Xóa trên MinIO Object Storage
   const hasMinio = await ensureBucketExists();
   if (hasMinio && minioClient) {
     try {
       const objectsToDelete = new Set();
 
-      // Nếu có tên file ảnh cụ thể, xóa trực tiếp
       if (photoPath) {
         const clean = photoPath.replace(/^\/api\/(?:v1\/)?uploads\//, '').replace(/^\/uploads\//, '');
         const objKey = clean.startsWith('faces/') ? clean : `faces/${clean}`;
@@ -382,7 +332,6 @@ const deleteUserFaceFiles = async (userId, staffCode = null, photoPath = null) =
     }
   }
 
-  // 2. Xóa trên các thư mục local fallback
   const localDirs = [
     path.join(LOCAL_STORAGE_ROOT, 'faces'),
     path.resolve(__dirname, '../../uploads/faces'),
@@ -405,12 +354,7 @@ const deleteUserFaceFiles = async (userId, staffCode = null, photoPath = null) =
   }
 };
 
-/**
- * 9. Sinh URL Ký Trước (Presigned GET URL) có giới hạn thời gian
- * @param {string} objectKey Đường dẫn định danh tệp
- * @param {number} expirySeconds Thời gian hết hạn của URL (mặc định 900s = 15 phút)
- * @returns {Promise<string>} Signed URL truy cập tệp an toàn
- */
+// Tạo URL tải tệp có thời hạn (mặc định 15 phút); fallback về endpoint proxy nội bộ khi MinIO offline
 const getPresignedUrl = async (objectKey, expirySeconds = 900) => {
   const cleanKey = objectKey.replace(/^[/\\]+/, '');
   const hasMinio = await ensureBucketExists();
@@ -424,13 +368,10 @@ const getPresignedUrl = async (objectKey, expirySeconds = 900) => {
     }
   }
 
-  // Fallback: Trả về endpoint API proxy an toàn nội bộ
   return `/api/tai-tep/tep/${path.basename(cleanKey)}`;
 };
 
-/**
- * 10. Trạng thái kết nối của MinIO
- */
+// Trả về trạng thái kết nối MinIO và driver lưu trữ hiện tại
 const getStorageStatus = () => ({
   driver: STORAGE_DRIVER,
   isMinioAvailable,

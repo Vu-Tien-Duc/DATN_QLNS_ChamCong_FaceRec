@@ -1,14 +1,12 @@
+// Mô hình bảng tai_lieu_rag: lưu tài liệu nạp vào kho tri thức trợ lý AI.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, trimmedString } = require('./modelHelpers');
 
 const LOAI_TEP = ['pdf', 'docx', 'doc', 'txt', 'md', 'xlsx', 'pptx'];
 
-/**
- * Bảng tai_lieu_rag: tài liệu nạp vào trợ lý AI (RAG).
- * Số đoạn (chunk) suy diễn từ bảng phan_doan_tai_lieu => dùng TaiLieuRag.demSoDoan().
- */
 class TaiLieuRag extends Model {
+  // Đếm số đoạn phân tách thuộc tài liệu hiện tại
   async demSoDoan(options = {}) {
     const PhanDoanTaiLieu = require('./phanDoanTaiLieu.model');
     return PhanDoanTaiLieu.count({ where: { tai_lieu_id: this.id }, ...options });

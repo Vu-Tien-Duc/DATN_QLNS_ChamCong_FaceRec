@@ -1,10 +1,26 @@
-/**
- * Quản lý danh mục môn học (MonHoc) trên SQL Server (Sequelize).
- */
+// Quản lý danh mục môn học trong hệ thống.
 const { Op } = require('sequelize');
 const { sequelize, MonHoc, LichTrinh, PhongBan } = require('../../models');
 const ServiceError = require('../../utils/loiNghiepVu');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
+const { getDeanDepartmentIds } = require('../../utils/phamViTruongKhoa');
+const { GLOBAL_ADMIN_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
+
+// Kiểm tra quyền tạo hoặc sửa môn học theo phạm vi khoa/bộ môn
+const assertSubjectDepartmentScope = async (currentUser, departmentId) => {
+  if (!currentUser) return;
+  if (hasAnyActiveRole(currentUser, [...GLOBAL_ADMIN_ROLES, 'dao_tao'])) {
+    return;
+  }
+  const allowedDepts = (await getDeanDepartmentIds(currentUser)).map(String);
+  if (!departmentId || !allowedDepts.includes(String(departmentId))) {
+    throw new ServiceError(
+      'Bạn chỉ được phép tạo hoặc chỉnh sửa môn học thuộc đơn vị mình quản lý.',
+      403,
+      'SUBJECT_OUT_OF_SCOPE'
+    );
+  }
+};
 
 const INCLUDE_DEPARTMENT = [
   {
@@ -21,6 +37,7 @@ const INCLUDE_DEPARTMENT = [
   },
 ];
 
+// Lấy danh sách môn học theo từ khóa, đơn vị, trạng thái và phân trang
 const getSubjects = async ({ tim_kiem, phong_ban_id, kich_hoat, so_tin_chi, page, limit }) => {
   const where = {};
   if (tim_kiem && tim_kiem.trim()) {
@@ -83,6 +100,7 @@ const getSubjects = async ({ tim_kiem, phong_ban_id, kich_hoat, so_tin_chi, page
   });
 };
 
+// Lấy chi tiết một môn học theo ID
 const getSubjectById = async (id) => {
   if (!isValidUuid(id)) {
     throw new ServiceError('Định dạng ID môn học không hợp lệ.', 400, 'SUBJECT_INVALID_DATA');
@@ -92,8 +110,11 @@ const getSubjectById = async (id) => {
   return subject;
 };
 
-const createSubject = async (payload = {}) => {
+// Tạo mới một môn học
+const createSubject = async (payload = {}, currentUser = null) => {
   const { ma_mon, ten_mon, so_tin_chi, phong_ban_id, mo_ta, kich_hoat } = payload;
+
+  await assertSubjectDepartmentScope(currentUser, phong_ban_id);
 
   if (typeof ma_mon !== 'string' || !ma_mon.trim() || typeof ten_mon !== 'string' || !ten_mon.trim()) {
     throw new ServiceError('Mã môn học (ma_mon) và tên môn học (ten_mon) là bắt buộc.', 400, 'SUBJECT_004');
@@ -115,9 +136,14 @@ const createSubject = async (payload = {}) => {
   return getSubjectById(subject.id);
 };
 
-const updateSubject = async (id, data = {}) => {
+// Cập nhật thông tin môn học
+const updateSubject = async (id, data = {}, currentUser = null) => {
   const subject = await getSubjectById(id);
+  await assertSubjectDepartmentScope(currentUser, subject.phong_ban_id);
   const { ma_mon, ten_mon, so_tin_chi, phong_ban_id, mo_ta, kich_hoat } = data;
+  if (phong_ban_id !== undefined) {
+    await assertSubjectDepartmentScope(currentUser, phong_ban_id);
+  }
 
   if (ma_mon) {
     const normalizedCode = ma_mon.trim().toUpperCase();
@@ -145,6 +171,7 @@ const updateSubject = async (id, data = {}) => {
   return getSubjectById(subject.id);
 };
 
+// Xóa môn học nếu chưa được gán trong lịch giảng dạy
 const deleteSubject = async (id) => {
   const subject = await getSubjectById(id);
   const assignedCount = await LichTrinh.count({ where: { mon_hoc_id: id } });

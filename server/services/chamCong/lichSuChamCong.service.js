@@ -1,10 +1,4 @@
-/**
- * Attendance History & Summary Service (server/services/attendance/attendanceHistory.service.js)
- * Chuẩn hóa Sequelize + SQL Server 3NF:
- * - Tra cứu lịch sử chấm công tổng hợp NhatKyChamCong (nhat_ky_cham_cong).
- * - Truy vết chi tiết các lượt quẹt thô LuotQuetChamCong (luot_quet_cham_cong) kèm GPS và độ tin cậy AI.
- * - Phân quyền chặt chẽ: Cán bộ chỉ xem bản thân; Trưởng khoa xem trong khoa; Admin/BGH xem toàn trường.
- */
+// Tra cứu tổng hợp công, lịch sử chấm công (NhatKyChamCong), lượt quẹt (LuotQuetChamCong) và ảnh minh chứng theo phân quyền
 const { Op } = require('sequelize');
 const {
   NhatKyChamCong,
@@ -19,9 +13,7 @@ const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize
 const { ServiceError, buildAttendanceDateFilter } = require('../../utils/thoiGianChamCong.utils');
 const { normalizeRole, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES } = require('../../utils/vaiTro.utils');
 
-/**
- * 1. Tổng hợp số liệu chấm công cá nhân theo kỳ / tháng
- */
+// Thống kê tổng hợp chấm công của một nhân sự trong khoảng thời gian
 const getAttendanceSummaryByUser = async (userId, startDate, endDate) => {
   const where = { nguoi_dung_id: userId };
   if (startDate || endDate) {
@@ -52,9 +44,7 @@ const getAttendanceSummaryByUser = async (userId, startDate, endDate) => {
   };
 };
 
-/**
- * 2. Lấy danh sách lịch sử chấm công (Phân quyền, lọc, phân trang)
- */
+// Tra cứu lịch sử chấm công có lọc theo đơn vị, ngày, trạng thái và phân trang
 const getAttendanceHistory = async (params = {}) => {
   const vai_tro = params.vai_tro || params.role;
   const nguoi_dung_id = params.nguoi_dung_id || params.userId;
@@ -180,9 +170,7 @@ const getAttendanceHistory = async (params = {}) => {
   };
 };
 
-/**
- * 3. Tra cứu lịch sử quẹt thẻ thô (LuotQuetChamCong)
- */
+// Lấy danh sách lượt quét chấm công thô (LuotQuetChamCong) theo bộ lọc thời gian
 const getRawPunchLogs = async ({ nguoi_dung_id, from, to, page = 1, limit = 50 }) => {
   const where = {};
   if (nguoi_dung_id) where.nguoi_dung_id = nguoi_dung_id;
@@ -219,9 +207,7 @@ const getRawPunchLogs = async ({ nguoi_dung_id, from, to, page = 1, limit = 50 }
   };
 };
 
-/**
- * 4. Lấy dữ liệu ảnh minh chứng điểm danh theo ID bản ghi (có kiểm tra RBAC)
- */
+// Lấy ảnh minh chứng điểm danh của bản ghi kèm kiểm tra quyền truy cập
 const getAttendanceEvidence = async ({ id, currentUser }) => {
   const { readAttendanceEvidence } = require('../../utils/anhMinhChungChamCong');
 
@@ -287,9 +273,7 @@ const getAttendanceEvidence = async ({ id, currentUser }) => {
   return evidence;
 };
 
-/**
- * 5. Lấy chi tiết một bản ghi chấm công theo ID (có kiểm tra RBAC)
- */
+// Lấy chi tiết một bản ghi chấm công theo ID (kiểm tra quyền xem theo phạm vi)
 const getAttendanceById = async ({ id, currentUser }) => {
   if (!id || !isValidUuid(String(id))) {
     throw new ServiceError('Mã bản ghi chấm công không hợp lệ.', 400);

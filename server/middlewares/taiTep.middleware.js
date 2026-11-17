@@ -1,7 +1,4 @@
-/**
- * Cấu hình kiểm tra giới hạn và lưu trữ tệp tải lên của người dùng.
- * Sử dụng lưu trữ RAM MemoryStorage để truyền trực tiếp dữ liệu nhị phân lên MinIO Object Storage.
- */
+// Kiểm tra định dạng, giới hạn dung lượng (10MB) và lưu tạm tệp tải lên vào RAM để đẩy lên MinIO
 const multer = require('multer');
 const path = require('path');
 
@@ -15,7 +12,6 @@ const EXTENSIONS_BY_MIME_TYPE = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
 };
 
-// Danh sách các định dạng file minh chứng được chấp nhận
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/png',
@@ -26,6 +22,7 @@ const ALLOWED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
+// Kiểm tra loại MIME và phần mở rộng tệp được phép tải lên
 const fileFilter = (req, file, cb) => {
   const allowedExtensions = EXTENSIONS_BY_MIME_TYPE[file.mimetype];
   const extension = path.extname(file.originalname).toLowerCase();
@@ -41,13 +38,12 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Sử dụng memoryStorage để đưa trực tiếp Buffer lên MinIO Object Storage
 const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // Tối đa 10MB
+    fileSize: 10 * 1024 * 1024,
     files: 1,
     fields: 20,
     fieldSize: 1024 * 1024,

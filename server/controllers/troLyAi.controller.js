@@ -1,9 +1,4 @@
-/**
- * AI Assistant Controller
- * Tiếp nhận yêu cầu trò chuyện (văn bản, ảnh OCR, file PDF/Word phân tích nhanh),
- * điều phối ngữ cảnh CSDL + RAG và quản lý kho tài liệu tri thức AI.
- */
-
+// Trợ lý AI: trò chuyện kèm ảnh/tài liệu (OCR, PDF, Word), truy xuất RAG và quản lý kho tài liệu
 const { generateAIResponse, getGeminiChatModelChain } = require('../services/ai/nhaCungCapAi.service');
 const { buildAIContext, SUPPORTED_MODES } = require('../services/ai/nguCanhAi.service');
 const { extractTextFromBuffer } = require('../services/ai/docTaiLieuAi.service');
@@ -48,9 +43,7 @@ const QUICK_PROMPTS = {
 
 const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
 
-/**
- * Hỗ trợ giải mã tham số mảng/JSON khi gửi qua multipart/form-data
- */
+// Chuyển chuỗi JSON hoặc mảng thành mảng an toàn
 const parseJsonArray = (input) => {
   if (Array.isArray(input)) return input;
   if (typeof input === 'string' && input.trim()) {
@@ -67,9 +60,7 @@ const parseJsonArray = (input) => {
   return [];
 };
 
-/**
- * Chuẩn hóa tên file gốc tránh lỗi font UTF-8 từ Multer Latin-1
- */
+// Khôi phục UTF-8 cho tên file upload bị Multer giải mã theo Latin-1
 const decodeOriginalFilename = (name = 'tai_lieu') => {
   try {
     return Buffer.from(name, 'latin1').toString('utf8');
@@ -78,10 +69,7 @@ const decodeOriginalFilename = (name = 'tai_lieu') => {
   }
 };
 
-/**
- * POST /api/tro-ly-ai/tro-chuyen
- * Xử lý trò chuyện AI hỗ trợ cả JSON thuần và multipart/form-data (ảnh / PDF / Word) + RAG
- */
+// POST /api/tro-ly-ai/tro-chuyen - Trò chuyện AI (hỗ trợ JSON và ảnh / PDF / Word đính kèm)
 const chat = async (req, res) => {
   try {
     const body = req.body || {};
@@ -127,7 +115,6 @@ const chat = async (req, res) => {
     let inlineDocument = null;
     let attachmentMeta = null;
 
-    // 1. Xử lý tệp đính kèm trực tiếp (Ảnh hoặc PDF/Word)
     if (uploadedFile) {
       const safeFileName = decodeOriginalFilename(uploadedFile.originalname);
       const mime = String(uploadedFile.mimetype || '').toLowerCase();
@@ -204,7 +191,6 @@ const chat = async (req, res) => {
       }
     }
 
-    // 2. Truy xuất các đoạn văn bản từ Kho tài liệu RAG nếu đang bật RAG
     let ragChunks = [];
     if (shouldQueryRag) {
       ragChunks = await searchRelevantChunks({
@@ -215,7 +201,6 @@ const chat = async (req, res) => {
       });
     }
 
-    // 3. Khởi tạo ngữ cảnh tổng hợp (CSDL + RAG + Tài liệu đính kèm + Vision)
     const {
       mode: selectedMode,
       modeMeta,
@@ -231,7 +216,6 @@ const chat = async (req, res) => {
       hasImageAttachment,
     });
 
-    // 4. Gọi AI Gateway Adapter với cơ chế dự phòng đa mô hình
     const aiResponse = await generateAIResponse({
       prompt: enrichedPrompt,
       systemInstruction,
@@ -279,9 +263,7 @@ const chat = async (req, res) => {
   }
 };
 
-/**
- * GET /api/ai/modes
- */
+// GET /api/tro-ly-ai/che-do - Danh sách chế độ trợ lý AI
 const getModes = (req, res) => {
   return res.status(200).json({
     success: true,
@@ -293,9 +275,7 @@ const getModes = (req, res) => {
   });
 };
 
-/**
- * GET /api/ai/providers
- */
+// GET /api/tro-ly-ai/nha-cung-cap - Danh sách mô hình/nhà cung cấp AI khả dụng
 const getProviders = (req, res) => {
   const providers = [
     {
@@ -337,10 +317,7 @@ const getProviders = (req, res) => {
   });
 };
 
-/**
- * GET /api/ai/documents
- * Lấy danh sách tài liệu RAG người dùng được quyền truy cập
- */
+// GET /api/tro-ly-ai/tai-lieu - Danh sách tài liệu RAG được phép truy cập
 const getDocuments = async (req, res) => {
   try {
     const documents = await listDocuments(req.user?._id);
@@ -360,10 +337,7 @@ const getDocuments = async (req, res) => {
   }
 };
 
-/**
- * POST /api/tro-ly-ai/tai-lieu
- * Tải lên và nạp tài liệu vào Kho tri thức RAG
- */
+// POST /api/tro-ly-ai/tai-lieu - Tải lên và nạp tài liệu vào Kho tri thức RAG
 const uploadDocument = async (req, res) => {
   try {
     if (!req.file) {
@@ -402,9 +376,7 @@ const uploadDocument = async (req, res) => {
   }
 };
 
-/**
- * GET /api/ai/documents/:id
- */
+// GET /api/tro-ly-ai/tai-lieu/:id - Chi tiết tài liệu RAG
 const getDocumentDetail = async (req, res) => {
   try {
     const detail = await getDocumentById(req.params.id, req.user);
@@ -421,9 +393,7 @@ const getDocumentDetail = async (req, res) => {
   }
 };
 
-/**
- * DELETE /api/ai/documents/:id
- */
+// DELETE /api/tro-ly-ai/tai-lieu/:id - Xóa tài liệu khỏi kho tri thức RAG
 const removeDocument = async (req, res) => {
   try {
     const deleted = await deleteDocument(req.params.id, req.user);

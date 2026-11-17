@@ -1,10 +1,10 @@
+// Mô hình bảng ngoai_le_lich_trinh: ngày nghỉ, hủy, dạy bù hoặc đổi ca của một lịch trình.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk } = require('./modelHelpers');
 
-const TRANG_THAI_NGOAI_LE = ['nghi', 'huy', 'day_bu'];
+const TRANG_THAI_NGOAI_LE = ['nghi', 'huy', 'day_bu', 'doi_ca'];
 
-/** Bảng ngoai_le_lich_trinh: ngày nghỉ / hủy / dạy bù của một lịch trình (duy nhất theo lich_trinh_id + ngay). */
 class NgoaiLeLichTrinh extends Model {}
 
 NgoaiLeLichTrinh.init(

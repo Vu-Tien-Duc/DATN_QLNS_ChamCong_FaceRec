@@ -1,3 +1,4 @@
+// Kiểm tra định dạng, giới hạn dung lượng (5MB) và lưu tạm ảnh khuôn mặt vào RAM trước khi gửi qua Face AI
 const multer = require('multer');
 const path = require('path');
 
@@ -7,6 +8,7 @@ const IMAGE_EXTENSIONS_BY_MIME = {
   'image/webp': ['.webp'],
 };
 
+// Tạo middleware Multer lưu ảnh khuôn mặt vào RAM và kiểm tra định dạng hợp lệ
 const createFaceImageUpload = (fileSize, files) =>
   multer({
     storage: multer.memoryStorage(),

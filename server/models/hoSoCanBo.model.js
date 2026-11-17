@@ -1,3 +1,4 @@
+// Mô hình bảng ho_so_can_bo: hồ sơ nhân sự, học thuật, lương, thuế và ngân hàng của cán bộ.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, decimalColumn } = require('./modelHelpers');
@@ -16,10 +17,7 @@ const enumColumn = (name, values, defaultValue, length, msg) => ({
   },
 });
 
-/**
- * Bảng ho_so_can_bo: hồ sơ nhân sự / học thuật / lương / thuế / ngân hàng (1:1 với nguoi_dung).
- * Thâm niên được tính động từ ngay_bat_dau_giang_day (không lưu cột tham_nien_nam dư thừa).
- */
+// Tính động số năm thâm niên từ ngay_bat_dau_giang_day
 class HoSoCanBo extends Model {
   get tham_nien_nam() {
     const start = this.ngay_bat_dau_giang_day;

@@ -1,6 +1,4 @@
-/**
- * Quản lý nghiệp vụ ngày nghỉ lễ (Holidays) trên SQL Server (Sequelize).
- */
+// Quản lý danh sách ngày nghỉ lễ trong năm.
 const { Op } = require('sequelize');
 const { NgayNghiLe } = require('../../models');
 const ServiceError = require('../../utils/loiNghiepVu');
@@ -8,6 +6,7 @@ const { isValidUuid } = require('../../utils/hoTroSequelize');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
+// Lấy danh sách ngày nghỉ lễ (có thể lọc theo năm)
 const getHolidays = async (query = {}) => {
   const year = query.nam;
   const where = {};
@@ -24,6 +23,7 @@ const getHolidays = async (query = {}) => {
   });
 };
 
+// Lấy chi tiết một ngày nghỉ lễ theo ID
 const getHolidayById = async (id) => {
   if (!isValidUuid(id)) {
     throw new ServiceError('ID ngày nghỉ lễ không hợp lệ.', 400, 'INVALID_ID');
@@ -35,6 +35,7 @@ const getHolidayById = async (id) => {
   return holiday;
 };
 
+// Tạo mới ngày nghỉ lễ sau khi kiểm tra định dạng ngày
 const createHoliday = async (data = {}) => {
   const { ten_ngay_le, ngay_bat_dau, ngay_ket_thuc, huong_luong, mo_ta } = data;
 
@@ -66,6 +67,7 @@ const createHoliday = async (data = {}) => {
   });
 };
 
+// Cập nhật thông tin ngày nghỉ lễ
 const updateHoliday = async (id, data = {}) => {
   const holiday = await getHolidayById(id);
   const { ten_ngay_le, ngay_bat_dau, ngay_ket_thuc, huong_luong, mo_ta } = data;
@@ -106,6 +108,7 @@ const updateHoliday = async (id, data = {}) => {
   return holiday;
 };
 
+// Xóa ngày nghỉ lễ
 const deleteHoliday = async (id) => {
   const holiday = await getHolidayById(id);
   await holiday.destroy();

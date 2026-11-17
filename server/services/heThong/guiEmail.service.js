@@ -1,15 +1,15 @@
-/**
- * Tạo và gửi email xác thực, nghỉ phép, chấm công và báo cáo theo mẫu của hệ thống.
- */
-const { createTransporter } = require('../../config/mailer');
+// Tạo và gửi email thông báo nghỉ phép, chấm công và báo cáo tổng kết cuối ngày.
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 const { transporter } = require('../../config/mailer');
 
-// Gửi email khi duyệt/từ chối
-
-/**
- * Gửi email thông báo đơn nghỉ được duyệt
- */
+// Gửi email thông báo đơn nghỉ được duyệt
 const sendLeaveApprovedEmail = async ({
   to,
   fullName,
@@ -32,7 +32,7 @@ const sendLeaveApprovedEmail = async ({
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2>Thông báo duyệt đơn xin nghỉ</h2>
 
-        <p>Xin chào <strong>${fullName}</strong>,</p>
+        <p>Xin chào <strong>${escapeHtml(fullName)}</strong>,</p>
 
         <p>
           Đơn xin nghỉ của bạn đã được
@@ -63,7 +63,7 @@ const sendLeaveApprovedEmail = async ({
         ? `
               <p>
                 <strong>Ghi chú:</strong>
-                ${approvalNote}
+                ${escapeHtml(approvalNote)}
               </p>
             `
         : ''
@@ -87,9 +87,7 @@ const sendLeaveApprovedEmail = async ({
   return await transporter.sendMail(mailOptions);
 };
 
-/**
- * Gửi email thông báo đơn nghỉ bị từ chối
- */
+// Gửi email thông báo đơn nghỉ bị từ chối
 const sendLeaveRejectedEmail = async ({
   to,
   fullName,
@@ -113,7 +111,7 @@ const sendLeaveRejectedEmail = async ({
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2>Thông báo từ chối đơn xin nghỉ</h2>
 
-        <p>Xin chào <strong>${fullName}</strong>,</p>
+        <p>Xin chào <strong>${escapeHtml(fullName)}</strong>,</p>
 
         <p>
           Đơn xin nghỉ của bạn đã bị
@@ -142,7 +140,7 @@ const sendLeaveRejectedEmail = async ({
 
         <p>
           <strong>Lý do từ chối:</strong>
-          ${rejectionReason}
+          ${escapeHtml(rejectionReason)}
         </p>
 
         <p>
@@ -163,9 +161,7 @@ const sendLeaveRejectedEmail = async ({
   return await transporter.sendMail(mailOptions);
 };
 
-/**
- * Format ngày theo DD/MM/YYYY
- */
+// Định dạng ngày theo DD/MM/YYYY
 const formatDate = (date) => {
   if (!date) return '';
 
@@ -178,16 +174,8 @@ const formatDate = (date) => {
   });
 };
 
-/**
- * Gửi email cảnh báo ghi nhận vắng mặt không phép (Cron Auto Absent #21)
- * @param {Object} params
- * @param {string} params.to Email người nhận
- * @param {string} params.fullName Họ tên giảng viên/nhân viên
- * @param {string} params.shiftName Tên ca học/ca làm việc
- * @param {string|Date} params.date Ngày vắng mặt
- */
+// Gửi email cảnh báo vắng mặt không phép
 const sendAbsentWarningEmail = async ({ to, fullName, shiftName, date }) => {
-  const transporter = createTransporter();
   const dateStr = formatDate(date);
 
   const mailOptions = {
@@ -200,10 +188,10 @@ const sendAbsentWarningEmail = async ({ to, fullName, shiftName, date }) => {
           <h2 style="margin: 0; font-size: 20px;">CẢNH BÁO GHI NHẬN VẮNG MẶT</h2>
         </div>
         <div style="padding: 24px; line-height: 1.6;">
-          <p>Kính gửi Thầy/Cô <strong>${fullName}</strong>,</p>
+          <p>Kính gửi Thầy/Cô <strong>${escapeHtml(fullName)}</strong>,</p>
           <p>Hệ thống quản lý chấm công tự động ghi nhận Thầy/Cô đã <strong>VẮNG MẶT (Không phát sinh dữ liệu chấm công)</strong> trong ca làm việc/giảng dạy:</p>
           <div style="background-color: #fdf2f2; border-left: 4px solid #d32f2f; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
-            <p style="margin: 4px 0;"><strong>Ca làm việc / Tiết dạy:</strong> ${shiftName || 'Không xác định'}</p>
+            <p style="margin: 4px 0;"><strong>Ca làm việc / Tiết dạy:</strong> ${escapeHtml(shiftName || 'Không xác định')}</p>
             <p style="margin: 4px 0;"><strong>Ngày ghi nhận:</strong> ${dateStr}</p>
             <p style="margin: 4px 0;"><strong>Trạng thái:</strong> <span style="color: #d32f2f; font-weight: bold;">VẮNG MẶT (ABSENT)</span></p>
           </div>
@@ -226,9 +214,7 @@ const sendAbsentWarningEmail = async ({ to, fullName, shiftName, date }) => {
   return await transporter.sendMail(mailOptions);
 };
 
-/**
- * Gửi email thông báo Check-in thành công (Đúng giờ hoặc Đi muộn)
- */
+// Gửi email thông báo vào ca thành công
 const ATTENDANCE_METHOD_LABELS = {
   face_ai: 'Sinh trắc học Face ID (Máy chấm công)',
   qr_code: 'Quét mã QR Code Động (Điện thoại)',
@@ -237,11 +223,13 @@ const ATTENDANCE_METHOD_LABELS = {
   system_auto: 'Tự động hệ thống',
 };
 
+// Đổi mã phương thức chấm công sang mô tả tiếng Việt để hiển thị trong email
 const formatAttendanceMethodText = (method) => {
   const normalized = String(method || '').trim().toLowerCase();
   return ATTENDANCE_METHOD_LABELS[normalized] || method || 'Không xác định';
 };
 
+// Định dạng giờ HH:mm:ss theo múi giờ Việt Nam
 const formatVietnamTime = (dateValue) =>
   new Date(dateValue).toLocaleTimeString('vi-VN', {
     timeZone: 'Asia/Ho_Chi_Minh',
@@ -250,6 +238,7 @@ const formatVietnamTime = (dateValue) =>
     second: '2-digit',
   });
 
+// Gửi email thông báo chấm công vào ca thành công
 const sendCheckInNotificationEmail = async ({
   to,
   fullName,
@@ -263,7 +252,6 @@ const sendCheckInNotificationEmail = async ({
   roomId,
 }) => {
   if (!to) return;
-  const transporter = createTransporter();
   const timeStr = formatVietnamTime(checkInTime);
   const dateStr = formatDate(checkInTime);
   const isLate = status === 'late' || lateMinutes > 0;
@@ -296,7 +284,7 @@ const sendCheckInNotificationEmail = async ({
           <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">Hệ Thống Chấm Công Sinh Trắc Học & QR Code Đại Học</p>
         </div>
         <div style="padding: 24px; line-height: 1.6;">
-          <p style="font-size: 15px; margin-top: 0;">Kính gửi Thầy/Cô <strong>${fullName}</strong>,</p>
+          <p style="font-size: 15px; margin-top: 0;">Kính gửi Thầy/Cô <strong>${escapeHtml(fullName)}</strong>,</p>
           <p style="font-size: 14px; color: #475569;">
             Hệ thống đã ghi nhận lượt điểm danh <strong>Check-in (Vào ca)</strong> của Thầy/Cô với thông tin chi tiết như sau:
           </p>
@@ -305,12 +293,12 @@ const sendCheckInNotificationEmail = async ({
             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
               <tr>
                 <td style="padding: 6px 0; color: #64748b; width: 140px;">Ca làm việc:</td>
-                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${shiftName || 'Không xác định'} ${shiftHours ? `(${shiftHours})` : ''}</td>
+                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${escapeHtml(shiftName || 'Không xác định')} ${shiftHours ? `(${escapeHtml(shiftHours)})` : ''}</td>
               </tr>
               ${subjectName ? `
               <tr>
                 <td style="padding: 6px 0; color: #64748b;">Môn học / Tiết dạy:</td>
-                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${subjectName} ${roomId ? `(Phòng ${roomId})` : ''}</td>
+                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${escapeHtml(subjectName)} ${roomId ? `(Phòng ${escapeHtml(roomId)})` : ''}</td>
               </tr>
               ` : ''}
               <tr>
@@ -358,9 +346,7 @@ const sendCheckInNotificationEmail = async ({
   return result;
 };
 
-/**
- * Gửi email thông báo Check-out thành công (Hoàn thành ca hoặc Về sớm)
- */
+// Gửi email thông báo tan ca thành công
 const sendCheckOutNotificationEmail = async ({
   to,
   fullName,
@@ -373,7 +359,6 @@ const sendCheckOutNotificationEmail = async ({
   method = 'face_ai',
 }) => {
   if (!to) return;
-  const transporter = createTransporter();
   const checkInTimeStr = checkInTime ? formatVietnamTime(checkInTime) : '--:--:--';
   const checkOutTimeStr = formatVietnamTime(checkOutTime);
   const dateStr = formatDate(checkOutTime);
@@ -407,7 +392,7 @@ const sendCheckOutNotificationEmail = async ({
           <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">Hệ Thống Chấm Công Sinh Trắc Học & QR Code Đại Học</p>
         </div>
         <div style="padding: 24px; line-height: 1.6;">
-          <p style="font-size: 15px; margin-top: 0;">Kính gửi Thầy/Cô <strong>${fullName}</strong>,</p>
+          <p style="font-size: 15px; margin-top: 0;">Kính gửi Thầy/Cô <strong>${escapeHtml(fullName)}</strong>,</p>
           <p style="font-size: 14px; color: #475569;">
             Hệ thống đã ghi nhận lượt điểm danh <strong>Check-out (Ra về)</strong> của Thầy/Cô với thông tin chi tiết:
           </p>
@@ -416,7 +401,7 @@ const sendCheckOutNotificationEmail = async ({
             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
               <tr>
                 <td style="padding: 6px 0; color: #64748b; width: 140px;">Ca làm việc:</td>
-                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${shiftName || 'Không xác định'}</td>
+                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${escapeHtml(shiftName || 'Không xác định')}</td>
               </tr>
               <tr>
                 <td style="padding: 6px 0; color: #64748b;">Thời gian Vào ca:</td>
@@ -471,9 +456,7 @@ const sendCheckOutNotificationEmail = async ({
   return result;
 };
 
-/**
- * Gửi email báo cáo tổng kết chấm công toàn trường cuối ngày (23:59) cho Admin / Quản trị viên
- */
+// Gửi email báo cáo tổng kết chấm công toàn trường cuối ngày cho quản trị viên
 const sendDailyAttendanceSummaryEmail = async ({
   to,
   dateStr,
@@ -492,11 +475,10 @@ const sendDailyAttendanceSummaryEmail = async ({
   presentList = [],
 }) => {
   if (!to) return;
-  const transporter = createTransporter();
 
-  const totalAttended = stats.onTimeCount;
+  const totalAttended = (stats.onTimeCount || 0) + (stats.lateCount || 0) + (stats.earlyCount || 0);
   const attendanceRate = totalSchedules > 0 
-    ? Math.round(((totalAttended + stats.excusedCount) / totalSchedules) * 100) 
+    ? Math.min(100, Math.round(((totalAttended + (stats.excusedCount || 0)) / totalSchedules) * 100)) 
     : 100;
 
   const subject = `[BÁO CÁO CUỐI NGÀY] Tổng Hợp Điểm Danh & Chuyên Cần Ngày ${dateStr} - Hệ Thống Chấm Công`;
@@ -577,9 +559,9 @@ const sendDailyAttendanceSummaryEmail = async ({
             <tbody>
               ${absentList.map((item) => `
               <tr>
-                <td style="padding: 8px; border: 1px solid #fecaca; font-weight: bold; color: #1e293b;">${item.fullName}</td>
-                <td style="padding: 8px; border: 1px solid #fecaca;">${item.shiftName} ${item.roomId ? `(${item.roomId})` : ''}</td>
-                <td style="padding: 8px; border: 1px solid #fecaca; color: #64748b;">${item.departmentName || 'Khoa / Đơn vị'}</td>
+                <td style="padding: 8px; border: 1px solid #fecaca; font-weight: bold; color: #1e293b;">${escapeHtml(item.fullName)}</td>
+                <td style="padding: 8px; border: 1px solid #fecaca;">${escapeHtml(item.shiftName)} ${item.roomId ? `(${escapeHtml(item.roomId)})` : ''}</td>
+                <td style="padding: 8px; border: 1px solid #fecaca; color: #64748b;">${escapeHtml(item.departmentName || 'Khoa / Đơn vị')}</td>
                 <td style="padding: 8px; border: 1px solid #fecaca; text-align: center; color: #dc2626; font-weight: bold;">
                   ${item.emailSent ? '✓ Đã gửi mail' : 'Chưa gửi'}
                 </td>
@@ -610,22 +592,22 @@ const sendDailyAttendanceSummaryEmail = async ({
             <tbody>
               ${lateList.map((item) => `
               <tr>
-                <td style="padding: 8px; border: 1px solid #fde68a; font-weight: bold;">${item.fullName}</td>
-                <td style="padding: 8px; border: 1px solid #fde68a;">${item.shiftName}</td>
+                <td style="padding: 8px; border: 1px solid #fde68a; font-weight: bold;">${escapeHtml(item.fullName)}</td>
+                <td style="padding: 8px; border: 1px solid #fde68a;">${escapeHtml(item.shiftName)}</td>
                 <td style="padding: 8px; border: 1px solid #fde68a; color: #d97706; font-weight: bold;">
                   Đi muộn ${item.lateTimeFormatted || (item.lateMinutes + ' phút')} (Vào lúc ${item.checkInTimeStr})
                 </td>
-                <td style="padding: 8px; border: 1px solid #fde68a; text-align: center;">${item.method}</td>
+                <td style="padding: 8px; border: 1px solid #fde68a; text-align: center;">${escapeHtml(item.method)}</td>
               </tr>
               `).join('')}
               ${earlyList.map((item) => `
               <tr>
-                <td style="padding: 8px; border: 1px solid #fde68a; font-weight: bold;">${item.fullName}</td>
-                <td style="padding: 8px; border: 1px solid #fde68a;">${item.shiftName}</td>
+                <td style="padding: 8px; border: 1px solid #fde68a; font-weight: bold;">${escapeHtml(item.fullName)}</td>
+                <td style="padding: 8px; border: 1px solid #fde68a;">${escapeHtml(item.shiftName)}</td>
                 <td style="padding: 8px; border: 1px solid #fde68a; color: #ea580c; font-weight: bold;">
                   Về sớm ${item.earlyTimeFormatted || (item.earlyMinutes + ' phút')} (Tan lúc ${item.checkOutTimeStr})
                 </td>
-                <td style="padding: 8px; border: 1px solid #fde68a; text-align: center;">${item.method}</td>
+                <td style="padding: 8px; border: 1px solid #fde68a; text-align: center;">${escapeHtml(item.method)}</td>
               </tr>
               `).join('')}
             </tbody>
@@ -654,10 +636,10 @@ const sendDailyAttendanceSummaryEmail = async ({
             <tbody>
               ${presentList.map((item) => `
               <tr>
-                <td style="padding: 8px; border: 1px solid #a7f3d0; font-weight: bold; color: #1e293b;">${item.fullName}</td>
-                <td style="padding: 8px; border: 1px solid #a7f3d0;">${item.shiftName} ${item.roomId ? `(${item.roomId})` : ''}</td>
+                <td style="padding: 8px; border: 1px solid #a7f3d0; font-weight: bold; color: #1e293b;">${escapeHtml(item.fullName)}</td>
+                <td style="padding: 8px; border: 1px solid #a7f3d0;">${escapeHtml(item.shiftName)} ${item.roomId ? `(${escapeHtml(item.roomId)})` : ''}</td>
                 <td style="padding: 8px; border: 1px solid #a7f3d0; text-align: center; color: #047857; font-weight: bold;">${item.checkInTimeStr}</td>
-                <td style="padding: 8px; border: 1px solid #a7f3d0; text-align: center;">${item.method}</td>
+                <td style="padding: 8px; border: 1px solid #a7f3d0; text-align: center;">${escapeHtml(item.method)}</td>
                 <td style="padding: 8px; border: 1px solid #a7f3d0; text-align: center;">
                   <span style="display: inline-block; background-color: #d1fae5; color: #065f46; font-weight: bold; padding: 2px 8px; border-radius: 4px; font-size: 12px;">Đúng giờ</span>
                 </td>
@@ -687,8 +669,8 @@ const sendDailyAttendanceSummaryEmail = async ({
             <tbody>
               ${excusedList.map((item) => `
               <tr>
-                <td style="padding: 8px; border: 1px solid #bfdbfe; font-weight: bold;">${item.fullName}</td>
-                <td style="padding: 8px; border: 1px solid #bfdbfe;">${item.shiftName}</td>
+                <td style="padding: 8px; border: 1px solid #bfdbfe; font-weight: bold;">${escapeHtml(item.fullName)}</td>
+                <td style="padding: 8px; border: 1px solid #bfdbfe;">${escapeHtml(item.shiftName)}</td>
                 <td style="padding: 8px; border: 1px solid #bfdbfe; color: #2563eb;">Đơn nghỉ phép đã được Ban Giám Hiệu duyệt</td>
               </tr>
               `).join('')}

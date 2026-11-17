@@ -13,3 +13,6 @@ venv/
 .pytest_cache
 .insightface
 uploads/
+.env
+.env.local
+.env.*.local

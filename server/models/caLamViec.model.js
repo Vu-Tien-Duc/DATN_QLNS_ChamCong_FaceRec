@@ -1,8 +1,8 @@
+// Mô hình bảng ca_lam_viec: khung giờ ca làm việc và ca giảng dạy.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, timeColumn, trimmedString } = require('./modelHelpers');
 
-/** Bảng ca_lam_viec: khung giờ ca làm việc / ca giảng dạy. */
 class CaLamViec extends Model {}
 
 CaLamViec.init(

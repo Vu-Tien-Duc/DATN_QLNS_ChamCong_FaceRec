@@ -1,7 +1,4 @@
-/**
- * Face Template Service (server/services/faceTemplate.service.js)
- * Chuẩn hóa Sequelize + SQL Server 3NF (MauKhuonMat, NguoiDung, NhatKyKiemToan).
- */
+// Quản lý đăng ký, chống trùng lặp và xóa mẫu vector khuôn mặt (MauKhuonMat + FAISS RAM)
 const { Op } = require('sequelize');
 const { NguoiDung, MauKhuonMat, NhatKyKiemToan } = require('../../models');
 const {
@@ -27,14 +24,13 @@ const POSE_LABELS = {
   cui_xuong: 'Cúi xuống (15°-20°)',
 };
 
+// Kiểm tra mảng vector khuôn mặt đúng 512 phần tử số hợp lệ
 const isValidVector512 = (vec) =>
   Array.isArray(vec) &&
   vec.length === VALID_DIMENSIONS &&
   vec.every((val) => typeof val === 'number' && Number.isFinite(val));
 
-/**
- * 1. Đăng ký tập hợp vector 5 góc cho người dùng
- */
+// Đăng ký hoặc cập nhật mẫu vector khuôn mặt 512 chiều cho người dùng kèm chống trùng lặp
 const registerFaceDescriptorForUser = async ({
   id,
   faceDescriptor,
@@ -182,9 +178,7 @@ const registerFaceDescriptorForUser = async ({
   };
 };
 
-/**
- * 2. Đăng ký từ danh sách file ảnh gửi lên
- */
+// Trích xuất vector từ nhiều ảnh khuôn mặt tải lên rồi lưu mẫu sinh trắc học cho người dùng
 const registerFaceImagesForUser = async ({ id, files, sampleAngles, force, currentUser, ip }) => {
   if (!Array.isArray(files) || files.length === 0) {
     throw new ServiceError('Vui lòng cung cấp ít nhất một file ảnh khuôn mặt.', 400);
@@ -227,9 +221,7 @@ const registerFaceImagesForUser = async ({ id, files, sampleAngles, force, curre
   });
 };
 
-/**
- * 3. Xóa dữ liệu khuôn mặt Face ID (Nghị định 13/2023/NĐ-CP)
- */
+// Xóa dữ liệu mẫu khuôn mặt khỏi SQL Server và FAISS RAM
 const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
   if (!id) {
     throw new ServiceError('Thiếu định danh người dùng cần xóa dữ liệu khuôn mặt.', 400);
@@ -314,9 +306,7 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
   };
 };
 
-/**
- * 4. Lấy dữ liệu mẫu khuôn mặt của người dùng
- */
+// Lấy thông tin mẫu khuôn mặt mặc định theo ID người dùng
 const getFaceTemplateByUserId = async (userId) => {
   return MauKhuonMat.findOne({
     where: { nguoi_dung_id: userId, mac_dinh: true },
@@ -324,9 +314,7 @@ const getFaceTemplateByUserId = async (userId) => {
   });
 };
 
-/**
- * 5. Tìm nhân sự theo UUID, email hoặc mã cán bộ phục vụ đăng ký khuôn mặt
- */
+// Tìm người dùng theo UUID, email hoặc mã cán bộ
 const findTargetUserForFace = async (identifier) => {
   if (!identifier) return null;
   if (isValidUuid(String(identifier))) {
@@ -343,9 +331,7 @@ const findTargetUserForFace = async (identifier) => {
   });
 };
 
-/**
- * 6. Lấy trạng thái đăng ký khuôn mặt đầy đủ của nhân sự
- */
+// Kiểm tra trạng thái đã đăng ký khuôn mặt của một người dùng
 const getFaceRegistrationStatusByUserId = async (targetId) => {
   const user = isValidUuid(String(targetId)) ? await NguoiDung.findByPk(String(targetId)) : null;
   if (!user) {

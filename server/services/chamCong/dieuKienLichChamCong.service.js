@@ -1,7 +1,4 @@
-/**
- * Chọn lịch trong ngày đủ điều kiện để giảng viên / cán bộ thực hiện check-in.
- * Chuẩn hóa Sequelize + SQL Server 3NF.
- */
+// Đánh giá lịch/ca làm việc trong ngày đủ điều kiện để giảng viên/cán bộ thực hiện Check-in
 const { Op } = require('sequelize');
 const {
   NhatKyChamCong,
@@ -12,6 +9,7 @@ const {
   NguoiDung,
   HoSoCanBo,
   NhatKyKiemToan,
+  NgayNghiLe,
 } = require('../../models');
 const { processScheduleAttendanceCheck } = require('../heThong/tacVuDinhKy.service');
 const { getConfigSync } = require('../heThong/cauHinhHeThong.service');
@@ -19,6 +17,7 @@ const { getVietnamTime, getVietnamDayRange, timeStringToMinutes } = require('../
 const { isScheduleActiveOnDate } = require('../../utils/ngayLichTrinh.utils');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 
+// Đánh giá lịch giảng dạy/công tác và chọn ca phù hợp để thực hiện điểm danh vào ca
 const evaluateUserScheduleForCheckIn = async (
   userId,
   specificShiftId = null,
@@ -45,6 +44,7 @@ const evaluateUserScheduleForCheckIn = async (
   const userName = user?.ho_ten || 'Cán bộ';
   const userRole = (user?.vai_tro_chinh || '').toLowerCase();
   const loaiNhanSu = (user?.ho_so?.loai_nhan_su || user?.loai_nhan_su || '').toLowerCase();
+  const isPureLecturer = userRole === 'giang_vien' || (loaiNhanSu === 'giang_vien' && !['truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'admin', 'bgh', 'tccb', 'dao_tao'].includes(userRole));
   const isFaculty =
     loaiNhanSu === 'giang_vien' ||
     ['giang_vien', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon'].includes(userRole);
@@ -68,12 +68,7 @@ const evaluateUserScheduleForCheckIn = async (
     { model: NgoaiLeLichTrinh, as: 'ngoai_le' },
   ];
 
-  const makeupWhere = { nguoi_dung_id: userId };
-  if (specificShiftId && isValidUuid(String(specificShiftId)) && !(specificShiftId instanceof Date)) {
-    makeupWhere.ca_id = specificShiftId;
-  }
-
-  const [rawSchedules, makeupExceptions] = await Promise.all([
+  const [rawSchedules, makeupExceptions, swapExceptions] = await Promise.all([
     LichTrinh.findAll({
       where,
       include: scheduleIncludes,
@@ -88,36 +83,91 @@ const evaluateUserScheduleForCheckIn = async (
         {
           model: LichTrinh,
           as: 'lich_trinh',
-          where: makeupWhere,
           required: true,
           include: scheduleIncludes,
         },
+        { model: CaLamViec, as: 'ca_thay_the' },
+      ],
+    }),
+    NgoaiLeLichTrinh.findAll({
+      where: {
+        trang_thai: 'doi_ca',
+        [Op.or]: [{ ngay_day_bu: dateStr }, { ngay: dateStr }],
+      },
+      include: [
+        {
+          model: LichTrinh,
+          as: 'lich_trinh',
+          required: true,
+          include: scheduleIncludes,
+        },
+        { model: CaLamViec, as: 'ca_thay_the' },
       ],
     }),
   ]);
 
   const seenScheduleIds = new Set();
-  const combinedRaw = [];
+  const schedules = [];
+  const toPlainSchedule = (s, overrideEx = null) => {
+    const plain = s.toJSON();
+    plain.danh_sach_tuan = (plain.tuan_hoc || []).map((w) => Number(w.tuan_thu));
+    if (overrideEx) {
+      plain._isSubstituteOverride = true;
+      if (overrideEx.giang_vien_day_thay_id) {
+        plain.nguoi_dung_id = overrideEx.giang_vien_day_thay_id;
+      }
+      if (overrideEx.ca_thay_the) {
+        plain.ca_id = overrideEx.ca_thay_the.id;
+        plain.ca = typeof overrideEx.ca_thay_the.toJSON === 'function' ? overrideEx.ca_thay_the.toJSON() : overrideEx.ca_thay_the;
+        plain.gio_bat_dau = plain.ca.gio_bat_dau;
+        plain.gio_ket_thuc = plain.ca.gio_ket_thuc;
+      }
+    }
+    return plain;
+  };
+
   for (const s of rawSchedules) {
     seenScheduleIds.add(String(s.id));
-    combinedRaw.push(s);
+    schedules.push(toPlainSchedule(s));
   }
   for (const ex of makeupExceptions) {
-    if (ex.lich_trinh && !seenScheduleIds.has(String(ex.lich_trinh.id))) {
+    if (!ex.lich_trinh) continue;
+    const isForUser =
+      String(ex.giang_vien_day_thay_id || ex.lich_trinh.nguoi_dung_id) === String(userId);
+    if (!isForUser) continue;
+    if (specificShiftId && isValidUuid(String(specificShiftId)) && String(ex.ca_thay_the_id || ex.lich_trinh.ca_id) !== String(specificShiftId)) {
+      continue;
+    }
+    if (!seenScheduleIds.has(String(ex.lich_trinh.id))) {
       seenScheduleIds.add(String(ex.lich_trinh.id));
-      combinedRaw.push(ex.lich_trinh);
+      schedules.push(toPlainSchedule(ex.lich_trinh, ex));
+    }
+  }
+  for (const ex of swapExceptions) {
+    if (!ex.lich_trinh) continue;
+    const isSub = ex.giang_vien_day_thay_id && String(ex.giang_vien_day_thay_id) === String(userId);
+    const isSelfShiftSwap =
+      !ex.giang_vien_day_thay_id &&
+      ex.ca_thay_the &&
+      String(ex.lich_trinh.nguoi_dung_id) === String(userId) &&
+      String(ex.ngay_day_bu || ex.ngay).slice(0, 10) === dateStr;
+    if (!isSub && !isSelfShiftSwap) continue;
+    const effectiveShiftId = ex.ca_thay_the_id || ex.lich_trinh.ca_id;
+    if (specificShiftId && isValidUuid(String(specificShiftId)) && String(effectiveShiftId) !== String(specificShiftId)) {
+      continue;
+    }
+    const existingIdx = schedules.findIndex((item) => String(item.id) === String(ex.lich_trinh.id));
+    if (existingIdx >= 0) {
+      schedules[existingIdx] = toPlainSchedule(ex.lich_trinh, ex);
+    } else {
+      seenScheduleIds.add(String(ex.lich_trinh.id));
+      schedules.push(toPlainSchedule(ex.lich_trinh, ex));
     }
   }
 
-  const schedules = combinedRaw.map((s) => {
-    const plain = s.toJSON();
-    plain.danh_sach_tuan = (plain.tuan_hoc || []).map((w) => Number(w.tuan_thu));
-    return plain;
-  });
-
   // 1. Không có lịch giảng dạy hôm nay
   if (!schedules || schedules.length === 0) {
-    if (isFaculty) {
+    if (isPureLecturer) {
       return {
         canCheckIn: false,
         status: 'NO_SCHEDULE',
@@ -146,7 +196,11 @@ const evaluateUserScheduleForCheckIn = async (
       const shiftStartStr = shift.gio_bat_dau;
       const shiftEndStr = shift.gio_ket_thuc;
       const startMinutes = timeStringToMinutes(shiftStartStr);
-      const endMinutes = timeStringToMinutes(shiftEndStr);
+      const rawEndMinutes = timeStringToMinutes(shiftEndStr);
+      const isOvernightShift = rawEndMinutes < startMinutes;
+      const effectiveEndMinutes = isOvernightShift ? rawEndMinutes + 1440 : rawEndMinutes;
+      const effectiveCurrentMinutes =
+        isOvernightShift && currentMinutes < rawEndMinutes ? currentMinutes + 1440 : currentMinutes;
 
       const existingAdminLog = await NhatKyChamCong.findOne({
         where: {
@@ -169,7 +223,7 @@ const evaluateUserScheduleForCheckIn = async (
 
       const adminCheckInWindow = Math.max(configuredCheckInWindow, 60);
       const earlyLimitMinutes = Math.max(0, startMinutes - adminCheckInWindow);
-      if (currentMinutes < earlyLimitMinutes) {
+      if (effectiveCurrentMinutes < earlyLimitMinutes) {
         if (!upcomingShift) {
           const openH = Math.floor(earlyLimitMinutes / 60).toString().padStart(2, '0');
           const openM = (earlyLimitMinutes % 60).toString().padStart(2, '0');
@@ -184,10 +238,10 @@ const evaluateUserScheduleForCheckIn = async (
         continue;
       }
 
-      if (currentMinutes > endMinutes) continue;
+      if (effectiveCurrentMinutes > effectiveEndMinutes) continue;
 
-      const status = currentMinutes > startMinutes ? 'late' : 'on_time';
-      const lateMinutes = status === 'late' ? currentMinutes - startMinutes : 0;
+      const status = effectiveCurrentMinutes > startMinutes ? 'late' : 'on_time';
+      const lateMinutes = status === 'late' ? effectiveCurrentMinutes - startMinutes : 0;
 
       chosenShift = {
         shift,
@@ -291,6 +345,17 @@ const evaluateUserScheduleForCheckIn = async (
     }
 
     if (currentMinutes > startMinutes + lateThreshold) {
+      const holiday = await NgayNghiLe.findOne({
+        where: {
+          ngay_bat_dau: { [Op.lte]: dateStr },
+          ngay_ket_thuc: { [Op.gte]: dateStr },
+        },
+        attributes: ['id', 'ten_ngay_le'],
+      });
+      if (holiday) {
+        continue;
+      }
+
       const absentResult = await processScheduleAttendanceCheck(sch, dayRange);
       const shiftName = shift.ten_ca || 'Ca làm việc';
       cancelledSchedules.push({

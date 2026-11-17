@@ -1,3 +1,4 @@
+// Định tuyến API quản lý danh mục môn học / học phần (/api/mon-hoc)
 const express = require('express');
 const router = express.Router();
 const {

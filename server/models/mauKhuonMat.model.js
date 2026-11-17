@@ -1,14 +1,10 @@
+// Mô hình bảng mau_khuon_mat: lưu vector sinh trắc khuôn mặt 512 chiều đã mã hóa.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, encryptedJsonText } = require('./modelHelpers');
 
 const SO_CHIEU_VECTOR = 512;
 
-/**
- * Bảng mau_khuon_mat: hồ sơ sinh trắc khuôn mặt (vector ArcFace 512 chiều).
- * Mỗi người dùng có thể có nhiều bản ghi (lịch sử đăng ký) nhưng tối đa 1 bản mac_dinh = 1
- * (Filtered Unique Index UX_mau_khuon_mat_mac_dinh chống Race Condition).
- */
 class MauKhuonMat extends Model {}
 
 MauKhuonMat.init(

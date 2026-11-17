@@ -1,7 +1,4 @@
-/**
- * QR Attendance Service (server/services/attendance/qrAttendance.service.js)
- * Xử lý quét mã QR điểm danh (Check-in & Check-out) trên SQL Server + Sequelize 3NF.
- */
+// Xử lý quét mã QR động điểm danh (Check-in / Check-out) kèm xác thực vị trí GPS và lưu SQL Server 3NF
 const { Op } = require('sequelize');
 const { NhatKyChamCong, LuotQuetChamCong, LichTrinh, CaLamViec } = require('../../models');
 const { validateGeofence, verifyDynamicQRCode, resolveUserGeofenceTargets } = require('../../utils/hoTroChamCong');
@@ -17,9 +14,7 @@ const {
 } = require('../../utils/thoiGianChamCong.utils');
 const { evaluateUserScheduleForCheckIn } = require('./dieuKienLichChamCong.service');
 
-/**
- * 1. Xử lý quét mã QR điểm danh (Hỗ trợ cả Check-in và Check-out)
- */
+// Xử lý quét mã QR động cho cả Check-in và Check-out
 const processScanQRCode = async ({
   nguoi_dung_id,
   qrToken,
@@ -71,21 +66,12 @@ const processScanQRCode = async ({
     );
   }
 
-  let isFraud = false;
-  let fraudReason = null;
-  const geoTargets = await resolveUserGeofenceTargets(nguoi_dung_id);
-  const geofenceResult = validateGeofence({ lat, lng, accuracy: acc }, geoTargets, null, dia_chi_ip);
-  if (!geofenceResult.valid) {
-    isFraud = true;
-    fraudReason =
-      geofenceResult.fraudReason ||
-      `Quét mã QR nhưng GPS nằm ngoài khuôn viên trường (${Math.round(geofenceResult.distance || 0)}m).`;
-  }
-
   const now = new Date();
   const { dateStr } = getVietnamDayRange(now);
+  const yesterdayStr = getVietnamDayRange(new Date(now.getTime() - 24 * 60 * 60 * 1000)).dateStr;
+  const overnightCutoff = new Date(now.getTime() - 18 * 60 * 60 * 1000);
 
-  // 3. Tra cứu bản ghi chấm công đang mở (chưa Check-out) hôm nay để hỗ trợ nhiều ca/ngày
+  // 2. Tra cứu bản ghi chấm công đang mở (hỗ trợ cả ca qua đêm)
   let attendance = await NhatKyChamCong.findOne({
     where: {
       nguoi_dung_id,
@@ -97,9 +83,22 @@ const processScanQRCode = async ({
     order: [['tao_luc', 'DESC']],
   });
 
-  // TRƯỜNG HỢP 1: CHƯA CHECK-IN -> THỰC HIỆN CHECK-IN BẰNG QR
+  if (!attendance) {
+    attendance = await NhatKyChamCong.findOne({
+      where: {
+        nguoi_dung_id,
+        ngay_cong: { [Op.in]: [dateStr, yesterdayStr] },
+        thoi_gian_vao: { [Op.gte]: overnightCutoff },
+        thoi_gian_ra: null,
+      },
+      include: [{ model: CaLamViec, as: 'ca' }],
+      order: [['thoi_gian_vao', 'DESC']],
+    });
+  }
+
+  let evalResult = null;
   if (!attendance || !attendance.thoi_gian_vao) {
-    const evalResult = await evaluateUserScheduleForCheckIn(nguoi_dung_id);
+    evalResult = await evaluateUserScheduleForCheckIn(nguoi_dung_id);
     if (!evalResult || !evalResult.canCheckIn) {
       throw new ServiceError(
         evalResult?.message ||
@@ -108,7 +107,29 @@ const processScanQRCode = async ({
         evalResult?.status || 'NO_SCHEDULE'
       );
     }
+  } else if (attendance.da_chot) {
+    throw new ServiceError(
+      'Bản ghi chấm công đã bị khóa sổ lương, không thể check-out hoặc chỉnh sửa.',
+      409,
+      'ATTENDANCE_LOCKED'
+    );
+  }
 
+  // 3. Bắt buộc kiểm tra GPS chống gian lận quét QR từ xa (ưu tiên tọa độ phòng học nếu có lịch)
+  let isFraud = false;
+  let fraudReason = null;
+  const targetScheduleId = attendance?.lich_trinh_id || evalResult?.selectedSchedule?.id || null;
+  const geoTargets = await resolveUserGeofenceTargets(nguoi_dung_id, targetScheduleId);
+  const geofenceResult = validateGeofence({ lat, lng, accuracy: acc }, geoTargets, null, dia_chi_ip);
+  if (!geofenceResult.valid) {
+    isFraud = true;
+    fraudReason =
+      geofenceResult.fraudReason ||
+      `Quét mã QR nhưng GPS nằm ngoài khuôn viên trường (${Math.round(geofenceResult.distance || 0)}m).`;
+  }
+
+  // TRƯỜNG HỢP 1: CHƯA CHECK-IN -> THỰC HIỆN CHECK-IN BẰNG QR
+  if (!attendance || !attendance.thoi_gian_vao) {
     const effectiveShift = evalResult.shift;
     const effectiveCaId = effectiveShift?.id || null;
     if (!effectiveCaId) {
@@ -156,7 +177,7 @@ const processScanQRCode = async ({
           kinh_do: lng,
           do_chinh_xac_gps: acc,
           vi_tri_gia_lap: Boolean(geofenceResult?.isSuspicious),
-          khoang_cach_met: geofenceResult?.distance != null ? Math.max(0, Number(geofenceResult.distance)) : null,
+          khoang_cach_met: Number.isFinite(geofenceResult?.distance) ? Math.max(0, Math.round(geofenceResult.distance)) : null,
           hop_le: !isFraud,
           ly_do_khong_hop_le: fraudReason || geofenceResult?.suspiciousReason || null,
           ma_thiet_bi: thiet_bi_id,
@@ -166,6 +187,18 @@ const processScanQRCode = async ({
 
       return { savedAttendance: targetAttendance, punchLog: createdPunch };
     });
+
+    try {
+      const { emitAttendanceUpdate, emitFraudAlert } = require('../../config/socket');
+      emitAttendanceUpdate(savedAttendance.toJSON ? savedAttendance.toJSON() : savedAttendance);
+      if (isFraud) {
+        emitFraudAlert({
+          type: 'QR_GEOFENCE_CHECK_IN_ALERT',
+          message: fraudReason || 'Cảnh báo vị trí quét QR vào ca.',
+          details: { userId: nguoi_dung_id, attendanceId: savedAttendance.id },
+        });
+      }
+    } catch (_) {}
 
     return {
       type: 'check_in',
@@ -238,6 +271,18 @@ const processScanQRCode = async ({
 
     return { savedAttendance: attendance, punchLog: createdPunch };
   });
+
+  try {
+    const { emitAttendanceUpdate, emitFraudAlert } = require('../../config/socket');
+    emitAttendanceUpdate(savedAttendance.toJSON ? savedAttendance.toJSON() : savedAttendance);
+    if (isFraud) {
+      emitFraudAlert({
+        type: 'QR_GEOFENCE_CHECK_OUT_ALERT',
+        message: fraudReason || 'Cảnh báo vị trí quét QR tan ca.',
+        details: { userId: nguoi_dung_id, attendanceId: savedAttendance.id },
+      });
+    }
+  } catch (_) {}
 
   return {
     type: 'check_out',

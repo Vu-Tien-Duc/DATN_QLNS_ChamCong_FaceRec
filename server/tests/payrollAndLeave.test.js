@@ -1,3 +1,4 @@
+// Kiểm thử tính thuế TNCN 5 bậc, định dạng phiếu lương, tính ngày nghỉ phép và chuẩn hóa phương thức chấm công.
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -57,6 +58,7 @@ describe('Leave Days & Attendance Method Normalization', () => {
     const days = calculateLeaveDays('2026-09-07', '2026-09-13', false, holidays);
     assert.equal(days, 5);
     assert.equal(calculateLeaveDays('2026-09-07', '2026-09-07', true), 0.5);
+    assert.equal(calculateLeaveDays('2026-09-13', '2026-09-13', false), 0);
   });
 
   it('chuẩn hóa đầy đủ alias phương thức chấm công sang enum DB', () => {

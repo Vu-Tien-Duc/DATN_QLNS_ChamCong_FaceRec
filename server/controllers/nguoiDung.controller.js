@@ -1,13 +1,4 @@
-/**
- * User Management Controller (server/controllers/user.controller.js)
- * Mã nguồn sạch 100% chuẩn CSDL v2.5 cho môi trường Đại Học:
- * - Lấy danh sách nhân sự (getAllUsers).
- * - Lấy chi tiết thông tin cá nhân (getUserById).
- * - Thêm mới cán bộ / giảng viên (createUser).
- * - Cập nhật hồ sơ nhân sự (updateUser).
- * - Vô hiệu hóa tài khoản (deleteUser - Soft delete).
- * - Đăng ký / Xóa Face ID đồng bộ FAISS RAM (registerFaceDescriptor, deleteFaceDescriptor).
- */
+// Quản lý tài khoản nhân sự, hồ sơ cán bộ, khóa mềm và đồng bộ Face ID theo người dùng
 const {
   ServiceError,
   fetchUsers,
@@ -21,6 +12,7 @@ const {
 } = require('../services/nhanSu/nguoiDung.service');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleServiceError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -28,6 +20,7 @@ const handleServiceError = (res, error, next) => {
   return next(error);
 };
 
+// Lọc các trường thông tin nhân sự hợp lệ từ request body
 const mapUserBodyToCanonical = (body) => {
   if (!body || typeof body !== 'object') return {};
   const allowedFields = [
@@ -48,10 +41,7 @@ const mapUserBodyToCanonical = (body) => {
   return res;
 };
 
-/**
- * 1. Lấy danh sách người dùng
- * @route GET /api/nguoi-dung
- */
+// GET /api/nguoi-dung - Danh sách người dùng (lọc theo khoa, vai trò, trạng thái)
 const getAllUsers = async (req, res, next) => {
   try {
     const vai_tro = req.query?.vai_tro;
@@ -77,10 +67,7 @@ const getAllUsers = async (req, res, next) => {
   }
 };
 
-/**
- * 2. Lấy chi tiết người dùng
- * @route GET /api/users/:id
- */
+// GET /api/nguoi-dung/:id - Chi tiết người dùng
 const getUserById = async (req, res, next) => {
   try {
     const user = await fetchUserById(req.params.id, req.user);
@@ -90,10 +77,7 @@ const getUserById = async (req, res, next) => {
   }
 };
 
-/**
- * 3. Tạo mới tài khoản
- * @route POST /api/users
- */
+// POST /api/nguoi-dung - Tạo mới tài khoản nhân sự
 const createUser = async (req, res, next) => {
   try {
     const dia_chi_ip = req.ip || req.connection?.remoteAddress || null;
@@ -105,10 +89,7 @@ const createUser = async (req, res, next) => {
   }
 };
 
-/**
- * 4. Cập nhật tài khoản
- * @route PUT /api/users/:id
- */
+// PUT /api/nguoi-dung/:id - Cập nhật thông tin tài khoản/hồ sơ
 const updateUser = async (req, res, next) => {
   try {
     const dia_chi_ip = req.ip || req.connection?.remoteAddress || null;
@@ -120,10 +101,7 @@ const updateUser = async (req, res, next) => {
   }
 };
 
-/**
- * 5. Khóa / Vô hiệu hóa tài khoản (Soft delete)
- * @route DELETE /api/users/:id
- */
+// DELETE /api/nguoi-dung/:id - Vô hiệu hóa tài khoản (Soft delete)
 const deleteUser = async (req, res, next) => {
   try {
     const dia_chi_ip = req.ip || req.connection?.remoteAddress || null;
@@ -134,10 +112,7 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
-/**
- * 6. Đăng ký vector Face ID cho người dùng
- * @route POST /api/nguoi-dung/:id/khuon-mat
- */
+// POST /api/nguoi-dung/:id/khuon-mat - Đăng ký khuôn mặt cho người dùng
 const registerFaceDescriptor = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -162,7 +137,7 @@ const registerFaceDescriptor = async (req, res, next) => {
     } else {
       result = await registerFaceDescriptorForUser({
         id,
-        descriptor: faceDescriptor,
+        faceDescriptor,
         force,
         sampleAngles,
         aiModel,
@@ -177,10 +152,7 @@ const registerFaceDescriptor = async (req, res, next) => {
   }
 };
 
-/**
- * 7. Xóa dữ liệu Face ID của người dùng
- * @route DELETE /api/users/:id/face-descriptor hoặc DELETE /api/users/:id/face
- */
+// DELETE /api/nguoi-dung/:id/khuon-mat - Xóa dữ liệu Face ID của người dùng
 const deleteFaceDescriptor = async (req, res, next) => {
   try {
     const { id } = req.params;

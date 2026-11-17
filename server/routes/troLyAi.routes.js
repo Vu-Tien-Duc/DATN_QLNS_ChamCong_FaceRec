@@ -1,7 +1,4 @@
-/**
- * AI Assistant Routes
- * Định tuyến API trò chuyện đa phương thức (Ảnh OCR, PDF/Word trực tiếp) và Kho tài liệu RAG
- */
+// Định tuyến API Trợ lý AI: trò chuyện đa phương thức (ảnh OCR, PDF/Word) và kho tài liệu RAG (/api/tro-ly-ai)
 
 const express = require('express');
 const multer = require('multer');
@@ -37,6 +34,7 @@ const CHAT_ATTACHMENT_MIME_MAP = {
   'image/webp': ['.webp'],
 };
 
+// Tạo middleware Multer kiểm tra định dạng tệp cho trợ lý AI
 const createAiUploader = (allowedMap, errorMessage) =>
   multer({
     storage: multer.memoryStorage(),
@@ -68,6 +66,7 @@ const ragUpload = createAiUploader(
   'Tài liệu RAG không hợp lệ. Chỉ chấp nhận tệp PDF, DOCX, DOC, TXT hoặc MD.'
 );
 
+// Chuẩn hóa thông báo lỗi khi tải tệp lên vượt giới hạn hoặc sai định dạng
 const formatMulterError = (err, res) => {
   if (err?.code === 'LIMIT_FILE_SIZE') {
     return res.status(400).json({
@@ -81,6 +80,7 @@ const formatMulterError = (err, res) => {
   });
 };
 
+// Middleware cho phép đính kèm tùy chọn tệp khi gửi tin nhắn AI
 const handleOptionalChatUpload = (req, res, next) => {
   if (!req.is('multipart/form-data')) {
     return next();
@@ -91,6 +91,7 @@ const handleOptionalChatUpload = (req, res, next) => {
   });
 };
 
+// Middleware bắt buộc tải 1 tệp tài liệu khi nạp vào kho tri thức RAG
 const handleRagDocumentUpload = (req, res, next) => {
   return ragUpload.single('file')(req, res, (err) => {
     if (err) return formatMulterError(err, res);

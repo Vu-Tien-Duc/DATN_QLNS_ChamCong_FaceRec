@@ -1,12 +1,4 @@
-/**
- * Face Biometrics Controller (server/controllers/face.controller.js)
- * Mã nguồn sạch 100% chuẩn CSDL v2.5 cho môi trường Đại Học:
- * - detectPose: Phát hiện tư thế đầu 3D (Euler Yaw, Pitch, Roll) realtime từ webcam.
- * - enrollMultiAngleFace: Đăng ký khuôn mặt 5 góc, chống trùng lặp, lưu Collection 2 mau_khuon_mat.
- * - getRegistrationStatus: Tra cứu trạng thái đăng ký Face ID của nhân sự.
- * - deleteFaceData: Xóa sạch dữ liệu sinh trắc học khỏi SQL Server và RAM FAISS.
- * - getFaceHealth: Kiểm tra trạng thái hoạt động của Python FastAPI Microservice.
- */
+// Điều phối nhận diện tư thế 3D, đăng ký 5 góc và đồng bộ dữ liệu khuôn mặt (SQL Server + FAISS)
 const fs = require('fs');
 const {
   detectFacePose,
@@ -24,10 +16,7 @@ const minioStorage = require('../config/minio');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 const { getActiveRoles } = require('../middlewares/xacThuc.middleware');
 
-/**
- * 1. Nhận diện tư thế đầu 3D realtime từ frame webcam
- * @route POST /api/face/detect-pose
- */
+// POST /api/khuon-mat/phat-hien-tu-the - Nhận diện tư thế đầu 3D từ frame webcam
 const detectPose = async (req, res) => {
   try {
     let imageBuffer = null;
@@ -85,13 +74,9 @@ const detectPose = async (req, res) => {
   }
 };
 
-/**
- * 2. Đăng ký 5 góc khuôn mặt (Chính diện, Trái, Phải, Ngước, Cúi)
- * @route POST /api/face/enroll-multi-angle
- */
+// POST /api/khuon-mat/dang-ky-da-goc - Đăng ký khuôn mặt 5 góc (thẳng, trái, phải, ngước, cúi)
 const enrollMultiAngleFace = async (req, res) => {
   try {
-    // 0. Phân quyền: Quản trị viên (Admin / BGH) hoặc Cán bộ TCCB mới có quyền đăng ký khuôn mặt
     const userRoles = getActiveRoles(req.user);
     const canEnrollFace = userRoles.has('admin') || userRoles.has('bgh') || userRoles.has('tccb');
     if (!canEnrollFace) {
@@ -117,14 +102,13 @@ const enrollMultiAngleFace = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Thiếu mã cán bộ (ma_can_bo).' });
     }
 
-    // 1. Tìm User trong SQL Server
     const targetUser = await findTargetUserForFace(resolvedEmployeeId);
 
     if (!targetUser) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy nhân sự tương ứng.' });
     }
 
-    // 1.1. Kiểm tra sự đồng thuận thu thập dữ liệu sinh trắc học theo Nghị định 13/2023/NĐ-CP
+    // Bắt buộc người dùng xác nhận đồng thuận thu thập sinh trắc học theo NĐ 13/2023/NĐ-CP
     const consentAgreed =
       dong_y_thu_thap === true ||
       dong_y_thu_thap === 'true';
@@ -138,7 +122,6 @@ const enrollMultiAngleFace = async (req, res) => {
       });
     }
 
-    // 2. Gọi Face AI Microservice (Python FastAPI) trích xuất 5 vector
     const targetUserId = String(targetUser.id);
     let aiResult = null;
     try {
@@ -156,7 +139,6 @@ const enrollMultiAngleFace = async (req, res) => {
       });
     }
 
-    // 3. Xử lý tập hợp các vector 5 góc trả về từ InsightFace
     const angles = aiResult?.angles ?? {};
     const angleMapping = [
       { key: 'straight', name: 'chinh_dien' },
@@ -184,8 +166,7 @@ const enrollMultiAngleFace = async (req, res) => {
       });
     }
 
-    // 4. Chuẩn bị hàm lưu ảnh khuôn mặt đại diện (chính diện) lên MinIO Object Storage
-    // Chỉ thực thi bên trong Service sau khi đã vượt qua kiểm tra chống trùng lặp sinh trắc học
+    // Callback lưu ảnh chính diện sau khi đã qua kiểm tra chống trùng khuôn mặt
     const existingTemplate = await getFaceTemplateByUserId(targetUserId).catch(() => null);
     let facePhotoUrl = existingTemplate?.anh_dai_dien || targetUser.anh_dai_dien || null;
     const uploadPrimaryPhotoAfterValidation = async () => {
@@ -193,14 +174,12 @@ const enrollMultiAngleFace = async (req, res) => {
       const primaryFile = req.files['image_straight']?.[0] || req.files['straight']?.[0] || req.files['image']?.[0];
       if (!primaryFile || !primaryFile.buffer) return facePhotoUrl;
 
-      // Dọn dẹp ảnh cũ của nhân sự trên MinIO/ổ cứng trước khi lưu ảnh mới
       await minioStorage.deleteUserFaceFiles(
         targetUserId,
         targetUser.ma_can_bo,
         facePhotoUrl
       ).catch(() => {});
 
-      // Đặt tên file chuẩn Enterprise: face-<MãCánBộ>-<TênKhôngDấu>.jpg
       const staffCode = (targetUser.ma_can_bo || targetUserId).replace(/[^a-zA-Z0-9_-]/g, '_');
       let cleanName = (targetUser.ho_ten || 'can-bo')
         .replace(/\(.*?\)/g, '')
@@ -226,7 +205,6 @@ const enrollMultiAngleFace = async (req, res) => {
       return facePhotoUrl;
     };
 
-    // 5. Đăng ký qua Service (Chống trùng lặp -> Lưu ảnh MinIO -> Lưu FaceTemplate mã hóa AES-256-GCM -> Sync FAISS & User)
     const result = await registerFaceDescriptorForUser({
       id: targetUserId,
       descriptors: allVectors,
@@ -258,10 +236,7 @@ const enrollMultiAngleFace = async (req, res) => {
   }
 };
 
-/**
- * 3. Kiểm tra trạng thái đăng ký Face ID
- * @route GET /api/khuon-mat/trang-thai-dang-ky hoặc GET /api/khuon-mat/trang-thai-dang-ky/:nguoiDungId
- */
+// GET /api/khuon-mat/trang-thai-dang-ky(/:nguoiDungId) - Kiểm tra trạng thái đăng ký Face ID
 const getRegistrationStatus = async (req, res) => {
   try {
     const targetId = req.params.nguoiDungId || req.user?.id || req.user?._id;
@@ -277,10 +252,7 @@ const getRegistrationStatus = async (req, res) => {
   }
 };
 
-/**
- * 4. Xóa dữ liệu khuôn mặt Face ID
- * @route DELETE /api/khuon-mat/du-lieu/:nguoiDungId
- */
+// DELETE /api/khuon-mat/du-lieu/:nguoiDungId - Xóa dữ liệu khuôn mặt Face ID
 const deleteFaceData = async (req, res) => {
   try {
     const targetUserId = req.params.nguoiDungId || req.user?._id?.toString();
@@ -319,10 +291,7 @@ const deleteFaceData = async (req, res) => {
   }
 };
 
-/**
- * 5. Kiểm tra tình trạng kết nối tới Face AI Microservice
- * @route GET /api/face/health
- */
+// GET /api/khuon-mat/suc-khoe - Kiểm tra kết nối tới Python Face Service
 const getFaceHealth = async (req, res) => {
   try {
     const result = await callFaceService({ path: '/health', method: 'GET', timeoutMs: 5000 });
@@ -335,10 +304,7 @@ const getFaceHealth = async (req, res) => {
   }
 };
 
-/**
- * 6. Kiểm thử nhận diện khuôn mặt Realtime (AI 1:N FAISS, không tạo log chấm công, không kiểm tra geofence hay ca trực)
- * @route POST /api/face/test-recognition
- */
+// POST /api/khuon-mat/kiem-thu-nhan-dien - Thử nghiệm nhận diện AI 1:N (không tạo log chấm công)
 const testFaceRecognition = async (req, res) => {
   try {
     let imageBuffer = null;

@@ -1,6 +1,4 @@
-/**
- * Cấu hình gửi email; chỉ giả lập việc gửi trong môi trường development hoặc test.
- */
+// Cấu hình gửi email SMTP; nếu thiếu SMTP ở môi trường dev/test sẽ tự động giả lập gửi thư
 let nodemailer;
 try {
   nodemailer = require('nodemailer');
@@ -8,6 +6,7 @@ try {
   nodemailer = null;
 }
 
+// Tạo đối tượng gửi email SMTP (hoặc giả lập khi chạy dev/test)
 const createTransporter = () => {
   const host = process.env.EMAIL_HOST || 'smtp.gmail.com';
   const port = Number(process.env.EMAIL_PORT) || 587;

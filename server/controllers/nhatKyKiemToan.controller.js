@@ -1,6 +1,4 @@
-/**
- * Nhận yêu cầu tra cứu nhật ký kiểm toán và ánh xạ kết quả hoặc lỗi sang HTTP response.
- */
+// Tra cứu nhật ký kiểm toán hệ thống và kiểm tra tính toàn vẹn chuỗi băm SHA-256
 const {
   getAuditLogs: fetchAuditLogs,
   verifyAuditLogIntegrity,
@@ -8,6 +6,7 @@ const {
 const ServiceError = require('../utils/loiNghiepVu');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
+// Tra cứu danh sách nhật ký kiểm toán theo bộ lọc và phân trang
 const getAuditLogs = async (req, res, next) => {
   try {
     const nguoi_thuc_hien_id = req.query?.nguoi_thuc_hien_id || req.query?.nguoi_dung_id;
@@ -40,6 +39,7 @@ const getAuditLogs = async (req, res, next) => {
   }
 };
 
+// Kiểm tra tính toàn vẹn chuỗi băm SHA-256 của nhật ký kiểm toán
 const verifyAuditIntegrity = async (req, res, next) => {
   try {
     const limit = req.query.gioi_han ? parseInt(req.query.gioi_han, 10) : 1000;

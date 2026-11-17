@@ -1,8 +1,8 @@
+// Mô hình bảng lich_su_duyet_don: lịch sử các bước phê duyệt đơn từ.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk } = require('./modelHelpers');
 
-/** Bảng lich_su_duyet_don: mỗi bước phê duyệt đa cấp của một đơn (chỉ có thoi_diem). */
 class LichSuDuyetDon extends Model {}
 
 LichSuDuyetDon.init(

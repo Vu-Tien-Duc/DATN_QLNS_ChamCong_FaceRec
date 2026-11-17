@@ -1,7 +1,4 @@
-/**
- * Check-In Service (server/services/attendance/checkIn.service.js)
- * Chuẩn hóa Sequelize + SQL Server 3NF (NhatKyChamCong, LuotQuetChamCong, CaLamViec, NguoiDung).
- */
+// Xử lý điểm danh vào ca (Check-in) kèm đối soát lịch/ca trực và xác thực vị trí GPS
 const { Op } = require('sequelize');
 const { NhatKyChamCong, LuotQuetChamCong, CaLamViec, NguoiDung } = require('../../models');
 const { sendCheckInNotificationEmail } = require('../heThong/guiEmail.service');
@@ -17,6 +14,7 @@ const {
 } = require('../../utils/thoiGianChamCong.utils');
 const { evaluateUserScheduleForCheckIn } = require('./dieuKienLichChamCong.service');
 
+// Xử lý chấm công vào ca, đối chiếu ca/lịch làm việc và xác thực vị trí GPS
 const performCheckIn = async ({
   nguoi_dung_id,
   ca_id,
@@ -63,29 +61,13 @@ const performCheckIn = async ({
     );
   }
 
-  let isFraud = false;
-  let fraudReason = null;
-  let geofenceMeta = null;
-
-  if (finalMethod === 'gps_mobile' || hasCoordinates) {
-    if (acc !== null && Number.isFinite(acc) && acc > 150) {
-      throw new ServiceError(
-        `Độ chính xác GPS không đủ tin cậy (sai số ${acc}m vượt ngưỡng cho phép <= 150m). Vui lòng di chuyển ra nơi thoáng.`,
-        400,
-        'GPS_ACCURACY_UNRELIABLE',
-        { accuracy: acc }
-      );
-    }
-
-    if (hasCoordinates) {
-      const geoTargets = await resolveUserGeofenceTargets(nguoi_dung_id, lich_trinh_id);
-      const geofenceResult = validateGeofence({ lat, lng, accuracy: acc }, geoTargets, null, dia_chi_ip);
-      geofenceMeta = geofenceResult;
-      if (!geofenceResult.valid) {
-        isFraud = true;
-        fraudReason = geofenceResult.fraudReason || `Tọa độ GPS nằm ngoài bán kính cho phép (${Math.round(geofenceResult.distance)}m so với tâm trường).`;
-      }
-    }
+  if ((finalMethod === 'gps_mobile' || hasCoordinates) && acc !== null && Number.isFinite(acc) && acc > 150) {
+    throw new ServiceError(
+      `Độ chính xác GPS không đủ tin cậy (sai số ${acc}m vượt ngưỡng cho phép <= 150m). Vui lòng di chuyển ra nơi thoáng.`,
+      400,
+      'GPS_ACCURACY_UNRELIABLE',
+      { accuracy: acc }
+    );
   }
 
   const now = new Date();
@@ -128,6 +110,20 @@ const performCheckIn = async ({
 
   if (!effectiveShift) {
     effectiveShift = (await CaLamViec.findOne({ where: { kich_hoat: true } })) || (await CaLamViec.findOne());
+  }
+
+  let isFraud = false;
+  let fraudReason = null;
+  let geofenceMeta = null;
+
+  if ((finalMethod === 'gps_mobile' || hasCoordinates) && hasCoordinates) {
+    const geoTargets = await resolveUserGeofenceTargets(nguoi_dung_id, resolvedScheduleId);
+    const geofenceResult = validateGeofence({ lat, lng, accuracy: acc }, geoTargets, null, dia_chi_ip);
+    geofenceMeta = geofenceResult;
+    if (!geofenceResult.valid) {
+      isFraud = true;
+      fraudReason = geofenceResult.fraudReason || `Tọa độ GPS nằm ngoài bán kính cho phép (${Math.round(geofenceResult.distance)}m so với tâm trường).`;
+    }
   }
 
   const finalShiftId = effectiveShift?.id || ca_id;
@@ -234,6 +230,18 @@ const performCheckIn = async ({
       }
     })
     .catch(() => {});
+
+  try {
+    const { emitAttendanceUpdate, emitFraudAlert } = require('../../config/socket');
+    emitAttendanceUpdate(attendance.toJSON ? attendance.toJSON() : attendance);
+    if (isFraud) {
+      emitFraudAlert({
+        type: 'GEOFENCE_CHECK_IN_ALERT',
+        message: fraudReason || 'Cảnh báo vị trí check-in ngoài phạm vi trường.',
+        details: { userId: nguoi_dung_id, attendanceId: attendance.id },
+      });
+    }
+  } catch (_) {}
 
   return {
     success: true,

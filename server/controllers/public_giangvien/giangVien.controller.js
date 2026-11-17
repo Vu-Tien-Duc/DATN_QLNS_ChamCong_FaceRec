@@ -1,6 +1,4 @@
-/**
- * Controller Giảng viên Công khai (server/controllers/public_giangvien/giangVien.controller.js)
- */
+// Tra cứu danh bạ, hồ sơ tóm tắt và thống kê giảng viên cho cổng thông tin công khai
 const giangVienCongKhaiService = require('../../services/nhanSu/giangVienCongKhai.service');
 
 exports.getPublicFacultyList = async (req, res) => {

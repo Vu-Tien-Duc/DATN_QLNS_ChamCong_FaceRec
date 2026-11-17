@@ -1,0 +1,3798 @@
+{
+  "info": {
+    "_postman_id": "datn-qlns-chamcong-facerec-v25",
+    "name": "DATN QLNS Chấm Công FaceRec API",
+    "description": "Bộ sưu tập Postman đầy đủ cho Hệ thống Quản lý Nhân sự & Chấm công Khuôn mặt Trường Đại học (CSDL v2.5).\n\nHướng dẫn nhanh:\n1. Chạy `POST /api/xac-thuc/dang-nhap` với tài khoản demo (`admin@university.edu.vn` / `password123`).\n2. Script tự động lưu `accessToken` và `refreshToken` vào Collection Variables.\n3. Với các API Kiosk (`/api/cham-cong/khuon-mat`, `/api/khuon-mat/vao-ca`, ...), điền biến `terminalKey` hoặc dùng Bearer Token.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "terminalKey",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Xác Thực & Phiên Làm Việc (Auth)",
+      "description": "Đăng nhập, cấp mới Token JWT và phân quyền",
+      "item": [
+        {
+          "name": "POST /api/xac-thuc/dang-nhap — [🔓 Public] Đăng nhập người dùng (Rate Limit 5 lần/15p, JWT Access & Refresh Token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xac-thuc/dang-nhap",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "xac-thuc",
+                "dang-nhap"
+              ]
+            },
+            "description": "Đăng nhập vào hệ thống bằng Email hoặc Mã cán bộ và Mật khẩu.\n\n**Danh sách tài khoản Demo (Mật khẩu chung: `password123`):**\n- Quản trị viên (Admin): `admin@university.edu.vn` hoặc `daihocdtd@gmail.com`\n- Hiệu trưởng (BGH): `hieutruong@university.edu.vn`\n- Trưởng khoa CNTT: `truongkhoa.cntt@university.edu.vn`\n- Giảng viên: `giangvien.bich@university.edu.vn`\n- Nhân viên: `nhanvien.ha@university.edu.vn`",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@university.edu.vn\",\n  \"password\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  try {",
+                  "    const json = pm.response.json();",
+                  "    if (json && json.data) {",
+                  "      if (json.data.token) pm.collectionVariables.set(\"accessToken\", json.data.token);",
+                  "      if (json.data.ma_lam_moi) pm.collectionVariables.set(\"refreshToken\", json.data.ma_lam_moi);",
+                  "      else if (json.data.refreshToken) pm.collectionVariables.set(\"refreshToken\", json.data.refreshToken);",
+                  "    }",
+                  "  } catch (e) {}",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/xac-thuc/ho-so — [🔒 Cá nhân] Lấy thông tin cá nhân hiện tại của người dùng đang đăng nhập",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/xac-thuc/ho-so",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "xac-thuc",
+                "ho-so"
+              ]
+            },
+            "description": "[🔒 Cá nhân] Lấy thông tin cá nhân hiện tại của người dùng đang đăng nhập"
+          }
+        },
+        {
+          "name": "POST /api/xac-thuc/lam-moi-token — [🔓 Public] Cấp mới Access Token từ Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xac-thuc/lam-moi-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "xac-thuc",
+                "lam-moi-token"
+              ]
+            },
+            "description": "Đọc Refresh Token (ma_lam_moi) từ httpOnly cookie hoặc JSON Request Body để cấp mới Access Token 15 phút.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ma_lam_moi\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  try {",
+                  "    const json = pm.response.json();",
+                  "    if (json && json.data) {",
+                  "      if (json.data.token) pm.collectionVariables.set(\"accessToken\", json.data.token);",
+                  "      if (json.data.ma_lam_moi) pm.collectionVariables.set(\"refreshToken\", json.data.ma_lam_moi);",
+                  "      else if (json.data.refreshToken) pm.collectionVariables.set(\"refreshToken\", json.data.refreshToken);",
+                  "    }",
+                  "  } catch (e) {}",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/xac-thuc/dang-xuat — [🔒 Xác thực] Đăng xuất khỏi hệ thống (Blacklist Access Token, xóa Refresh Token & clear Cookie)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xac-thuc/dang-xuat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "xac-thuc",
+                "dang-xuat"
+              ]
+            },
+            "description": "Đưa Access Token hiện tại vào Blacklist để vô hiệu hóa ngay lập tức, xóa Refresh Token trong CSDL và xóa httpOnly cookie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ma_lam_moi\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/xac-thuc/quen-mat-khau — [🔓 Public] Yêu cầu mã OTP đặt lại mật khẩu (Hạn 10 phút)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xac-thuc/quen-mat-khau",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "xac-thuc",
+                "quen-mat-khau"
+              ]
+            },
+            "description": "Gửi mã OTP 6 chữ số đến email để xác thực yêu cầu đổi mật khẩu mới.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"daihocdtd@gmail.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/xac-thuc/dat-lai-mat-khau — [🔓 Public] Xác thực OTP và đặt lại mật khẩu mới",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xac-thuc/dat-lai-mat-khau",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "xac-thuc",
+                "dat-lai-mat-khau"
+              ]
+            },
+            "description": "Nhập mã OTP 6 số còn hiệu lực (< 10 phút) và mật khẩu mới để đổi mật khẩu (thu hồi các token cũ).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"daihocdtd@gmail.com\",\n  \"otp\": \"123456\",\n  \"newPassword\": \"new_password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /api/xac-thuc/doi-mat-khau — [🔒 Cá nhân] Đổi mật khẩu tài khoản đang đăng nhập",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xac-thuc/doi-mat-khau",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "xac-thuc",
+                "doi-mat-khau"
+              ]
+            },
+            "description": "[🔒 Cá nhân] Đổi mật khẩu tài khoản đang đăng nhập",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"password123\",\n  \"newPassword\": \"new_secret_pass_2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /api/xac-thuc/anh-dai-dien — [🔒 Cá nhân] Cập nhật ảnh đại diện cá nhân (PUT - Upload file hoặc URL)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/xac-thuc/anh-dai-dien",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "xac-thuc",
+                "anh-dai-dien"
+              ]
+            },
+            "description": "[🔒 Cá nhân] Cập nhật ảnh đại diện cá nhân (PUT - Upload file hoặc URL)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "avatar",
+                  "type": "file",
+                  "src": "",
+                  "description": "File ảnh JPG/PNG"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Quản Lý Người Dùng (Users)",
+      "description": "Quản lý thông tin giảng viên, nhân viên, phân quyền",
+      "item": [
+        {
+          "name": "GET /api/nguoi-dung — [🔒 Admin / Trưởng khoa] Lấy danh sách người dùng (Admin xem toàn trường, Trưởng khoa chỉ xem khoa mình)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/nguoi-dung",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "nguoi-dung"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "",
+                  "description": "Lọc theo chức vụ",
+                  "disabled": true
+                },
+                {
+                  "key": "departmentId",
+                  "value": "",
+                  "description": "Lọc theo mã phòng ban (Chỉ có tác dụng với Admin)",
+                  "disabled": true
+                },
+                {
+                  "key": "isActive",
+                  "value": "",
+                  "description": "Lọc tài khoản còn hoạt động hay không",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Tìm theo họ tên hoặc email",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Admin / Trưởng khoa] Lấy danh sách người dùng (Admin xem toàn trường, Trưởng khoa chỉ xem khoa mình)"
+          }
+        },
+        {
+          "name": "POST /api/nguoi-dung — [🔒 Admin] Thêm người dùng mới (Ghi Audit Log)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/nguoi-dung",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "nguoi-dung"
+              ]
+            },
+            "description": "[🔒 Admin] Thêm người dùng mới (Ghi Audit Log)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"TS. Lê Thanh Sơn\",\n  \"email\": \"lethanhson@university.edu.vn\",\n  \"password\": \"password123\",\n  \"role\": \"giang_vien\",\n  \"departmentId\": \"00000000-0000-4000-8000-000000000\",\n  \"annualLeaveQuota\": 12,\n  \"staffCode\": \"GV001\",\n  \"phoneNumber\": \"0901234567\",\n  \"academicTitle\": \"Tiến sĩ\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/nguoi-dung/:id — [🔒 Admin / Trưởng khoa] Xem thông tin chi tiết một người dùng",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/nguoi-dung/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "nguoi-dung",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin / Trưởng khoa] Xem thông tin chi tiết một người dùng"
+          }
+        },
+        {
+          "name": "PUT /api/nguoi-dung/:id — [🔒 Admin / Trưởng khoa] Cập nhật thông tin người dùng (Ghi Audit Log)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/nguoi-dung/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "nguoi-dung",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin / Trưởng khoa] Cập nhật thông tin người dùng (Ghi Audit Log)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"TS. Trần Thị Bích (Cập nhật)\",\n  \"departmentId\": \"00000000-0000-4000-8000-000000000\",\n  \"role\": \"admin\",\n  \"isActive\": true,\n  \"annualLeaveQuota\": 14,\n  \"staffCode\": \"GV001\",\n  \"phoneNumber\": \"0901234567\",\n  \"academicTitle\": \"Tiến sĩ\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/nguoi-dung/:id — [🔒 Admin] Vô hiệu hóa người dùng (Soft Delete: isActive = false, Ghi Audit Log)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/nguoi-dung/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "nguoi-dung",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin] Vô hiệu hóa người dùng (Soft Delete: isActive = false, Ghi Audit Log)"
+          }
+        },
+        {
+          "name": "POST /api/nguoi-dung/:id/khuon-mat — [🔒 Admin] Đăng ký Face ID đa góc từ ảnh bằng InsightFace (512 chiều)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/nguoi-dung/:id/khuon-mat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "nguoi-dung",
+                ":id",
+                "khuon-mat"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": "ID người dùng cần gán Face ID"
+                }
+              ]
+            },
+            "description": "Gửi tối đa 5 ảnh góc độ JPEG, PNG hoặc WebP dạng multipart/form-data (chính diện, nghiêng trái, nghiêng phải, ngửa lên, cúi xuống). Face Service trích xuất embedding 512 chiều; backend lưu vector trong face_templates.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "description": "Tối đa 10 ảnh khuôn mặt (JPEG/PNG/WebP)"
+                },
+                {
+                  "key": "sampleAngles",
+                  "type": "text",
+                  "value": "[\"straight\",\"left\",\"right\",\"up\",\"down\"]",
+                  "description": "Mảng góc mặt tương ứng (tùy chọn)"
+                },
+                {
+                  "key": "force",
+                  "type": "text",
+                  "value": "true",
+                  "description": "Ghi đè dữ liệu khuôn mặt cũ"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/nguoi-dung/:id/khuon-mat — [🔒 Admin] Xóa dữ liệu Face ID của nhân sự",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/nguoi-dung/:id/khuon-mat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "nguoi-dung",
+                ":id",
+                "khuon-mat"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": "ID người dùng cần xóa Face ID"
+                }
+              ]
+            },
+            "description": "Xóa mẫu khuôn mặt khỏi collection face_templates và đặt lại faceRegistered = false để cho phép đăng ký lại."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)",
+      "description": "Quản lý cây đơn vị Trường > Khoa > Bộ môn/Phòng ban",
+      "item": [
+        {
+          "name": "GET /api/phong-ban — [🔒 Xác thực] Lấy danh sách Khoa / Viện / Phòng ban (Cây phân cấp)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phong-ban",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phong-ban"
+              ],
+              "query": [
+                {
+                  "key": "tree",
+                  "value": "true",
+                  "description": "Trả về cấu trúc dạng cây phân cấp (true/false)",
+                  "disabled": true
+                },
+                {
+                  "key": "type",
+                  "value": "",
+                  "description": "Lọc theo loại",
+                  "disabled": true
+                },
+                {
+                  "key": "parentId",
+                  "value": "",
+                  "description": "Lọc theo ID đơn vị cha",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Lấy danh sách Khoa / Viện / Phòng ban (Cây phân cấp)"
+          }
+        },
+        {
+          "name": "POST /api/phong-ban — [🔒 Admin] Tạo mới Khoa / Phòng ban / Bộ môn",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/phong-ban",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phong-ban"
+              ]
+            },
+            "description": "[🔒 Admin] Tạo mới Khoa / Phòng ban / Bộ môn",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bộ môn Khoa học Dữ liệu\",\n  \"type\": \"bomon\",\n  \"parentId\": \"00000000-0000-4000-8000-000000000\",\n  \"managerId\": \"00000000-0000-4000-8000-000000000\",\n  \"location\": {\n    \"lat\": 21.028511,\n    \"lng\": 105.854444\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/phong-ban/cay — [🔒 Xác thực] Lấy cây cơ cấu tổ chức phân cấp (Trường > Khoa > Bộ môn)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phong-ban/cay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phong-ban",
+                "cay"
+              ]
+            },
+            "description": "[🔒 Xác thực] Lấy cây cơ cấu tổ chức phân cấp (Trường > Khoa > Bộ môn)"
+          }
+        },
+        {
+          "name": "GET /api/phong-ban/:id — [🔒 Xác thực] Lấy chi tiết Khoa / Phòng ban",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phong-ban/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phong-ban",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Lấy chi tiết Khoa / Phòng ban"
+          }
+        },
+        {
+          "name": "PUT /api/phong-ban/:id — [🔒 Admin / Trưởng khoa] Cập nhật thông tin Khoa / Phòng ban",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/phong-ban/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phong-ban",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin / Trưởng khoa] Cập nhật thông tin Khoa / Phòng ban",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Khoa CNTT & Truyền thông\",\n  \"managerId\": \"00000000-0000-4000-8000-000000000\",\n  \"location\": {\n    \"lat\": 21.028511,\n    \"lng\": 105.854444\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/phong-ban/:id — [🔒 Admin] Xóa Khoa / Phòng ban (Ràng buộc nhân sự & đơn vị con)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phong-ban/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phong-ban",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin] Xóa Khoa / Phòng ban (Ràng buộc nhân sự & đơn vị con)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Ca Làm Việc & Tiết Học (Shifts)",
+      "description": "Định nghĩa khung giờ tiết học, ca hành chính và ngưỡng đi muộn/về sớm",
+      "item": [
+        {
+          "name": "GET /api/ca-lam-viec — [🔒 Xác thực] Danh sách cấu hình ca làm việc / tiết học",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ca-lam-viec",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ca-lam-viec"
+              ]
+            },
+            "description": "[🔒 Xác thực] Danh sách cấu hình ca làm việc / tiết học"
+          }
+        },
+        {
+          "name": "POST /api/ca-lam-viec — [🔒 Admin] Thêm mới ca làm việc / tiết dạy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ca-lam-viec",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ca-lam-viec"
+              ]
+            },
+            "description": "[🔒 Admin] Thêm mới ca làm việc / tiết dạy",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ten_ca\": \"Tiết 10-12 (Tối)\",\n  \"gio_bat_dau\": \"18:00\",\n  \"gio_ket_thuc\": \"20:30\",\n  \"nguong_di_muon_phut\": 15,\n  \"kich_hoat\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/ca-lam-viec/:id — [🔒 Xác thực] Chi tiết ca làm việc theo ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ca-lam-viec/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ca-lam-viec",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Chi tiết ca làm việc theo ID"
+          }
+        },
+        {
+          "name": "PUT /api/ca-lam-viec/:id — [🔒 Admin] Cập nhật ca làm việc",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ca-lam-viec/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ca-lam-viec",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin] Cập nhật ca làm việc",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"startTime\": \"07:15\",\n  \"endTime\": \"09:45\",\n  \"lateThresholdMinutes\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/ca-lam-viec/:id — [🔒 Admin] Xóa ca làm việc",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ca-lam-viec/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ca-lam-viec",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin] Xóa ca làm việc"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Danh Mục Môn Học & Học Phần (Subjects)",
+      "description": "Quản lý danh mục môn học, số tín chỉ, khoa/bộ môn quản lý",
+      "item": [
+        {
+          "name": "GET /api/mon-hoc — [🔒 Xác thực] Lấy danh sách môn học/học phần đào tạo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/mon-hoc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mon-hoc"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Tìm theo mã hoặc tên môn học",
+                  "disabled": true
+                },
+                {
+                  "key": "departmentId",
+                  "value": "",
+                  "description": "Lọc theo khoa/bộ môn",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Lấy danh sách môn học/học phần đào tạo"
+          }
+        },
+        {
+          "name": "POST /api/mon-hoc — [🔒 Admin/Trưởng khoa] Tạo môn học/học phần mới",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mon-hoc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mon-hoc"
+              ]
+            },
+            "description": "[🔒 Admin/Trưởng khoa] Tạo môn học/học phần mới",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"INT3105\",\n  \"name\": \"Lập trình Web nâng cao\",\n  \"credits\": 3,\n  \"departmentId\": \"00000000-0000-4000-8000-000000000\",\n  \"description\": \"Học phần Lập trình Web chuyên ngành CNTT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/mon-hoc/:id — [🔒 Xác thực] Lấy thông tin chi tiết một môn học",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/mon-hoc/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mon-hoc",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Lấy thông tin chi tiết một môn học"
+          }
+        },
+        {
+          "name": "PUT /api/mon-hoc/:id — [🔒 Admin/Trưởng khoa] Cập nhật thông tin môn học",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mon-hoc/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mon-hoc",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin/Trưởng khoa] Cập nhật thông tin môn học",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"INT3105\",\n  \"name\": \"Lập trình Web nâng cao (2026)\",\n  \"credits\": 3,\n  \"departmentId\": \"00000000-0000-4000-8000-000000000\",\n  \"description\": \"Cập nhật đề cương học phần\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/mon-hoc/:id — [🔒 Admin] Xóa môn học khỏi hệ thống",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/mon-hoc/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mon-hoc",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin] Xóa môn học khỏi hệ thống"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Lịch Phân Công Giảng Dạy (Schedules)",
+      "description": "Thời khóa biểu, lịch giảng dạy và công tác",
+      "item": [
+        {
+          "name": "GET /api/lich-trinh — [🔒 Xác thực] Tra cứu lịch giảng dạy và lịch làm việc",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/lich-trinh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lich-trinh"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "",
+                  "description": "Lọc theo ID giảng viên",
+                  "disabled": true
+                },
+                {
+                  "key": "shiftId",
+                  "value": "",
+                  "description": "Lọc theo ID ca",
+                  "disabled": true
+                },
+                {
+                  "key": "weekday",
+                  "value": "",
+                  "description": "Thứ trong tuần (0: CN, 1: T2, ..., 6: T7)",
+                  "disabled": true
+                },
+                {
+                  "key": "date",
+                  "value": "",
+                  "description": "Lọc lịch học vào ngày cụ thể (YYYY-MM-DD)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Tra cứu lịch giảng dạy và lịch làm việc"
+          }
+        },
+        {
+          "name": "POST /api/lich-trinh — [🔒 Admin / Trưởng khoa] Tạo mới lịch phân công giảng dạy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/lich-trinh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lich-trinh"
+              ]
+            },
+            "description": "[🔒 Admin / Trưởng khoa] Tạo mới lịch phân công giảng dạy",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"00000000-0000-4000-8000-000000000\",\n  \"shiftId\": \"00000000-0000-4000-8000-000000000\",\n  \"roomId\": \"A1-402\",\n  \"weekday\": 2,\n  \"startDate\": \"2026-09-01\",\n  \"endDate\": \"2026-12-31\",\n  \"notes\": \"Hệ điều hành nâng cao - K21\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/lich-trinh/hom-nay — [🔒 Xác thực] Lấy danh sách lịch giảng dạy hiệu lực trong ngày hôm nay",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/lich-trinh/hom-nay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lich-trinh",
+                "hom-nay"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "",
+                  "description": "Ngày cần tra cứu (mặc định là hôm nay)",
+                  "disabled": true
+                },
+                {
+                  "key": "userId",
+                  "value": "",
+                  "description": "Lọc theo ID giảng viên (Dành cho Admin/Trưởng khoa)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Lấy danh sách lịch giảng dạy hiệu lực trong ngày hôm nay"
+          }
+        },
+        {
+          "name": "GET /api/lich-trinh/:id — [🔒 Xác thực] Xem chi tiết một lịch giảng dạy",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/lich-trinh/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lich-trinh",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Xem chi tiết một lịch giảng dạy"
+          }
+        },
+        {
+          "name": "PUT /api/lich-trinh/:id — [🔒 Admin / Trưởng khoa] Cập nhật lịch giảng dạy",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/lich-trinh/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lich-trinh",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin / Trưởng khoa] Cập nhật lịch giảng dạy",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"B2-205\",\n  \"notes\": \"Chuyển phòng học thực hành\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/lich-trinh/:id — [🔒 Admin / Trưởng khoa] Xóa lịch giảng dạy",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/lich-trinh/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lich-trinh",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin / Trưởng khoa] Xóa lịch giảng dạy"
+          }
+        },
+        {
+          "name": "POST /api/lich-trinh/:id/ngoai-le — [🔒 Giảng viên / Trưởng khoa / Admin] Ghi nhận ngoại lệ lịch giảng dạy (Nghỉ / Dạy bù)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/lich-trinh/:id/ngoai-le",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lich-trinh",
+                ":id",
+                "ngoai-le"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Giảng viên / Trưởng khoa / Admin] Ghi nhận ngoại lệ lịch giảng dạy (Nghỉ / Dạy bù)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ngay\": \"2026-09-18\",\n  \"trang_thai\": \"nghi\",\n  \"ly_do\": \"Công tác hội đồng khoa học\",\n  \"ngay_day_bu\": \"2026-11-17\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Danh Mục Ngày Nghỉ Lễ (Holidays)",
+      "description": "Quản lý danh mục các ngày nghỉ lễ toàn trường/quốc gia",
+      "item": [
+        {
+          "name": "GET /api/ngay-nghi-le — [🔒 Admin] Lấy danh sách ngày nghỉ lễ toàn trường",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ngay-nghi-le",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ngay-nghi-le"
+              ],
+              "query": [
+                {
+                  "key": "year",
+                  "value": "2026",
+                  "description": "Lọc theo năm dương lịch",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Admin] Lấy danh sách ngày nghỉ lễ toàn trường"
+          }
+        },
+        {
+          "name": "POST /api/ngay-nghi-le — [🔒 Admin] Tạo ngày nghỉ lễ mới",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ngay-nghi-le",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ngay-nghi-le"
+              ]
+            },
+            "description": "[🔒 Admin] Tạo ngày nghỉ lễ mới",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nghỉ lễ Giỗ Tổ Hùng Vương 2026\",\n  \"startDate\": \"2026-04-26\",\n  \"endDate\": \"2026-04-26\",\n  \"year\": 2026,\n  \"isPaid\": true,\n  \"description\": \"Nghỉ lễ theo quy định nhà nước\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/ngay-nghi-le/:id — [🔒 Admin] Lấy chi tiết một ngày nghỉ lễ",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ngay-nghi-le/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ngay-nghi-le",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin] Lấy chi tiết một ngày nghỉ lễ"
+          }
+        },
+        {
+          "name": "PUT /api/ngay-nghi-le/:id — [🔒 Admin] Cập nhật thông tin ngày nghỉ lễ",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ngay-nghi-le/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ngay-nghi-le",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin] Cập nhật thông tin ngày nghỉ lễ",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nghỉ lễ Giỗ Tổ Hùng Vương (Điều chỉnh)\",\n  \"startDate\": \"2026-04-26\",\n  \"endDate\": \"2026-04-27\",\n  \"isPaid\": true,\n  \"description\": \"Hoán đổi ngày nghỉ theo thông báo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/ngay-nghi-le/:id — [🔒 Admin] Xóa ngày nghỉ lễ khỏi hệ thống",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ngay-nghi-le/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ngay-nghi-le",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin] Xóa ngày nghỉ lễ khỏi hệ thống"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)",
+      "description": "Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D, kiểm tra tư thế và FAISS Index",
+      "item": [
+        {
+          "name": "POST /api/khuon-mat/phat-hien-tu-the — [🔒 Điểm danh/Đăng ký] Kiểm tra tư thế đầu 3D (Pitch, Yaw, Roll) & độ nét khuôn mặt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-terminal-key",
+                "value": "{{terminalKey}}",
+                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/khuon-mat/phat-hien-tu-the",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "khuon-mat",
+                "phat-hien-tu-the"
+              ]
+            },
+            "description": "[🔒 Điểm danh/Đăng ký] Kiểm tra tư thế đầu 3D (Pitch, Yaw, Roll) & độ nét khuôn mặt",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": "",
+                  "description": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/khuon-mat/dang-ky-da-goc — [🔒 Admin/Trưởng khoa/Tự đăng ký] Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/khuon-mat/dang-ky-da-goc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "khuon-mat",
+                "dang-ky-da-goc"
+              ]
+            },
+            "description": "Nhận 5 ảnh các góc (chính diện, trái, phải, ngửa, cúi), trích xuất 5 vector ArcFace 512D và tính toán vector Centroid L2 chuẩn hóa.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "userId",
+                  "type": "text",
+                  "value": "",
+                  "description": "ID người dùng (Admin có thể chỉ định, mặc định là bản thân)"
+                },
+                {
+                  "key": "image_straight",
+                  "type": "file",
+                  "src": "",
+                  "description": ""
+                },
+                {
+                  "key": "image_left",
+                  "type": "file",
+                  "src": "",
+                  "description": ""
+                },
+                {
+                  "key": "image_right",
+                  "type": "file",
+                  "src": "",
+                  "description": ""
+                },
+                {
+                  "key": "image_up",
+                  "type": "file",
+                  "src": "",
+                  "description": ""
+                },
+                {
+                  "key": "image_down",
+                  "type": "file",
+                  "src": "",
+                  "description": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/khuon-mat/trang-thai-dang-ky — [🔒 Cá nhân] Kiểm tra trạng thái đã đăng ký khuôn mặt của chính mình",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/khuon-mat/trang-thai-dang-ky",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "khuon-mat",
+                "trang-thai-dang-ky"
+              ]
+            },
+            "description": "[🔒 Cá nhân] Kiểm tra trạng thái đã đăng ký khuôn mặt của chính mình"
+          }
+        },
+        {
+          "name": "GET /api/khuon-mat/trang-thai-dang-ky/:nguoiDungId — [🔒 Admin/Trưởng khoa] Kiểm tra trạng thái đã đăng ký khuôn mặt của người dùng",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/khuon-mat/trang-thai-dang-ky/:nguoiDungId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "khuon-mat",
+                "trang-thai-dang-ky",
+                ":nguoiDungId"
+              ],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                },
+                {
+                  "key": "nguoiDungId",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin/Trưởng khoa] Kiểm tra trạng thái đã đăng ký khuôn mặt của người dùng"
+          }
+        },
+        {
+          "name": "DELETE /api/khuon-mat/du-lieu-cua-toi — [🔒 Cá nhân] Tự xóa dữ liệu mẫu khuôn mặt của bản thân (Tuân thủ quyền xóa dữ liệu cá nhân)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/khuon-mat/du-lieu-cua-toi",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "khuon-mat",
+                "du-lieu-cua-toi"
+              ]
+            },
+            "description": "[🔒 Cá nhân] Tự xóa dữ liệu mẫu khuôn mặt của bản thân (Tuân thủ quyền xóa dữ liệu cá nhân)"
+          }
+        },
+        {
+          "name": "DELETE /api/khuon-mat/du-lieu/:nguoiDungId — [🔒 Admin/Trưởng khoa] Xóa toàn bộ dữ liệu mẫu khuôn mặt của nhân sự và xóa khỏi RAM FAISS",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/khuon-mat/du-lieu/:nguoiDungId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "khuon-mat",
+                "du-lieu",
+                ":nguoiDungId"
+              ],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                },
+                {
+                  "key": "nguoiDungId",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin/Trưởng khoa] Xóa toàn bộ dữ liệu mẫu khuôn mặt của nhân sự và xóa khỏi RAM FAISS"
+          }
+        },
+        {
+          "name": "POST /api/khuon-mat/vao-ca — [🔒 Điểm danh] Check-in điểm danh qua Camera nhận diện khuôn mặt Face ID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-terminal-key",
+                "value": "{{terminalKey}}",
+                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/khuon-mat/vao-ca",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "khuon-mat",
+                "vao-ca"
+              ]
+            },
+            "description": "[🔒 Điểm danh] Check-in điểm danh qua Camera nhận diện khuôn mặt Face ID",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": "",
+                  "description": "Ảnh chụp khuôn mặt từ camera webcam/di động"
+                },
+                {
+                  "key": "location",
+                  "type": "text",
+                  "value": "{\"lat\":21.028511,\"lng\":105.854444}",
+                  "description": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/khuon-mat/tan-ca — [🔒 Điểm danh] Check-out kết thúc ca qua Camera nhận diện khuôn mặt Face ID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-terminal-key",
+                "value": "{{terminalKey}}",
+                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/khuon-mat/tan-ca",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "khuon-mat",
+                "tan-ca"
+              ]
+            },
+            "description": "[🔒 Điểm danh] Check-out kết thúc ca qua Camera nhận diện khuôn mặt Face ID",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": "",
+                  "description": "Ảnh chụp khuôn mặt từ camera webcam/di động"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/khuon-mat/suc-khoe — [🔓 Public/Kiểm tra] Kiểm tra tình trạng kết nối tới Python FastAPI InsightFace Microservice",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/khuon-mat/suc-khoe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "khuon-mat",
+                "suc-khoe"
+              ]
+            },
+            "description": "[🔓 Public/Kiểm tra] Kiểm tra tình trạng kết nối tới Python FastAPI InsightFace Microservice",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "POST /api/khuon-mat/kiem-thu-nhan-dien — [🔒 Admin] Kiểm thử nhận diện khuôn mặt 1:N trực tiếp với ảnh mẫu",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/khuon-mat/kiem-thu-nhan-dien",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "khuon-mat",
+                "kiem-thu-nhan-dien"
+              ]
+            },
+            "description": "[🔒 Admin] Kiểm thử nhận diện khuôn mặt 1:N trực tiếp với ảnh mẫu",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": "",
+                  "description": ""
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Quản Lý Chấm Công (Attendance & PunchLog)",
+      "description": "Check-in, Check-out tự động khớp ca, điểm danh FaceID, QR động, tọa độ GPS",
+      "item": [
+        {
+          "name": "POST /api/cham-cong/vao-ca — [🔒 Cá nhân] Điểm danh đầu ca (Check-in GPS / QR / Manual)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/vao-ca",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "vao-ca"
+              ]
+            },
+            "description": "Hệ thống tự động tìm lịch dạy phù hợp của người dùng trong khoảng [startTime - 30p, endTime] và đánh giá trạng thái Đúng giờ / Đi muộn.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phuong_thuc\": \"gps_mobile\",\n  \"thiet_bi_id\": \"MOBILE_APP\",\n  \"vi_do\": 20.9752,\n  \"kinh_do\": 105.7628\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/cham-cong/tan-ca — [🔒 Cá nhân] Điểm danh kết thúc ca (Check-out)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/tan-ca",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "tan-ca"
+              ]
+            },
+            "description": "Tự động tìm kiếm bản ghi check-in mở gần nhất trong ngày để đóng ca và cập nhật thời gian check-out."
+          }
+        },
+        {
+          "name": "GET /api/cham-cong/lich-su — [🔒 Xác thực] Lịch sử chấm công (Phân quyền: GV cá nhân, Trưởng khoa xem khoa, Admin toàn trường)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/lich-su",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "lich-su"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "",
+                  "description": "Lọc theo nhân sự",
+                  "disabled": true
+                },
+                {
+                  "key": "departmentId",
+                  "value": "",
+                  "description": "Lọc theo phòng ban",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "Lọc theo trạng thái",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "description": "Từ ngày (YYYY-MM-DD)",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "description": "Đến ngày (YYYY-MM-DD)",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Số trang",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Số bản ghi / trang",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Lịch sử chấm công (Phân quyền: GV cá nhân, Trưởng khoa xem khoa, Admin toàn trường)"
+          }
+        },
+        {
+          "name": "GET /api/cham-cong/lich-su-cua-toi — [🔒 Cá nhân] Tra cứu lịch sử chấm công của chính tài khoản đang đăng nhập",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/lich-su-cua-toi",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "lich-su-cua-toi"
+              ]
+            },
+            "description": "[🔒 Cá nhân] Tra cứu lịch sử chấm công của chính tài khoản đang đăng nhập"
+          }
+        },
+        {
+          "name": "GET /api/cham-cong/:id — [🔒 Xác thực] Xem chi tiết bản ghi chấm công",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Xem chi tiết bản ghi chấm công"
+          }
+        },
+        {
+          "name": "PUT /api/cham-cong/:id/dieu-chinh — [🔒 Admin / BGH / Trưởng khoa] Điều chỉnh bản ghi chấm công (Ghi Audit Log)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/:id/dieu-chinh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                ":id",
+                "dieu-chinh"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin / BGH / Trưởng khoa] Điều chỉnh bản ghi chấm công (Ghi Audit Log)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trang_thai\": \"on_time\",\n  \"thoi_gian_vao\": \"2026-11-17T08:00:00.000Z\",\n  \"thoi_gian_ra\": \"2026-11-17T08:00:00.000Z\",\n  \"ly_do_ghi_de\": \"Điều chỉnh bổ sung do giảng viên quên quẹt thẻ có sự xác nhận\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/cham-cong/quet-vang-mat — [🔒 Admin] Kích hoạt thủ công tiến trình quét vắng mặt",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/quet-vang-mat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "quet-vang-mat"
+              ],
+              "query": [
+                {
+                  "key": "ngay",
+                  "value": "2026-09-14",
+                  "description": "Ngày cần kiểm tra (YYYY-MM-DD). Mặc định là hôm nay.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Kích hoạt thủ công tiến trình cron kiểm tra vắng mặt ngay lập tức mà không cần đợi cuối ngày."
+          }
+        },
+        {
+          "name": "POST /api/cham-cong/khuon-mat — [🔒 Máy chấm công] Điểm danh nhận diện khuôn mặt qua Máy chấm công Face ID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-terminal-key",
+                "value": "{{terminalKey}}",
+                "description": "Khóa bảo mật của thiết bị Máy chấm công Face ID, được cấu hình qua biến môi trường TERMINAL_KEY."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/khuon-mat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "khuon-mat"
+              ]
+            },
+            "description": "Xác thực qua header x-terminal-key hoặc Bearer Token kèm rate limit 15 req/phút. Gửi ảnh multipart/form-data để Face Service nhận diện bằng InsightFace 512D, tự động tìm ca dạy phù hợp trong ngày và ghi nhận điểm danh.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": "",
+                  "description": "Ảnh JPEG/PNG chụp từ camera máy chấm công gửi tới InsightFace"
+                },
+                {
+                  "key": "mode",
+                  "type": "text",
+                  "value": "auto",
+                  "description": ""
+                },
+                {
+                  "key": "location",
+                  "type": "text",
+                  "value": "{\"lat\":21.028511,\"lng\":105.854444}",
+                  "description": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/cham-cong/khuon-mat-hang-loat — [🔒 Máy chấm công] Điểm danh nhận diện khuôn mặt hàng loạt (Batch)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-terminal-key",
+                "value": "{{terminalKey}}",
+                "description": "Khóa bảo mật của thiết bị Máy chấm công Face ID"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/khuon-mat-hang-loat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "khuon-mat-hang-loat"
+              ]
+            },
+            "description": "Nhận danh sách nhiều vector khuôn mặt quét được đồng thời trong một khung hình camera Máy chấm công để xử lý điểm danh song song.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descriptors\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/cham-cong/qr/tao-ma — [🔓 Public] Sinh mã QR Động TOTP (Hiệu lực 15-20s) phục vụ điểm danh Máy chấm công / Lớp học",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-terminal-key",
+                "value": "{{terminalKey}}",
+                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/qr/tao-ma",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "qr",
+                "tao-ma"
+              ]
+            },
+            "description": "Sinh chuỗi mã hóa ký HMAC-SHA256 kèm timestamp làm mới liên tục mỗi 15-20 giây để hiển thị trên màn hình Máy chấm công hoặc máy chiếu giảng đường.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "POST /api/cham-cong/qr/quet-ma — [🔒 Cá nhân] Quét mã QR Động trên di động để điểm danh vào ca",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/qr/quet-ma",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "qr",
+                "quet-ma"
+              ]
+            },
+            "description": "Giảng viên dùng điện thoại di động quét mã QR động hiển thị trên máy chiếu / Máy chấm công kết hợp xác thực tọa độ GPS khuôn viên trường (Geofence).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qrToken\": \"\",\n  \"location\": {\n    \"lat\": 21.028511,\n    \"lng\": 105.854444\n  },\n  \"deviceId\": \"MOBILE_CLIENT_IPHONE15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/cham-cong/cau-hinh-khuon-vien — [🔓 Public] Lấy cấu hình tọa độ khuôn viên trường & bán kính Geofencing GPS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/cau-hinh-khuon-vien",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "cau-hinh-khuon-vien"
+              ]
+            },
+            "description": "Trả về tọa độ trung tâm khuôn viên trường đại học và bán kính hợp lệ (mét) cho phép điểm danh di động.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "POST /api/cham-cong/cau-hinh-khuon-vien — [🔒 Admin] Cập nhật tọa độ khuôn viên trường & bán kính Geofencing GPS",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/cau-hinh-khuon-vien",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "cau-hinh-khuon-vien"
+              ]
+            },
+            "description": "Chỉ Quản trị viên (Admin) mới có quyền hiệu chỉnh tọa độ trung tâm và bán kính cho phép chấm công GPS.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": 21.028511,\n  \"lng\": 105.854444,\n  \"radiusMeters\": 600\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/cham-cong/:id/minh-chung — [🔒 Xác thực] Lấy ảnh chụp minh chứng điểm danh của bản ghi chấm công",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/:id/minh-chung",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                ":id",
+                "minh-chung"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Lấy ảnh chụp minh chứng điểm danh của bản ghi chấm công"
+          }
+        },
+        {
+          "name": "GET /api/cham-cong/hang-doi/thong-ke — [🔒 Admin/Kiểm tra] Thống kê hàng đợi chấm công bất đồng bộ BullMQ Redis",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/hang-doi/thong-ke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "hang-doi",
+                "thong-ke"
+              ]
+            },
+            "description": "[🔒 Admin/Kiểm tra] Thống kê hàng đợi chấm công bất đồng bộ BullMQ Redis"
+          }
+        },
+        {
+          "name": "GET /api/cham-cong/chi-so-vector/thong-ke — [🔒 Admin/Kiểm tra] Trạng thái RAM FAISS Index 512D tìm kiếm siêu tốc",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/chi-so-vector/thong-ke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "chi-so-vector",
+                "thong-ke"
+              ]
+            },
+            "description": "[🔒 Admin/Kiểm tra] Trạng thái RAM FAISS Index 512D tìm kiếm siêu tốc"
+          }
+        },
+        {
+          "name": "POST /api/cham-cong/chi-so-vector/dong-bo — [🔒 Admin] Đồng bộ lại FAISS Index từ CSDL SQL Server lên RAM",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/chi-so-vector/dong-bo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "chi-so-vector",
+                "dong-bo"
+              ]
+            },
+            "description": "[🔒 Admin] Đồng bộ lại FAISS Index từ CSDL SQL Server lên RAM"
+          }
+        },
+        {
+          "name": "GET /api/cham-cong/thu-thach-mat-that — [🔓 Public] Sinh thử thách cử động sống (Liveness Challenge)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-terminal-key",
+                "value": "{{terminalKey}}",
+                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/thu-thach-mat-that",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "thu-thach-mat-that"
+              ]
+            },
+            "description": "Trả về chuỗi hành động ngẫu nhiên (chớp mắt, quay trái, mỉm cười) kèm JWT token xác thực phiên sống.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "POST /api/cham-cong/xac-thuc-mat-that — [🔓 Public] Xác minh ảnh khuôn mặt theo thử thách cử động sống",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-terminal-key",
+                "value": "{{terminalKey}}",
+                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cham-cong/xac-thuc-mat-that",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cham-cong",
+                "xac-thuc-mat-that"
+              ]
+            },
+            "description": "[🔓 Public] Xác minh ảnh khuôn mặt theo thử thách cử động sống",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": "",
+                  "description": ""
+                },
+                {
+                  "key": "challengeToken",
+                  "type": "text",
+                  "value": "",
+                  "description": ""
+                },
+                {
+                  "key": "action",
+                  "type": "text",
+                  "value": "",
+                  "description": ""
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 - Đơn Nghỉ Phép & Đổi Ca (Leave Requests)",
+      "description": "Quy trình tạo đơn, tính hạn mức nghỉ phép (balance) và phê duyệt",
+      "item": [
+        {
+          "name": "POST /api/don-nghi-phep — [🔒 Cá nhân] Tạo đơn xin nghỉ phép / dạy bù / đổi ca",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/don-nghi-phep",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "don-nghi-phep"
+              ]
+            },
+            "description": "[🔒 Cá nhân] Tạo đơn xin nghỉ phép / dạy bù / đổi ca",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"nghi_phep\",\n  \"startDate\": \"2026-09-15\",\n  \"endDate\": \"2026-09-17\",\n  \"reason\": \"Đi tham dự hội thảo khoa học quốc tế\",\n  \"attachmentUrl\": \"https://cdn.university.edu.vn/giay-moi-hoi-thao.pdf\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/don-nghi-phep — [🔒 Xác thực] Danh sách đơn xin nghỉ phép (Phân quyền theo vai trò)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/don-nghi-phep",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "don-nghi-phep"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "Lọc trạng thái",
+                  "disabled": true
+                },
+                {
+                  "key": "type",
+                  "value": "",
+                  "description": "Lọc loại đơn",
+                  "disabled": true
+                },
+                {
+                  "key": "userId",
+                  "value": "",
+                  "description": "Lọc theo ID người làm đơn",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Danh sách đơn xin nghỉ phép (Phân quyền theo vai trò)"
+          }
+        },
+        {
+          "name": "GET /api/don-nghi-phep/so-du — [🔒 Cá nhân / Xác thực] Xem số ngày phép còn lại trong năm (Leave Balance)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/don-nghi-phep/so-du",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "don-nghi-phep",
+                "so-du"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "",
+                  "description": "ID người dùng cần tra cứu (Mặc định là chính mình)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Dùng Aggregate pipeline tính tổng ngày phép tiêu chuẩn, ngày đã sử dụng và ngày còn lại."
+          }
+        },
+        {
+          "name": "GET /api/don-nghi-phep/:id — [🔒 Xác thực] Xem chi tiết một đơn xin nghỉ",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/don-nghi-phep/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "don-nghi-phep",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Xác thực] Xem chi tiết một đơn xin nghỉ"
+          }
+        },
+        {
+          "name": "PUT /api/don-nghi-phep/:id/phe-duyet — [🔒 Admin / Trưởng khoa] Phê duyệt đơn xin nghỉ (Hỗ trợ Optimistic Locking qua version)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/don-nghi-phep/:id/phe-duyet",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "don-nghi-phep",
+                ":id",
+                "phe-duyet"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin / Trưởng khoa] Phê duyệt đơn xin nghỉ (Hỗ trợ Optimistic Locking qua version)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approvalNote\": \"Đồng ý cho nghỉ phép, khoa đã bố trí giảng viên dạy thay.\",\n  \"version\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /api/don-nghi-phep/:id/tu-choi — [🔒 Admin / Trưởng khoa] Từ chối đơn xin nghỉ",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/don-nghi-phep/:id/tu-choi",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "don-nghi-phep",
+                ":id",
+                "tu-choi"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin / Trưởng khoa] Từ chối đơn xin nghỉ",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rejectionReason\": \"Trùng lịch thi kết thúc học phần, đề nghị chọn ngày khác.\",\n  \"version\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /api/don-nghi-phep/:id/huy — [🔒 Người tạo đơn / Admin] Hủy đơn xin nghỉ phép đã nộp",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/don-nghi-phep/:id/huy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "don-nghi-phep",
+                ":id",
+                "huy"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Người tạo đơn / Admin] Hủy đơn xin nghỉ phép đã nộp"
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 - Quản Lý Bảng Lương & Snapshot (Payrolls)",
+      "description": "Bảng lương Snapshot năm 2026, khóa lương và thuế TNCN lũy tiến 5 bậc",
+      "item": [
+        {
+          "name": "POST /api/phieu-luong/khoi-tao — [🔒 Admin/BGH/Trưởng khoa] Tạo & tính toán Snapshot bảng lương năm 2026",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong/khoi-tao",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong",
+                "khoi-tao"
+              ]
+            },
+            "description": "Tính toán giờ dạy thực tế, giờ vượt chuẩn, phụ cấp, trích nộp BHXH 10.5% và thuế TNCN lũy tiến 5 bậc.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"month\": 10,\n  \"year\": 2026,\n  \"departmentId\": \"00000000-0000-4000-8000-000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/phieu-luong — [🔒 Admin/BGH/Trưởng khoa] Lấy danh sách bảng lương toàn trường/khoa",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "10",
+                  "description": "Tháng (hoặc thang)",
+                  "disabled": true
+                },
+                {
+                  "key": "year",
+                  "value": "2026",
+                  "description": "Năm (hoặc nam)",
+                  "disabled": true
+                },
+                {
+                  "key": "departmentId",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Admin/BGH/Trưởng khoa] Lấy danh sách bảng lương toàn trường/khoa"
+          }
+        },
+        {
+          "name": "GET /api/phieu-luong/cua-toi — [🔒 Cá nhân] Giảng viên/Nhân viên tra cứu bảng lương của chính mình",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong/cua-toi",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong",
+                "cua-toi"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "10",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "year",
+                  "value": "2026",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Cá nhân] Giảng viên/Nhân viên tra cứu bảng lương của chính mình"
+          }
+        },
+        {
+          "name": "GET /api/phieu-luong/tong-hop — [🔒 Admin/BGH] Tổng hợp thống kê quỹ lương, tổng giờ vượt chuẩn và thuế TNCN",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong/tong-hop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong",
+                "tong-hop"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "10",
+                  "description": "Tháng",
+                  "disabled": true
+                },
+                {
+                  "key": "year",
+                  "value": "2026",
+                  "description": "Năm",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Admin/BGH] Tổng hợp thống kê quỹ lương, tổng giờ vượt chuẩn và thuế TNCN"
+          }
+        },
+        {
+          "name": "POST /api/phieu-luong/khoa — [🔒 Admin/BGH] Khóa sổ bảng lương theo tháng & chốt công",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong/khoa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong",
+                "khoa"
+              ]
+            },
+            "description": "[🔒 Admin/BGH] Khóa sổ bảng lương theo tháng & chốt công",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"month\": 10,\n  \"year\": 2026\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/phieu-luong/mo-khoa — [🔒 Admin/BGH] Mở khóa sổ bảng lương theo tháng kèm lý do",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong/mo-khoa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong",
+                "mo-khoa"
+              ]
+            },
+            "description": "[🔒 Admin/BGH] Mở khóa sổ bảng lương theo tháng kèm lý do",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"month\": 10,\n  \"year\": 2026,\n  \"reason\": \"Điều chỉnh bổ sung giờ vượt chuẩn\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/phieu-luong/:id — [🔒 Chi tiết] Xem chi tiết một phiếu lương kèm snapshot các buổi dạy",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Chi tiết] Xem chi tiết một phiếu lương kèm snapshot các buổi dạy"
+          }
+        },
+        {
+          "name": "PUT /api/phieu-luong/:id/khoa — [🔒 Admin/BGH] Khóa bảng lương chống sửa đổi (qua ID phiếu lương)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong/:id/khoa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong",
+                ":id",
+                "khoa"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin/BGH] Khóa bảng lương chống sửa đổi (qua ID phiếu lương)"
+          }
+        },
+        {
+          "name": "PUT /api/phieu-luong/:id/mo-khoa — [🔒 Admin/BGH] Mở khóa bảng lương (qua ID phiếu lương)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong/:id/mo-khoa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong",
+                ":id",
+                "mo-khoa"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin/BGH] Mở khóa bảng lương (qua ID phiếu lương)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Mở khóa điều chỉnh\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/phieu-luong/xuat-excel — [🔒 Admin/BGH/Trưởng khoa] Xuất file Excel bảng lương toàn trường/khoa",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong/xuat-excel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong",
+                "xuat-excel"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "10",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "year",
+                  "value": "2026",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "departmentId",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Admin/BGH/Trưởng khoa] Xuất file Excel bảng lương toàn trường/khoa"
+          }
+        },
+        {
+          "name": "GET /api/phieu-luong/:id/xuat-pdf — [🔒 Admin/BGH/Cá nhân] Xuất dữ liệu in ấn phiếu lương PDF theo ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/phieu-luong/:id/xuat-pdf",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "phieu-luong",
+                ":id",
+                "xuat-pdf"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔒 Admin/BGH/Cá nhân] Xuất dữ liệu in ấn phiếu lương PDF theo ID"
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 - Báo Cáo & Thống Kê (Reports)",
+      "description": "Thống kê tổng hợp số giờ dạy, đi muộn, nghỉ phép",
+      "item": [
+        {
+          "name": "GET /api/bao-cao/cham-cong — [🔒 Cá nhân / Trưởng khoa / Admin] Báo cáo tổng hợp số liệu chấm công và ngày phép",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bao-cao/cham-cong",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bao-cao",
+                "cham-cong"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "",
+                  "description": "Lọc theo giảng viên / nhân viên (chỉ dành cho Trưởng khoa và Admin)",
+                  "disabled": true
+                },
+                {
+                  "key": "departmentId",
+                  "value": "",
+                  "description": "Lọc theo khoa / phòng ban (chỉ dành cho Admin)",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "description": "Từ ngày (YYYY-MM-DD)",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "description": "Đến ngày (YYYY-MM-DD)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Giảng viên/Nhân viên chỉ xem của chính mình; Trưởng khoa xem của khoa; Admin xem toàn trường."
+          }
+        },
+        {
+          "name": "GET /api/bao-cao/hang-thang — [🔒 Admin / Trưởng khoa] Báo cáo tổng hợp ngày công chi tiết theo tháng",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bao-cao/hang-thang",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bao-cao",
+                "hang-thang"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "10",
+                  "description": "Tháng (1-12)",
+                  "disabled": true
+                },
+                {
+                  "key": "year",
+                  "value": "2026",
+                  "description": "Năm (YYYY)",
+                  "disabled": true
+                },
+                {
+                  "key": "departmentId",
+                  "value": "",
+                  "description": "Lọc theo mã Khoa / Phòng ban (chỉ dành cho Admin)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Tổng hợp chi tiết danh sách từng nhân sự trong tháng gồm: tổng buổi dạy, đúng giờ, đi muộn, về sớm, vắng mặt, nghỉ có phép."
+          }
+        },
+        {
+          "name": "GET /api/bao-cao/du-lieu-xuat — [🔒 Xác thực] Trích xuất dữ liệu đa chiều 5 Sheets phục vụ xuất file Excel tổng hợp",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bao-cao/du-lieu-xuat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bao-cao",
+                "du-lieu-xuat"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "9",
+                  "description": "Tháng cần xuất (1-12)",
+                  "disabled": true
+                },
+                {
+                  "key": "year",
+                  "value": "2026",
+                  "description": "Năm (YYYY)",
+                  "disabled": true
+                },
+                {
+                  "key": "departmentId",
+                  "value": "",
+                  "description": "Lọc theo khoa (Admin có thể lọc, Trưởng khoa tự động giới hạn)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Trả về cấu trúc dữ liệu hoàn chỉnh 5 sheet: Tổng hợp công, Bảng chấm công chi tiết, Danh sách đi muộn/về sớm, Thống kê đơn nghỉ phép, và Phân bổ giờ giảng theo khoa."
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 - Nhật Ký Kiểm Toán (Audit Logs)",
+      "description": "Lưu vết lịch sử thao tác quan trọng để giám sát",
+      "item": [
+        {
+          "name": "GET /api/nhat-ky-kiem-toan — [🔒 Admin/BGH] Tra cứu nhật ký kiểm toán hệ thống (Audit Logs)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/nhat-ky-kiem-toan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "nhat-ky-kiem-toan"
+              ],
+              "query": [
+                {
+                  "key": "actor",
+                  "value": "",
+                  "description": "ID người thực hiện hoặc SYSTEM",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "description": "Tên hành động (e.g. USER_LOGIN, LOCK_PAYROLL)",
+                  "disabled": true
+                },
+                {
+                  "key": "targetType",
+                  "value": "",
+                  "description": "Loại đối tượng (User, Payroll, LeaveRequest)",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "Trạng thái thành công hay thất bại",
+                  "disabled": true
+                },
+                {
+                  "key": "keyword",
+                  "value": "",
+                  "description": "Từ khóa tìm kiếm",
+                  "disabled": true
+                },
+                {
+                  "key": "startDate",
+                  "value": "",
+                  "description": "Từ ngày",
+                  "disabled": true
+                },
+                {
+                  "key": "endDate",
+                  "value": "",
+                  "description": "Đến ngày",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Chỉ dành cho Admin, Hiệu trưởng và Hiệu phó. Hỗ trợ lọc theo actor, action, targetType, status, khoảng thời gian và phân trang."
+          }
+        },
+        {
+          "name": "GET /api/nhat-ky-kiem-toan/xac-minh-toan-ven — [🔒 Admin/BGH] Xác thực tính toàn vẹn chuỗi hash SHA-256 nhật ký kiểm toán",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/nhat-ky-kiem-toan/xac-minh-toan-ven",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "nhat-ky-kiem-toan",
+                "xac-minh-toan-ven"
+              ]
+            },
+            "description": "Kiểm tra chuỗi hash liên kết giữa các bản ghi audit log để phát hiện mọi hành vi can thiệp hoặc sửa đổi dữ liệu trái phép."
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 - Cấu Hình Hệ Thống Tập Trung (System Configs)",
+      "description": "Quản lý các tham số vận hành: ngưỡng AI, cooldown, bán kính GPS, hạn mức nghỉ phép",
+      "item": [
+        {
+          "name": "GET /api/he-thong/cau-hinh — [🔒 Admin] Lấy toàn bộ tham số cấu hình hệ thống (In-memory Cache)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/he-thong/cau-hinh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "he-thong",
+                "cau-hinh"
+              ]
+            },
+            "description": "[🔒 Admin] Lấy toàn bộ tham số cấu hình hệ thống (In-memory Cache)"
+          }
+        },
+        {
+          "name": "PUT /api/he-thong/cau-hinh — [🔒 Admin] Cập nhật tham số cấu hình (tự động ghi Audit Log & làm mới RAM Cache)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/he-thong/cau-hinh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "he-thong",
+                "cau-hinh"
+              ]
+            },
+            "description": "[🔒 Admin] Cập nhật tham số cấu hình (tự động ghi Audit Log & làm mới RAM Cache)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"CAMPUS_GPS_RADIUS_METERS\",\n  \"value\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 - Hệ Thống Thông Báo (Notifications)",
+      "description": "Quản lý thông báo người dùng, cảnh báo chấm công và kết quả phê duyệt đơn",
+      "item": [
+        {
+          "name": "GET /api/thong-bao — [🔒 Cá nhân] Lấy danh sách thông báo của người dùng (kết quả duyệt đơn, cảnh báo đi muộn/vắng mặt)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/thong-bao",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "thong-bao"
+              ],
+              "query": [
+                {
+                  "key": "isRead",
+                  "value": "",
+                  "description": "Lọc thông báo đã đọc hoặc chưa đọc",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Số lượng thông báo",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "[🔒 Cá nhân] Lấy danh sách thông báo của người dùng (kết quả duyệt đơn, cảnh báo đi muộn/vắng mặt)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 - Hạ Tầng & Kiểm Tra Hệ Thống (Health Check)",
+      "description": "Kiểm tra trạng thái máy chủ và kết nối CSDL SQL Server",
+      "item": [
+        {
+          "name": "GET /api/suc-khoe — [🔓 Public] Kiểm tra trạng thái máy chủ và 24 bảng SQL Server CSDL 3NF",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/suc-khoe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "suc-khoe"
+              ]
+            },
+            "description": "[🔓 Public] Kiểm tra trạng thái máy chủ và 24 bảng SQL Server CSDL 3NF",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "POST /api/tai-tep — [🔒 Đã đăng nhập] Tải file minh chứng đính kèm (ảnh, PDF, tài liệu)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tai-tep",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tai-tep"
+              ]
+            },
+            "description": "Hỗ trợ tải lên file minh chứng (giấy khám sức khỏe, minh chứng đổi ca...) với định dạng PNG, JPG, WEBP, PDF, DOC, DOCX. Giới hạn 10MB.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "File tài liệu hoặc ảnh cần tải lên"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/tai-tep/tep/:filename — [🔓 Public] Tải xuống hoặc xem tệp đính kèm / ảnh minh chứng đã tải lên",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tai-tep/tep/:filename",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tai-tep",
+                "tep",
+                ":filename"
+              ],
+              "variable": [
+                {
+                  "key": "filename",
+                  "value": "example.png",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "[🔓 Public] Tải xuống hoặc xem tệp đính kèm / ảnh minh chứng đã tải lên"
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 - Cổng Thông Tin Giảng Viên Công Khai (Public Faculty)",
+      "description": "Website Phenikaa: Danh bạ giảng viên, hồ sơ khoa học, môn học và số liệu thống kê công khai",
+      "item": [
+        {
+          "name": "GET /api/cong-khai/giang-vien/thong-ke — [🌐 Public] Lấy số liệu thống kê tổng quan danh bạ giảng viên",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cong-khai/giang-vien/thong-ke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cong-khai",
+                "giang-vien",
+                "thong-ke"
+              ]
+            },
+            "description": "Trả về tổng số giảng viên, số GS, PGS, Tiến sĩ, tỷ lệ TS trở lên và danh sách các khoa đào tạo.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "GET /api/cong-khai/giang-vien — [🌐 Public] Lấy danh bạ giảng viên (hỗ trợ phân trang, tìm kiếm & bộ lọc)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cong-khai/giang-vien",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cong-khai",
+                "giang-vien"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Từ khóa tìm kiếm theo họ tên, email, hướng nghiên cứu",
+                  "disabled": true
+                },
+                {
+                  "key": "phong_ban_id",
+                  "value": "",
+                  "description": "Mã định danh Khoa/Viện",
+                  "disabled": true
+                },
+                {
+                  "key": "hoc_ham",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "hoc_vi",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "12",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Lấy danh sách giảng viên đang công tác, hỗ trợ lọc theo Khoa, Học hàm, Học vị, từ khóa tìm kiếm. Áp dụng chuẩn bảo mật Zero Data Leakage.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "GET /api/cong-khai/giang-vien/:id — [🌐 Public] Lấy chi tiết hồ sơ khoa học của giảng viên theo ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cong-khai/giang-vien/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cong-khai",
+                "giang-vien",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": "Mã ID giảng viên"
+                }
+              ]
+            },
+            "description": "Trả về tiểu sử khoa học, chức vụ, học vị, hướng nghiên cứu, phòng làm việc và danh sách môn học đảm nhiệm.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)",
+      "description": "Trò chuyện AI đa phương thức và quản lý kho tri thức quy chế RAG",
+      "item": [
+        {
+          "name": "GET /api/tro-ly-ai/che-do — Lấy danh sách chế độ trò chuyện AI hỗ trợ",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tro-ly-ai/che-do",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tro-ly-ai",
+                "che-do"
+              ]
+            },
+            "description": "Lấy danh sách chế độ trò chuyện AI hỗ trợ"
+          }
+        },
+        {
+          "name": "GET /api/tro-ly-ai/nha-cung-cap — Lấy danh sách nhà cung cấp AI khả dụng (Gemini / Groq / OpenAI)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tro-ly-ai/nha-cung-cap",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tro-ly-ai",
+                "nha-cung-cap"
+              ]
+            },
+            "description": "Lấy danh sách nhà cung cấp AI khả dụng (Gemini / Groq / OpenAI)"
+          }
+        },
+        {
+          "name": "POST /api/tro-ly-ai/tro-chuyen — Trò chuyện với Trợ lý AI tích hợp RAG và đính kèm tệp",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tro-ly-ai/tro-chuyen",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tro-ly-ai",
+                "tro-chuyen"
+              ]
+            },
+            "description": "Trò chuyện với Trợ lý AI tích hợp RAG và đính kèm tệp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Quy định chấm công đi muộn của giảng viên như thế nào?\",\n  \"mode\": \"hr_work\",\n  \"useRag\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/tro-ly-ai/tai-lieu — Liệt kê tài liệu trong Kho tri thức RAG",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tro-ly-ai/tai-lieu",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tro-ly-ai",
+                "tai-lieu"
+              ]
+            },
+            "description": "Liệt kê tài liệu trong Kho tri thức RAG"
+          }
+        },
+        {
+          "name": "POST /api/tro-ly-ai/tai-lieu — Tải lên và phân đoạn tài liệu vào Kho tri thức RAG (PDF/DOCX/DOC/TXT/MD)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tro-ly-ai/tai-lieu",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tro-ly-ai",
+                "tai-lieu"
+              ]
+            },
+            "description": "Tải lên và phân đoạn tài liệu vào Kho tri thức RAG (PDF/DOCX/DOC/TXT/MD)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "Tệp PDF, DOCX, DOC, TXT hoặc MD (tối đa 10MB)"
+                },
+                {
+                  "key": "title",
+                  "type": "text",
+                  "value": "Quy chế chấm công 2026",
+                  "description": "Tiêu đề tài liệu (tùy chọn)"
+                },
+                {
+                  "key": "pham_vi",
+                  "type": "text",
+                  "value": "toan_truong",
+                  "description": "ca_nhan hoặc toan_truong"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/tro-ly-ai/tai-lieu/:id — Xem chi tiết tài liệu RAG",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tro-ly-ai/tai-lieu/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tro-ly-ai",
+                "tai-lieu",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Xem chi tiết tài liệu RAG"
+          }
+        },
+        {
+          "name": "DELETE /api/tro-ly-ai/tai-lieu/:id — Xóa tài liệu khỏi Kho tri thức RAG",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tro-ly-ai/tai-lieu/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tro-ly-ai",
+                "tai-lieu",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "00000000-0000-4000-8000-000000000001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Xóa tài liệu khỏi Kho tri thức RAG"
+          }
+        }
+      ]
+    }
+  ]
+}

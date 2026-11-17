@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { normalizeBackendData, normalizeFrontendPayload, normalizeQueryParams } from '../utils/normalizeBackendData';
+import { normalizeBackendData, normalizeFrontendPayload, normalizeQueryParams } from '../utils/chuanHoaDuLieu';
 
 // Định nghĩa kiểu phản hồi chuẩn từ Backend CSDL v2.5
 export interface ApiResponse<T = any> {
@@ -168,7 +168,7 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/dang-nhap';
       return Promise.reject(error);
     }
 
@@ -203,7 +203,7 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/dang-nhap';
       return Promise.reject(refreshErr);
     } finally {
       isRefreshing = false;

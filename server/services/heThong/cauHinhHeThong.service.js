@@ -1,6 +1,4 @@
-/**
- * Quản lý cấu hình hệ thống tập trung (CauHinhHeThong) với bộ đệm RAM & Audit Log.
- */
+// Quản lý cấu hình hệ thống tập trung kèm bộ nhớ đệm và nhật ký kiểm toán.
 const { CauHinhHeThong, NhatKyKiemToan } = require('../../models');
 const ServiceError = require('../../utils/loiNghiepVu');
 
@@ -9,6 +7,7 @@ let isInitialized = false;
 let lastLoadedTime = 0;
 const CACHE_TTL_MS = 60000;
 
+// Chuyển bản ghi Sequelize cấu hình sang object lưu cache RAM
 const toCacheEntry = (cfg) => ({
   id: cfg.id,
   khoa_cau_hinh: cfg.khoa_cau_hinh,
@@ -18,6 +17,7 @@ const toCacheEntry = (cfg) => ({
   cap_nhat_luc: cfg.cap_nhat_luc,
 });
 
+// Nạp toàn bộ cấu hình hệ thống từ DB vào cache RAM (TTL 60 giây)
 const loadConfigsIntoCache = async (force = false) => {
   const now = Date.now();
   if (isInitialized && !force && now - lastLoadedTime < CACHE_TTL_MS) {
@@ -37,6 +37,7 @@ const loadConfigsIntoCache = async (force = false) => {
   lastLoadedTime = now;
 };
 
+// Đọc đồng bộ một giá trị cấu hình từ cache RAM
 const getConfigSync = (key, defaultValue = null) => {
   if (!key) return defaultValue;
   const upperKey = String(key).toUpperCase();
@@ -46,6 +47,7 @@ const getConfigSync = (key, defaultValue = null) => {
   return defaultValue;
 };
 
+// Đọc một giá trị cấu hình (tự nạp cache nếu hết hạn)
 const getConfig = async (key, defaultValue = null) => {
   if (!isInitialized || Date.now() - lastLoadedTime > CACHE_TTL_MS) {
     await loadConfigsIntoCache();
@@ -53,6 +55,7 @@ const getConfig = async (key, defaultValue = null) => {
   return getConfigSync(key, defaultValue);
 };
 
+// Lấy danh sách toàn bộ tham số cấu hình hệ thống
 const getAllConfigs = async () => {
   await loadConfigsIntoCache(true);
   const configs = await CauHinhHeThong.findAll({
@@ -65,6 +68,7 @@ const getAllConfigs = async () => {
   });
 };
 
+// Kiểm tra ngưỡng hợp lệ trước khi lưu giá trị cấu hình
 const validateConfigValue = (key, value) => {
   const upperKey = key.toUpperCase();
   switch (upperKey) {
@@ -140,6 +144,7 @@ const validateConfigValue = (key, value) => {
   }
 };
 
+// Cập nhật một cấu hình hệ thống, làm mới cache và ghi nhật ký kiểm toán
 const updateConfig = async (key, rawValue, currentUser = null, req = null) => {
   if (!key || typeof key !== 'string') {
     throw new ServiceError('Khóa cấu hình không hợp lệ.', 400, 'KEY_REQUIRED');
@@ -195,6 +200,7 @@ const updateConfig = async (key, rawValue, currentUser = null, req = null) => {
   return resObj;
 };
 
+// Cập nhật hàng loạt nhiều cấu hình hệ thống
 const bulkUpdateConfigs = async (configs = [], currentUser = null, req = null) => {
   if (!Array.isArray(configs) || configs.length === 0) {
     throw new ServiceError('Dữ liệu cấu hình cập nhật phải là một mảng không rỗng.', 400);

@@ -1,7 +1,4 @@
-/**
- * AI RAG (Retrieval-Augmented Generation) Service
- * Chuẩn hóa Sequelize + SQL Server 3NF (TaiLieuRag & PhanDoanTaiLieu).
- */
+// Quản lý kho tri thức AI (TaiLieuRag, PhanDoanTaiLieu): nạp tài liệu, tìm kiếm ngữ nghĩa + từ khóa và phân quyền truy cập
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { sequelize } = require('../../config/db');
@@ -9,7 +6,7 @@ const { TaiLieuRag, PhanDoanTaiLieu, NguoiDung } = require('../../models');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 const ServiceError = require('../../utils/loiNghiepVu');
-const { ROLES, normalizeRole } = require('../../utils/vaiTro.utils');
+const { ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
 const {
   extractTextFromBuffer,
   chunkDocumentText,
@@ -30,11 +27,12 @@ const INSTITUTIONAL_UPLOAD_ROLES = new Set([
   ROLES.DAO_TAO,
 ]);
 
+// Kiểm tra người dùng có quyền quản lý tài liệu cấp toàn trường hay không
 const canManageSchoolDocuments = (user) => {
-  const role = normalizeRole(user?.vai_tro_chinh);
-  return INSTITUTIONAL_UPLOAD_ROLES.has(role);
+  return hasAnyActiveRole(user, Array.from(INSTITUTIONAL_UPLOAD_ROLES));
 };
 
+// Tính độ tương đồng Cosine giữa hai vector embedding
 const cosineSimilarity = (vecA, vecB) => {
   if (!Array.isArray(vecA) || !Array.isArray(vecB) || vecA.length === 0 || vecA.length !== vecB.length) {
     return 0;
@@ -55,6 +53,7 @@ const cosineSimilarity = (vecA, vecB) => {
   return denom > 0 ? Math.max(0, dot / denom) : 0;
 };
 
+// Tính điểm khớp từ khóa giữa truy vấn và một đoạn tài liệu
 const computeKeywordScore = (queryKeywords, normalizedQuery, chunkKeywords = [], chunkText = '') => {
   if (!queryKeywords.length) return 0;
 
@@ -77,6 +76,7 @@ const computeKeywordScore = (queryKeywords, normalizedQuery, chunkKeywords = [],
   return score;
 };
 
+// Chấm điểm kết hợp ngữ nghĩa (vector) + từ khóa và chọn top K đoạn liên quan nhất
 const scoreAndRankChunks = ({ query, chunks = [], queryVector = null, topK = 4, includeZeroFallback = false }) => {
   if (!Array.isArray(chunks) || chunks.length === 0) return [];
 
@@ -112,6 +112,7 @@ const scoreAndRankChunks = ({ query, chunks = [], queryVector = null, topK = 4, 
   return [];
 };
 
+// Dùng Gemini OCR đọc văn bản từ tệp PDF dạng ảnh scan
 const extractTextFromScannedPdfWithGemini = async (buffer) => {
   if (!process.env.GEMINI_API_KEY) return '';
   try {
@@ -130,14 +131,13 @@ const extractTextFromScannedPdfWithGemini = async (buffer) => {
   }
 };
 
+// Nhận diện câu hỏi có ý định yêu cầu tóm tắt tổng quan tài liệu
 const isSummaryIntent = (query = '') => {
   const norm = normalizeVietnameseText(query);
   return /(tom tat|rut gon|y chinh|tong quan|khai quat|noi dung chinh|muc luc)/.test(norm);
 };
 
-/**
- * 1. Nạp tài liệu mới vào kho tri thức RAG (ACID Transaction)
- */
+// Nạp tài liệu mới vào kho tri thức RAG trong 1 transaction
 const ingestDocument = async ({ buffer, originalname, mimetype, title, scope = 'ca_nhan', user }) => {
   const userId = user?.id;
   if (!userId) {
@@ -248,9 +248,7 @@ const ingestDocument = async ({ buffer, originalname, mimetype, title, scope = '
   return { document: document.toJSON(), isDuplicate: false };
 };
 
-/**
- * 2. Truy xuất các đoạn văn bản liên quan nhất cho câu hỏi của người dùng
- */
+// Tìm kiếm các đoạn văn bản liên quan nhất theo câu hỏi của người dùng
 const searchRelevantChunks = async ({ query, userId, documentIds = [], topK = 4 }) => {
   if (!query || !String(query).trim()) return [];
   try {
@@ -345,9 +343,7 @@ const searchRelevantChunks = async ({ query, userId, documentIds = [], topK = 4 
   });
 };
 
-/**
- * 3. Liệt kê tài liệu RAG mà người dùng có quyền đọc
- */
+// Liệt kê danh sách tài liệu RAG mà người dùng được phép xem
 const listDocuments = async (userId) => {
   const orConditions = [{ pham_vi: 'toan_truong' }];
   if (userId && isValidUuid(String(userId))) {
@@ -367,9 +363,7 @@ const listDocuments = async (userId) => {
   });
 };
 
-/**
- * 4. Lấy chi tiết 1 tài liệu kèm 3 đoạn đầu xem trước
- */
+// Lấy chi tiết 1 tài liệu RAG kèm 3 đoạn nội dung đầu tiên
 const getDocumentById = async (documentId, user) => {
   if (!documentId || !isValidUuid(String(documentId))) {
     throw new ServiceError('ID tài liệu không hợp lệ.', 400, 'INVALID_ID');
@@ -385,9 +379,8 @@ const getDocumentById = async (documentId, user) => {
 
   const ownerId = String(doc.nguoi_tai_id);
   const isOwner = user?.id && ownerId === String(user.id);
-  const isInstitutionAdmin = canManageSchoolDocuments(user);
 
-  if (doc.pham_vi !== 'toan_truong' && !isOwner && !isInstitutionAdmin) {
+  if (doc.pham_vi !== 'toan_truong' && !isOwner) {
     throw new ServiceError('Bạn không có quyền truy cập tài liệu cá nhân này.', 403, 'FORBIDDEN');
   }
 
@@ -404,9 +397,7 @@ const getDocumentById = async (documentId, user) => {
   };
 };
 
-/**
- * 5. Xóa tài liệu khỏi kho tri thức RAG
- */
+// Xóa tài liệu và toàn bộ phân đoạn liên quan khỏi kho tri thức RAG
 const deleteDocument = async (documentId, user) => {
   if (!documentId || !isValidUuid(String(documentId))) {
     throw new ServiceError('ID tài liệu không hợp lệ.', 400, 'INVALID_ID');
@@ -419,8 +410,9 @@ const deleteDocument = async (documentId, user) => {
 
   const isOwner = user?.id && String(doc.nguoi_tai_id) === String(user.id);
   const isInstitutionAdmin = canManageSchoolDocuments(user);
+  const canDelete = doc.pham_vi === 'toan_truong' ? (isOwner || isInstitutionAdmin) : isOwner;
 
-  if (!isOwner && !isInstitutionAdmin) {
+  if (!canDelete) {
     throw new ServiceError('Bạn không có quyền xóa tài liệu này.', 403, 'FORBIDDEN');
   }
 

@@ -1,11 +1,4 @@
-/**
- * Module Xử Lý Ảnh Minh Chứng Điểm Danh (server/utils/attendanceEvidence.js)
- * Tích hợp MinIO S3-Compatible Object Storage & Xác thực sinh trắc học an toàn:
- * - Kiểm tra chữ ký định dạng nhị phân JPEG, PNG, WebP và giới hạn dung lượng <= 2MB.
- * - Lưu trữ đối tượng tập trung trên MinIO bucket prefix 'evidence/attendance-[UUID].[ext]'.
- * - Cung cấp cơ chế sinh Presigned Signed URL có thời hạn phục vụ xem ảnh minh chứng bảo mật.
- * - Đã loại bỏ 100% các đoạn code cũ ghi đĩa cục bộ trực tiếp (toàn bộ ủy quyền cho minioStorage).
- */
+// Xác thực, lưu, đọc, xóa và cấp URL tạm thời cho ảnh minh chứng chấm công trên MinIO.
 
 const crypto = require('crypto');
 const minioStorage = require('../config/minio');
@@ -14,9 +7,7 @@ const MAX_EVIDENCE_BYTES = 2 * 1024 * 1024;
 const DATA_URL_PATTERN = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
 const FILE_NAME_PATTERN = /^attendance-[0-9a-f-]{36}\.(jpg|png|webp)$/i;
 
-/**
- * Xác thực dữ liệu ảnh minh chứng (Hỗ trợ Data URL Base64 và Buffer nhị phân)
- */
+// Kiểm tra định dạng và dung lượng ảnh minh chứng (Data URL hoặc Buffer)
 const validateImageDataUrl = (imageData) => {
   if (Buffer.isBuffer(imageData)) {
     if (imageData.length === 0 || imageData.length > MAX_EVIDENCE_BYTES) {
@@ -97,9 +88,7 @@ const validateImageDataUrl = (imageData) => {
   };
 };
 
-/**
- * Lưu ảnh minh chứng điểm danh / gian lận trực tiếp lên MinIO Object Storage
- */
+// Lưu ảnh minh chứng lên MinIO Object Storage
 const storeAttendanceEvidence = async (imageData) => {
   const { buffer, extension, contentType } = validateImageDataUrl(imageData);
   const filename = `attendance-${crypto.randomUUID()}.${extension}`;
@@ -113,9 +102,7 @@ const storeAttendanceEvidence = async (imageData) => {
   return filename;
 };
 
-/**
- * Đọc ảnh minh chứng điểm danh từ MinIO Object Storage
- */
+// Đọc ảnh minh chứng từ MinIO Object Storage
 const readAttendanceEvidence = async (reference) => {
   if (typeof reference !== 'string' || !reference) {
     return null;
@@ -142,9 +129,7 @@ const readAttendanceEvidence = async (reference) => {
   }
 };
 
-/**
- * Xóa ảnh minh chứng điểm danh khỏi MinIO Object Storage
- */
+// Xóa ảnh minh chứng khỏi MinIO Object Storage
 const removeAttendanceEvidence = async (reference) => {
   if (typeof reference !== 'string' || !FILE_NAME_PATTERN.test(reference)) {
     return;
@@ -152,9 +137,7 @@ const removeAttendanceEvidence = async (reference) => {
   await minioStorage.deleteObject(`evidence/${reference}`);
 };
 
-/**
- * Sinh Presigned URL an toàn để xem ảnh minh chứng từ MinIO
- */
+// Tạo URL tạm thời có thời hạn để xem ảnh minh chứng từ MinIO
 const getEvidencePresignedUrl = async (reference, expirySeconds = 900) => {
   if (!FILE_NAME_PATTERN.test(reference)) {
     return null;

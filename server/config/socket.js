@@ -1,34 +1,21 @@
-/**
- * Cấu Hình & Quản Lý Realtime WebSockets (Socket.IO)
- * 
- * Kiến trúc Realtime chuẩn CSDL v2.5:
- * 1. Xác thực bảo mật: Handshake Authentication với JWT Token qua auth.token hoặc Authorization header.
- * 2. Phân chia Room theo phân quyền RBAC:
- *    - `admin-room`: Quản trị viên nhận thông báo toàn trường (lượt quẹt, cảnh báo gian lận, biến động hàng đợi).
- *    - `dept:{departmentId}`: Trưởng khoa nhận thông báo của cán bộ thuộc khoa mình (DeanScope).
- *    - `user:{userId}`: Giảng viên/Nhân viên nhận thông báo duyệt đơn, trạng thái điểm danh cá nhân.
- * 3. Event Emitters hỗ trợ Fast UI Update (< 100ms):
- *    - `attendance:new-punch`: Lượt quẹt chấm công mới (Face AI / QR / GPS).
- *    - `attendance:update`: Cập nhật log điểm danh (Check-out hoặc Admin Override).
- *    - `security:fraud-alert`: Cảnh báo tức thì khi phát hiện Fake GPS, giả mạo sinh trắc học hoặc sai ca.
- *    - `leave:status-changed`: Cập nhật trạng thái đơn xin nghỉ phép / dạy bù realtime.
- *    - `queue:stats-update`: Cập nhật chỉ số tải của Hàng đợi BullMQ giờ cao điểm.
- * 4. Error-Resilient & Zero-Crash: Tự động bỏ qua an toàn nếu Socket.IO chưa khởi tạo.
- */
+// Socket.IO Realtime: xác thực JWT/Terminal Key, chia room (admin-room, dept:{id}, user:{id}) và phát sự kiện tức thì
 
 const { Server } = require('socket.io');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { UNIT_LEADER_ROLES, getActiveUserRoles, hasAnyActiveRole } = require('../utils/vaiTro.utils');
 
 let io = null;
 
-const getJwtSecret = () => process.env.JWT_SECRET || 'secret-jwt-fallback-key';
+// Lấy khóa bí mật để xác thực JWT cho kết nối Socket.IO
+const getJwtSecret = () => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET chưa được cấu hình cho WebSocket Server.');
+  }
+  return process.env.JWT_SECRET;
+};
 
-/**
- * 1. Khởi tạo Socket.IO Server gắn với HTTP Server
- * @param {import('http').Server} httpServer Máy chủ HTTP Node.js
- * @param {object} customOptions Tùy chỉnh CORS hoặc adapter
- */
+// Khởi tạo Socket.IO gắn với HTTP Server và cấu hình xác thực kết nối
 const initSocketServer = (httpServer, customOptions = {}) => {
   if (io) return io;
 
@@ -61,12 +48,12 @@ const initSocketServer = (httpServer, customOptions = {}) => {
     ...customOptions,
   });
 
-  // Middleware xác thực bảo mật kết nối WebSocket
+  // Xác thực kết nối bằng JWT hoặc mã thiết bị X-Terminal-Key
   io.use((socket, next) => {
     try {
       const authHeader = socket.handshake.headers?.authorization;
       const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-      const token = socket.handshake.auth?.token || socket.handshake.query?.token || bearerToken;
+      const token = socket.handshake.auth?.token || bearerToken;
 
       if (!token) {
         const providedTerminalKey =
@@ -81,7 +68,6 @@ const initSocketServer = (httpServer, customOptions = {}) => {
           }
         }
 
-        // Cho phép kết nối ẩn danh ở môi trường test nếu không có token
         if (process.env.NODE_ENV === 'test') {
           socket.user = { id: 'GUEST_TEST', role: 'guest' };
           return next();
@@ -90,11 +76,12 @@ const initSocketServer = (httpServer, customOptions = {}) => {
         return next(new Error('AUTHENTICATION_ERROR: Thiếu JWT Token xác thực kết nối WebSocket.'));
       }
 
-      // Xác minh chữ ký JWT
       const decoded = jwt.verify(token, getJwtSecret());
+      const activeRoles = Array.from(getActiveUserRoles(decoded));
       socket.user = {
         id: decoded.id || decoded.userId || decoded._id || decoded.nguoi_dung_id,
-        role: decoded.vai_tro_chinh || decoded.role || (Array.isArray(decoded.danh_sach_vai_tro) ? decoded.danh_sach_vai_tro[0] : (Array.isArray(decoded.roles) ? decoded.roles[0] : 'nhan_vien')),
+        role: decoded.vai_tro_chinh || decoded.role || activeRoles[0] || 'nhan_vien',
+        roles: activeRoles,
         departmentId: decoded.don_vi_chinh_id || decoded.departmentId || null,
         email: decoded.email,
         fullName: decoded.ho_ten || decoded.fullName,
@@ -113,35 +100,33 @@ const initSocketServer = (httpServer, customOptions = {}) => {
     }
   });
 
-  // Xử lý các sự kiện kết nối của Client
   io.on('connection', (socket) => {
     const user = socket.user || {};
     const userId = user.id ? user.id.toString() : socket.id;
+    const isAdminViewer = hasAnyActiveRole(user, ['admin', 'bgh', 'tccb', 'kiem_toan']);
+    const isDeptLeader = hasAnyActiveRole(user, UNIT_LEADER_ROLES);
 
-    // 1. Tự động gia nhập Room cá nhân
+    // Tự động đưa socket vào room cá nhân, room toàn trường (admin) và room đơn vị (lãnh đạo)
     socket.join(`user:${userId}`);
 
-    // 2. Nếu là Admin hoặc BGH: Gia nhập admin-room để giám sát toàn trường
-    if (user.role === 'admin' || user.role === 'bgh') {
+    if (isAdminViewer) {
       socket.join('admin-room');
     }
 
-    // 3. Nếu là Trưởng khoa: Gia nhập Room của Khoa (DeanScope)
-    if (user.departmentId) {
+    if (user.departmentId && (isDeptLeader || isAdminViewer)) {
       socket.join(`dept:${user.departmentId.toString()}`);
     }
 
-    // Cho phép client gửi yêu cầu gia nhập room bổ sung (kiểm tra quyền RBAC để chống IDOR)
+    // Cho client xin vào room bổ sung nhưng vẫn kiểm tra quyền để tránh IDOR
     socket.on('room:join', (roomName) => {
       if (typeof roomName !== 'string' || roomName.length === 0) return;
-      const isGlobalAdmin = ['admin', 'bgh', 'tccb', 'kiem_toan'].includes(String(user.role || '').toLowerCase());
       if (roomName === 'admin-room') {
-        if (isGlobalAdmin) socket.join(roomName);
+        if (isAdminViewer) socket.join(roomName);
         return;
       }
       if (roomName.startsWith('dept:')) {
         const targetDept = roomName.slice(5);
-        if (isGlobalAdmin || (user.departmentId && String(user.departmentId) === targetDept)) {
+        if (isAdminViewer || (isDeptLeader && user.departmentId && String(user.departmentId) === targetDept)) {
           socket.join(roomName);
         }
         return;
@@ -157,30 +142,22 @@ const initSocketServer = (httpServer, customOptions = {}) => {
       }
     });
 
-    // Phản hồi ping kiểm tra độ trễ mạng
     socket.on('ping:check', (callback) => {
       if (typeof callback === 'function') {
         callback({ status: 'PONG', serverTime: Date.now() });
       }
     });
 
-    socket.on('disconnect', (reason) => {
-      // Ngắt kết nối socket an toàn
-    });
+    socket.on('disconnect', (reason) => {});
   });
 
   return io;
 };
 
-/**
- * 2. Lấy đối tượng Socket Server
- */
+// Lấy instance Socket.IO đang hoạt động
 const getIO = () => io;
 
-/**
- * 3. Phát sự kiện Lượt quẹt điểm danh mới (Fast Realtime Broadcast < 100ms)
- * @param {object} punchData Thông tin lượt điểm danh
- */
+// Phát sự kiện lượt quẹt điểm danh mới tới admin, lãnh đạo đơn vị và nhân sự liên quan
 const emitNewPunch = (punchData) => {
   if (!io) return false;
 
@@ -207,20 +184,16 @@ const emitNewPunch = (punchData) => {
       timestamp: Date.now(),
     };
 
-    // 1. Bắn trực tiếp lên Admin Dashboard toàn trường
     io.to('admin-room').emit('attendance:new-punch', payload);
 
-    // 2. Bắn cho Trưởng khoa tương ứng (DeanScope)
     if (departmentId) {
       io.to(`dept:${departmentId.toString()}`).emit('attendance:new-punch', payload);
     }
 
-    // 3. Bắn cho chính cán bộ đó
     if (userId) {
       io.to(`user:${userId.toString()}`).emit('attendance:new-punch', payload);
     }
 
-    // 4. Nếu có dấu hiệu gian lận: Phát ngay cảnh báo bảo mật tức thì
     if (payload.isFraud) {
       emitFraudAlert({
         type: 'ATTENDANCE_FRAUD',
@@ -237,10 +210,7 @@ const emitNewPunch = (punchData) => {
   }
 };
 
-/**
- * 4. Phát sự kiện Cập nhật Log Chấm công (Check-out hoặc Admin Override)
- * @param {object} attendanceData Dữ liệu log chấm công
- */
+// Phát sự kiện cập nhật log chấm công (Check-out hoặc điều chỉnh thủ công)
 const emitAttendanceUpdate = (attendanceData) => {
   if (!io) return false;
 
@@ -251,8 +221,8 @@ const emitAttendanceUpdate = (attendanceData) => {
       event: 'ATTENDANCE_UPDATE',
       logId: attendanceData._id || attendanceData.id,
       userId,
-      checkInTime: attendanceData.thoi_gian_check_in || attendanceData.checkInTime,
-      checkOutTime: attendanceData.thoi_gian_check_out || attendanceData.checkOutTime,
+      checkInTime: attendanceData.thoi_gian_vao || attendanceData.thoi_gian_check_in || attendanceData.checkInTime,
+      checkOutTime: attendanceData.thoi_gian_ra || attendanceData.thoi_gian_check_out || attendanceData.checkOutTime,
       status: attendanceData.trang_thai || attendanceData.status,
       isManualOverride: Boolean(attendanceData.chinh_sua_thu_cong !== undefined ? attendanceData.chinh_sua_thu_cong : attendanceData.isManualOverride),
       updatedAt: new Date(),
@@ -275,10 +245,7 @@ const emitAttendanceUpdate = (attendanceData) => {
   }
 };
 
-/**
- * 5. Phát Cảnh Báo Gian Lận & An Ninh Sinh Trắc Học Tức Thì
- * @param {object} alertData Dữ liệu cảnh báo
- */
+// Phát cảnh báo gian lận tới phòng quản trị (admin-room)
 const emitFraudAlert = (alertData) => {
   if (!io) return false;
 
@@ -292,7 +259,6 @@ const emitFraudAlert = (alertData) => {
       createdAt: new Date(),
     };
 
-    // Gửi cảnh báo đỏ tới tất cả Quản trị viên
     io.to('admin-room').emit('security:fraud-alert', payload);
     return true;
   } catch (err) {
@@ -300,10 +266,7 @@ const emitFraudAlert = (alertData) => {
   }
 };
 
-/**
- * 6. Phát sự kiện Cập nhật Đơn từ (Phê duyệt / Từ chối / Tạo mới)
- * @param {object} leaveData Thông tin đơn từ
- */
+// Phát sự kiện thay đổi trạng thái đơn nghỉ phép / dạy bù / đổi ca
 const emitLeaveRequestUpdate = (leaveData) => {
   if (!io) return false;
 
@@ -337,10 +300,7 @@ const emitLeaveRequestUpdate = (leaveData) => {
   }
 };
 
-/**
- * 7. Phát sự kiện Biến động Hàng đợi BullMQ Giờ Cao Điểm
- * @param {object} queueStats Thống kê jobs
- */
+// Phát thống kê tải hàng đợi chấm công BullMQ tới admin-room
 const emitQueueStats = (queueStats) => {
   if (!io) return false;
 
@@ -356,9 +316,7 @@ const emitQueueStats = (queueStats) => {
   }
 };
 
-/**
- * 8. Đóng kết nối Socket.IO Server khi Shutdown hoặc Reset Test
- */
+// Đóng kết nối WebSocket khi tắt máy chủ
 const closeSocketServer = async () => {
   if (io) {
     try {

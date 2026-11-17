@@ -1,3 +1,4 @@
+// Định tuyến API tra cứu nhật ký kiểm toán và kiểm tra toàn vẹn chuỗi băm SHA-256 (/api/nhat-ky-kiem-toan)
 const express = require('express');
 const router = express.Router();
 const { getAuditLogs, verifyAuditIntegrity } = require('../controllers/nhatKyKiemToan.controller');

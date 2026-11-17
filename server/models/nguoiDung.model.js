@@ -1,3 +1,4 @@
+// Mô hình bảng nguoi_dung: tài khoản đăng nhập, danh bạ và vai trò chính của nhân sự.
 const { DataTypes, Model, Op } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { ALL_ROLES, normalizeRole } = require('../utils/vaiTro.utils');
@@ -6,28 +7,24 @@ const { uuidPk, uuidFk, trimmedString } = require('./modelHelpers');
 
 const TRANG_THAI_LAM_VIEC = ['dang_lam_viec', 'tam_nghi', 'da_nghi_viec'];
 
-/**
- * Bảng nguoi_dung: tài khoản cốt lõi (xác thực + danh bạ).
- * - Hồ sơ nhân sự/lương/thuế   -> bảng ho_so_can_bo (HoSoCanBo, 1:1)
- * - Vai trò RBAC đa phạm vi    -> bảng vai_tro_nguoi_dung (VaiTroNguoiDung, 1:n) - alias danh_sach_vai_tro
- * - Mã OTP tạm thời            -> bảng xac_thuc_otp (XacThucOtp, 1:n)
- * - Sinh trắc học khuôn mặt    -> bảng mau_khuon_mat (MauKhuonMat, 1:n)
- * vai_tro_chinh là vai trò mặc định (Active Role) của phiên đăng nhập.
- */
 class NguoiDung extends Model {
+  // Kiểm tra người dùng có quyền cụ thể hay không
   hasPermission(permission) {
     return hasPermission(this, permission);
   }
 
+  // Lấy toàn bộ danh sách quyền hiệu lực của người dùng
   getPermissions() {
     return Array.from(getEffectivePermissions(this));
   }
 
+  // Tăng phien_ban_token để vô hiệu hóa toàn bộ phiên đăng nhập cũ
   async revokeAllSessions() {
     this.phien_ban_token = (this.phien_ban_token || 1) + 1;
     return this.save();
   }
 
+  // Ẩn mật khẩu băm và chuẩn hóa đường dẫn ảnh đại diện khi serialize JSON
   toJSON() {
     const values = { ...this.get() };
     delete values.mat_khau_ma_hoa;

@@ -1,8 +1,4 @@
-/**
- * Controller Chấm Công & Điểm Danh (Attendance Controller)
- * Tuân thủ CSDL v2.5: Điểm danh khuôn mặt Realtime InsightFace 1:N, Margin Top 1-2 >= 0.05,
- * Cooldown 60s, Geofence GPS Haversine, Lịch sử và Minh chứng điểm danh.
- */
+// Điều phối điểm danh đa phương thức (Khuôn mặt, QR động, GPS), hàng đợi BullMQ và lịch sử chấm công
 const crypto = require('crypto');
 const {
   processFaceAttendance,
@@ -23,8 +19,10 @@ const { detectPose } = require('./khuonMat.controller');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 const { ServiceError } = require('../utils/thoiGianChamCong.utils');
 const { isUserInDeanScope } = require('../utils/phamViTruongKhoa');
+const { hasAnyActiveRole } = require('../utils/vaiTro.utils');
 const { redisGet, redisSet } = require('../config/redis');
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleServiceError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -32,10 +30,10 @@ const handleServiceError = (res, error, next) => {
   next(error);
 };
 
+// Xác định người dùng mục tiêu và kiểm tra phạm vi lãnh đạo đơn vị khi xem/chấm công hộ
 const resolveAttendanceTarget = async (req, requestedUserId) => {
-  const userRoles = [req.user?.vai_tro_chinh, req.user?.role].filter(Boolean).map((r) => String(r).toLowerCase());
-  const isTopAdmin = userRoles.some((r) => ['admin', 'bgh'].includes(r));
-  const isAdminOrLeader = isTopAdmin || userRoles.includes('truong_khoa');
+  const isTopAdmin = hasAnyActiveRole(req.user, ['admin', 'bgh']);
+  const isAdminOrLeader = isTopAdmin || hasAnyActiveRole(req.user, ['truong_khoa']);
   const selfUserId = req.user.id || req.user._id;
   const targetUserId = (isAdminOrLeader && requestedUserId) ? requestedUserId : selfUserId;
 
@@ -49,10 +47,7 @@ const resolveAttendanceTarget = async (req, requestedUserId) => {
   return { targetUserId, isAdminOrLeader };
 };
 
-/**
- * @desc Điểm danh khuôn mặt Realtime (Camera quét 1:N với RAM Vector Store)
- * @route POST /api/v1/attendance/face-recognize hoặc POST /api/attendance/face-check-in-image
- */
+// POST /api/cham-cong/khuon-mat - Điểm danh khuôn mặt Realtime 1:N
 const faceRecognizeAttendance = async (req, res, next) => {
   try {
     let imageBuffer = null;
@@ -108,10 +103,7 @@ const faceRecognizeAttendance = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Thống kê số lượng tác vụ trong Hàng đợi Điểm danh BullMQ (Giờ cao điểm)
- * @route GET /api/v1/attendance/queue/stats
- */
+// GET /api/cham-cong/hang-doi/thong-ke - Thống kê hàng đợi chấm công BullMQ
 const getQueueStats = async (req, res, next) => {
   try {
     const { getPunchQueueStats } = require('../queues/hangDoiChamCong');
@@ -123,10 +115,7 @@ const getQueueStats = async (req, res, next) => {
 };
 
 
-/**
- * @desc Check-in theo ca hoặc lịch làm việc
- * @route POST /api/v1/attendance/check-in
- */
+// POST /api/cham-cong/vao-ca - Check-in theo ca hoặc lịch làm việc
 const checkIn = async (req, res, next) => {
   try {
     const {
@@ -168,10 +157,7 @@ const checkIn = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Check-out ra về
- * @route POST /api/cham-cong/tan-ca
- */
+// POST /api/cham-cong/tan-ca - Check-out ra về
 const checkOut = async (req, res, next) => {
   try {
     const {
@@ -213,10 +199,7 @@ const checkOut = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Lịch sử chấm công, phân trang và bộ lọc theo phòng ban / thời gian
- * @route GET /api/v1/attendance/history
- */
+// GET /api/cham-cong/lich-su - Lịch sử chấm công toàn hệ thống/đơn vị (có phân trang & bộ lọc)
 const getAttendanceHistory = async (req, res, next) => {
   try {
     const nguoi_dung_id = req.query?.nguoi_dung_id;
@@ -249,10 +232,7 @@ const getAttendanceHistory = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Lịch sử chấm công của chính người dùng hiện tại (bảo đảm 100% chỉ trả về bản thân)
- * @route GET /api/v1/attendance/my-history
- */
+// GET /api/cham-cong/lich-su-cua-toi - Lịch sử chấm công của chính người dùng đang đăng nhập
 const getMyAttendanceHistory = async (req, res, next) => {
   try {
     const trang_thai = req.query?.trang_thai;
@@ -283,10 +263,7 @@ const getMyAttendanceHistory = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Chi tiết một bản ghi chấm công
- * @route GET /api/v1/attendance/:id
- */
+// GET /api/cham-cong/:id - Chi tiết bản ghi chấm công
 const getAttendanceById = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -297,10 +274,7 @@ const getAttendanceById = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Lấy ảnh minh chứng điểm danh bảo mật
- * @route GET /api/v1/attendance/:id/evidence
- */
+// GET /api/cham-cong/:id/minh-chung - Ảnh minh chứng điểm danh bảo mật
 const getAttendanceEvidence = async (req, res, next) => {
   try {
     const evidence = await fetchAttendanceEvidence({ id: req.params.id, currentUser: req.user });
@@ -315,10 +289,7 @@ const getAttendanceEvidence = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Quản trị viên điều chỉnh bản ghi chấm công
- * @route PUT /api/v1/attendance/:id
- */
+// PUT /api/cham-cong/:id/dieu-chinh - Điều chỉnh bản ghi chấm công (Admin/BGH/Lãnh đạo khoa)
 const updateAttendanceByAdmin = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -334,6 +305,7 @@ const updateAttendanceByAdmin = async (req, res, next) => {
     const updated = await modifyAttendanceByAdmin({
       id,
       nguoi_thuc_hien_id: req.user._id,
+      currentUser: req.user,
       dia_chi_ip: req.ip || req.connection?.remoteAddress,
       trang_thai,
       thoi_gian_vao,
@@ -348,10 +320,7 @@ const updateAttendanceByAdmin = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Chấm công bằng mã QR động TOTP
- * @route POST /api/cham-cong/qr/quet-ma
- */
+// POST /api/cham-cong/qr/quet-ma - Chấm công bằng mã QR động TOTP
 const scanQRCode = async (req, res, next) => {
   try {
     const {
@@ -381,10 +350,7 @@ const scanQRCode = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Sinh mã QR động cho ca làm việc hoặc phòng học
- * @route GET /api/cham-cong/qr/tao-ma
- */
+// GET /api/cham-cong/qr/tao-ma - Sinh mã QR động cho ca làm việc hoặc phòng học
 const getDynamicQRCode = async (req, res, next) => {
   try {
     const {
@@ -399,10 +365,7 @@ const getDynamicQRCode = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Lấy cấu hình Geofence khuôn viên trường
- * @route GET /api/v1/attendance/config/campus
- */
+// GET /api/cham-cong/cau-hinh-khuon-vien - Cấu hình Geofence khuôn viên trường
 const getCampusConfigInfo = async (req, res, next) => {
   try {
     const config = getCampusConfig();
@@ -412,10 +375,7 @@ const getCampusConfigInfo = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Kiểm tra trạng thái RAM Vector Index và kích hoạt Auto Self-Healing
- * @route GET /api/v1/attendance/ram-index/stats
- */
+// GET /api/cham-cong/chi-so-vector/thong-ke - Trạng thái RAM Vector Index & Self-Healing
 const getRamIndexStats = async (req, res, next) => {
   try {
     await ensureRamCacheWarm();
@@ -426,6 +386,7 @@ const getRamIndexStats = async (req, res, next) => {
   }
 };
 
+// Đồng bộ lại toàn bộ vector khuôn mặt vào RAM FAISS của Face Service
 const syncFaissIndexController = async (req, res, next) => {
   try {
     const syncResult = await ensureRamCacheWarm(true);
@@ -436,6 +397,7 @@ const syncFaissIndexController = async (req, res, next) => {
   }
 };
 
+// Cập nhật tọa độ và bán kính hàng rào địa lý khuôn viên trường
 const updateCampusLocationConfig = async (req, res, next) => {
   try {
     const { updateCampusConfig } = require('../utils/hoTroChamCong');
@@ -462,6 +424,7 @@ const updateCampusLocationConfig = async (req, res, next) => {
 
 const LIVENESS_CHALLENGES = ['LOOK_UP', 'LOOK_DOWN', 'TURN_LEFT', 'TURN_RIGHT'];
 const FALLBACK_LIVENESS_SECRET = crypto.randomBytes(32).toString('hex');
+// Lấy khóa bí mật dùng ký token thử thách liveness
 const getLivenessSecret = () => process.env.JWT_SECRET || process.env.QR_SECRET || FALLBACK_LIVENESS_SECRET;
 
 const POSE_SYNONYMS = {
@@ -472,6 +435,7 @@ const POSE_SYNONYMS = {
   STRAIGHT: ['STRAIGHT', 'FRONT', 'CENTER', 'CHINH_DIEN'],
 };
 
+// Kiểm tra tư thế khuôn mặt từ AI có khớp với yêu cầu thử thách liveness
 const normalizePoseMatchesChallenge = (challenge, poseRes) => {
   if (!challenge) return Boolean(poseRes?.face_detected ?? true);
   const rawPoseObj = poseRes?.pose || poseRes?.data?.pose;
@@ -488,6 +452,7 @@ const normalizePoseMatchesChallenge = (challenge, poseRes) => {
   return candidates.some((cand) => acceptedTokens.some((tok) => cand === tok || cand.includes(tok)));
 };
 
+// Tạo thử thách quay/ngẩng/cúi mặt ngẫu nhiên kèm chữ ký HMAC (hạn 120s)
 const getLivenessChallengeController = (req, res) => {
   const challenge = LIVENESS_CHALLENGES[Math.floor(Math.random() * LIVENESS_CHALLENGES.length)];
   const nonce = crypto.randomBytes(12).toString('hex');
@@ -498,6 +463,7 @@ const getLivenessChallengeController = (req, res) => {
   return sendSuccess(res, 'Liveness challenge', { challenge, challengeToken, expiresInSeconds: 120 });
 };
 
+// Xác thực ảnh người dùng thực hiện đúng thử thách liveness và cấp vé tạm thời
 const verifyLivenessChallengeController = async (req, res, next) => {
   try {
     const challengeToken = String(req.body?.challengeToken || '').trim();
@@ -564,6 +530,7 @@ const verifyLivenessChallengeController = async (req, res, next) => {
   }
 };
 
+// Kích hoạt thủ công tiến trình quét vắng mặt theo ngày
 const triggerDailyAbsentCheck = async (req, res, next) => {
   try {
     const rawDate = req.body?.date ?? req.query?.date;
@@ -581,6 +548,7 @@ const triggerDailyAbsentCheck = async (req, res, next) => {
   }
 };
 
+// Nhận nhiều khung hình khuôn mặt liên tiếp để tăng độ chính xác nhận diện điểm danh
 const faceCheckInBatch = async (req, res, next) => {
   try {
     const buffers = [];
@@ -650,7 +618,7 @@ const faceCheckInBatch = async (req, res, next) => {
   }
 };
 
-// Aliases tương thích ngược cho các route cũ
+// Bí danh giữ tương thích cho các handler cũ
 const processFaceCheckInImage = faceRecognizeAttendance;
 const processFaceCheckIn = faceRecognizeAttendance;
 const faceCheckIn = faceRecognizeAttendance;

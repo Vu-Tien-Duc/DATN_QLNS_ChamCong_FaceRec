@@ -1,19 +1,10 @@
-/**
- * Quản lý cơ cấu tổ chức Khoa / Bộ môn / Phòng ban (PhongBan) trên SQL Server (Sequelize).
- */
+// Quản lý cơ cấu khoa, bộ môn, phòng ban và đồng bộ vai trò trưởng khoa.
 const { Op } = require('sequelize');
 const { sequelize, PhongBan, NguoiDung, VaiTroNguoiDung, MonHoc, NhatKyKiemToan } = require('../../models');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { normalizeRole } = require('../../utils/vaiTro.utils');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
-
-class ServiceError extends Error {
-  constructor(message, statusCode = 400) {
-    super(message);
-    this.name = 'ServiceError';
-    this.statusCode = statusCode;
-  }
-}
+const ServiceError = require('../../utils/loiNghiepVu');
 
 const INCLUDE_RELATIONS = [
   { model: PhongBan, as: 'don_vi_cha', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] },
@@ -24,9 +15,7 @@ const INCLUDE_RELATIONS = [
   },
 ];
 
-/**
- * Đồng bộ vai trò Trưởng khoa (truong_khoa) giữa NguoiDung và VaiTroNguoiDung khi bổ nhiệm / miễn nhiệm
- */
+// Đồng bộ vai trò trưởng khoa khi bổ nhiệm hoặc miễn nhiệm
 const syncDepartmentManager = async (deptId, newDeptType, newManagerId, oldManagerId = null, oldDeptType = null, transaction = null) => {
   const txOpts = transaction ? { transaction } : {};
   const shouldCheckOldDean = (oldDeptType || newDeptType) === 'khoa';
@@ -73,6 +62,7 @@ const syncDepartmentManager = async (deptId, newDeptType, newManagerId, oldManag
   }
 };
 
+// Kiểm tra một đơn vị có phải con cháu của đơn vị khác để tránh vòng lặp cây tổ chức
 const isDescendantOf = async (potentialAncestorId, targetDeptId) => {
   let currentId = potentialAncestorId;
   while (currentId) {
@@ -83,6 +73,7 @@ const isDescendantOf = async (potentialAncestorId, targetDeptId) => {
   return false;
 };
 
+// Kiểm tra quy tắc phân cấp (Khoa/Phòng ban trực thuộc trường, Bộ môn trực thuộc Khoa)
 const validateDepartmentHierarchy = async (loaiDonVi, donViChaId) => {
   if (loaiDonVi === 'khoa' || loaiDonVi === 'phong_ban') {
     if (donViChaId !== null && donViChaId !== undefined && donViChaId !== '') {
@@ -111,6 +102,7 @@ const validateDepartmentHierarchy = async (loaiDonVi, donViChaId) => {
   return 'Loại đơn vị không hợp lệ. Chỉ chấp nhận khoa, bo_mon hoặc phong_ban.';
 };
 
+// Kiểm tra điều kiện bổ nhiệm người phụ trách đơn vị (không cho Admin hoặc kiêm nhiệm nhiều Khoa)
 const validateManagerEligibility = async (truongDonViId, loaiDonVi, currentDeptId = null, transaction = null) => {
   if (!truongDonViId) return null;
   if (!isValidUuid(truongDonViId)) {
@@ -161,6 +153,7 @@ const validateManagerEligibility = async (truongDonViId, loaiDonVi, currentDeptI
   return null;
 };
 
+// Định dạng thông tin đơn vị kèm số lượng nhân sự, môn học và đơn vị trực thuộc
 const formatDepartmentDoc = (d, countMaps = null) => {
   if (!d) return null;
   const raw = d.toJSON ? d.toJSON() : { ...d };
@@ -224,6 +217,7 @@ const formatDepartmentDoc = (d, countMaps = null) => {
   };
 };
 
+// Thống kê số lượng nhân sự và môn học theo từng đơn vị
 const fetchDepartmentStatsMaps = async () => {
   try {
     const [userAgg, subjectAgg] = await Promise.all([
@@ -250,6 +244,7 @@ const fetchDepartmentStatsMaps = async () => {
   }
 };
 
+// Dựng cấu trúc cây phân cấp Khoa -> Bộ môn từ danh sách phẳng
 const buildDepartmentTree = (departments, parentId = null, visited = new Set(), depth = 0, maxDepth = 10) => {
   if (depth > maxDepth) return [];
 
@@ -274,6 +269,7 @@ const buildDepartmentTree = (departments, parentId = null, visited = new Set(), 
   return result;
 };
 
+// Lấy danh sách đơn vị dạng cây phân cấp, phân trang hoặc danh sách phẳng
 const getAllDepartments = async ({ loai_don_vi, type, don_vi_cha_id, parentId, tree = 'false', page, limit }) => {
   const where = {};
   const filterType = loai_don_vi || type;
@@ -324,6 +320,7 @@ const getAllDepartments = async ({ loai_don_vi, type, don_vi_cha_id, parentId, t
   return { isFlat: true, data: departments.map((d) => formatDepartmentDoc(d, countMaps)) };
 };
 
+// Lấy chi tiết một đơn vị theo ID
 const getDepartmentById = async (id) => {
   if (!isValidUuid(id)) throw new ServiceError('ID đơn vị không hợp lệ.', 400);
   const [department, countMaps] = await Promise.all([
@@ -334,6 +331,7 @@ const getDepartmentById = async (id) => {
   return formatDepartmentDoc(department, countMaps);
 };
 
+// Tạo mới Khoa, Bộ môn hoặc Phòng ban và đồng bộ vai trò người phụ trách
 const createDepartment = async (payload) => {
   const tenPhongBan = payload.ten_phong_ban || payload.name;
   const loaiDonVi = payload.loai_don_vi || payload.type;
@@ -436,6 +434,7 @@ const createDepartment = async (payload) => {
   return getDepartmentById(newDept.id);
 };
 
+// Cập nhật thông tin đơn vị, tọa độ geofence và người phụ trách
 const updateDepartment = async ({ id, body, actorId, ipAddress }) => {
   if (!isValidUuid(id)) throw new ServiceError('ID đơn vị không hợp lệ.', 400);
   const existingDept = await PhongBan.findByPk(id);
@@ -544,6 +543,7 @@ const updateDepartment = async ({ id, body, actorId, ipAddress }) => {
   return getDepartmentById(id);
 };
 
+// Xóa đơn vị nếu chưa có nhân sự, môn học hay đơn vị con trực thuộc
 const deleteDepartment = async ({ id, actorId, ipAddress }) => {
   if (!isValidUuid(id)) throw new ServiceError('ID đơn vị không hợp lệ.', 400);
   let deletedDept = null;

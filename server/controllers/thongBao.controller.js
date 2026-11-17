@@ -1,9 +1,8 @@
-/**
- * Lấy thông báo theo người dùng đang đăng nhập và trả dữ liệu qua API.
- */
+// Lấy danh sách thông báo sự kiện chấm công, lịch và đơn nghỉ của người dùng đang đăng nhập
 const { getNotifications: fetchNotifications } = require('../services/heThong/thongBao.service');
 const { sendSuccess } = require('../utils/phanHoiHttp');
 
+// Lấy danh sách thông báo của người dùng đang đăng nhập
 const getNotifications = async (req, res, next) => {
   try {
     const nguoi_dung_id = req.user?._id;

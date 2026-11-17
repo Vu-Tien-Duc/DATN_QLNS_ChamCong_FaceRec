@@ -1,6 +1,4 @@
-/**
- * Khởi tạo tài liệu OpenAPI/Swagger và địa chỉ truy cập API.
- */
+// Khởi tạo đặc tả OpenAPI 3.0 cho Swagger UI (/tai-lieu-api)
 const swaggerJsdoc = require('swagger-jsdoc');
 const { swaggerPaths, swaggerComponents, swaggerTags } = require('./swaggerPaths');
 
@@ -45,7 +43,7 @@ const options = {
       },
     ],
   },
-  apis: [], // Sử dụng swaggerPaths tập trung để tránh trùng lặp tags, endpoints và authorizations
+  apis: [],
 };
 
 const swaggerSpec = swaggerJsdoc(options);

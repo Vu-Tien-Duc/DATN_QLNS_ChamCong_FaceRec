@@ -1,11 +1,9 @@
+// Mô hình bảng nhat_ky_cham_cong: tổng hợp chấm công theo ngày và ca làm việc.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk } = require('./modelHelpers');
 
-/**
- * Bảng nhat_ky_cham_cong: tổng hợp công theo ngày (duy nhất theo nguoi_dung_id + ngay_cong + ca_id).
- * so_gio_cong và ghi_de_thu_cong là thuộc tính SUY DIỄN (VIRTUAL), không lưu trong CSDL (3NF).
- */
+// Tính số giờ công và cờ ghi đè thủ công từ dữ liệu có sẵn
 class NhatKyChamCong extends Model {
   get so_gio_cong() {
     return Number((Number(this.thoi_luong_lam_viec_phut || 0) / 60).toFixed(2));

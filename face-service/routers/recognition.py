@@ -10,6 +10,7 @@ import numpy as np
 from config import MARGIN_TOP1_TOP2, MATCH_THRESHOLD
 from schemas import BoundingBoxDict, CandidateItem, FaceRecognizeResponse, FaceVerifyResponse
 from services.face_engine import face_engine
+from services.liveness import LivenessChecker
 from services.vector_index import vector_index
 
 router = APIRouter(tags=["Recognition"])
@@ -168,9 +169,8 @@ async def verify_face(
 
     query_emb = face_engine.get_embedding(face)
 
-    # Tìm kiếm đối chiếu với vector trong RAM
-    candidates = vector_index.search(query_emb, top_k=10)
-    matched_candidate = next((c for c in candidates if c["employee_id"] == employee_id or c["userId"] == employee_id), None)
+    # Đối chiếu 1:1 trực tiếp với các vector mẫu của chính employee_id
+    matched_candidate = vector_index.verify_user(employee_id, query_emb)
 
     if not matched_candidate:
         return FaceVerifyResponse(

@@ -180,6 +180,7 @@ CREATE TABLE [vai_tro_nguoi_dung] (
     [ma_vai_tro] VARCHAR(50) NOT NULL,
     [pham_vi] VARCHAR(50) NOT NULL DEFAULT 'toan_truong',
     [don_vi_id] UNIQUEIDENTIFIER NULL,
+    [duoc_uy_quyen] BIT NOT NULL DEFAULT 0,
     [tu_ngay] DATE NOT NULL DEFAULT CAST(GETDATE() AS DATE),
     [den_ngay] DATE NULL,
     [tao_luc] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
@@ -324,10 +325,14 @@ CREATE TABLE [ngoai_le_lich_trinh] (
     [ly_do] NVARCHAR(255) NULL,
     [trang_thai] NVARCHAR(50) NOT NULL DEFAULT N'nghi',
     [ngay_day_bu] DATE NULL,
+    [giang_vien_day_thay_id] UNIQUEIDENTIFIER NULL,
+    [ca_thay_the_id] UNIQUEIDENTIFIER NULL,
     [tao_luc] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT [PK_ngoai_le_lich_trinh] PRIMARY KEY CLUSTERED ([id]),
     CONSTRAINT [UQ_ngoai_le_lich_trinh_ngay] UNIQUE ([lich_trinh_id], [ngay]),
-    CONSTRAINT [FK_ngoai_le_lich_trinh] FOREIGN KEY ([lich_trinh_id]) REFERENCES [lich_trinh] ([id]) ON DELETE CASCADE
+    CONSTRAINT [FK_ngoai_le_lich_trinh] FOREIGN KEY ([lich_trinh_id]) REFERENCES [lich_trinh] ([id]) ON DELETE CASCADE,
+    CONSTRAINT [FK_ngoai_le_gv_day_thay] FOREIGN KEY ([giang_vien_day_thay_id]) REFERENCES [nguoi_dung] ([id]) ON DELETE NO ACTION,
+    CONSTRAINT [FK_ngoai_le_ca_thay_the] FOREIGN KEY ([ca_thay_the_id]) REFERENCES [ca_lam_viec] ([id]) ON DELETE NO ACTION
 );
 CREATE NONCLUSTERED INDEX [IX_ngoai_le_lich_trinh_ngay] ON [ngoai_le_lich_trinh] ([lich_trinh_id], [ngay]);
 GO
@@ -438,7 +443,7 @@ CREATE TABLE [don_nghi_phep] (
     CONSTRAINT [FK_don_nghi_phep_day_thay] FOREIGN KEY ([giang_vien_day_thay_id]) REFERENCES [nguoi_dung] ([id]) ON DELETE NO ACTION,
     CONSTRAINT [FK_don_nghi_phep_duyet] FOREIGN KEY ([nguoi_duyet_id]) REFERENCES [nguoi_dung] ([id]) ON DELETE NO ACTION,
     CONSTRAINT [CK_don_nghi_phep_thoi_gian] CHECK ([ngay_ket_thuc] >= [ngay_bat_dau]),
-    CONSTRAINT [CK_don_nghi_phep_so_ngay] CHECK ([so_ngay] > 0),
+    CONSTRAINT [CK_don_nghi_phep_so_ngay] CHECK ([so_ngay] >= 0),
     CONSTRAINT [CK_don_nghi_phep_so_tiet] CHECK ([so_tiet_nghi] >= 0),
     CONSTRAINT [CK_don_nghi_phep_trang_thai] CHECK ([trang_thai] IN (N'pending', N'pending_dean', N'pending_bgh', N'approved', N'rejected', N'cancelled'))
 );

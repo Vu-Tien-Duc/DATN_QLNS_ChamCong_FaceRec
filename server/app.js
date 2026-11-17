@@ -1,3 +1,4 @@
+// Khởi tạo ứng dụng Express cùng middleware bảo mật, route API, Swagger UI, tệp tĩnh và xử lý lỗi.
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -27,17 +28,18 @@ try {
 const swaggerSpec = require('./config/swagger');
 const apiRoutes = require('./routes');
 const { errorHandler, notFoundHandler } = require('./middlewares/xuLyLoi.middleware');
+const { apiGeneralLimiter } = require('./middlewares/gioiHanTruyCap.middleware');
 const { downloadFile } = require('./controllers/taiTep.controller');
 
 const app = express();
 
-// Tin tưởng reverse proxy (Nginx) để nhận diện đúng giao thức HTTPS (X-Forwarded-Proto)
+// Tin tưởng reverse proxy để nhận đúng giao thức HTTPS
 app.set('trust proxy', 1);
 
-// 1. Security Middlewares (Helmet & CORS Whitelist)
+// Thiết lập bảo mật HTTP header và CORS
 app.use(
   helmet({
-    contentSecurityPolicy: false, // Để Swagger UI hoạt động bình thường
+    contentSecurityPolicy: false, // Tắt CSP để Swagger UI hoạt động bình thường
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
@@ -65,12 +67,12 @@ if (process.env.CLIENT_URL) {
 app.use(
   cors({
     origin: function (origin, callback) {
-      // 1. Cho phép nếu không có origin (Postman, curl, native request)
+      // Cho phép request không gửi header Origin
       if (!origin) {
         return callback(null, true);
       }
 
-      // 2. Chỉ cho phép mọi nguồn trong môi trường phát triển.
+      // Chỉ mở mọi nguồn khi chạy development không giới hạn whitelist
       if (process.env.NODE_ENV === 'development' && (!process.env.CORS_WHITELIST || allowedOrigins.includes('*'))) {
         return callback(null, true);
       }
@@ -88,11 +90,11 @@ app.use(
   })
 );
 
-// 2. Logging & Parsing Middlewares
+// Ghi log HTTP và đọc dữ liệu body, cookie
 if (process.env.NODE_ENV === 'development') {
   app.use(
     morgan('dev', {
-      // Bỏ qua log các request GET thành công (<400) để terminal luôn gọn gàng, chỉ hiện các thao tác thay đổi dữ liệu hoặc lỗi
+      // Chỉ log request lỗi hoặc thao tác thay đổi dữ liệu
       skip: (req, res) => req.method === 'GET' && res.statusCode < 400,
     })
   );
@@ -101,14 +103,14 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// File upload chỉ được phục vụ qua controller để kiểm tra quyền truy cập.
+// Phục vụ tệp tải lên qua controller để kiểm tra quyền
 app.get('/uploads/:filename', downloadFile);
 app.get('/uploads/faces/:filename', downloadFile);
 app.get('/api/uploads/:filename', downloadFile);
 app.get('/api/uploads/faces/:filename', downloadFile);
 app.get('/api/tai-tep/tep/:filename', downloadFile);
 
-// 4. Swagger UI Documentation Route
+// Tài liệu API (Swagger UI)
 const swaggerUiOptions = {
   customSiteTitle: 'Tài Liệu API - Hệ Thống Quản Lý Chấm Công',
   swaggerOptions: {
@@ -117,7 +119,7 @@ const swaggerUiOptions = {
 };
 app.use('/tai-lieu-api', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
 
-// 5. Health Check Route
+// Kiểm tra trạng thái hoạt động của máy chủ và CSDL
 app.get('/suc-khoe', async (req, res) => {
   const { sequelize } = require('./config/db');
   let dbStatus = 'CONNECTING_OR_DISCONNECTED';
@@ -165,10 +167,10 @@ app.get('/suc-khoe', async (req, res) => {
   });
 });
 
-// 6. Main API Routes (Chuẩn hóa duy nhất tiền tố /api tiếng Việt)
-app.use('/api', apiRoutes);
+// Gắn toàn bộ API chính dưới tiền tố /api
+app.use('/api', apiGeneralLimiter, apiRoutes);
 
-// 7. Phục vụ Frontend tĩnh (Chuẩn Single-Port 5000: Express Backend + React Frontend)
+// Phục vụ giao diện React đã build từ thư mục dist
 const distPath = path.join(__dirname, '../dist');
 const indexHtml = path.join(distPath, 'index.html');
 
@@ -180,7 +182,7 @@ const isBrowserPageRequest = (req) => {
 if (fs.existsSync(distPath) && fs.existsSync(indexHtml)) {
   app.use(express.static(distPath));
 
-  // SPA Fallback: Chỉ trả về index.html cho request trang HTML từ trình duyệt
+  // Trả về index.html cho các đường dẫn trang phía trình duyệt
   app.use((req, res, next) => {
     if (!isBrowserPageRequest(req)) return next();
     if (
@@ -195,7 +197,7 @@ if (fs.existsSync(distPath) && fs.existsSync(indexHtml)) {
     return res.sendFile(indexHtml);
   });
 } else {
-  // Khi chưa build thư mục dist: Tự động chuyển hướng về Vite dev server
+  // Khi chưa build dist thì chuyển hướng về Vite dev server
   app.use((req, res, next) => {
     if (!isBrowserPageRequest(req)) return next();
     if (
@@ -212,10 +214,10 @@ if (fs.existsSync(distPath) && fs.existsSync(indexHtml)) {
   });
 }
 
-// Hỗ trợ trường hợp client gọi API trực tiếp không có tiền tố /api (Ví dụ Nginx proxy cắt mất tiền tố /api)
+// Hỗ trợ trường hợp proxy cắt mất tiền tố /api
 app.use(apiRoutes);
 
-// 6. Error & 404 Handling Middlewares
+// Xử lý 404 và lỗi tập trung
 app.use(notFoundHandler);
 app.use(errorHandler);
 

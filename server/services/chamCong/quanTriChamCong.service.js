@@ -1,15 +1,16 @@
-/**
- * Attendance Admin Service (server/services/attendance/attendanceAdmin.service.js)
- * Chuẩn hóa Sequelize + SQL Server 3NF (NhatKyChamCong, NhatKyKiemToan).
- */
-const { NhatKyChamCong, NhatKyKiemToan } = require('../../models');
+// Điều chỉnh bản ghi chấm công (Admin/BGH/Lãnh đạo đơn vị) và ghi vết vào NhatKyKiemToan
+const { NhatKyChamCong, NhatKyKiemToan, NguoiDung, VaiTroNguoiDung } = require('../../models');
 const { updateCampusConfig } = require('../../utils/hoTroChamCong');
 const { ServiceError } = require('../../utils/thoiGianChamCong.utils');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
+const { isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
+const { GLOBAL_ADMIN_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
 
+// Điều chỉnh thủ công bản ghi chấm công bởi quản trị hoặc trưởng đơn vị và ghi nhật ký kiểm toán
 const updateAttendanceByAdmin = async ({
   id,
   nguoi_thuc_hien_id,
+  currentUser = null,
   dia_chi_ip,
   trang_thai,
   thoi_gian_vao,
@@ -25,6 +26,32 @@ const updateAttendanceByAdmin = async ({
   const log = await NhatKyChamCong.findByPk(id);
   if (!log) {
     throw new ServiceError('Không tìm thấy bản ghi chấm công cần điều chỉnh.', 404);
+  }
+
+  let actor = currentUser;
+  if (!actor && nguoi_thuc_hien_id && isValidUuid(nguoi_thuc_hien_id)) {
+    actor = await NguoiDung.findByPk(nguoi_thuc_hien_id, {
+      attributes: ['id', 'vai_tro_chinh', 'don_vi_chinh_id'],
+      include: [{ model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro', 'don_vi_id', 'tu_ngay', 'den_ngay'] }],
+    });
+  }
+  if (actor) {
+    const isGlobalAdmin = hasAnyActiveRole(actor, GLOBAL_ADMIN_ROLES);
+    if (!isGlobalAdmin && String(actor.id) === String(log.nguoi_dung_id)) {
+      throw new ServiceError(
+        'Lãnh đạo đơn vị không được tự điều chỉnh bản ghi chấm công của chính mình.',
+        403,
+        'CANNOT_OVERRIDE_OWN_ATTENDANCE'
+      );
+    }
+    const inScope = await isUserInDeanScope(actor, log.nguoi_dung_id);
+    if (!inScope) {
+      throw new ServiceError(
+        'Bạn không có quyền điều chỉnh bản ghi chấm công của nhân sự ngoài đơn vị quản lý.',
+        403,
+        'ATTENDANCE_OUT_OF_SCOPE'
+      );
+    }
   }
   if (log.da_chot) {
     throw new ServiceError(
@@ -70,6 +97,14 @@ const updateAttendanceByAdmin = async ({
   }
 
   await log.save();
+
+  try {
+    const { emitAttendanceUpdate } = require('../../config/socket');
+    emitAttendanceUpdate({
+      ...(log.toJSON ? log.toJSON() : log),
+      chinh_sua_thu_cong: true,
+    });
+  } catch (_) {}
 
   NhatKyKiemToan.create({
     nguoi_thuc_hien_id,

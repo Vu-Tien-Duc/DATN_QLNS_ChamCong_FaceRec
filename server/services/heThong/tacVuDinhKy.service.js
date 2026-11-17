@@ -1,7 +1,4 @@
-/**
- * Chạy các tác vụ định kỳ xử lý lịch, ghi nhận vắng mặt và gửi báo cáo chấm công.
- * Chuẩn hóa Sequelize + SQL Server 3NF.
- */
+// Chạy các tác vụ định kỳ xử lý lịch dạy, đánh vắng tự động và gửi báo cáo chấm công.
 const { Op } = require('sequelize');
 
 let cron;
@@ -32,9 +29,7 @@ const { getVietnamTime, getVietnamDayRange, timeStringToMinutes, calculateActual
 const { withDistributedLock } = require('../../utils/khoaPhanTan');
 const { isScheduleActiveOnDate } = require('../../utils/ngayLichTrinh.utils');
 
-/**
- * Kiểm tra xem email có thể gửi thư thực tế qua Internet không
- */
+// Kiểm tra email có phải địa chỉ thật để gửi thư
 const isDeliverableEmail = (email) => {
   if (!email || typeof email !== 'string') return false;
   const lower = email.toLowerCase().trim();
@@ -42,9 +37,7 @@ const isDeliverableEmail = (email) => {
   return lower.includes('@') && lower.includes('.');
 };
 
-/**
- * Lấy toàn bộ lịch phân công giảng dạy có hiệu lực trong ngày
- */
+// Lấy toàn bộ lịch giảng dạy có hiệu lực trong ngày
 const getTodayActiveSchedules = async (targetDate = new Date()) => {
   try {
     const vnTime = getVietnamTime(targetDate);
@@ -59,7 +52,7 @@ const getTodayActiveSchedules = async (targetDate = new Date()) => {
       { model: NgoaiLeLichTrinh, as: 'ngoai_le' },
     ];
 
-    const [schedules, makeupExceptions] = await Promise.all([
+    const [schedules, makeupAndSwapExceptions] = await Promise.all([
       LichTrinh.findAll({
         where: {
           thu_trong_tuan: currentWeekday,
@@ -71,7 +64,7 @@ const getTodayActiveSchedules = async (targetDate = new Date()) => {
       }),
       NgoaiLeLichTrinh.findAll({
         where: {
-          trang_thai: 'day_bu',
+          trang_thai: { [Op.in]: ['day_bu', 'doi_ca'] },
           [Op.or]: [{ ngay_day_bu: dateStr }, { ngay: dateStr }],
         },
         include: [
@@ -87,8 +80,32 @@ const getTodayActiveSchedules = async (targetDate = new Date()) => {
 
     const seenIds = new Set(schedules.map((s) => String(s.id)));
     const combined = [...schedules];
-    for (const ex of makeupExceptions) {
-      if (ex.lich_trinh && !seenIds.has(String(ex.lich_trinh.id))) {
+    for (const ex of makeupAndSwapExceptions) {
+      if (!ex.lich_trinh) continue;
+      if (ex.trang_thai === 'doi_ca') {
+        const isSwapTargetDate = String(ex.ngay_day_bu || ex.ngay).slice(0, 10) === dateStr;
+        if (isSwapTargetDate && (ex.giang_vien_day_thay || ex.ca_thay_the)) {
+          const overridePlain = typeof ex.lich_trinh.toJSON === 'function' ? ex.lich_trinh.toJSON() : { ...ex.lich_trinh };
+          overridePlain._isSubstituteOverride = true;
+          if (ex.giang_vien_day_thay) {
+            overridePlain.nguoi_dung_id = ex.giang_vien_day_thay.id;
+            overridePlain.giang_vien = typeof ex.giang_vien_day_thay.toJSON === 'function' ? ex.giang_vien_day_thay.toJSON() : ex.giang_vien_day_thay;
+          }
+          if (ex.ca_thay_the) {
+            overridePlain.ca_id = ex.ca_thay_the.id;
+            overridePlain.ca = typeof ex.ca_thay_the.toJSON === 'function' ? ex.ca_thay_the.toJSON() : ex.ca_thay_the;
+            overridePlain.gio_bat_dau = overridePlain.ca.gio_bat_dau;
+            overridePlain.gio_ket_thuc = overridePlain.ca.gio_ket_thuc;
+          }
+          const existingIndex = combined.findIndex((s) => String(s.id) === String(ex.lich_trinh.id));
+          if (existingIndex >= 0) {
+            combined[existingIndex] = overridePlain;
+          } else {
+            seenIds.add(String(ex.lich_trinh.id));
+            combined.push(overridePlain);
+          }
+        }
+      } else if (!seenIds.has(String(ex.lich_trinh.id))) {
         seenIds.add(String(ex.lich_trinh.id));
         combined.push(ex.lich_trinh);
       }
@@ -101,9 +118,7 @@ const getTodayActiveSchedules = async (targetDate = new Date()) => {
   }
 };
 
-/**
- * Xử lý đối chiếu điểm danh và tạo bản ghi vắng mặt (ABSENT) cho một ca dạy
- */
+// Đối chiếu điểm danh và ghi nhận vắng mặt nếu chưa chấm công
 const processScheduleAttendanceCheck = async (schedule, dayRange) => {
   const { startOfDay, endOfDay, dateStr } = dayRange;
   const userId = schedule.giang_vien?.id || schedule.nguoi_dung_id;
@@ -111,7 +126,26 @@ const processScheduleAttendanceCheck = async (schedule, dayRange) => {
   const teacherName = schedule.giang_vien?.ho_ten || userId;
   const shiftName = schedule.ca?.ten_ca || shiftId;
 
-  // 1. Kiểm tra đối chiếu xem giảng viên đã có bản ghi chấm công nào hôm nay cho ca/lịch này chưa
+  const holiday = await NgayNghiLe.findOne({
+    where: {
+      ngay_bat_dau: { [Op.lte]: dateStr },
+      ngay_ket_thuc: { [Op.gte]: dateStr },
+    },
+    attributes: ['id', 'ten_ngay_le'],
+  });
+  if (holiday) {
+    return {
+      scheduleId: schedule.id,
+      userId,
+      teacherName,
+      shiftName,
+      action: 'SKIPPED_HOLIDAY',
+      status: 'holiday',
+      reason: `Ngày nghỉ lễ: ${holiday.ten_ngay_le}`,
+    };
+  }
+
+  // Kiểm tra xem giảng viên đã có bản ghi chấm công cho ca này chưa
   const existingLog = await NhatKyChamCong.findOne({
     where: {
       nguoi_dung_id: userId,
@@ -140,7 +174,7 @@ const processScheduleAttendanceCheck = async (schedule, dayRange) => {
     };
   }
 
-  // 2. Kiểm tra xem giảng viên có đơn xin nghỉ phép đã được phê duyệt trong ngày hôm nay không
+  // Kiểm tra đơn xin nghỉ phép đã được duyệt trong ngày
   const approvedLeave = await DonNghiPhep.findOne({
     where: {
       nguoi_dung_id: userId,
@@ -153,7 +187,7 @@ const processScheduleAttendanceCheck = async (schedule, dayRange) => {
   const finalStatus = approvedLeave ? 'excused_absence' : 'absent';
   const leaveRequestId = approvedLeave ? approvedLeave.id : null;
 
-  // 3. Cơ chế Idempotent: Tạo bản ghi trong NhatKyChamCong
+  // Tạo bản ghi chấm công (bỏ qua nếu đã tồn tại do trùng khóa)
   let newLog;
   try {
     newLog = await NhatKyChamCong.create({
@@ -192,7 +226,7 @@ const processScheduleAttendanceCheck = async (schedule, dayRange) => {
     `[Cron Service] [ĐÁNH VẮNG] Tự động ghi nhận '${finalStatus}' cho Giảng viên ${teacherName} (${shiftName}) - Log ID: ${newLog.id}`
   );
 
-  // 4. Gửi email cảnh báo vắng mặt không phép
+  // Gửi email cảnh báo vắng mặt không phép
   let emailSent = false;
   if (finalStatus === 'absent' && schedule.giang_vien?.email) {
     if (isDeliverableEmail(schedule.giang_vien.email)) {
@@ -236,6 +270,7 @@ const processScheduleAttendanceCheck = async (schedule, dayRange) => {
   };
 };
 
+// Kiểm tra điểm danh cuối ngày cho khối nhân sự hành chính (làm việc Thứ 2 - Thứ 6)
 const processAdminStaffDailyAttendance = async (targetDate, dayRange, scheduledUserIds = new Set()) => {
   const vnTime = getVietnamTime(targetDate);
   const weekday = vnTime.getDay();
@@ -327,16 +362,14 @@ const processAdminStaffDailyAttendance = async (targetDate, dayRange, scheduledU
   return results;
 };
 
-/**
- * Tiến trình kiểm tra vắng mặt hàng ngày (quét tự động vào cuối ngày 23:59)
- */
+// Quét và ghi nhận vắng mặt toàn trường vào cuối ngày (23:59)
 const runDailyAbsentCheck = async (targetDate = new Date()) => {
   console.log('------------------------------------------------------------');
   console.log('[Cron Service] Bắt đầu tiến trình tự động quét điểm danh cuối ngày...');
   try {
     const dayRange = getVietnamDayRange(targetDate);
 
-    // 0.1. Kiểm tra chế độ bảo trì hệ thống
+    // Bỏ qua nếu hệ thống đang bảo trì
     const isMaintenance = await systemConfigService.getConfig('SYSTEM_MAINTENANCE_MODE', false);
     if (isMaintenance) {
       console.log('[Cron Service] Hệ thống đang ở chế độ bảo trì (SYSTEM_MAINTENANCE_MODE). Bỏ qua tiến trình quét vắng mặt.');
@@ -348,7 +381,7 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
       };
     }
 
-    // 0.2. Kiểm tra ngày nghỉ lễ (NgayNghiLe)
+    // Bỏ qua nếu là ngày nghỉ lễ
     const holiday = await NgayNghiLe.findOne({
       where: {
         ngay_bat_dau: { [Op.lte]: dayRange.dateStr },
@@ -435,7 +468,7 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
       details: results,
     };
 
-    // 5. Ghi nhận tự động vào nhat_ky_kiem_toan
+    // Ghi nhật ký kiểm toán tự động
     try {
       const adminUser = await NguoiDung.findOne({ where: { vai_tro_chinh: 'admin' } });
       const actorId = adminUser ? adminUser.id : null;
@@ -468,7 +501,7 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
       console.error('[Cron Service] [LỖI AUDIT LOG] Không thể ghi audit log:', auditErr.message);
     }
 
-    // 6. Tổng hợp chi tiết và tự động gửi Email Báo Cáo Cuối Ngày tới Ban Giám Hiệu & Quản Trị Viên
+    // Tổng hợp số liệu và gửi email báo cáo cuối ngày cho ban giám hiệu và quản trị viên
     try {
       const todayLogs = await NhatKyChamCong.findAll({
         where: {
@@ -562,7 +595,7 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
       }
 
       const adminUsers = await NguoiDung.findAll({
-        where: { vai_tro_chinh: 'admin', kich_hoat: true },
+        where: { vai_tro_chinh: { [Op.in]: ['admin', 'bgh'] }, kich_hoat: true },
         attributes: ['id', 'email'],
       });
       const recipientEmails = new Set();
@@ -607,9 +640,7 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
   }
 };
 
-/**
- * Quét định kỳ trong ngày (mỗi 5 phút)
- */
+// Quét định kỳ các ca đã quá ngưỡng đi muộn trong ngày (mỗi 5 phút)
 const scanAndMarkExpiredShiftsAbsent = async (targetDate = new Date()) => {
   try {
     const vnTime = getVietnamTime(targetDate);
@@ -652,9 +683,7 @@ const scanAndMarkExpiredShiftsAbsent = async (targetDate = new Date()) => {
   }
 };
 
-/**
- * Tự động đóng các lượt quên Check-out từ các ngày trước (tránh treo ca mở sang ngày mới).
- */
+// Tự động đóng các lượt quên chấm công tan ca từ các ngày trước
 const closeForgottenOpenCheckouts = async (referenceDate = new Date()) => {
   const { dateStr: todayStr } = getVietnamDayRange(referenceDate);
   const openLogs = await NhatKyChamCong.findAll({
@@ -687,7 +716,7 @@ const closeForgottenOpenCheckouts = async (referenceDate = new Date()) => {
 
       const workingMinutes = Math.max(0, Math.round((autoCloseAt.getTime() - checkInAt.getTime()) / 60000));
       const soTiet = await calculateActualTeachingPeriods(
-        { lichTrinhId: log.lich_trinh_id, workingMinutes, earlyMinutes: 0 },
+        { lichTrinhId: log.lich_trinh_id, workingMinutes, earlyMinutes: 0, lateMinutes: log.di_muon_phut || 0 },
         LichTrinh
       );
 
@@ -705,9 +734,7 @@ const closeForgottenOpenCheckouts = async (referenceDate = new Date()) => {
   return { closedCount };
 };
 
-/**
- * Dọn dẹp ảnh minh chứng & dữ liệu hết hạn lưu trữ theo cấu hình RETENTION_ANH_NAM / RETENTION_METADATA_NAM.
- */
+// Dọn dẹp ảnh minh chứng và nhật ký chấm công hết hạn lưu trữ
 const cleanupExpiredRetentionData = async (referenceDate = new Date()) => {
   const fs = require('fs');
   const path = require('path');
@@ -773,9 +800,7 @@ const cleanupExpiredRetentionData = async (referenceDate = new Date()) => {
   };
 };
 
-/**
- * Khởi tạo toàn bộ các cron job chạy nền của hệ thống
- */
+// Khởi tạo toàn bộ tác vụ chạy định kỳ của hệ thống
 const initCronJobs = () => {
   if (!cron) {
     console.warn('[Cron Service] Bỏ qua initCronJobs vì node-cron không khả dụng.');

@@ -1,15 +1,6 @@
-/**
- * Module Hàng Đợi Điểm Danh Giờ Cao Điểm (server/queues/punchQueue.js)
- * Sử dụng BullMQ trên nền Redis để xử lý bất đồng bộ lượt quét thẻ (Asynchronous Worker Pipeline):
- * - Fast Ingestion: Phản hồi Camera Quét Điểm Danh Web tức thì (< 50ms), triệt tiêu nghẽn kết nối Database khi hàng nghìn
- *   giảng viên/sinh viên quẹt thẻ cùng lúc vào đầu giờ sáng (6h45 - 7h15).
- * - Asynchronous Processing: Worker ngầm xử lý lưu PunchLog, đối soát TKB/Ca làm việc, cập nhật AttendanceLog,
- *   băm chuỗi SHA-256 AuditLog và phát sự kiện Socket Realtime.
- * - Retry & Resilience: Tự động thử lại 3 lần với Exponential Backoff khi DB gián đoạn.
- * - Hybrid Fallback Zero-Downtime: Tự động chuyển đổi xử lý đồng bộ trực tiếp khi Redis/BullMQ offline.
- */
+// Hàng đợi xử lý điểm danh giờ cao điểm (BullMQ + Redis), tự động fallback xử lý đồng bộ khi Redis offline
 
-const { Queue, Worker } = require('bullmq');
+const { Queue, Worker, UnrecoverableError } = require('bullmq');
 const { getRedisClient, isRedisReady } = require('../config/redis');
 
 const QUEUE_NAME = 'attendance-punch-queue';
@@ -22,10 +13,14 @@ const getQueueConnectionOptions = () => {
   if (REDIS_URL) {
     try {
       const parsed = new URL(REDIS_URL);
+      const dbStr = parsed.pathname ? parsed.pathname.replace(/^\//, '') : '';
+      const parsedDb = dbStr && /^\d+$/.test(dbStr) ? parseInt(dbStr, 10) : undefined;
       return {
         host: parsed.hostname || 'localhost',
         port: parseInt(parsed.port, 10) || 6379,
-        password: parsed.password || undefined,
+        password: parsed.password || process.env.REDIS_PASSWORD || undefined,
+        ...(parsedDb !== undefined ? { db: parsedDb } : {}),
+        ...(parsed.protocol === 'rediss:' || process.env.REDIS_TLS === 'true' ? { tls: {} } : {}),
         maxRetriesPerRequest: null,
         enableOfflineQueue: false,
         connectTimeout: 1000,
@@ -33,9 +28,16 @@ const getQueueConnectionOptions = () => {
     } catch (_) {}
   }
 
+  const parsedEnvDb = process.env.REDIS_DB !== undefined && /^\d+$/.test(String(process.env.REDIS_DB))
+    ? parseInt(process.env.REDIS_DB, 10)
+    : undefined;
+
   return {
     host: REDIS_HOST,
     port: REDIS_PORT,
+    password: process.env.REDIS_PASSWORD || undefined,
+    ...(parsedEnvDb !== undefined ? { db: parsedEnvDb } : {}),
+    ...(process.env.REDIS_TLS === 'true' ? { tls: {} } : {}),
     maxRetriesPerRequest: null,
     enableOfflineQueue: false,
     connectTimeout: 1000,
@@ -46,13 +48,10 @@ let punchQueue = null;
 let punchWorker = null;
 let isQueueOnline = false;
 
-/**
- * 1. Khởi tạo BullMQ Queue
- */
+// Khởi tạo hàng đợi BullMQ (trả về null khi tắt hoặc Redis offline để dùng fallback đồng bộ)
 const getPunchQueue = () => {
   if (punchQueue) return punchQueue;
 
-  // Nếu tắt Queue hoặc Redis chưa sẵn sàng, trả về null để sử dụng Fallback đồng bộ
   if (process.env.DISABLE_BULLMQ === 'true' || !isRedisReady()) {
     isQueueOnline = false;
     return null;
@@ -89,9 +88,7 @@ const getPunchQueue = () => {
   return punchQueue;
 };
 
-/**
- * 2. Hàm xử lý logic nghiệp vụ của Job điểm danh (Pipeline Processor)
- */
+// Xử lý 1 lượt điểm danh: đối soát lịch/ca, cập nhật NhatKyChamCong, lưu LuotQuetChamCong và phát Socket
 const processPunchJobData = async (jobData) => {
   const {
     type,
@@ -135,7 +132,7 @@ const processPunchJobData = async (jobData) => {
   const nowVN = getVietnamTime(effectivePunchTime);
   const { dateStr: workDateStr } = getVietnamDayRange(effectivePunchTime);
 
-  // Trong môi trường test cô lập không có SQL Server connection
+  // Môi trường test cô lập không có SQL Server -> chỉ chấm geofence và trả kết quả giả lập
   let dbReady = true;
   try {
     await sequelize.authenticate();
@@ -156,7 +153,7 @@ const processPunchJobData = async (jobData) => {
     };
   }
 
-  // 1. Tra cứu bản ghi chấm công đang mở (hỗ trợ cả ca qua đêm)
+  // Tìm bản ghi chấm công đang mở (ưu tiên trong ngày, có hỗ trợ ca làm việc qua đêm)
   const yesterdayStr = getVietnamDayRange(new Date(effectivePunchTime.getTime() - 24 * 60 * 60 * 1000)).dateStr;
   const overnightCutoff = new Date(effectivePunchTime.getTime() - 18 * 60 * 60 * 1000);
   let openLog = await NhatKyChamCong.findOne({
@@ -188,17 +185,17 @@ const processPunchJobData = async (jobData) => {
   const canonicalMethod = normalizeAttendanceMethod(type || 'face_ai');
 
   if (actionType === 'check_out' && !openLog) {
-    throw new Error('Không tìm thấy lượt check-in nào đang mở để thực hiện check-out.');
+    throw new UnrecoverableError('Không tìm thấy lượt check-in nào đang mở để thực hiện check-out.');
   }
   if (actionType === 'check_in' && openLog) {
-    throw new Error('Người dùng đang có một ca làm việc chưa hoàn thành tan ca.');
+    throw new UnrecoverableError('Người dùng đang có một ca làm việc chưa hoàn thành tan ca.');
   }
 
   let scheduleEval = null;
   if (actionType !== 'check_out' || !openLog) {
     scheduleEval = await evaluateUserScheduleForCheckIn(effectiveUserId, null, null, effectivePunchTime);
     if (!scheduleEval || !scheduleEval.canCheckIn) {
-      throw new Error(
+      throw new UnrecoverableError(
         scheduleEval?.message || 'Hôm nay không có lịch phân công hoặc ca làm việc đủ điều kiện để check-in.'
       );
     }
@@ -211,7 +208,7 @@ const processPunchJobData = async (jobData) => {
 
   if (openLog && actionType === 'check_out') {
     if (openLog.da_chot) {
-      throw new Error('Bản ghi chấm công đã bị khóa sổ lương, không thể check-out.');
+      throw new UnrecoverableError('Bản ghi chấm công đã bị khóa sổ lương, không thể check-out.');
     }
     // Luồng CHECK-OUT
     const checkOutTime = effectivePunchTime;
@@ -225,7 +222,6 @@ const processPunchJobData = async (jobData) => {
       ? checkOutTime.getTime() - new Date(openLog.thoi_gian_vao).getTime()
       : 0;
     const durationMins = Math.max(0, Math.round(diffMs / 60000));
-    const soGioCong = parseFloat((durationMins / 60).toFixed(2));
     const soTietThucDay = await calculateActualTeachingPeriods(
       {
         lichTrinhId: openLog.lich_trinh_id,
@@ -240,7 +236,6 @@ const processPunchJobData = async (jobData) => {
       openLog.trang_thai = finalStatus;
       openLog.ve_som_phut = earlyMinutes || 0;
       openLog.thoi_luong_lam_viec_phut = durationMins;
-      openLog.so_gio_cong = soGioCong;
       openLog.so_tiet_thuc_day = soTietThucDay;
       if (geoCheck.isFraud) openLog.co_gian_lan = true;
       await openLog.save({ transaction });
@@ -252,8 +247,8 @@ const processPunchJobData = async (jobData) => {
           loai_quet: 'check_out',
           thoi_gian_quet: checkOutTime,
           phuong_thuc: canonicalMethod,
-          do_tin_cay_ai: aiResult?.similarity ?? 1.0,
-          diem_mat_that: aiResult?.liveness_score ?? 1.0,
+          do_tin_cay_ai: aiResult?.similarity ?? null,
+          diem_mat_that: aiResult?.liveness_score ?? null,
           goc_mat_nhan_dien: aiResult?.pose || aiResult?.angle || null,
           anh_minh_chung: evidenceRef || null,
           vi_do: location?.lat ?? null,
@@ -279,7 +274,7 @@ const processPunchJobData = async (jobData) => {
     const lateMinutes = scheduleEval.lateMinutes || 0;
 
     if (!selectedShift) {
-      throw new Error('Không xác định được ca làm việc hợp lệ để tạo bản ghi chấm công.');
+      throw new UnrecoverableError('Không xác định được ca làm việc hợp lệ để tạo bản ghi chấm công.');
     }
 
     attendanceRecord = await runInTransaction(async (transaction) => {
@@ -287,18 +282,18 @@ const processPunchJobData = async (jobData) => {
         where: {
           nguoi_dung_id: effectiveUserId,
           ngay_cong: workDateStr,
-          ...(selectedScheduleId ? { lich_trinh_id: selectedScheduleId } : { ca_id: selectedShift.id }),
+          ca_id: selectedShift.id,
         },
+        lock: transaction.LOCK.UPDATE,
         transaction,
       });
 
       if (targetAttendance) {
         if (targetAttendance.da_chot) {
-          return targetAttendance;
+          throw new UnrecoverableError('Bản ghi chấm công đã bị khóa sổ lương, không thể check-in.');
         }
         if (targetAttendance.thoi_gian_vao && targetAttendance.thoi_gian_ra) {
-          // Ca này trong ngày đã hoàn tất check-in & check-out: bỏ qua tạo trùng để tránh lỗi UQ_nhat_ky_cham_cong
-          return targetAttendance;
+          throw new UnrecoverableError('Ca làm việc trong ngày đã hoàn tất check-in và check-out.');
         }
         if (!targetAttendance.thoi_gian_vao) {
           targetAttendance.thoi_gian_vao = checkInTime;
@@ -331,8 +326,8 @@ const processPunchJobData = async (jobData) => {
           loai_quet: 'check_in',
           thoi_gian_quet: checkInTime,
           phuong_thuc: canonicalMethod,
-          do_tin_cay_ai: aiResult?.similarity ?? 1.0,
-          diem_mat_that: aiResult?.liveness_score ?? 1.0,
+          do_tin_cay_ai: aiResult?.similarity ?? null,
+          diem_mat_that: aiResult?.liveness_score ?? null,
           goc_mat_nhan_dien: aiResult?.pose || aiResult?.angle || null,
           anh_minh_chung: evidenceRef || null,
           vi_do: location?.lat ?? null,
@@ -350,7 +345,7 @@ const processPunchJobData = async (jobData) => {
     });
   }
 
-  // 4. Ghi AuditLog có băm SHA-256 an toàn
+  // Ghi nhật ký kiểm toán NhatKyKiemToan (băm chuỗi SHA-256)
   NhatKyKiemToan.create({
     nguoi_thuc_hien_id: effectiveUserId,
     loai_chu_the: 'user',
@@ -367,7 +362,7 @@ const processPunchJobData = async (jobData) => {
     },
   }).catch((err) => console.error('[AuditLog Queue Error]:', err.message));
 
-  // 5. Phát sự kiện Realtime Socket.IO tới Admin Dashboard & Trưởng khoa
+  // Phát sự kiện realtime Socket.IO tới admin và lãnh đạo đơn vị
   try {
     const { emitNewPunch } = require('../config/socket');
     NguoiDung.findByPk(effectiveUserId, {
@@ -405,22 +400,26 @@ const processPunchJobData = async (jobData) => {
   };
 };
 
-/**
- * 3. Đẩy lượt quét thẻ vào Hàng đợi (Fast Ingestion < 50ms)
- * @param {object} jobData Dữ liệu lượt quẹt
- * @returns {Promise<{ success: boolean, queued: boolean, jobId: string, message: string, result?: object }>}
- */
+// Đưa lượt điểm danh vào hàng đợi BullMQ; nếu Redis offline thì xử lý đồng bộ ngay
 const addPunchJob = async (jobData) => {
   const queue = getPunchQueue();
 
   if (queue) {
+    let timeoutId = null;
+    const jobPromise = queue.add(
+      `punch-${jobData.userId}-${Date.now()}`,
+      jobData,
+      jobData?.idempotencyKey ? { jobId: String(jobData.idempotencyKey) } : undefined
+    );
     try {
-      const jobName = `punch-${jobData.userId}-${Date.now()}`;
-      const jobPromise = queue.add(jobName, jobData);
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Queue add timed out')), 1500)
-      );
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Queue add timed out')), 1500);
+      });
       const job = await Promise.race([jobPromise, timeoutPromise]);
+      try {
+        const { emitQueueStats } = require('../config/socket');
+        getPunchQueueStats().then((stats) => emitQueueStats(stats)).catch(() => {});
+      } catch (_) {}
       return {
         success: true,
         queued: true,
@@ -429,13 +428,16 @@ const addPunchJob = async (jobData) => {
         status: 'QUEUED',
       };
     } catch (queueError) {
+      jobPromise.then((lateJob) => lateJob?.remove().catch(() => {})).catch(() => {});
       if (process.env.NODE_ENV !== 'test') {
         console.warn(`[BullMQ] Không thể đẩy job vào hàng đợi: ${queueError.message}. Kích hoạt xử lý đồng bộ Fallback.`);
       }
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
   }
 
-  // Fallback: Xử lý đồng bộ trực tiếp khi Redis/BullMQ offline
+  // Xử lý đồng bộ trực tiếp khi BullMQ không khả dụng
   try {
     const syncResult = await processPunchJobData(jobData);
     return {
@@ -458,10 +460,7 @@ const addPunchJob = async (jobData) => {
   }
 };
 
-/**
- * 4. Khởi động Worker lắng nghe và xử lý hàng đợi
- * @param {number} concurrency Số lượng job xử lý đồng thời (mặc định 5 workers)
- */
+// Khởi động Worker xử lý nền hàng đợi điểm danh (mặc định 5 luồng đồng thời)
 const startPunchWorker = (concurrency = 5) => {
   if (punchWorker) return punchWorker;
 
@@ -482,9 +481,7 @@ const startPunchWorker = (concurrency = 5) => {
       }
     );
 
-    punchWorker.on('completed', (job) => {
-      // Job hoàn tất thành công
-    });
+    punchWorker.on('completed', () => {});
 
     punchWorker.on('failed', (job, err) => {
       console.error(`[BullMQ Worker Failed] Job ${job?.id} thất bại: ${err.message}`);
@@ -503,9 +500,7 @@ const startPunchWorker = (concurrency = 5) => {
   }
 };
 
-/**
- * 5. Lấy số liệu thống kê của Hàng đợi (Monitoring & Metrics)
- */
+// Thống kê số lượng job hiện có trong hàng đợi
 const getPunchQueueStats = async () => {
   const queue = getPunchQueue();
   if (!queue) {
@@ -545,9 +540,7 @@ const getPunchQueueStats = async () => {
   }
 };
 
-/**
- * 6. Đóng kết nối hàng đợi và worker khi tắt server
- */
+// Đóng worker và hàng đợi an toàn khi tắt server
 const closePunchQueue = async () => {
   if (punchWorker) {
     try {

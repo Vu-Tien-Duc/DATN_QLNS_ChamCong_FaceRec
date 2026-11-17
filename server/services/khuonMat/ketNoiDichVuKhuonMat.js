@@ -1,7 +1,5 @@
-/**
- * Client giao tiếp RESTful với Python FastAPI Face Service (InsightFace Microservice)
- * Chuẩn CSDL v2.5: Đa góc ArcFace 512D, Margin Top 1-2, Liveness & Tự phục hồi RAM Cache.
- */
+// Client gọi API tới Python FastAPI Face Service (InsightFace 512D, Liveness) và tự đồng bộ lại FAISS RAM cache
+const { Op } = require('sequelize');
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL || 'http://127.0.0.1:8001';
 const {
   cacheFaceVectors,
@@ -10,6 +8,7 @@ const {
 } = require('../../config/redis');
 const { getConfigSync } = require('../heThong/cauHinhHeThong.service');
 
+// Lấy ngưỡng so khớp khuôn mặt hiệu lực từ tham số truyền vào hoặc cấu hình hệ thống
 const getEffectiveThreshold = (explicitThreshold) => {
   if (Number.isFinite(Number(explicitThreshold))) {
     return Number(explicitThreshold);
@@ -18,6 +17,7 @@ const getEffectiveThreshold = (explicitThreshold) => {
   return Number.isFinite(configured) ? configured : 0.45;
 };
 
+// Đọc phản hồi HTTP và parse JSON an toàn
 const safeJson = async (response) => {
   const text = await response.text();
   if (!text) return null;
@@ -28,6 +28,7 @@ const safeJson = async (response) => {
   }
 };
 
+// Gọi HTTP request tới dịch vụ Python FastAPI Face Service kèm timeout và API key nội bộ
 const callFaceService = async ({ path, method = 'GET', body = null, headers = {}, timeoutMs = 20000 }) => {
   const apiKey = process.env.FACE_SERVICE_API_KEY;
   const mergedHeaders = {
@@ -69,9 +70,7 @@ const callFaceService = async ({ path, method = 'GET', body = null, headers = {}
   return data;
 };
 
-/**
- * Trích xuất vector đặc trưng ArcFace 512 chiều từ 1 ảnh
- */
+// Trích xuất vector khuôn mặt 512 chiều từ 1 ảnh
 const extractFaceEmbedding = async ({ imageBuffer, mimeType = 'image/jpeg', fileName = 'capture.jpg' }) => {
   const formData = new FormData();
   formData.append('image', new Blob([imageBuffer], { type: mimeType }), fileName);
@@ -84,9 +83,7 @@ const extractFaceEmbedding = async ({ imageBuffer, mimeType = 'image/jpeg', file
   });
 };
 
-/**
- * Ước lượng tư thế đầu 3D (Euler Yaw, Pitch, Roll) và kiểm tra Liveness
- */
+// Phát hiện góc nghiêng đầu và tư thế khuôn mặt từ ảnh
 const detectFacePose = async ({ imageBuffer, mimeType = 'image/jpeg', fileName = 'capture.jpg' }) => {
   const formData = new FormData();
   formData.append('image', new Blob([imageBuffer], { type: mimeType }), fileName);
@@ -99,9 +96,7 @@ const detectFacePose = async ({ imageBuffer, mimeType = 'image/jpeg', fileName =
   });
 };
 
-/**
- * Đăng ký 5 góc chụp đa chiều (Chính diện, Trái, Phải, Ngửa, Cúi)
- */
+// Gửi 5 ảnh góc mặt để đăng ký đa góc sang Face Service
 const enrollMultiAngle = async ({ files, employeeId, fullName, department }) => {
   const formData = new FormData();
   if (employeeId) formData.append('employee_id', employeeId);
@@ -134,9 +129,7 @@ const enrollMultiAngle = async ({ files, employeeId, fullName, department }) => 
   });
 };
 
-/**
- * Nhận diện 1:N trên RAM Vector Index (kèm Margin Top 1-2 và Liveness)
- */
+// Nhận diện khuôn mặt 1:N kèm kiểm tra liveness và chất lượng ảnh
 const recognizeFace = async ({
   imageBuffer,
   threshold,
@@ -157,9 +150,7 @@ const recognizeFace = async ({
   });
 };
 
-/**
- * Xác thực 1:1 khuôn mặt theo mã nhân viên
- */
+// Xác minh khuôn mặt 1:1 theo mã cán bộ
 const verifyFace = async ({
   imageBuffer,
   employeeId,
@@ -181,9 +172,7 @@ const verifyFace = async ({
   });
 };
 
-/**
- * Đồng bộ danh sách template vector lên RAM Index
- */
+// Đồng bộ toàn bộ danh sách mẫu khuôn mặt vào chỉ mục FAISS RAM
 const syncFaissTemplates = async (templates) => {
   return callFaceService({
     path: '/v1/faiss/sync',
@@ -194,6 +183,7 @@ const syncFaissTemplates = async (templates) => {
   });
 };
 
+// Thêm hoặc cập nhật vector khuôn mặt của một nhân sự vào FAISS RAM
 const addFaissTemplate = async ({ userId, embedding, embeddings, fullName, employeeId }) => {
   const result = await callFaceService({
     path: '/v1/faiss/add',
@@ -206,6 +196,7 @@ const addFaissTemplate = async ({ userId, embedding, embeddings, fullName, emplo
   return result;
 };
 
+// Xóa vector khuôn mặt của một nhân sự khỏi FAISS RAM
 const removeFaissTemplate = async (userId) => {
   const result = await callFaceService({
     path: '/v1/faiss/remove',
@@ -218,6 +209,7 @@ const removeFaissTemplate = async (userId) => {
   return result;
 };
 
+// Lấy thống kê bộ nhớ FAISS của Face Service
 const getFaissStats = async () => {
   return callFaceService({
     path: '/v1/faiss/stats',
@@ -226,10 +218,7 @@ const getFaissStats = async () => {
   });
 };
 
-/**
- * Cơ chế Tự phục hồi RAM Cache (Auto Self-Healing on Service Restart)
- * Kiểm tra RAM Index, nếu rỗng hoặc số lượng lệch với SQL Server thì tự động nạp đồng bộ
- */
+// Tự đồng bộ vector từ SQL Server lên FAISS RAM khi Face Service vừa khởi động lại hoặc lệch số lượng
 const ensureRamCacheWarm = async (force = false) => {
   try {
     const raw = await getFaissStats();
@@ -238,7 +227,20 @@ const ensureRamCacheWarm = async (force = false) => {
     const totalUsers = typeof stats.total_users === 'number' ? stats.total_users : 0;
 
     const { MauKhuonMat, NguoiDung } = require('../../models');
-    const dbTemplateCount = await MauKhuonMat.count({ where: { mac_dinh: true } });
+    const activeUserInclude = {
+      model: NguoiDung,
+      as: 'nguoi_dung',
+      attributes: ['id', 'ho_ten', 'ma_can_bo'],
+      where: {
+        kich_hoat: true,
+        trang_thai_lam_viec: { [Op.ne]: 'da_nghi_viec' },
+      },
+      required: true,
+    };
+    const dbTemplateCount = await MauKhuonMat.count({
+      where: { mac_dinh: true },
+      include: [{ model: NguoiDung, as: 'nguoi_dung', attributes: [], where: activeUserInclude.where, required: true }],
+    });
 
     const needsSync = force || (totalVectors === 0 && dbTemplateCount > 0) || (totalUsers !== dbTemplateCount);
 
@@ -253,7 +255,7 @@ const ensureRamCacheWarm = async (force = false) => {
 
       const templates = await MauKhuonMat.findAll({
         where: { mac_dinh: true },
-        include: [{ model: NguoiDung, as: 'nguoi_dung', attributes: ['id', 'ho_ten', 'ma_can_bo'] }],
+        include: [activeUserInclude],
       });
 
       const payload = [];
@@ -294,6 +296,7 @@ const identifyFaceWithTemplates = async ({ imageBuffer, templates }) => {
   return recognizeFace({ imageBuffer });
 };
 
+// Alias nhận diện khuôn mặt qua FAISS
 const identifyFaceFaiss = async ({ imageBuffer }) => {
   return recognizeFace({ imageBuffer });
 };

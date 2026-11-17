@@ -1,11 +1,8 @@
-/**
- * Multi-Model AI Provider Adapter (AI Gateway)
- * Hỗ trợ đa mô hình AI: Google Gemini, Groq (Llama 3), DeepSeek, cùng cơ chế tự phục hồi (Failover).
- * Đề tài: Hệ thống Quản lý Nhân sự & Chấm công ứng dụng Thị giác Máy tính - ĐH Nguyễn Trãi
- */
+// Cổng gọi đa mô hình AI (Gemini, Groq, DeepSeek) kèm tự chuyển đổi dự phòng (failover) và embedding RAG
 
 const DEFAULT_TIMEOUT_MS = 25000;
 
+// Xây dựng danh sách model Gemini thử tuần tự khi model chính bị lỗi hoặc hết hạn mức
 const getGeminiChatModelChain = (explicitModel = null) =>
   Array.from(
     new Set(
@@ -19,11 +16,10 @@ const getGeminiChatModelChain = (explicitModel = null) =>
     )
   );
 
+// Lấy tên model embedding Gemini mặc định
 const getDefaultEmbeddingModel = () => process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
 
-/**
- * 1. Gọi Google Gemini API (Hỗ trợ đa phương thức Ảnh/PDF Vision qua attachments inline_data)
- */
+// Gọi Google Gemini API (hỗ trợ ảnh/PDF qua attachments inline_data)
 const callGemini = async ({
   prompt,
   systemInstruction = '',
@@ -121,10 +117,7 @@ const callGemini = async ({
   };
 };
 
-/**
- * 1.1. Tạo vector nhúng văn bản qua Gemini Embedding API (mặc định: gemini-embedding-001)
- * Trả về mảng số hoặc null nếu chưa cấu hình API key / gặp lỗi kết nối (an toàn cho fallback từ khóa)
- */
+// Tạo vector nhúng qua Gemini Embedding API (trả về null nếu thiếu key hoặc lỗi để fallback từ khóa)
 const embedTextWithGemini = async ({ text, apiKey, model } = {}) => {
   const key = apiKey || process.env.GEMINI_API_KEY;
   if (!key || !text || !String(text).trim()) {
@@ -166,9 +159,7 @@ const embedTextWithGemini = async ({ text, apiKey, model } = {}) => {
   }
 };
 
-/**
- * Tạo vector hàng loạt cho các đoạn văn bản RAG (đồng bộ 100% hoặc fallback đồng nhất về keyword_only)
- */
+// Tạo vector nhúng hàng loạt cho các đoạn văn bản RAG (đồng bộ hoặc đồng loạt fallback về keyword_only)
 const embedBatchWithGemini = async (texts = [], { apiKey, model, maxChunks = 250 } = {}) => {
   const key = apiKey || process.env.GEMINI_API_KEY;
   const targetModel = model || getDefaultEmbeddingModel();
@@ -206,9 +197,7 @@ const embedBatchWithGemini = async (texts = [], { apiKey, model, maxChunks = 250
   };
 };
 
-/**
- * 2. Gọi Groq Cloud API (Llama-3.3-70b-versatile / Llama-3.1-8b-instant)
- */
+// Gọi Groq Cloud API (Llama)
 const callGroq = async ({ prompt, systemInstruction = '', history = [], apiKey, model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048 }) => {
   const key = apiKey || process.env.GROQ_API_KEY;
   if (!key) {
@@ -224,7 +213,7 @@ const callGroq = async ({ prompt, systemInstruction = '', history = [], apiKey, 
 
   if (Array.isArray(history) && history.length > 0) {
     for (const msg of history) {
-      const role = msg.role === 'model' ? 'assistant' : (msg.role || 'user');
+      const role = msg.role === 'model' || msg.role === 'assistant' ? 'assistant' : 'user';
       const content = msg.content || msg.text || '';
       if (content.trim()) {
         messages.push({ role, content });
@@ -272,9 +261,7 @@ const callGroq = async ({ prompt, systemInstruction = '', history = [], apiKey, 
   };
 };
 
-/**
- * 3. Gọi DeepSeek / OpenRouter API
- */
+// Gọi DeepSeek API
 const callDeepSeek = async ({ prompt, systemInstruction = '', history = [], apiKey, model = 'deepseek-chat', temperature = 0.7, maxTokens = 2048 }) => {
   const key = apiKey || process.env.DEEPSEEK_API_KEY;
   if (!key) {
@@ -290,7 +277,7 @@ const callDeepSeek = async ({ prompt, systemInstruction = '', history = [], apiK
 
   if (Array.isArray(history) && history.length > 0) {
     for (const msg of history) {
-      const role = msg.role === 'model' ? 'assistant' : (msg.role || 'user');
+      const role = msg.role === 'model' || msg.role === 'assistant' ? 'assistant' : 'user';
       const content = msg.content || msg.text || '';
       if (content.trim()) {
         messages.push({ role, content });
@@ -338,9 +325,7 @@ const callDeepSeek = async ({ prompt, systemInstruction = '', history = [], apiK
   };
 };
 
-/**
- * 4. Phản hồi thông minh dự phòng khi Offline / Dev Mode
- */
+// Phản hồi dự phòng nội bộ khi chưa cấu hình API key hoặc toàn bộ provider ngoại tuyến
 const callOfflineMock = ({
   prompt,
   systemInstruction = '',
@@ -382,11 +367,7 @@ const callOfflineMock = ({
   };
 };
 
-/**
- * 5. Bộ điều phối chính tự động phục hồi lỗi (Automatic Failover Gateway)
- * Thứ tự ưu tiên: Provider được chỉ định -> Gemini -> Groq -> DeepSeek -> Offline Mock
- * Lưu ý: Nếu có đính kèm Ảnh hoặc PDF Scan (attachments), tự động ưu tiên Gemini Multimodal Vision.
- */
+// Điều phối gọi AI kèm failover (Gemini -> Groq -> DeepSeek -> Offline Mock); ưu tiên Gemini khi có ảnh/PDF scan
 const generateAIResponse = async ({
   prompt,
   systemInstruction = '',

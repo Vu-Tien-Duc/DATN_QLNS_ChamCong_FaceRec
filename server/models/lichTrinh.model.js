@@ -1,17 +1,12 @@
+// Mô hình bảng lich_trinh: thời khóa biểu giảng dạy chính khóa và dạy bù.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, timeColumn, decimalColumn, trimmedString } = require('./modelHelpers');
 
 const LOAI_LICH = ['chinh_khoa', 'day_bu'];
 
-/**
- * Bảng lich_trinh: thời khóa biểu giảng dạy.
- * - Các tuần học   -> bảng lich_trinh_tuan (association `tuan_hoc`)
- * - Ngoại lệ ngày  -> bảng ngoai_le_lich_trinh (association `ngoai_le`)
- * - gio_bat_dau/gio_ket_thuc là giờ thực tế của buổi học (có thể lệch giờ chuẩn của ca).
- */
 class LichTrinh extends Model {
-  /** Danh sách số tuần học (cần include association `tuan_hoc`). */
+  // Lấy danh sách số tuần học từ association tuan_hoc
   layDanhSachTuan() {
     return (this.tuan_hoc || []).map((w) => w.tuan_thu).sort((a, b) => a - b);
   }

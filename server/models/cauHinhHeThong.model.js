@@ -1,9 +1,7 @@
+// Mô hình bảng cau_hinh_he_thong: lưu trữ tham số cấu hình hệ thống kèm giá trị mặc định.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 
-/**
- * Bảng giá trị cấu hình mặc định tham chiếu chuẩn hệ thống.
- */
 const CAU_HINH_MAC_DINH = {
   HOC_KY: { nam_hoc: '2026-2027', hoc_ky: 1, ngay_bat_dau: '2026-09-07', so_tuan: 18 },
   GEOFENCE_TRUONG: { ten_co_so: 'Trường Đại học Nguyễn Trãi - 28A Lê Trọng Tấn, Hà Đông', toa_do: [105.7628, 20.9752], ban_kinh_met: 150 },
@@ -47,9 +45,7 @@ const CAU_HINH_MAC_DINH = {
 };
 
 class CauHinhHeThong extends Model {
-  /**
-   * Phương thức tĩnh lấy cấu hình với fallback an toàn.
-   */
+  // Lấy giá trị cấu hình trong DB, fallback sang giá trị mặc định khi chưa có
   static async layGiaTri(key, fallback = null) {
     try {
       const doc = await CauHinhHeThong.findOne({

@@ -1,7 +1,4 @@
-/**
- * Dịch vụ Tải lên & Phân quyền Tải xuống Tệp (server/services/taiTep.service.js)
- * Tách logic truy vấn CSDL & kiểm tra quyền truy cập tệp MinIO khỏi taiTep.controller.js.
- */
+// Lưu trữ tệp lên MinIO và kiểm tra quyền truy cập tệp riêng tư.
 const crypto = require('crypto');
 const path = require('path');
 const { Op } = require('sequelize');
@@ -9,8 +6,9 @@ const { EXTENSIONS_BY_MIME_TYPE } = require('../../middlewares/taiTep.middleware
 const minioStorage = require('../../config/minio');
 const { NguoiDung, MauKhuonMat, DonNghiPhep, LuotQuetChamCong } = require('../../models');
 const { isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
-const { normalizeRole } = require('../../utils/vaiTro.utils');
+const { UNIT_LEADER_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
 
+// Lưu tệp đính kèm tải lên lên MinIO và trả về thông tin truy cập
 const saveUploadedAttachment = async (file, userId = 'anonymous') => {
   const buffer = file.buffer;
   const allowedExtensions = EXTENSIONS_BY_MIME_TYPE[file.mimetype];
@@ -44,6 +42,7 @@ const saveUploadedAttachment = async (file, userId = 'anonymous') => {
   };
 };
 
+// Xác định bucket prefix và chính sách kiểm soát quyền tải của tệp theo tên tệp
 const resolveDownloadPolicy = async (safeFilename) => {
   const isFaceImage = safeFilename.startsWith('face-');
   const isAttendanceEvidence = safeFilename.startsWith('attendance-');
@@ -108,15 +107,15 @@ const resolveDownloadPolicy = async (safeFilename) => {
   };
 };
 
+// Kiểm tra người dùng hiện tại có quyền xem tệp riêng tư thuộc một chủ sở hữu
 const canAccessScopedFile = async (currentUser, ownerId, { allowTccb = false } = {}) => {
   const currentUserId = String(currentUser.id);
-  const currentRole = normalizeRole(currentUser.vai_tro_chinh);
 
-  if (['admin', 'bgh'].includes(currentRole)) return { allowed: true };
-  if (allowTccb && currentRole === 'tccb') return { allowed: true };
+  if (hasAnyActiveRole(currentUser, ['admin', 'bgh'])) return { allowed: true };
+  if (allowTccb && hasAnyActiveRole(currentUser, ['tccb'])) return { allowed: true };
   if (ownerId && ownerId === currentUserId) return { allowed: true };
 
-  if (['truong_khoa', 'pho_khoa'].includes(currentRole)) {
+  if (hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES)) {
     if (!ownerId) {
       return { allowed: false, message: 'Không xác định được chủ sở hữu tệp để kiểm tra phạm vi khoa.' };
     }
@@ -128,9 +127,11 @@ const canAccessScopedFile = async (currentUser, ownerId, { allowTccb = false } =
   return { allowed: false, message: 'Bạn không có quyền xem tài liệu của người khác.' };
 };
 
+// Kiểm tra quyền xem tệp đính kèm của đơn nghỉ phép
 const canAccessLeaveAttachment = (currentUser, ownerId) =>
   canAccessScopedFile(currentUser, ownerId, { allowTccb: false });
 
+// Kiểm tra quyền xem ảnh minh chứng điểm danh
 const canAccessAttendanceEvidence = (currentUser, ownerId) =>
   canAccessScopedFile(currentUser, ownerId, { allowTccb: true });
 

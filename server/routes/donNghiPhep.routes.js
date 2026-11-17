@@ -1,3 +1,4 @@
+// Định tuyến API nộp, tra cứu, hủy và phê duyệt đơn nghỉ phép / dạy bù / đổi ca (/api/don-nghi-phep)
 const express = require('express');
 const router = express.Router();
 const {
@@ -9,7 +10,8 @@ const {
   rejectLeaveRequest,
   cancelLeaveRequest,
 } = require('../controllers/donNghiPhep.controller');
-const { verifyToken, verifyRole } = require('../middlewares/xacThuc.middleware');
+const { verifyToken, verifyRole, requirePermission, requireAnyPermission } = require('../middlewares/xacThuc.middleware');
+const { PERMISSIONS } = require('../config/permissions');
 
 const { upload } = require('../middlewares/taiTep.middleware');
 
@@ -60,16 +62,16 @@ const LEAVE_APPROVER_ROLES = [
 ];
 
 // Cán bộ, giảng viên, trưởng/phó đơn vị, TCCB, ban giám hiệu và admin nộp/xem/hủy đơn
-router.post('/', verifyRole(LEAVE_SELF_AND_LEADER_ROLES), optionalFileUpload, createLeaveRequest);
-router.get('/', verifyRole(LEAVE_SELF_AND_LEADER_ROLES), getLeaveRequests);
-router.get('/so-du', verifyRole(LEAVE_SELF_AND_LEADER_ROLES), getLeaveBalance);
-router.get('/:id', verifyRole(LEAVE_SELF_AND_LEADER_ROLES), getLeaveRequestById);
+router.post('/', requirePermission(PERMISSIONS.DON_TU_TAO), verifyRole(LEAVE_SELF_AND_LEADER_ROLES), optionalFileUpload, createLeaveRequest);
+router.get('/', requireAnyPermission(PERMISSIONS.DON_TU_XEM_BAN_THAN, PERMISSIONS.DON_TU_XEM_DON_VI), verifyRole(LEAVE_SELF_AND_LEADER_ROLES), getLeaveRequests);
+router.get('/so-du', requireAnyPermission(PERMISSIONS.DON_TU_XEM_BAN_THAN, PERMISSIONS.DON_TU_XEM_DON_VI), verifyRole(LEAVE_SELF_AND_LEADER_ROLES), getLeaveBalance);
+router.get('/:id', requireAnyPermission(PERMISSIONS.DON_TU_XEM_BAN_THAN, PERMISSIONS.DON_TU_XEM_DON_VI), verifyRole(LEAVE_SELF_AND_LEADER_ROLES), getLeaveRequestById);
 
 // Hủy đơn (người tạo đơn hoặc admin/BGH)
-router.put('/:id/huy', verifyRole(LEAVE_SELF_AND_LEADER_ROLES), cancelLeaveRequest);
+router.put('/:id/huy', requireAnyPermission(PERMISSIONS.DON_TU_HUY, PERMISSIONS.DON_TU_XEM_BAN_THAN), verifyRole(LEAVE_SELF_AND_LEADER_ROLES), cancelLeaveRequest);
 
-// Phê duyệt hoặc từ chối đơn nghỉ phép (Admin, Ban Giám Hiệu, TCCB, Lãnh đạo đơn vị)
-router.put('/:id/phe-duyet', verifyRole(LEAVE_APPROVER_ROLES), approveLeaveRequest);
-router.put('/:id/tu-choi', verifyRole(LEAVE_APPROVER_ROLES), rejectLeaveRequest);
+// Phê duyệt hoặc từ chối đơn nghỉ phép (Admin, Ban Giám Hiệu, TCCB, Lãnh đạo đơn vị hoặc Phó được ủy quyền)
+router.put('/:id/phe-duyet', requireAnyPermission(PERMISSIONS.DON_TU_DUYET_CAP_1, PERMISSIONS.DON_TU_DUYET_CAP_2), verifyRole(LEAVE_APPROVER_ROLES), approveLeaveRequest);
+router.put('/:id/tu-choi', requireAnyPermission(PERMISSIONS.DON_TU_DUYET_CAP_1, PERMISSIONS.DON_TU_DUYET_CAP_2), verifyRole(LEAVE_APPROVER_ROLES), rejectLeaveRequest);
 
 module.exports = router;

@@ -1,12 +1,10 @@
-/**
- * Dịch vụ Giảng viên Công khai (server/services/giangVienCongKhai.service.js)
- * Xử lý truy vấn danh bạ, hồ sơ chi tiết và thống kê giảng viên công khai trên SQL Server 3NF.
- */
+// Truy vấn danh bạ, hồ sơ và thống kê công khai của giảng viên.
 const { Op } = require('sequelize');
 const { NguoiDung, HoSoCanBo, PhongBan, LichTrinh, MonHoc } = require('../../models');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
 const ServiceError = require('../../utils/loiNghiepVu');
 
+// Quy đổi học hàm/học vị sang danh xưng viết tắt (GS.TS, PGS.TS, TS, ThS...)
 const resolveAcademicTitle = (profile = {}) => {
   if (profile.hoc_ham === 'giao_su') return 'GS.TS';
   if (profile.hoc_ham === 'pho_giao_su') return 'PGS.TS';
@@ -17,6 +15,7 @@ const resolveAcademicTitle = (profile = {}) => {
   return 'ThS';
 };
 
+// Lấy danh sách giảng viên công khai có lọc theo từ khóa, đơn vị, học hàm, học vị và phân trang
 const getPublicFacultyList = async ({
   search = '',
   phong_ban_id,
@@ -101,6 +100,7 @@ const getPublicFacultyList = async ({
   };
 };
 
+// Lấy hồ sơ tóm tắt và các môn giảng dạy của một giảng viên công khai
 const getPublicFacultyById = async (id) => {
   if (!isValidUuid(id)) {
     throw new ServiceError('Mã định danh giảng viên không hợp lệ', 400);
@@ -161,6 +161,7 @@ const getPublicFacultyById = async (id) => {
   };
 };
 
+// Thống kê số lượng giảng viên theo học hàm, học vị và đơn vị
 const getPublicFacultyStats = async () => {
   const activeUserInclude = [
     {

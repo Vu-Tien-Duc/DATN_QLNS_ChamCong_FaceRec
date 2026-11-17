@@ -1,15 +1,11 @@
-/**
- * Middleware Giới Hạn Tần Suất Yêu Cầu (Adaptive Rate Limiter)
- * Hỗ trợ linh hoạt đa môi trường:
- * - Khi có REDIS_URL và thư viện kết nối: Tự động dùng RedisStore phân tán (Multi-Instance/Cluster).
- * - Khi không có REDIS_URL hoặc lỗi kết nối: Tự động Graceful Fallback sang In-Memory Store,
- *   đảm bảo hệ thống vận hành trơn tru 100% trong môi trường dev, test và demo bảo vệ đồ án.
- */
+// Giới hạn tần suất gọi API (Rate Limit): dùng Redis khi cấu hình REDIS_URL và tự fallback sang MemoryStore
 const rateLimit = require('express-rate-limit');
 const net = require('net');
 
+// Lấy địa chỉ IP gốc của client
 const extractClientIp = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
 
+// Chuẩn hóa địa chỉ IP (chuyển IPv4-mapped hoặc gom subnet IPv6 /64) để tính rate limit
 const getRateLimitIp = (req) => {
   const ip = extractClientIp(req);
   if (/^::ffff:\d{1,3}(?:\.\d{1,3}){3}$/i.test(ip)) {
@@ -27,6 +23,7 @@ const getRateLimitIp = (req) => {
   return `${groups.slice(0, 4).join(':')}::/64`;
 };
 
+// Kiểm tra request có xuất phát từ môi trường local hoặc dev/test
 const isLocalOrDev = (req) => {
   if (process.env.NODE_ENV === 'production') return false;
   if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') return true;
@@ -34,21 +31,17 @@ const isLocalOrDev = (req) => {
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
 };
 
-/**
- * Tạo Store cho Rate Limiter:
- * - Nếu có REDIS_URL và thư viện hỗ trợ: Tạo RedisStore phân tán.
- * - Ngược lại: Tự động dùng MemoryStore mặc định.
- */
-let redisStoreInstance = null;
 let redisInitialized = false;
+let redisStoreInstance = undefined;
 
+// Khởi tạo Redis Store cho rate limiter (hoặc undefined để dùng MemoryStore mặc định)
 const getRateLimitStore = () => {
   if (redisInitialized) return redisStoreInstance;
   redisInitialized = true;
 
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) {
-    return undefined; // Mặc định MemoryStore
+    return undefined;
   }
 
   try {
@@ -78,30 +71,21 @@ const getRateLimitStore = () => {
   }
 };
 
-/**
- * Key generator cho xác thực đăng nhập:
- * Kết hợp IP và email để không bị chặn lẫn nhau khi nhiều cán bộ/giảng viên dùng chung mạng/máy tính
- */
+// Khóa giới hạn đăng nhập theo cặp IP + email để không chặn nhầm người khác dùng chung mạng
 const getLoginRateKey = (req) => {
   const ip = getRateLimitIp(req);
   const email = req.body?.email ? String(req.body.email).toLowerCase().trim().slice(0, 254) : 'anonymous';
   return `login_${ip}_${email}`;
 };
 
-/**
- * Key generator cho Trợ lý AI:
- * Định danh ưu tiên theo UserId đã xác thực, nếu là khách thì dùng IP
- */
+// Khóa giới hạn AI chat ưu tiên theo ID người dùng đang đăng nhập
 const getAiChatRateKey = (req) => {
   const userId = req.user?._id || req.user?.ma_can_bo;
   if (userId) return `ai_chat_user_${userId}`;
   return `ai_chat_ip_${getRateLimitIp(req)}`;
 };
 
-/**
- * 1. Giới hạn request theo IP để bảo vệ endpoint nhận diện khuôn mặt:
- * Tối đa 15 lần quét / phút (chống spam camera stream hoặc brute-force vector).
- */
+// Giới hạn quét khuôn mặt: tối đa 30 lượt/phút (dev/local: 200)
 const faceCheckInRateLimit = rateLimit({
   windowMs: 60 * 1000,
   max: (req) => (isLocalOrDev(req) ? 200 : 30),
@@ -117,12 +101,7 @@ const faceCheckInRateLimit = rateLimit({
     }),
 });
 
-/**
- * 2. Giới hạn đăng nhập: Tối đa 5 lần ĐĂNG NHẬP SAI trong vòng 15 phút.
- * - skipSuccessfulRequests: true -> Đăng nhập thành công KHÔNG bị tính là lần thử thất bại.
- * - keyGenerator: Phân biệt theo tài khoản email để tránh chặn nhầm người dùng khác trên cùng mạng LAN/NAT.
- * - Môi trường localhost / dev cho phép tối đa 50 lần để thuận tiện kiểm thử.
- */
+// Giới hạn đăng nhập sai: tối đa 5 lần / 15 phút (dev/local: 50), không đếm lần đăng nhập đúng
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: (req) => (isLocalOrDev(req) ? 50 : 5),
@@ -142,11 +121,7 @@ const loginLimiter = rateLimit({
   },
 });
 
-/**
- * 3. Giới hạn gọi Trợ lý AI (AI Chat & Analytics):
- * Bảo vệ quota Token LLM (Gemini/Claude/DeepSeek) và chống spam DoS API AI.
- * Tối đa 30 câu hỏi / phút (Dev: 100 câu / phút).
- */
+// Giới hạn hỏi Trợ lý AI: tối đa 30 câu / phút (dev/local: 100)
 const aiChatRateLimit = rateLimit({
   windowMs: 60 * 1000,
   max: (req) => (isLocalOrDev(req) ? 100 : 30),
@@ -165,10 +140,7 @@ const aiChatRateLimit = rateLimit({
   },
 });
 
-/**
- * 4. Giới hạn đổi mật khẩu / Khôi phục tài khoản:
- * Tối đa 5 lần / 15 phút để chống tấn công dò mật khẩu cũ.
- */
+// Giới hạn đổi mật khẩu / OTP: tối đa 5 lần / 15 phút (dev/local: 30)
 const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: (req) => (isLocalOrDev(req) ? 30 : 5),
@@ -185,10 +157,7 @@ const passwordResetLimiter = rateLimit({
   },
 });
 
-/**
- * 5. Giới hạn bảo vệ chung API (General Limiter):
- * Tối đa 300 requests / 15 phút trên mỗi IP (Dev: 3000 requests / 15 phút).
- */
+// Giới hạn chung toàn API: tối đa 300 request / 15 phút trên mỗi IP (dev/local: 3000)
 const apiGeneralLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: (req) => (isLocalOrDev(req) ? 3000 : 300),

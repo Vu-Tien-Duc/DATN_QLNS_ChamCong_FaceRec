@@ -1,11 +1,11 @@
-/**
- * Tiện ích dùng chung về thời gian, trạng thái chấm công, ảnh minh chứng và lỗi nghiệp vụ.
- */
+// Tiện ích xử lý múi giờ Việt Nam, khung giờ ca, trạng thái vào/tan ca và bộ lọc ngày chấm công.
 const ServiceError = require('./loiNghiepVu');
 
+// Trả về đường dẫn API xem ảnh minh chứng chấm công của bản ghi
 const getAttendanceEvidenceUrl = (log) =>
   log?.capturedImage ? `/attendance/${log._id}/evidence` : null;
 
+// Thay thế tên tệp ảnh minh chứng bằng đường dẫn API hoàn chỉnh
 const presentAttendanceEvidence = (log) => {
   if (log?.capturedImage) {
     log.capturedImage = getAttendanceEvidenceUrl(log);
@@ -13,13 +13,7 @@ const presentAttendanceEvidence = (log) => {
   return log;
 };
 
-/**
- * Chuyển đổi mốc thời gian về múi giờ chuẩn Asia/Ho_Chi_Minh (UTC+7)
- * Khắc phục triệt để lỗi lệch 7 tiếng của server runtime trên VPS (UTC) hoặc Local (UTC+7)
- * Đảm bảo các hàm .getHours(), .getMinutes(), .getDay(), .toISOString().slice(0, 10) luôn trả về giờ VN
- * @param {Date|string|number} [date=new Date()]
- * @returns {Date}
- */
+// Chuyển mốc thời gian về múi giờ Asia/Ho_Chi_Minh (UTC+7) để tránh lệch giờ server
 const getVietnamTime = (date = new Date()) => {
   const d = date instanceof Date ? date : new Date(date);
   const validDate = isNaN(d.getTime()) ? new Date() : d;
@@ -61,11 +55,7 @@ const getVietnamTime = (date = new Date()) => {
   return vnDate;
 };
 
-/**
- * Xác định khoảng thời gian đầu ngày và cuối ngày [00:00:00.000, 23:59:59.999] theo chuẩn múi giờ UTC+7 (Asia/Ho_Chi_Minh)
- * @param {Date} [date=new Date()]
- * @returns {{ startOfDay: Date, endOfDay: Date, dateStr: string }}
- */
+// Lấy mốc đầu ngày và cuối ngày [00:00:00, 23:59:59.999] theo giờ Việt Nam (UTC+7)
 const getVietnamDayRange = (date = new Date()) => {
   let dateStr;
   if (date && date._isVietnamTime) {
@@ -89,24 +79,14 @@ const getVietnamDayRange = (date = new Date()) => {
   return { startOfDay, endOfDay, dateStr };
 };
 
-/**
- * Bóc tách chuỗi "HH:mm" thành tổng số phút trong ngày tính từ 00:00 để so sánh toán học
- * @param {string} timeStr - Chuỗi định dạng "HH:mm"
- * @returns {number} Số phút từ 00:00
- */
+// Quy đổi chuỗi "HH:mm" sang tổng số phút tính từ 00:00
 const timeStringToMinutes = (timeStr) => {
   if (!timeStr || typeof timeStr !== 'string') return 0;
   const [h, m] = timeStr.split(':').map(Number);
   return h * 60 + m;
 };
 
-/**
- * Xác định khung giờ check-in hợp lệ cho ca làm việc:
- * - Sớm tối đa 30 phút trước giờ bắt đầu ca (startMinutes - 30)
- * - Muộn tối đa theo thời gian cho phép của ca (startMinutes + shift.lateThresholdMinutes)
- * @param {Object} shift - Bản ghi ca làm việc (chứa startTime, endTime, lateThresholdMinutes)
- * @returns {Object|null} { startMinutes, endMinutes, windowStartMinutes, windowEndMinutes }
- */
+// Tính khung giờ vào ca hợp lệ (sớm tối đa 30 phút, muộn tối đa theo ngưỡng của ca)
 const getTodayScheduleWindow = (shift) => {
   const startTime = shift?.gio_bat_dau || shift?.startTime;
   const endTime = shift?.gio_ket_thuc || shift?.endTime;
@@ -122,15 +102,7 @@ const getTodayScheduleWindow = (shift) => {
   };
 };
 
-/**
- * Tính toán trạng thái chấm công dựa vào thời điểm check-in và cấu hình ca:
- * - Check-in trước hoặc đúng startTime -> 'on_time' (Đúng giờ)
- * - Check-in sau startTime -> 'late' (Đi muộn)
- * @param {Date} checkInTime 
- * @param {Object} shiftConfig 
- * @param {Date} [date=new Date()] (ngày áp dụng)
- * @returns {String} 'on_time' | 'late'
- */
+// Xác định trạng thái vào ca đúng giờ ('on_time') hay đi muộn ('late')
 const calculateAttendanceStatus = (checkInTime, shiftConfig, date = new Date()) => {
   const startTime = shiftConfig?.gio_bat_dau || shiftConfig?.startTime;
   if (!startTime) return 'on_time';
@@ -145,6 +117,7 @@ const calculateAttendanceStatus = (checkInTime, shiftConfig, date = new Date()) 
   return 'on_time';
 };
 
+// Tính trạng thái tan ca (về sớm hay giữ nguyên trạng thái vào ca)
 const calculateCheckOutStatus = (checkOutTime, shiftConfig, initialStatus = 'on_time') => {
   const endTime = shiftConfig?.gio_ket_thuc || shiftConfig?.endTime;
   if (!endTime) {
@@ -152,8 +125,18 @@ const calculateCheckOutStatus = (checkOutTime, shiftConfig, initialStatus = 'on_
   }
 
   const vnDate = getVietnamTime(checkOutTime);
-  const checkOutMinutes = vnDate.getHours() * 60 + vnDate.getMinutes();
-  const shiftEndMinutes = timeStringToMinutes(endTime);
+  let checkOutMinutes = vnDate.getHours() * 60 + vnDate.getMinutes();
+  let shiftEndMinutes = timeStringToMinutes(endTime);
+  const startTime = shiftConfig?.gio_bat_dau || shiftConfig?.startTime;
+  const shiftStartMinutes = startTime ? timeStringToMinutes(startTime) : null;
+
+  // Hỗ trợ ca làm việc qua đêm (ví dụ 22:00 -> 06:00 hôm sau)
+  if (shiftStartMinutes !== null && shiftEndMinutes < shiftStartMinutes) {
+    shiftEndMinutes += 1440;
+    if (checkOutMinutes < shiftStartMinutes) {
+      checkOutMinutes += 1440;
+    }
+  }
 
   const isEarlyLeave = checkOutMinutes < shiftEndMinutes;
   const earlyMinutes = isEarlyLeave ? shiftEndMinutes - checkOutMinutes : 0;
@@ -171,13 +154,7 @@ const calculateCheckOutStatus = (checkOutTime, shiftConfig, initialStatus = 'on_
   };
 };
 
-/**
- * Tạo điều kiện truy vấn thời gian chấm công:
- * Bao gồm cả checkInTime và createdAt (cho các bản ghi ABSENT/EXCUSED_ABSENCE do Cron tạo khi checkInTime = null)
- * @param {Date|string} startDate
- * @param {Date|string} endDate
- * @returns {Object}
- */
+// Tạo điều kiện lọc ngày chấm công (bao gồm bản ghi vắng do tác vụ định kỳ tạo khi thoi_gian_vao null)
 const buildAttendanceDateFilter = (startDate, endDate) => {
   if (!startDate && !endDate) return {};
   const { Op } = require('sequelize');
@@ -219,6 +196,7 @@ const buildAttendanceDateFilter = (startDate, endDate) => {
   };
 };
 
+// Tính lại giờ vào/ra, phút trễ/sớm và trạng thái cho một bản ghi chấm công tổng hợp
 const recalculateAttendanceSummary = async (attendanceLogId) => {
   const { NhatKyChamCong, LuotQuetChamCong, CaLamViec } = require('../models');
 
@@ -252,17 +230,25 @@ const recalculateAttendanceSummary = async (attendanceLogId) => {
     status = 'absent';
   } else {
     const shiftStartTime = shift?.gio_bat_dau;
-    if (shiftStartTime) {
+    const shiftStartMinutes = shiftStartTime ? timeStringToMinutes(shiftStartTime) : null;
+    if (shiftStartMinutes !== null) {
       const vnCheckIn = getVietnamTime(earliestCheckIn);
       const checkInMinutes = vnCheckIn.getHours() * 60 + vnCheckIn.getMinutes();
-      lateMinutes = Math.max(0, checkInMinutes - timeStringToMinutes(shiftStartTime));
+      lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
     }
 
     const shiftEndTime = shift?.gio_ket_thuc;
     if (latestCheckOut && shiftEndTime) {
       const vnCheckOut = getVietnamTime(latestCheckOut);
-      const checkOutMinutes = vnCheckOut.getHours() * 60 + vnCheckOut.getMinutes();
-      earlyMinutes = Math.max(0, timeStringToMinutes(shiftEndTime) - checkOutMinutes);
+      let checkOutMinutes = vnCheckOut.getHours() * 60 + vnCheckOut.getMinutes();
+      let shiftEndMinutes = timeStringToMinutes(shiftEndTime);
+      if (shiftStartMinutes !== null && shiftEndMinutes < shiftStartMinutes) {
+        shiftEndMinutes += 1440;
+        if (checkOutMinutes < shiftStartMinutes) {
+          checkOutMinutes += 1440;
+        }
+      }
+      earlyMinutes = Math.max(0, shiftEndMinutes - checkOutMinutes);
     }
 
     if (earliestCheckIn && latestCheckOut) {
@@ -286,6 +272,7 @@ const recalculateAttendanceSummary = async (attendanceLogId) => {
   return attendanceLog;
 };
 
+// Chuẩn hóa tên phương thức chấm công sang enum lưu trong CSDL
 const normalizeAttendanceMethod = (method) => {
   const raw = String(method || 'gps_mobile').trim().toLowerCase();
   const METHOD_MAP = {
@@ -304,17 +291,32 @@ const normalizeAttendanceMethod = (method) => {
   return METHOD_MAP[raw] || 'gps_mobile';
 };
 
-const calculateActualTeachingPeriods = async ({ lichTrinhId, workingMinutes = 0, earlyMinutes = 0 }, LichTrinhModel) => {
+// Tính số tiết thực dạy dựa trên lịch trình và thời lượng làm việc thực tế
+const calculateActualTeachingPeriods = async (
+  { lichTrinhId, workingMinutes = 0, earlyMinutes = 0, lateMinutes = 0 },
+  LichTrinhModel
+) => {
+  let roundingMode = 'ROUND';
+  try {
+    const systemConfigService = require('../services/heThong/cauHinhHeThong.service');
+    const rule = systemConfigService.getConfigSync('QUY_TAC_DIEM_DANH', null);
+    if (rule && typeof rule === 'object' && typeof rule.lam_tron_tiet === 'string') {
+      roundingMode = rule.lam_tron_tiet.trim().toUpperCase();
+    }
+  } catch (_) {}
+
+  const roundPeriods = (val) => (roundingMode === 'FLOOR' ? Math.floor(val) : Math.round(val));
+
   if (lichTrinhId && LichTrinhModel) {
     const sch = await LichTrinhModel.findByPk(lichTrinhId, { attributes: ['so_tiet'] });
     const plannedPeriods = sch && sch.so_tiet ? Number(sch.so_tiet) : 3;
-    if ((earlyMinutes || 0) > 45) {
-      const remainingRatio = Math.max(0.5, workingMinutes / (plannedPeriods * 45));
-      return Math.min(plannedPeriods, Math.round(plannedPeriods * remainingRatio));
+    if ((earlyMinutes || 0) > 45 || (lateMinutes || 0) > 45) {
+      const ratio = Math.max(0, Math.min(1, workingMinutes / (plannedPeriods * 45)));
+      return Math.min(plannedPeriods, Math.max(0, roundPeriods(plannedPeriods * ratio)));
     }
     return plannedPeriods;
   }
-  return Math.round(Math.max(0, workingMinutes) / 45);
+  return Math.max(0, roundPeriods(Math.max(0, workingMinutes) / 45));
 };
 
 module.exports = {

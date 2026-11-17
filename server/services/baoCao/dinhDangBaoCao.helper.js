@@ -1,8 +1,7 @@
-/**
- * Tiện ích định dạng ngày giờ & nhãn hiển thị báo cáo (server/services/baoCao/dinhDangBaoCao.helper.js)
- */
-const { normalizeRole } = require('../../utils/vaiTro.utils');
+// Định dạng ngày giờ, nhãn trạng thái và chống công thức Excel (Formula Injection) khi xuất báo cáo
+const { isSystemAdminUser } = require('../../utils/vaiTro.utils');
 
+// Tính số ngày lịch nằm giữa startDate và endDate (bao gồm cả hai đầu)
 const calculateCalendarDays = (startDate, endDate) => {
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -12,6 +11,7 @@ const calculateCalendarDays = (startDate, endDate) => {
   return Math.max(1, Math.round((endUtc - startUtc) / 86400000) + 1);
 };
 
+// Chuyển ngày sang chuỗi khóa YYYY-MM-DD theo múi giờ Việt Nam
 const toDateKey = (date) => {
   const d = new Date(date);
   if (Number.isNaN(d.getTime())) return null;
@@ -23,35 +23,9 @@ const toDateKey = (date) => {
   }).format(d);
 };
 
-const isSystemAdminUser = (u) => {
-  if (!u) return false;
-  const r = normalizeRole(u.vai_tro_chinh);
-  const code = String(u.ma_can_bo || '').toUpperCase();
-  const email = String(u.email || '').toLowerCase();
-  const name = String(u.ho_ten || '').toLowerCase();
-  const hasAdminOrBghRole =
-    Array.isArray(u.danh_sach_vai_tro) &&
-    u.danh_sach_vai_tro.some((item) => {
-      const itemRole = normalizeRole(item.vai_tro || item.ma_vai_tro || item);
-      return itemRole === 'admin' || itemRole === 'bgh';
-    });
-  return (
-    r === 'admin' ||
-    r === 'bgh' ||
-    r.includes('quản trị') ||
-    r.includes('giám hiệu') ||
-    code.startsWith('ADMIN') ||
-    code.startsWith('BGH') ||
-    hasAdminOrBghRole ||
-    email.startsWith('admin@') ||
-    email.includes('daihocdtd@') ||
-    email.startsWith('hieutruong@') ||
-    name.includes('quản trị viên') ||
-    name.includes('hiệu trưởng') ||
-    name.includes('ban giám hiệu')
-  );
-};
+// Dùng lại hàm kiểm tra Admin/BGH thống nhất trong vaiTro.utils.js
 
+// Quy đổi mốc thời gian sang giờ Việt Nam (UTC+7) để tách ngày/giờ
 const toVnDate = (date) => {
   if (!date) return null;
   const d = new Date(date);
@@ -59,6 +33,7 @@ const toVnDate = (date) => {
   return new Date(d.getTime() + 7 * 3600 * 1000);
 };
 
+// Định dạng ngày kiểu DD/MM/YYYY
 const formatDateVN = (date) => {
   const vn = toVnDate(date);
   if (!vn) return '';
@@ -68,6 +43,7 @@ const formatDateVN = (date) => {
   return `${day}/${month}/${year}`;
 };
 
+// Định dạng giờ kiểu HH:mm:ss
 const formatTimeVN = (date) => {
   const vn = toVnDate(date);
   if (!vn) return '--';
@@ -77,6 +53,7 @@ const formatTimeVN = (date) => {
   return `${hour}:${minute}:${second}`;
 };
 
+// Lấy tên thứ trong tuần bằng tiếng Việt
 const getWeekdayVN = (date) => {
   const vn = toVnDate(date);
   if (!vn) return '';
@@ -84,6 +61,7 @@ const getWeekdayVN = (date) => {
   return names[vn.getUTCDay()] || '';
 };
 
+// Chuyển mã trạng thái chấm công sang nhãn tiếng Việt
 const getStatusLabel = (status) => {
   switch (status) {
     case 'on_time':
@@ -101,6 +79,7 @@ const getStatusLabel = (status) => {
   }
 };
 
+// Chuyển mã phương thức chấm công sang nhãn tiếng Việt
 const getMethodLabel = (method) => {
   switch (method) {
     case 'face_ai':
@@ -120,6 +99,7 @@ const getMethodLabel = (method) => {
   }
 };
 
+// Chuyển mã loại đơn nghỉ sang nhãn tiếng Việt
 const getLeaveTypeLabel = (type) => {
   switch (type) {
     case 'nghi_phep':
@@ -133,6 +113,7 @@ const getLeaveTypeLabel = (type) => {
   }
 };
 
+// Chuyển mã trạng thái duyệt đơn sang nhãn tiếng Việt
 const getLeaveStatusLabel = (status) => {
   switch (status) {
     case 'approved':
@@ -148,6 +129,7 @@ const getLeaveStatusLabel = (status) => {
   }
 };
 
+// Chuyển mã vai trò sang tên hiển thị tiếng Việt
 const getRoleLabel = (role) => {
   const norm = normalizeRole(role);
   switch (norm) {
@@ -186,6 +168,22 @@ const getRoleLabel = (role) => {
   }
 };
 
+// Chèn dấu nháy đơn vào đầu chuỗi bắt đầu bằng =, +, -, @ để chống Excel Formula Injection
+const sanitizeExcelCell = (value) => {
+  if (typeof value !== 'string') return value;
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+};
+
+// Làm sạch toàn bộ giá trị chuỗi trong một dòng dữ liệu Excel
+const sanitizeExcelRow = (row) => {
+  if (!row || typeof row !== 'object') return row;
+  const sanitized = {};
+  for (const [key, val] of Object.entries(row)) {
+    sanitized[key] = sanitizeExcelCell(val);
+  }
+  return sanitized;
+};
+
 module.exports = {
   calculateCalendarDays,
   toDateKey,
@@ -199,4 +197,6 @@ module.exports = {
   getLeaveTypeLabel,
   getLeaveStatusLabel,
   getRoleLabel,
+  sanitizeExcelCell,
+  sanitizeExcelRow,
 };

@@ -1,20 +1,20 @@
-/**
- * Cơ chế Khóa Phân Tán (Distributed Lock) cho Hệ thống Quản lý Chấm công & Nhân sự
- * Thứ tự ưu tiên: 1. Redis (Redlock) -> 2. SQL Server (CauHinhHeThong) -> 3. In-Memory Fallback
- */
+// Cơ chế khóa phân tán theo thứ tự ưu tiên: Redis, SQL Server, bộ nhớ cục bộ.
 const { sequelize, CauHinhHeThong } = require('../models');
 const { acquireRedisLock, releaseRedisLock, isRedisReady, redisGet } = require('../config/redis');
 
+// Sinh mã định danh riêng cho worker hiện tại
 const generateWorkerId = () =>
   `worker_${process.pid}_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
 
 const DEFAULT_WORKER_ID = generateWorkerId();
 const memoryLocks = new Map();
 
+// Xóa toàn bộ khóa trong RAM (dùng cho test)
 const resetMemoryLocks = () => {
   memoryLocks.clear();
 };
 
+// Kiểm tra SQL Server có đang kết nối để lưu khóa hay không
 const isSqlDbAvailable = async () => {
   if (process.env.NODE_ENV === 'test') return false;
   try {
@@ -25,6 +25,7 @@ const isSqlDbAvailable = async () => {
   }
 };
 
+// Giành khóa trong bộ nhớ cục bộ của tiến trình
 const acquireMemoryLock = (normalizedKey, now, expiresAt, workerId) => {
   const existing = memoryLocks.get(normalizedKey);
   if (existing && existing.isLocked && existing.expiresAt > now && existing.lockedBy !== workerId) {
@@ -39,6 +40,7 @@ const acquireMemoryLock = (normalizedKey, now, expiresAt, workerId) => {
   return true;
 };
 
+// Giành khóa phân tán theo thứ tự ưu tiên Redis -> SQL Server -> RAM
 const acquireLock = async (lockKey, ttlSeconds = 60, workerId = DEFAULT_WORKER_ID) => {
   if (!lockKey || typeof lockKey !== 'string') {
     throw new Error('[DistributedLock] lockKey phải là chuỗi ký tự hợp lệ.');
@@ -62,6 +64,7 @@ const acquireLock = async (lockKey, ttlSeconds = 60, workerId = DEFAULT_WORKER_I
       const existing = await CauHinhHeThong.findOne({
         where: { khoa_cau_hinh: normalizedKey },
         transaction,
+        lock: transaction.LOCK.UPDATE,
       });
 
       const newLockVal = {
@@ -99,6 +102,7 @@ const acquireLock = async (lockKey, ttlSeconds = 60, workerId = DEFAULT_WORKER_I
   }
 };
 
+// Giải phóng khóa phân tán đúng chủ sở hữu
 const releaseLock = async (lockKey, workerId = DEFAULT_WORKER_ID) => {
   if (!lockKey || typeof lockKey !== 'string') return false;
 
@@ -143,8 +147,9 @@ const releaseLock = async (lockKey, workerId = DEFAULT_WORKER_ID) => {
   }
 };
 
+// Bọc thực thi tác vụ với khóa phân tán để tránh chạy trùng giữa nhiều tiến trình
 const withDistributedLock = async (lockKey, ttlSeconds, taskFn, options = {}) => {
-  const workerId = options.workerId || DEFAULT_WORKER_ID;
+  const workerId = options.workerId || generateWorkerId();
   const prefix = options.logPrefix || '[DistributedLock]';
 
   const acquired = await acquireLock(lockKey, ttlSeconds, workerId);
@@ -169,6 +174,7 @@ const withDistributedLock = async (lockKey, ttlSeconds, taskFn, options = {}) =>
   }
 };
 
+// Kiểm tra trạng thái hiện tại của một khóa phân tán
 const getLockStatus = async (lockKey) => {
   const normalizedKey = `LOCK_${lockKey.toUpperCase().trim()}`;
   const now = new Date();

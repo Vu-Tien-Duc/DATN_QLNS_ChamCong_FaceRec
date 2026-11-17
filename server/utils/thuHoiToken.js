@@ -1,7 +1,4 @@
-/**
- * Quản lý danh sách thu hồi token (Revoked Tokens) trong bộ nhớ (In-Memory)
- * Không lưu bảng trong CSDL SQL Server.
- */
+// Quản lý danh sách thu hồi JWT Access Token qua Redis và bộ nhớ cục bộ.
 const crypto = require('crypto');
 const { redisSet, redisGet, isRedisReady } = require('../config/redis');
 
@@ -21,8 +18,10 @@ if (process.env.NODE_ENV !== 'test') {
   if (interval.unref) interval.unref();
 }
 
+// Băm token bằng SHA-256 để không lưu token gốc trong bộ nhớ/Redis
 const hashToken = (tokenStr) => crypto.createHash('sha256').update(String(tokenStr).trim()).digest('hex');
 
+// Kiểm tra đồng bộ token có nằm trong danh sách thu hồi trên RAM
 const isTokenRevoked = (token) => {
   if (!token) return false;
   const hash = hashToken(token);
@@ -35,6 +34,7 @@ const isTokenRevoked = (token) => {
   return true;
 };
 
+// Kiểm tra bất đồng bộ token đã bị thu hồi trên cả RAM và Redis
 const isTokenRevokedAsync = async (token) => {
   if (!token) return false;
   if (isTokenRevoked(token)) return true;
@@ -46,6 +46,7 @@ const isTokenRevokedAsync = async (token) => {
   return false;
 };
 
+// Đưa token vào danh sách thu hồi cho đến khi hết hạn
 const revokeToken = (token, expiresAt) => {
   if (!token) return;
   const hash = hashToken(token);

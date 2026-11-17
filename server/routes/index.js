@@ -1,3 +1,4 @@
+// Điểm gắn tập trung 18 nhóm API chính dưới tiền tố /api và endpoint kiểm tra sức khỏe hệ thống
 const express = require('express');
 const router = express.Router();
 
@@ -22,9 +23,7 @@ const publicFacultyRoutes = require('./public_giangvien/giangVien.routes');
 
 const { sequelize } = require('../config/db');
 
-/**
- * Health check endpoint - Chuẩn hóa 16 Bảng CSDL SQL Server v2.5
- */
+// Endpoint kiểm tra sức khỏe hệ thống và trạng thái kết nối 24 bảng CSDL SQL Server 3NF
 router.get('/suc-khoe', async (req, res) => {
   let dbStatus = 'CONNECTING_OR_DISCONNECTED';
   try {

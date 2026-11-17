@@ -1,6 +1,4 @@
-/**
- * Tiện ích tính lương, thuế TNCN 5 bậc & định dạng phiếu lương (server/services/phieuLuong/tinhThueVaLuong.helper.js)
- */
+// Tính lương, phụ cấp, khấu trừ vắng ca, bảo hiểm, thuế TNCN 5 bậc và định dạng phiếu lương
 const { Op } = require('sequelize');
 const {
   PhuCapLuong,
@@ -9,48 +7,11 @@ const {
   HoSoCanBo,
   PhongBan,
   NhatKyChamCong,
+  DonNghiPhep,
   CauHinhHeThong,
 } = require('../../models');
-const { normalizeRole } = require('../../utils/vaiTro.utils');
-
-class ServiceError extends Error {
-  constructor(message, statusCode = 400, errorCode = null, data = null) {
-    super(message);
-    this.name = 'ServiceError';
-    this.statusCode = statusCode;
-    this.errorCode = errorCode;
-    this.data = data;
-  }
-}
-
-const isSystemAdminUser = (u) => {
-  if (!u) return false;
-  const r = normalizeRole(u.vai_tro_chinh);
-  const code = String(u.ma_can_bo || '').toUpperCase();
-  const email = String(u.email || '').toLowerCase();
-  const name = String(u.ho_ten || '').toLowerCase();
-  const hasAdminOrBghRole =
-    Array.isArray(u.danh_sach_vai_tro) &&
-    u.danh_sach_vai_tro.some((item) => {
-      const itemRole = normalizeRole(item.ma_vai_tro || item);
-      return itemRole === 'admin' || itemRole === 'bgh';
-    });
-  return (
-    r === 'admin' ||
-    r === 'bgh' ||
-    r.includes('quản trị') ||
-    r.includes('giám hiệu') ||
-    code.startsWith('ADMIN') ||
-    code.startsWith('BGH') ||
-    hasAdminOrBghRole ||
-    email.startsWith('admin@') ||
-    email.includes('daihocdtd@') ||
-    email.startsWith('hieutruong@') ||
-    name.includes('quản trị viên') ||
-    name.includes('hiệu trưởng') ||
-    name.includes('ban giám hiệu')
-  );
-};
+const { normalizeRole, isSystemAdminUser } = require('../../utils/vaiTro.utils');
+const ServiceError = require('../../utils/loiNghiepVu');
 
 const DEFAULT_TAX_BRACKETS = [
   { bac: 1, tu: 0, den: 10000000, thue_suat: 0.05 },
@@ -60,6 +21,7 @@ const DEFAULT_TAX_BRACKETS = [
   { bac: 5, tu: 100000000, den: Infinity, thue_suat: 0.35 },
 ];
 
+// Chuẩn hóa biểu thuế lũy tiến 5 bậc và tính sẵn giá trị trừ nhanh
 const normalizeTaxBrackets = (rawBrackets) => {
   const source = Array.isArray(rawBrackets) && rawBrackets.length > 0 ? rawBrackets : DEFAULT_TAX_BRACKETS;
   const sorted = [...source].sort((a, b) => Number(a.tu || 0) - Number(b.tu || 0));
@@ -83,6 +45,7 @@ const normalizeTaxBrackets = (rawBrackets) => {
   });
 };
 
+// Tính thuế thu nhập cá nhân lũy tiến 5 bậc từ thu nhập tính thuế
 const calculatePersonalIncomeTax5Brackets = (taxableIncome, customBrackets = null) => {
   const income = Math.max(0, Number(taxableIncome) || 0);
   if (income <= 0) {
@@ -129,6 +92,7 @@ const calculatePersonalIncomeTax5Brackets = (taxableIncome, customBrackets = nul
   };
 };
 
+// Đọc các tham số cấu hình lương, bảo hiểm, giảm trừ và biểu thuế từ DB
 const getPayrollConfigParams = async () => {
   const configs = await CauHinhHeThong.findAll({
     where: {
@@ -145,6 +109,7 @@ const getPayrollConfigParams = async () => {
           'TY_LE_UU_DAI',
           'PHU_CAP_CHUC_VU',
           'HE_SO_LUONG_CO_BAN',
+          'LUONG_TOI_THIEU_VUNG',
         ],
       },
     },
@@ -162,6 +127,7 @@ const getPayrollConfigParams = async () => {
 
   return {
     luong_co_so: Number(paramMap.LUONG_CO_SO) || 2530000,
+    luong_toi_thieu_vung: Number(paramMap.LUONG_TOI_THIEU_VUNG) || 4960000,
     giam_tru_ban_than: Number(paramMap.GIAM_TRU?.ban_than) || 15500000,
     giam_tru_phu_thuoc: Number(paramMap.GIAM_TRU?.phu_thuoc) || 6200000,
     ty_le_bhxh: tyLeBhxh,
@@ -196,6 +162,7 @@ const getPayrollConfigParams = async () => {
   };
 };
 
+// Chuẩn hóa tên chức vụ về mã snake_case để tra cứu phụ cấp chức vụ
 const normalizePositionCode = (value) =>
   String(value || '')
     .trim()
@@ -206,6 +173,7 @@ const normalizePositionCode = (value) =>
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
 
+// Tính toán chi tiết lương, phụ cấp, khấu trừ, bảo hiểm và thuế cho một nhân sự trong tháng
 const calculateUserPayroll = async ({ user, month, year, configParams, createdBy }) => {
   const userId = user.id;
   const userRole = normalizeRole(user.vai_tro_chinh);
@@ -234,11 +202,13 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
   const phuCapChucVu = Math.round(heSoChucVu * luongCoSo);
 
   let seniorityYears = Number(profile.tham_nien_nam || 0);
-  if (seniorityYears <= 0 && profile.ngay_bat_dau_giang_day) {
+  if (profile.ngay_bat_dau_giang_day) {
     const startDate = new Date(profile.ngay_bat_dau_giang_day);
     const targetDate = new Date(Number(year), Number(month) - 1, 1);
-    if (!Number.isNaN(startDate.getTime()) && targetDate > startDate) {
-      seniorityYears = Math.max(0, Math.floor((targetDate - startDate) / (365.25 * 24 * 3600 * 1000)));
+    if (!Number.isNaN(startDate.getTime())) {
+      seniorityYears = targetDate > startDate
+        ? Math.max(0, Math.floor((targetDate - startDate) / (365.25 * 24 * 3600 * 1000)))
+        : 0;
     }
   }
 
@@ -268,17 +238,29 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
     },
   });
 
+  const leaveIds = Array.from(
+    new Set(attendanceLogs.map((l) => l.don_tu_id).filter(Boolean).map(String))
+  );
+  const leaveTypeMap = new Map();
+  if (leaveIds.length > 0) {
+    const leaveDocs = await DonNghiPhep.findAll({
+      where: { id: { [Op.in]: leaveIds } },
+      attributes: ['id', 'loai_don'],
+      raw: true,
+    });
+    for (const l of leaveDocs) {
+      leaveTypeMap.set(String(l.id), String(l.loai_don || '').toLowerCase());
+    }
+  }
+
   let totalActualTeachingHours = 0;
-  const absentDateSet = new Set();
-  const workedDateSet = new Set();
+  const logsByDate = new Map();
 
   for (const log of attendanceLogs) {
     const dateKey = String(log.ngay_cong || '').slice(0, 10);
-    if (log.trang_thai === 'absent') {
-      if (dateKey && !workedDateSet.has(dateKey)) absentDateSet.add(dateKey);
-    } else if (dateKey) {
-      workedDateSet.add(dateKey);
-      absentDateSet.delete(dateKey);
+    if (dateKey) {
+      if (!logsByDate.has(dateKey)) logsByDate.set(dateKey, []);
+      logsByDate.get(dateKey).push(log);
     }
     if (isFaculty && log.trang_thai !== 'absent' && log.trang_thai !== 'excused_absence') {
       // Quy đổi so_tiet_thuc_day (45 phút/tiết = 0.75 giờ) sang giờ chuẩn để khớp với dinh_muc_thang
@@ -290,8 +272,24 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
     }
   }
 
-  const unexcusedAbsenceDays = absentDateSet.size;
-  const actualWorkDays = workedDateSet.size;
+  let rawAbsenceDays = 0;
+  let rawWorkedDays = 0;
+  for (const dayLogs of logsByDate.values()) {
+    const totalShifts = dayLogs.length || 1;
+    let unpaidOrAbsentShifts = 0;
+    for (const log of dayLogs) {
+      const leaveType = log.don_tu_id ? leaveTypeMap.get(String(log.don_tu_id)) : '';
+      const isUnpaidLeave = log.trang_thai === 'excused_absence' && leaveType === 'viec_rieng';
+      if (log.trang_thai === 'absent' || isUnpaidLeave) {
+        unpaidOrAbsentShifts += 1;
+      }
+    }
+    rawAbsenceDays += unpaidOrAbsentShifts / totalShifts;
+    rawWorkedDays += (totalShifts - unpaidOrAbsentShifts) / totalShifts;
+  }
+
+  const unexcusedAbsenceDays = Math.round(rawAbsenceDays * 100) / 100;
+  const actualWorkDays = Math.round(rawWorkedDays * 100) / 100;
 
   const quotaReductionRate = Math.min(0.95, Math.max(0, Number(positionConfig?.ty_le_giam_dinh_muc || 0)));
   const dinhMucGoc = isVisitingLecturer
@@ -312,12 +310,14 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
   const grossIncome = adjustedLuongChinh + tongPhuCap + thuLaoVuotGio;
 
   const maxInsuranceBase = 20 * luongCoSo;
+  const maxBhtnBase = 20 * (configParams.luong_toi_thieu_vung || 4960000);
   const rawInsuranceBase = adjustedLuongChinh + phuCapChucVu + phuCapThamNien;
   const insuranceBase = isExemptFromInsurance ? 0 : Math.min(rawInsuranceBase, maxInsuranceBase);
+  const bhtnBase = isExemptFromInsurance ? 0 : Math.min(rawInsuranceBase, maxBhtnBase);
 
   const bhxh = isExemptFromInsurance ? 0 : Math.round(insuranceBase * configParams.ty_le_bhxh);
   const bhyt = isExemptFromInsurance ? 0 : Math.round(insuranceBase * configParams.ty_le_bhyt);
-  const bhtn = isExemptFromInsurance ? 0 : Math.round(insuranceBase * configParams.ty_le_bhtn);
+  const bhtn = isExemptFromInsurance ? 0 : Math.round(bhtnBase * configParams.ty_le_bhtn);
   const tongBaoHiem = bhxh + bhyt + bhtn;
 
   const dependentsCount = Number(profile.so_nguoi_phu_thuoc || 0);
@@ -393,6 +393,7 @@ const payrollInclude = [
   { model: GiamTruLuong, as: 'cac_khoan_giam_tru' },
 ];
 
+// Định dạng bản ghi phiếu lương kèm các khoản phụ cấp, bảo hiểm và thông tin người lập/duyệt
 const formatPayrollDoc = (doc, configParams = null) => {
   if (!doc) return null;
   const raw = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
@@ -402,7 +403,7 @@ const formatPayrollDoc = (doc, configParams = null) => {
   const uuDaiNghe = Number(allowances.find((a) => a.loai_phu_cap === 'UU_DAI_NGHE')?.so_tien || 0);
 
   const luongCoSo = Number(raw.luong_co_ban || 0);
-  const heSoLuong = Number(raw.he_so_luong || 1);
+  const heSoLuong = raw.he_so_luong != null ? Number(raw.he_so_luong) : 1;
   const luongChinh = Math.max(0, Math.round(luongCoSo * heSoLuong) - Number(raw.tong_giam_tru || 0));
   const tongBaoHiem = Number(raw.dong_bao_hiem || 0);
   const tienThue = Number(raw.thue_thu_nhap_ca_nhan || 0);

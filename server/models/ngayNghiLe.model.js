@@ -1,10 +1,8 @@
+// Mô hình bảng ngay_nghi_le: danh sách ngày nghỉ lễ (năm được suy diễn từ ngay_bat_dau).
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, trimmedString } = require('./modelHelpers');
 
-/**
- * Bảng ngay_nghi_le. Năm suy diễn từ ngay_bat_dau (không lưu cột dư thừa theo 3NF).
- */
 class NgayNghiLe extends Model {
   get nam() {
     return this.ngay_bat_dau ? Number(String(this.ngay_bat_dau).slice(0, 4)) : null;

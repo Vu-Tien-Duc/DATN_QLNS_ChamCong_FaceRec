@@ -1,10 +1,4 @@
-/**
- * attendanceHelpers.js
- * Tập hợp các thuật toán và tiện ích phục vụ chấm công đa phương thức:
- * 1. SINH TRẮC HỌC KHUÔN MẶT (Face Biometrics - Euclidean, Centroid, Cache, Anti-duplicate)
- * 2. ĐỊNH VỊ GPS & HÀNG RÀO ĐỊA LÝ (Geofencing - Haversine, Campus Config, Adaptive Tolerance)
- * 3. MÃ QR ĐỘNG BẢO MẬT (Dynamic TOTP QR - HMAC SHA-256)
- */
+// Tiện ích sinh trắc học khuôn mặt, định vị GPS/IP nội bộ trường và mã QR động chấm công.
 
 const fs = require('fs');
 const net = require('net');
@@ -14,21 +8,15 @@ const User = require('../models/nguoiDung.model');
 const FaceTemplate = require('../models/mauKhuonMat.model');
 const systemConfigService = require('../services/heThong/cauHinhHeThong.service');
 
+// Kiểm tra mảng vector khuôn mặt hợp lệ (mảng số hữu hạn khác rỗng)
 const isValidFaceDescriptor = (descriptor) =>
   Array.isArray(descriptor) &&
   descriptor.length > 0 &&
   descriptor.every((value) => typeof value === 'number' && Number.isFinite(value));
 
-// ============================================================================
-// PHẦN 1: SINH TRẮC HỌC KHUÔN MẶT (FACE BIOMETRICS)
-// ============================================================================
+// Sinh trắc học khuôn mặt
 
-/**
- * Tính khoảng cách Euclidean giữa hai vector đặc trưng 512 số (InsightFace)
- * @param {number[]} vecA
- * @param {number[]} vecB
- * @returns {number}
- */
+// Tính khoảng cách Euclidean giữa hai vector khuôn mặt
 const euclideanDistance = (vecA, vecB) => {
   if (!vecA || !vecB || vecA.length !== vecB.length) return Infinity;
   let sum = 0;
@@ -38,12 +26,7 @@ const euclideanDistance = (vecA, vecB) => {
   return Math.sqrt(sum);
 };
 
-/**
- * Tính Cosine Similarity giữa hai vector đặc trưng (Dot Product nếu đã chuẩn hóa L2)
- * @param {number[]} vecA
- * @param {number[]} vecB
- * @returns {number} Giá trị trong khoảng [-1.0, 1.0]
- */
+// Tính độ tương đồng Cosine giữa hai vector khuôn mặt
 const cosineSimilarity = (vecA, vecB) => {
   if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
   let dotProduct = 0;
@@ -64,11 +47,7 @@ const FACE_MATCH_THRESHOLD = 0.48;
 // Ngưỡng kiểm tra trùng lặp khi Đăng Ký Khuôn Mặt (Anti-duplicate registration).
 const DUPLICATE_FACE_THRESHOLD = 0.28;
 
-/**
- * Tính vector trung tâm (Centroid) và chuẩn hóa độ dài L2 = 1.0
- * @param {number[][]} descriptors - Mảng các vector 512 số (InsightFace)
- * @returns {number[]|null}
- */
+// Tính vector trung tâm và chuẩn hóa L2 = 1.0
 const computeNormalizedCentroid = (descriptors) => {
   if (!Array.isArray(descriptors) || descriptors.length === 0) return null;
   const validDesc = descriptors.filter(isValidFaceDescriptor);
@@ -97,12 +76,7 @@ const computeNormalizedCentroid = (descriptors) => {
   return centroid;
 };
 
-/**
- * Thuật toán Biometric Multi-Metric Fusion kiểm tra trùng lặp khuôn mặt
- * @param {number[][]} incomingDescriptors
- * @param {Array} otherUsersWithFace
- * @returns {{ isDuplicate: boolean, duplicateUser: Object|null, distance: number, threshold: number }}
- */
+// Kiểm tra khuôn mặt mới có trùng với người dùng khác đã đăng ký hay không
 const checkDuplicateFace = (incomingDescriptors, otherUsersWithFace) => {
   if (!Array.isArray(incomingDescriptors) || incomingDescriptors.length === 0) {
     return { isDuplicate: false, duplicateUser: null, distance: Infinity, similarity: 0, threshold: 0.88 };
@@ -126,19 +100,19 @@ const checkDuplicateFace = (incomingDescriptors, otherUsersWithFace) => {
     const otherPrimary = otherCandidates[0];
     const otherCentroid = computeNormalizedCentroid(otherCandidates);
 
-    // 1. Khoảng cách Euclidean & Cosine giữa 2 góc chính diện
+    // So sánh 2 ảnh chính diện
     const primaryDist =
       inputPrimary && otherPrimary ? euclideanDistance(inputPrimary, otherPrimary) : Infinity;
     const primarySim =
       inputPrimary && otherPrimary ? cosineSimilarity(inputPrimary, otherPrimary) : -1;
 
-    // 2. Khoảng cách Euclidean & Cosine giữa 2 vector trung tâm (Centroid)
+    // So sánh 2 vector trung tâm
     const centroidDist =
       inputCentroid && otherCentroid ? euclideanDistance(inputCentroid, otherCentroid) : Infinity;
     const centroidSim =
       inputCentroid && otherCentroid ? cosineSimilarity(inputCentroid, otherCentroid) : -1;
 
-    // 3. Tìm cặp tương đồng nhất trong toàn bộ các góc chụp
+    // Tìm cặp góc chụp giống nhau nhất
     let minPairDist = Infinity;
     let maxPairSim = -1;
     for (const inVec of incomingDescriptors) {
@@ -162,13 +136,7 @@ const checkDuplicateFace = (incomingDescriptors, otherUsersWithFace) => {
 
     const is512 = inputPrimary?.length === 512;
 
-    // TIÊU CHÍ XÁC NHẬN TRÙNG LẶP (CÙNG MỘT NGƯỜI):
-    // Đối với ArcFace 512D:
-    // - Cosine Similarity giữa 2 ảnh chính diện >= 0.58 HOẶC
-    // - Cosine Similarity giữa 2 Centroid >= 0.58 HOẶC
-    // - Khoảng cách Euclidean tối thiểu <= 0.88 HOẶC
-    // - Có bất kỳ cặp góc nào tương đồng >= 0.62
-    // (Đảm bảo 100% bắt được cùng 1 người dù lệch góc hay đổi biểu cảm; người khác biệt chỉ có Cosine < 0.35)
+    // Ngưỡng trùng lặp cho vector 512D (hoặc vector cũ 128D)
     const isDup = is512
       ? (primarySim >= 0.58 || centroidSim >= 0.58 || maxPairSim >= 0.62 || primaryDist <= 0.88 || centroidDist <= 0.88 || minPairDist <= 0.84)
       : (primaryDist < 0.28 || centroidDist < 0.28 || minPairDist < 0.25);
@@ -194,10 +162,7 @@ let _cachedUsersWithFace = null;
 let _faceCacheExpiry = 0;
 const FACE_CACHE_TTL_MS = 5 * 60 * 1000;
 
-/**
- * Lấy danh sách người dùng đã đăng ký Face ID từ Cache trong RAM (tránh đọc DB mỗi frame)
- * @returns {Promise<Array>}
- */
+// Lấy danh sách khuôn mặt đã đăng ký từ cache RAM (tránh đọc DB mỗi frame)
 const getCachedUsersWithFace = async () => {
   const now = Date.now();
   if (_cachedUsersWithFace && now < _faceCacheExpiry) {
@@ -258,21 +223,13 @@ const getCachedUsersWithFace = async () => {
   return usersWithFace;
 };
 
-/**
- * Xóa cache người dùng Face ID khi có người đăng ký mới hoặc xóa Face ID
- */
+// Xóa cache khuôn mặt trong RAM khi có thay đổi đăng ký
 const invalidateFaceCache = () => {
   _cachedUsersWithFace = null;
   _faceCacheExpiry = 0;
 };
 
-/**
- * Tìm kiếm người dùng khớp nhất từ một vector khuôn mặt
- * @param {number[]} descriptor
- * @param {Array} usersWithFace
- * @param {number} [threshold=FACE_MATCH_THRESHOLD]
- * @returns {{ bestMatch: Object|null, bestDistance: number, confidenceScore: number }}
- */
+// Tìm người dùng khớp nhất với vector khuôn mặt truyền vào
 const findBestFaceMatch = (descriptor, usersWithFace, threshold = FACE_MATCH_THRESHOLD) => {
   let bestMatch = null;
   let bestDistance = Infinity;
@@ -300,12 +257,11 @@ const findBestFaceMatch = (descriptor, usersWithFace, threshold = FACE_MATCH_THR
   };
 };
 
-// ============================================================================
-// PHẦN 2: HÀNG RÀO ĐỊA LÝ & TỌA ĐỘ GPS (GEOFENCING)
-// ============================================================================
+// Hàng rào địa lý GPS và mạng nội bộ
 
 const CAMPUS_CONFIG_FILE = path.join(__dirname, '../config/campus_config.json');
 
+// Đọc cấu hình khuôn viên trường từ tệp campus_config.json hoặc biến môi trường
 const loadPersistedCampusConfig = () => {
   const defaultConfig = {
     name: process.env.CAMPUS_NAME || 'Khuôn viên Cơ sở chính - Trường Đại học',
@@ -345,6 +301,7 @@ const loadPersistedCampusConfig = () => {
   return config;
 };
 
+// Lưu cấu hình khuôn viên trường xuống tệp campus_config.json
 const savePersistedCampusConfig = (cfg) => {
   try {
     fs.writeFileSync(CAMPUS_CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf8');
@@ -355,14 +312,7 @@ const savePersistedCampusConfig = (cfg) => {
 
 const CAMPUS_CONFIG = loadPersistedCampusConfig();
 
-/**
- * Tính khoảng cách đường chim bay giữa 2 tọa độ GPS (Công thức Haversine)
- * @param {number} lat1
- * @param {number} lon1
- * @param {number} lat2
- * @param {number} lon2
- * @returns {number} Khoảng cách tính bằng mét
- */
+// Tính khoảng cách theo mét giữa 2 tọa độ GPS (công thức Haversine)
 const calculateDistanceMeters = (lat1, lon1, lat2, lon2) => {
   if (lat1 === undefined || lon1 === undefined || lat2 === undefined || lon2 === undefined) {
     return Infinity;
@@ -381,13 +331,7 @@ const calculateDistanceMeters = (lat1, lon1, lat2, lon2) => {
   return Math.round(R * c);
 };
 
-/**
- * Kiểm tra xem địa chỉ IP có thuộc dải mạng nội bộ trường (Campus Subnets) hay không
- * Hỗ trợ IPv4 CIDR, loopback (127.0.0.1, ::1) và các dải LAN trường (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
- * @param {string} ip Địa chỉ IP của client gửi lên
- * @param {string[]} [customSubnets] Danh sách CIDR tùy chọn
- * @returns {{ isCampusIp: boolean, ip: string, matchedSubnet?: string, reason?: string }}
- */
+// Kiểm tra địa chỉ IP có thuộc dải mạng nội bộ trường hay không
 const verifyCampusNetwork = (ip, customSubnets = null) => {
   if (!ip) {
     return { isCampusIp: false, ip: null, reason: 'Không có thông tin địa chỉ IP.' };
@@ -395,7 +339,7 @@ const verifyCampusNetwork = (ip, customSubnets = null) => {
 
   const cleanIp = String(ip).replace(/^::ffff:/, '').trim();
 
-  // 1. Loopback / Localhost (Dành cho kiểm thử và demo nội bộ)
+  // Cho phép localhost phục vụ kiểm thử nội bộ
   if (['127.0.0.1', '::1', 'localhost'].includes(cleanIp)) {
     return { isCampusIp: true, ip: cleanIp, matchedSubnet: '127.0.0.1/32 (Localhost)' };
   }
@@ -450,14 +394,7 @@ const verifyCampusNetwork = (ip, customSubnets = null) => {
   return { isCampusIp: false, ip: cleanIp, reason: 'Địa chỉ IP ngoài dải mạng trường học.' };
 };
 
-/**
- * Kiểm tra xem vị trí người dùng có nằm trong Hàng rào địa lý (Geofence) và Mạng trường hay không
- * @param {{ lat: number, lng: number, accuracy?: number }} clientLocation
- * @param {{ lat?: number, lng?: number, name?: string }} [targetLocation]
- * @param {number} [maxRadius]
- * @param {string} [clientIp] Địa chỉ IP của client gửi lên để đối soát chéo chống Fake GPS
- * @returns {{ isInside: boolean, distanceMeters: number, allowedRadius: number, effectiveRadius: number, target: Object, isFraud: boolean, fraudReason: string|null, isSuspicious?: boolean, suspiciousReason?: string|null, verificationMethod?: string, confidence?: string }}
- */
+// Kiểm tra vị trí GPS và IP có nằm trong phạm vi trường hoặc đơn vị hay không
 const validateGeofence = (clientLocation, targetLocation = null, maxRadius = null, clientIp = null) => {
   const cachedCampus = systemConfigService.getConfigSync('CAMPUS_GEOFENCE');
   const activeCampus =
@@ -526,7 +463,7 @@ const validateGeofence = (clientLocation, targetLocation = null, maxRadius = nul
     };
   }
 
-  // 1. Kiểm tra khoảng cách tới Tọa độ Khuôn viên trường (Campus Config)
+  // Kiểm tra khoảng cách tới tọa độ khuôn viên trường
   const campusDistance = calculateDistanceMeters(
     Number(clientLocation.lat),
     Number(clientLocation.lng),
@@ -541,7 +478,7 @@ const validateGeofence = (clientLocation, targetLocation = null, maxRadius = nul
   if (campusDistance <= effectiveRadius) {
     isInside = true;
   } else {
-    // 2. Nếu targetLocation (khoa/phòng ban/phòng học của lịch dạy) có tọa độ riêng hợp lệ, kiểm tra thêm
+    // Kiểm tra thêm tọa độ riêng của khoa/phòng ban nếu có
     const targets = Array.isArray(targetLocation)
       ? targetLocation
       : targetLocation
@@ -589,7 +526,7 @@ const validateGeofence = (clientLocation, targetLocation = null, maxRadius = nul
 
   const roundedDistance = Math.round(minDistance);
 
-  // 3. Phân tích kết hợp 2 yếu tố GPS & IP Mạng trường
+  // Kết hợp đối chiếu GPS và IP mạng trường
   if (isInside) {
     const isSuspicious = Boolean(netCheck && !netCheck.isCampusIp);
     return {
@@ -659,6 +596,7 @@ const validateGeofence = (clientLocation, targetLocation = null, maxRadius = nul
   };
 };
 
+// Lấy cấu hình tọa độ và bán kính khuôn viên trường hiện hành
 const getCampusConfig = () => {
   const cached = systemConfigService.getConfigSync('CAMPUS_GEOFENCE');
   if (cached && typeof cached === 'object' && Number.isFinite(Number(cached.lat)) && Number.isFinite(Number(cached.lng))) {
@@ -672,9 +610,7 @@ const getCampusConfig = () => {
   return { ...CAMPUS_CONFIG };
 };
 
-/**
- * Lấy danh sách tọa độ geofence theo Khoa / Phòng ban của nhân sự (nếu có khai báo tọa độ riêng).
- */
+// Lấy danh sách tọa độ geofence theo khoa, phòng ban hoặc lịch giảng dạy
 const resolveUserGeofenceTargets = async (userId, scheduleId = null) => {
   if (!userId && !scheduleId) return [];
   try {
@@ -736,6 +672,7 @@ const resolveUserGeofenceTargets = async (userId, scheduleId = null) => {
   }
 };
 
+// Cập nhật và lưu cấu hình tọa độ/bán kính khuôn viên trường
 const updateCampusConfig = (newConfig = {}) => {
   const updatedConfig = { ...CAMPUS_CONFIG };
   const validateNumber = (field, value, min, max) => {
@@ -748,8 +685,13 @@ const updateCampusConfig = (newConfig = {}) => {
     return number;
   };
 
-  if (newConfig.name !== undefined) {
-    const name = String(newConfig.name).trim();
+  const incomingName = newConfig.name !== undefined ? newConfig.name : newConfig.ten_co_so;
+  const incomingLat = newConfig.lat !== undefined ? newConfig.lat : newConfig.vi_do;
+  const incomingLng = newConfig.lng !== undefined ? newConfig.lng : newConfig.kinh_do;
+  const incomingRadius = newConfig.radiusMeters !== undefined ? newConfig.radiusMeters : newConfig.ban_kinh_met;
+
+  if (incomingName !== undefined) {
+    const name = String(incomingName).trim();
     if (!name) {
       const error = new Error('Tên khuôn viên không được để trống.');
       error.statusCode = 400;
@@ -757,14 +699,14 @@ const updateCampusConfig = (newConfig = {}) => {
     }
     updatedConfig.name = name;
   }
-  if (newConfig.lat !== undefined) {
-    updatedConfig.lat = validateNumber('lat', newConfig.lat, -90, 90);
+  if (incomingLat !== undefined) {
+    updatedConfig.lat = validateNumber('lat', incomingLat, -90, 90);
   }
-  if (newConfig.lng !== undefined) {
-    updatedConfig.lng = validateNumber('lng', newConfig.lng, -180, 180);
+  if (incomingLng !== undefined) {
+    updatedConfig.lng = validateNumber('lng', incomingLng, -180, 180);
   }
-  if (newConfig.radiusMeters !== undefined) {
-    const radius = validateNumber('radiusMeters', newConfig.radiusMeters, 1, 100000);
+  if (incomingRadius !== undefined) {
+    const radius = validateNumber('radiusMeters', incomingRadius, 1, 100000);
     if (!Number.isInteger(radius)) {
       const error = new Error('Giá trị radiusMeters phải là số nguyên.');
       error.statusCode = 400;
@@ -778,10 +720,9 @@ const updateCampusConfig = (newConfig = {}) => {
   return { ...CAMPUS_CONFIG };
 };
 
-// ============================================================================
-// PHẦN 3: MÃ QR ĐỘNG TOTP BẢO MẬT (DYNAMIC QR CODE)
-// ============================================================================
+// Mã QR động chấm công
 
+// Lấy khóa bí mật dùng để ký và xác minh mã QR động
 const getQrSecret = () => {
   if (process.env.QR_SECRET) {
     return process.env.QR_SECRET;
@@ -793,11 +734,7 @@ const getQrSecret = () => {
 };
 const QR_LIFETIME_SECONDS = 20;
 
-/**
- * Sinh mã QR Động chứa token có chữ ký HMAC kèm timestamp (Hết hạn sau 20s)
- * @param {Object} [meta={}] Thông tin giảng đường / máy chấm công
- * @returns {{ qrToken: string, qrPayload: Object, expiresIn: number, expiresAt: string, campus: Object }}
- */
+// Tạo mã QR động ký HMAC có thời hạn 20 giây
 const generateDynamicQRCode = (meta = {}) => {
   const timestamp = Date.now();
   const nonce = crypto.randomBytes(4).toString('hex');
@@ -822,11 +759,7 @@ const generateDynamicQRCode = (meta = {}) => {
   };
 };
 
-/**
- * Xác minh mã QR Động được quét từ điện thoại
- * @param {string} token - Token dạng base64Payload.signature
- * @returns {{ valid: boolean, message?: string, data?: Object }}
- */
+// Xác minh chữ ký và thời hạn của mã QR động
 const verifyDynamicQRCode = (token) => {
   if (!token || typeof token !== 'string' || !token.includes('.')) {
     return { valid: false, message: 'Mã QR không đúng định dạng hoặc bị lỗi khi quét.' };
@@ -873,7 +806,7 @@ const verifyDynamicQRCode = (token) => {
 };
 
 module.exports = {
-  // Biometrics
+  // Sinh trắc học khuôn mặt
   euclideanDistance,
   cosineSimilarity,
   FACE_MATCH_THRESHOLD,
@@ -885,7 +818,7 @@ module.exports = {
   invalidateFaceCache,
   findBestFaceMatch,
 
-  // Geofence & Campus Network
+  // Định vị GPS và mạng nội bộ trường
   CAMPUS_CONFIG,
   calculateDistanceMeters,
   validateGeofence,
@@ -894,7 +827,7 @@ module.exports = {
   updateCampusConfig,
   resolveUserGeofenceTargets,
 
-  // QR
+  // Mã QR động
   generateDynamicQRCode,
   verifyDynamicQRCode,
 };

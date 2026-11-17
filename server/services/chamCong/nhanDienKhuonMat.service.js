@@ -1,8 +1,4 @@
-/**
- * Service Điểm Danh Nhận Diện Khuôn Mặt (Face Recognition Attendance Service)
- * Chuẩn hóa Sequelize + SQL Server 3NF: Động cơ 1:N RAM Index, Bộ lọc Margin Top 1-2 >= 0.05,
- * Cooldown 60s chống quét lặp, Geofence GPS Haversine và Lưu vết Audit/PunchLog.
- */
+// Điểm danh bằng khuôn mặt Realtime 1:N (Face Service + FAISS), chống quét lặp 60s, kiểm tra GPS và lưu log chấm công
 const { Op } = require('sequelize');
 const {
   NhatKyChamCong,
@@ -32,13 +28,11 @@ const {
 } = require('../../config/redis');
 const { addPunchJob } = require('../../queues/hangDoiChamCong');
 
-// In-memory Map quản lý Cooldown chống quét lặp 60 giây (Fallback song song cùng Redis)
+// Bộ nhớ cục bộ chống quét lặp 60 giây (dùng song song với Redis)
 const scanCooldownMap = new Map();
 const COOLDOWN_MS = 60 * 1000;
 
-/**
- * Xử lý luồng Điểm danh Khuôn mặt Realtime (1:N qua Face Service)
- */
+// Xử lý điểm danh khuôn mặt Realtime (hỗ trợ cả verifyOnly và đẩy hàng đợi BullMQ)
 const processFaceAttendance = async ({
   imageBuffer,
   location = null,
@@ -52,10 +46,9 @@ const processFaceAttendance = async ({
     throw new ServiceError('Vui lòng cung cấp hình ảnh khuôn mặt từ camera.', 400);
   }
 
-  // 1. Tự phục hồi RAM Cache nếu Face Service vừa khởi động lại
+  // Nạp lại vector vào RAM Face Service nếu service vừa khởi động lại
   await ensureRamCacheWarm();
 
-  // 2. Gọi Face Service nhận diện 1:N trên RAM Vector Store
   const aiResult = await recognizeFace({ imageBuffer });
 
   if (!aiResult.matched) {
@@ -105,8 +98,8 @@ const processFaceAttendance = async ({
     }
   }
 
-  if (!user || user.kich_hoat === false) {
-    throw new ServiceError('Tài khoản người dùng không tồn tại hoặc đã bị khóa.', 403);
+  if (!user || user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
+    throw new ServiceError('Tài khoản người dùng không tồn tại, đã bị khóa hoặc đã nghỉ việc.', 403);
   }
 
   const userId = user.id;
@@ -376,7 +369,7 @@ const processFaceAttendance = async ({
           vi_do: location?.lat ?? null,
           kinh_do: location?.lng ?? null,
           vi_tri_gia_lap: Boolean(geoCheck.isSuspicious),
-          khoang_cach_met: geoCheck.distance != null ? Math.max(0, Number(geoCheck.distance)) : null,
+          khoang_cach_met: Number.isFinite(geoCheck.distance) ? Math.max(0, Number(geoCheck.distance)) : null,
           hop_le: !geoCheck.isFraud,
           ly_do_khong_hop_le: geoCheck.fraudReason || geoCheck.suspiciousReason || null,
           ma_thiet_bi: deviceId,
@@ -404,23 +397,48 @@ const processFaceAttendance = async ({
 
     try {
       attendanceRecord = await runInTransaction(async (transaction) => {
-        const createdAttendance = await NhatKyChamCong.create(
-          {
+        let targetAttendance = await NhatKyChamCong.findOne({
+          where: {
             nguoi_dung_id: userId,
-            ca_id: effectiveCaId,
-            lich_trinh_id: selectedScheduleId,
             ngay_cong: dateStr,
-            thoi_gian_vao: checkInTime,
-            di_muon_phut: lateMinutes,
-            trang_thai: calculatedStatus,
-            co_gian_lan: Boolean(geoCheck.isFraud),
+            ca_id: effectiveCaId,
           },
-          { transaction }
-        );
+          lock: transaction.LOCK.UPDATE,
+          transaction,
+        });
+
+        if (targetAttendance) {
+          if (targetAttendance.da_chot) {
+            throw new ServiceError('Bản ghi chấm công đã được chốt sổ lương, không thể check-in.', 403, 'ATTENDANCE_LOCKED');
+          }
+          if (targetAttendance.thoi_gian_vao) {
+            throw new ServiceError('Bạn đã hoàn tất Check-in cho ca làm việc này hôm nay.', 400, 'ALREADY_CHECKED_IN');
+          }
+          targetAttendance.thoi_gian_vao = checkInTime;
+          if (selectedScheduleId) targetAttendance.lich_trinh_id = selectedScheduleId;
+          targetAttendance.di_muon_phut = lateMinutes;
+          targetAttendance.trang_thai = calculatedStatus;
+          if (geoCheck.isFraud) targetAttendance.co_gian_lan = true;
+          await targetAttendance.save({ transaction });
+        } else {
+          targetAttendance = await NhatKyChamCong.create(
+            {
+              nguoi_dung_id: userId,
+              ca_id: effectiveCaId,
+              lich_trinh_id: selectedScheduleId,
+              ngay_cong: dateStr,
+              thoi_gian_vao: checkInTime,
+              di_muon_phut: lateMinutes,
+              trang_thai: calculatedStatus,
+              co_gian_lan: Boolean(geoCheck.isFraud),
+            },
+            { transaction }
+          );
+        }
 
         await LuotQuetChamCong.create(
           {
-            cham_cong_id: createdAttendance.id,
+            cham_cong_id: targetAttendance.id,
             nguoi_dung_id: userId,
             loai_quet: 'check_in',
             thoi_gian_quet: checkInTime,
@@ -432,7 +450,7 @@ const processFaceAttendance = async ({
             vi_do: location?.lat ?? null,
             kinh_do: location?.lng ?? null,
             vi_tri_gia_lap: Boolean(geoCheck.isSuspicious),
-            khoang_cach_met: geoCheck.distance != null ? Math.max(0, Number(geoCheck.distance)) : null,
+            khoang_cach_met: Number.isFinite(geoCheck.distance) ? Math.max(0, Number(geoCheck.distance)) : null,
             hop_le: !geoCheck.isFraud,
             ly_do_khong_hop_le: geoCheck.fraudReason || geoCheck.suspiciousReason || null,
             ma_thiet_bi: deviceId,
@@ -440,7 +458,7 @@ const processFaceAttendance = async ({
           { transaction }
         );
 
-        return createdAttendance;
+        return targetAttendance;
       });
     } catch (createErr) {
       scanCooldownMap.delete(userKey);
@@ -464,7 +482,7 @@ const processFaceAttendance = async ({
   scanCooldownMap.set(userKey, Date.now());
   await checkAndSetCooldown(userKey, 60).catch(() => {});
 
-  // Ghi AuditLog
+  // Ghi NhatKyKiemToan
   NhatKyKiemToan.create({
     nguoi_thuc_hien_id: userId,
     loai_chu_the: 'user',
@@ -482,7 +500,7 @@ const processFaceAttendance = async ({
 
   // Phát sự kiện Realtime Socket.IO tới Admin Dashboard & Trưởng khoa
   try {
-    const { emitNewPunch } = require('../../config/socket');
+    const { emitNewPunch, emitAttendanceUpdate, emitFraudAlert } = require('../../config/socket');
     emitNewPunch({
       id: attendanceRecord.id,
       userId,
@@ -499,6 +517,17 @@ const processFaceAttendance = async ({
       fraudReason: geoCheck.fraudReason,
       evidenceUrl: storedEvidencePath,
     });
+    emitAttendanceUpdate({
+      ...(attendanceRecord.toJSON ? attendanceRecord.toJSON() : attendanceRecord),
+      don_vi_chinh_id: user.don_vi_chinh_id,
+    });
+    if (geoCheck.isFraud) {
+      emitFraudAlert({
+        type: 'BIOMETRIC_GEOFENCE_ALERT',
+        message: geoCheck.fraudReason || `Cảnh báo vị trí chấm công khuôn mặt của ${user.ho_ten}.`,
+        details: { userId, attendanceId: attendanceRecord.id },
+      });
+    }
   } catch (_) {}
 
   return {

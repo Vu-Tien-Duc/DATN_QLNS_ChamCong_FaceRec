@@ -1,3 +1,4 @@
+// Mô hình bảng vai_tro_nguoi_dung: gán nhiều vai trò phân quyền theo từng phạm vi đơn vị.
 const { DataTypes, Model, Op } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { normalizeRole } = require('../utils/vaiTro.utils');
@@ -5,12 +6,8 @@ const { uuidPk, uuidFk } = require('./modelHelpers');
 
 const PHAM_VI = ['toan_truong', 'khoa', 'bo_mon', 'phong_ban'];
 
-/**
- * Bảng vai_tro_nguoi_dung: RBAC đa vai trò theo phạm vi đơn vị.
- * Chống gán trùng bằng 2 Filtered Unique Index (don_vi_id NULL / NOT NULL) ở DB.
- */
 class VaiTroNguoiDung extends Model {
-  /** Vai trò còn hiệu lực tại thời điểm `at`. */
+  // Kiểm tra vai trò còn trong khoảng thời gian hiệu lực
   conHieuLuc(at = new Date()) {
     const day = (d) => String(d).slice(0, 10);
     const today = day(at.toISOString());
@@ -39,6 +36,7 @@ VaiTroNguoiDung.init(
       validate: { isIn: { args: [PHAM_VI], msg: 'Phạm vi vai trò không hợp lệ' } },
     },
     don_vi_id: uuidFk(true),
+    duoc_uy_quyen: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     tu_ngay: { type: DataTypes.DATEONLY, allowNull: false, defaultValue: DataTypes.NOW },
     den_ngay: { type: DataTypes.DATEONLY, allowNull: true, defaultValue: null },
   },

@@ -1,11 +1,4 @@
-/**
- * Schedule Controller (server/controllers/schedule.controller.js)
- * Mã nguồn sạch 100% chuẩn CSDL v2.5 cho môi trường Đại Học:
- * - Tra cứu thời khóa biểu học kỳ, lọc theo giảng viên, phòng học, thứ, tuần.
- * - Thêm mới lịch giảng dạy / công tác (chống xung đột 2 chiều: Giảng viên & Phòng học).
- * - Cập nhật lịch và quản lý ngoại lệ buổi học (addException).
- * - Xóa lịch phân công giảng dạy.
- */
+// Quản lý thời khóa biểu giảng dạy/công tác, chống xung đột và ngoại lệ buổi học
 const {
   ServiceError,
   fetchSchedules,
@@ -18,6 +11,7 @@ const {
 } = require('../services/nhanSu/lichTrinh.service');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleServiceError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -25,6 +19,7 @@ const handleServiceError = (res, error, next) => {
   next(error);
 };
 
+// Chuẩn hóa giang_vien_id sang nguoi_dung_id từ request body
 const mapScheduleBodyToCanonical = (body = {}) => {
   const data = { ...body };
   if (body.giang_vien_id && !data.nguoi_dung_id) {
@@ -33,10 +28,7 @@ const mapScheduleBodyToCanonical = (body = {}) => {
   return data;
 };
 
-/**
- * 1. Lấy danh sách lịch phân công giảng dạy/công tác
- * @route GET /api/lich-trinh
- */
+// GET /api/lich-trinh - Danh sách lịch giảng dạy / công tác
 const getSchedules = async (req, res, next) => {
   try {
     const {
@@ -71,10 +63,7 @@ const getSchedules = async (req, res, next) => {
   }
 };
 
-/**
- * 2. Lấy chi tiết một lịch cụ thể theo ID
- * @route GET /api/schedules/:id
- */
+// GET /api/lich-trinh/:id - Chi tiết lịch trình theo ID
 const getScheduleById = async (req, res, next) => {
   try {
     const schedule = await fetchScheduleById(req.params.id, req.user);
@@ -84,10 +73,7 @@ const getScheduleById = async (req, res, next) => {
   }
 };
 
-/**
- * 3. Tạo mới lịch giảng dạy (Tự động kiểm tra chống xung đột)
- * @route POST /api/schedules
- */
+// POST /api/lich-trinh - Tạo mới lịch giảng dạy (kiểm tra chống xung đột)
 const createSchedule = async (req, res, next) => {
   try {
     const payload = mapScheduleBodyToCanonical(req.body);
@@ -98,10 +84,7 @@ const createSchedule = async (req, res, next) => {
   }
 };
 
-/**
- * 4. Cập nhật thông tin lịch giảng dạy
- * @route PUT /api/schedules/:id
- */
+// PUT /api/lich-trinh/:id - Cập nhật thông tin lịch giảng dạy
 const updateSchedule = async (req, res, next) => {
   try {
     const payload = mapScheduleBodyToCanonical(req.body);
@@ -112,10 +95,7 @@ const updateSchedule = async (req, res, next) => {
   }
 };
 
-/**
- * 5. Xóa lịch giảng dạy
- * @route DELETE /api/schedules/:id
- */
+// DELETE /api/lich-trinh/:id - Xóa lịch giảng dạy
 const deleteSchedule = async (req, res, next) => {
   try {
     const result = await removeSchedule(req.params.id, req.user);
@@ -125,10 +105,7 @@ const deleteSchedule = async (req, res, next) => {
   }
 };
 
-/**
- * 6. Lấy danh sách lịch làm việc của người dùng trong ngày hôm nay
- * @route GET /api/lich-trinh/hom-nay
- */
+// GET /api/lich-trinh/hom-nay - Lịch làm việc của người dùng trong hôm nay
 const getTodaySchedules = async (req, res, next) => {
   try {
     const nguoi_dung_id = req.query?.nguoi_dung_id;
@@ -140,10 +117,7 @@ const getTodaySchedules = async (req, res, next) => {
   }
 };
 
-/**
- * 7. Thêm ngoại lệ cho buổi học (Nghỉ, Chuyển dạy bù)
- * @route POST /api/lich-trinh/:id/ngoai-le
- */
+// POST /api/lich-trinh/:id/ngoai-le - Thêm ngoại lệ cho buổi học (nghỉ / dạy bù)
 const addException = async (req, res, next) => {
   try {
     const { ngay, ly_do, trang_thai, ngay_day_bu } = req.body || {};

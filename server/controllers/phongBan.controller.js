@@ -1,10 +1,9 @@
-/**
- * Tiếp nhận API quản lý khoa/phòng ban, chuyển dữ liệu và ánh xạ kết quả nghiệp vụ sang HTTP.
- */
+// Quản lý cơ cấu Khoa, Bộ môn, Phòng ban (danh sách phẳng, cây phân cấp, thêm/sửa/xóa)
 const departmentService = require('../services/nhanSu/phongBan.service');
 const { ServiceError } = departmentService;
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleServiceError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -15,10 +14,7 @@ const handleServiceError = (res, error, next) => {
   next(error);
 };
 
-/**
- * @desc Lấy danh sách Khoa / Phòng ban (hỗ trợ cây phân cấp hoặc danh sách phẳng)
- * @route GET /api/phong-ban
- */
+// GET /api/phong-ban - Danh sách Khoa / Phòng ban (phẳng hoặc dạng cây)
 const getAllDepartments = async (req, res, next) => {
   try {
     const { loai_don_vi: type, don_vi_cha_id: parentId, cay: tree = 'false', trang: page, gioi_han: limit } = req.query;
@@ -33,10 +29,7 @@ const getAllDepartments = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Lấy chi tiết Khoa / Phòng ban theo ID
- * @route GET /api/v1/departments/:id
- */
+// GET /api/phong-ban/:id - Chi tiết Khoa / Phòng ban
 const getDepartmentById = async (req, res, next) => {
   try {
     const department = await departmentService.getDepartmentById(req.params.id);
@@ -46,10 +39,7 @@ const getDepartmentById = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Tạo mới Khoa / Phòng ban
- * @route POST /api/phong-ban
- */
+// POST /api/phong-ban - Tạo mới Khoa / Phòng ban
 const createDepartment = async (req, res, next) => {
   try {
     const {
@@ -87,10 +77,7 @@ const createDepartment = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Cập nhật Khoa / Phòng ban
- * @route PUT /api/v1/departments/:id
- */
+// PUT /api/phong-ban/:id - Cập nhật Khoa / Phòng ban
 const updateDepartment = async (req, res, next) => {
   try {
     const ipAddress = req.ip || req.connection?.remoteAddress || null;
@@ -108,10 +95,7 @@ const updateDepartment = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Xóa Khoa / Phòng ban
- * @route DELETE /api/v1/departments/:id
- */
+// DELETE /api/phong-ban/:id - Xóa Khoa / Phòng ban
 const deleteDepartment = async (req, res, next) => {
   try {
     const ipAddress = req.ip || req.connection?.remoteAddress || null;

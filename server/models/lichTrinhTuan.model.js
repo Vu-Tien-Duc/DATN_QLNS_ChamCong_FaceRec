@@ -1,8 +1,8 @@
+// Mô hình bảng lich_trinh_tuan: danh sách các tuần học áp dụng của một lịch trình.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidFk } = require('./modelHelpers');
 
-/** Bảng lich_trinh_tuan: các tuần học của một lịch trình (khóa chính kép lich_trinh_id + tuan_thu). */
 class LichTrinhTuan extends Model {}
 
 LichTrinhTuan.init(

@@ -1,44 +1,42 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { MainLayout } from './components/layout/MainLayout';
-import { Dashboard } from './pages/Dashboard';
-import { FaceAttendance } from './pages/FaceAttendance';
-import { FaceRegistrationPage } from './pages/FaceRegistrationPage';
-import { Schedules } from './pages/Schedules';
-import { Users } from './pages/Users';
-import { Departments } from './pages/Departments';
-import { LeaveRequests } from './pages/LeaveRequests';
-import { AttendanceMe } from './pages/AttendanceMe';
-import { AttendanceManage } from './pages/AttendanceManage';
-import { Payroll } from './pages/Payroll';
-import { Reports } from './pages/Reports';
-import { Subjects } from './pages/Subjects';
-import { Shifts } from './pages/Shifts';
-import { Holidays } from './pages/Holidays';
-import { AuditLogs } from './pages/AuditLogs';
-import { Settings } from './pages/Settings';
-import { Profile } from './pages/Profile';
-import { Login } from './pages/Login';
-import { PublicLayout } from './pages/public_giangvien/PublicLayout';
-import { FacultyDirectory } from './pages/public_giangvien/FacultyDirectory';
-import { FacultyDetail } from './pages/public_giangvien/FacultyDetail';
-import { ProtectedRoute } from './components/auth/ProtectedRoute';
-import { useThemeStore } from './store/useThemeStore';
-import { useAuthStore } from './store/useAuthStore';
+import { MainLayout } from './components/boCuc/KhungChinh';
+import { Dashboard } from './pages/tongQuan/TrangTongQuan';
+import { FaceAttendance } from './pages/chamCong/TrangChamCongKhuonMat';
+import { FaceRegistrationPage } from './pages/khuonMat/TrangDangKyKhuonMat';
+import { Schedules } from './pages/nhanSu/TrangLichTrinh';
+import { Users } from './pages/nhanSu/TrangNguoiDung';
+import { Departments } from './pages/nhanSu/TrangPhongBan';
+import { LeaveRequests } from './pages/donNghiPhep/TrangDonNghiPhep';
+import { AttendanceMe } from './pages/chamCong/TrangChamCongCaNhan';
+import { AttendanceManage } from './pages/chamCong/TrangQuanLyChamCong';
+import { Payroll } from './pages/tienLuong/TrangPhieuLuong';
+import { Reports } from './pages/baoCao/TrangBaoCao';
+import { Subjects } from './pages/nhanSu/TrangMonHoc';
+import { Shifts } from './pages/chamCong/TrangCaLamViec';
+import { Holidays } from './pages/chamCong/TrangNgayNghiLe';
+import { AuditLogs } from './pages/heThong/TrangNhatKyKiemToan';
+import { Settings } from './pages/heThong/TrangCaiDatHeThong';
+import { Profile } from './pages/xacThuc/TrangHoSoCaNhan';
+import { Login } from './pages/xacThuc/TrangDangNhap';
+import { PublicLayout } from './pages/congKhai/BoCucCongKhai';
+import { FacultyDirectory } from './pages/congKhai/DanhBaGiangVien';
+import { FacultyDetail } from './pages/congKhai/ChiTietGiangVien';
+import { ProtectedRoute } from './components/xacThuc/TuyenBaoVe';
+import { useThemeStore } from './stores/useGiaoDienStore';
+import { useAuthStore } from './stores/useXacThucStore';
 
 export const App: React.FC = () => {
   const { isDark } = useThemeStore();
   const { fetchMe } = useAuthStore();
 
-  // Tự động kiểm tra và làm mới hồ sơ người dùng nếu đã có token
   useEffect(() => {
     fetchMe();
   }, [fetchMe]);
 
   return (
     <BrowserRouter>
-      {/* Toast Notification Container */}
       <Toaster
         position="top-right"
         toastOptions={{
@@ -56,9 +54,10 @@ export const App: React.FC = () => {
 
       <Routes>
         {/* Tuyến Đăng nhập công khai */}
-        <Route path="/login" element={<Login />} />
+        <Route path="/dang-nhap" element={<Login />} />
+        <Route path="/login" element={<Navigate to="/dang-nhap" replace />} />
 
-        {/* Cổng Thông Tin & Danh Bạ Giảng Viên Công Khai (Phenikaa Showcase) */}
+        {/* Cổng Thông Tin & Danh Bạ Giảng Viên Công Khai */}
         <Route path="/giang-vien" element={<PublicLayout />}>
           <Route index element={<FacultyDirectory />} />
           <Route path=":id" element={<FacultyDetail />} />
@@ -74,13 +73,12 @@ export const App: React.FC = () => {
             </ProtectedRoute>
           }
         >
-          {/* Trang chủ / Dashboard */}
           <Route index element={<Dashboard />} />
 
-          {/* Các phân hệ Chấm công & Sinh trắc học */}
-          <Route path="face-attendance" element={<FaceAttendance />} />
+          {/* Chấm công & Sinh trắc học */}
+          <Route path="diem-danh-khuon-mat" element={<FaceAttendance />} />
           <Route
-            path="attendance-me"
+            path="cham-cong-ca-nhan"
             element={
               <ProtectedRoute excludeRoles={['admin']}>
                 <AttendanceMe />
@@ -88,31 +86,31 @@ export const App: React.FC = () => {
             }
           />
           <Route
-            path="attendance-manage"
+            path="quan-ly-cham-cong"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'tccb']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb']}>
                 <AttendanceManage />
               </ProtectedRoute>
             }
           />
 
-          {/* Đơn từ & Lịch trình */}
-          <Route path="profile" element={<Profile />} />
-          <Route path="leave-requests" element={<LeaveRequests />} />
-          <Route path="schedules" element={<Schedules />} />
+          {/* Hồ sơ, Đơn từ & Lịch trình */}
+          <Route path="ho-so" element={<Profile />} />
+          <Route path="don-nghi-phep" element={<LeaveRequests />} />
+          <Route path="lich-trinh" element={<Schedules />} />
 
           {/* Nhân sự & Tổ chức */}
           <Route
-            path="users"
+            path="nguoi-dung"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'tccb']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'tccb']}>
                 <Users />
               </ProtectedRoute>
             }
           />
-          <Route path="departments" element={<Departments />} />
+          <Route path="phong-ban" element={<Departments />} />
           <Route
-            path="subjects"
+            path="mon-hoc"
             element={
               <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'dao_tao']}>
                 <Subjects />
@@ -121,11 +119,11 @@ export const App: React.FC = () => {
           />
 
           {/* Tài chính Lương & Báo cáo */}
-          <Route path="payroll" element={<Payroll />} />
+          <Route path="phieu-luong" element={<Payroll />} />
           <Route
-            path="reports"
+            path="bao-cao"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'ke_toan', 'truong_khoa']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']}>
                 <Reports />
               </ProtectedRoute>
             }
@@ -133,7 +131,7 @@ export const App: React.FC = () => {
 
           {/* Cấu hình & Quản trị hệ thống */}
           <Route
-            path="face-registration"
+            path="dang-ky-khuon-mat"
             element={
               <ProtectedRoute allowedRoles={['admin', 'bgh', 'tccb']}>
                 <FaceRegistrationPage />
@@ -141,24 +139,16 @@ export const App: React.FC = () => {
             }
           />
           <Route
-            path="face-templates"
-            element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'tccb']}>
-                <FaceRegistrationPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="shifts"
+            path="ca-lam-viec"
             element={
               <ProtectedRoute allowedRoles={['admin', 'bgh', 'dao_tao']}>
                 <Shifts />
               </ProtectedRoute>
             }
           />
-          <Route path="holidays" element={<Holidays />} />
+          <Route path="ngay-nghi-le" element={<Holidays />} />
           <Route
-            path="audit-logs"
+            path="nhat-ky-kiem-toan"
             element={
               <ProtectedRoute allowedRoles={['admin', 'bgh', 'kiem_toan']}>
                 <AuditLogs />
@@ -166,13 +156,32 @@ export const App: React.FC = () => {
             }
           />
           <Route
-            path="settings"
+            path="cai-dat"
             element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <Settings />
               </ProtectedRoute>
             }
           />
+
+          {/* Chuyển hướng tương thích ngược từ URL tiếng Anh cũ */}
+          <Route path="face-attendance" element={<Navigate to="/diem-danh-khuon-mat" replace />} />
+          <Route path="attendance-me" element={<Navigate to="/cham-cong-ca-nhan" replace />} />
+          <Route path="attendance-manage" element={<Navigate to="/quan-ly-cham-cong" replace />} />
+          <Route path="profile" element={<Navigate to="/ho-so" replace />} />
+          <Route path="leave-requests" element={<Navigate to="/don-nghi-phep" replace />} />
+          <Route path="schedules" element={<Navigate to="/lich-trinh" replace />} />
+          <Route path="users" element={<Navigate to="/nguoi-dung" replace />} />
+          <Route path="departments" element={<Navigate to="/phong-ban" replace />} />
+          <Route path="subjects" element={<Navigate to="/mon-hoc" replace />} />
+          <Route path="payroll" element={<Navigate to="/phieu-luong" replace />} />
+          <Route path="reports" element={<Navigate to="/bao-cao" replace />} />
+          <Route path="face-registration" element={<Navigate to="/dang-ky-khuon-mat" replace />} />
+          <Route path="face-templates" element={<Navigate to="/dang-ky-khuon-mat" replace />} />
+          <Route path="shifts" element={<Navigate to="/ca-lam-viec" replace />} />
+          <Route path="holidays" element={<Navigate to="/ngay-nghi-le" replace />} />
+          <Route path="audit-logs" element={<Navigate to="/nhat-ky-kiem-toan" replace />} />
+          <Route path="settings" element={<Navigate to="/cai-dat" replace />} />
 
           {/* Fallback 404 */}
           <Route path="*" element={<Navigate to="/" replace />} />

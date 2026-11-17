@@ -1,10 +1,9 @@
-/**
- * Controller quản lý ngày nghỉ lễ (Holidays)
- */
+// Quản lý danh mục ngày nghỉ lễ trong năm để loại trừ khi tính phép và chấm công
 const holidayService = require('../services/nhanSu/ngayNghiLe.service');
 const ServiceError = require('../utils/loiNghiepVu');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -12,6 +11,7 @@ const handleError = (res, error, next) => {
   return next(error);
 };
 
+// Lọc các trường hợp lệ của ngày nghỉ lễ từ request body
 const mapHolidayBodyToCanonical = (body) => {
   if (!body || typeof body !== 'object') return {};
   const { ten_ngay_le, ngay_bat_dau, ngay_ket_thuc, huong_luong, mo_ta, nam } = body;
@@ -25,6 +25,7 @@ const mapHolidayBodyToCanonical = (body) => {
   return res;
 };
 
+// Lấy danh sách ngày nghỉ lễ theo năm
 const getHolidays = async (req, res, next) => {
   try {
     const nam = req.query?.nam;
@@ -35,6 +36,7 @@ const getHolidays = async (req, res, next) => {
   }
 };
 
+// Lấy chi tiết một ngày nghỉ lễ theo ID
 const getHolidayById = async (req, res, next) => {
   try {
     const holiday = await holidayService.getHolidayById(req.params.id);
@@ -44,6 +46,7 @@ const getHolidayById = async (req, res, next) => {
   }
 };
 
+// Tạo ngày nghỉ lễ mới
 const createHoliday = async (req, res, next) => {
   try {
     const holiday = await holidayService.createHoliday(mapHolidayBodyToCanonical(req.body), req.user);
@@ -53,6 +56,7 @@ const createHoliday = async (req, res, next) => {
   }
 };
 
+// Cập nhật thông tin ngày nghỉ lễ
 const updateHoliday = async (req, res, next) => {
   try {
     const holiday = await holidayService.updateHoliday(req.params.id, mapHolidayBodyToCanonical(req.body), req.user);
@@ -62,6 +66,7 @@ const updateHoliday = async (req, res, next) => {
   }
 };
 
+// Xóa ngày nghỉ lễ
 const deleteHoliday = async (req, res, next) => {
   try {
     const holiday = await holidayService.deleteHoliday(req.params.id);

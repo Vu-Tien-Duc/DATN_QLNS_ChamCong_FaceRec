@@ -58,13 +58,32 @@ export const authApi = {
 
   /**
    * Cập nhật ảnh đại diện cá nhân (PUT /api/xac-thuc/anh-dai-dien)
-   * Hỗ trợ gửi FormData (file ảnh) hoặc JSON { avatar: string } / { avatarBase64: string }
    */
   updateAvatar: async (
     data: FormData | { avatar?: string | null; avatarBase64?: string }
   ): Promise<ApiResponse<{ avatar: string }>> => {
     const headers = data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {};
     const response = await apiClient.put<ApiResponse<{ avatar: string }>>('/xac-thuc/anh-dai-dien', data, { headers });
+    return response.data;
+  },
+
+  /**
+   * Yêu cầu gửi mã OTP quên mật khẩu (POST /api/xac-thuc/quen-mat-khau)
+   */
+  forgotPassword: async (email: string): Promise<ApiResponse<null>> => {
+    const response = await apiClient.post<ApiResponse<null>>('/xac-thuc/quen-mat-khau', { email });
+    return response.data;
+  },
+
+  /**
+   * Đặt lại mật khẩu bằng mã OTP (POST /api/xac-thuc/dat-lai-mat-khau)
+   */
+  resetPassword: async (payload: {
+    email: string;
+    ma_otp: string;
+    mat_khau_moi: string;
+  }): Promise<ApiResponse<null>> => {
+    const response = await apiClient.post<ApiResponse<null>>('/xac-thuc/dat-lai-mat-khau', payload);
     return response.data;
   },
 };

@@ -1,8 +1,8 @@
+// Mô hình bảng giam_tru_luong: các khoản khấu trừ lương theo từng phiếu lương.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, moneyColumn } = require('./modelHelpers');
 
-/** Bảng giam_tru_luong: từng khoản giảm trừ của một phiếu lương. */
 class GiamTruLuong extends Model {}
 
 GiamTruLuong.init(

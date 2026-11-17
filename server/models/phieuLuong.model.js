@@ -1,14 +1,10 @@
+// Mô hình bảng phieu_luong: lưu chứng từ lương chốt theo kỳ của nhân sự.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, moneyColumn, decimalColumn } = require('./modelHelpers');
 
 const TRANG_THAI_LUONG = ['nhap', 'cho_duyet', 'da_duyet', 'da_chi_tra'];
 
-/**
- * Bảng phieu_luong: chứng từ lương chốt theo kỳ (Snapshot bất biến - he_so_luong, luong_co_ban,
- * tong_phu_cap, tong_giam_tru, thuc_linh được lưu có chủ đích để bảo toàn lịch sử kế toán).
- * Chi tiết khoản phụ cấp / giảm trừ nằm ở phu_cap_luong / giam_tru_luong.
- */
 class PhieuLuong extends Model {}
 
 PhieuLuong.init(
@@ -21,7 +17,7 @@ PhieuLuong.init(
     nguoi_duyet_id: uuidFk(true),
     thoi_gian_duyet: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
     luong_co_ban: moneyColumn('luong_co_ban'),
-    he_so_luong: { ...decimalColumn('he_so_luong', 5, 2, 1.0), validate: { min: 0.01 } },
+    he_so_luong: { ...decimalColumn('he_so_luong', 5, 2, 1.0), validate: { min: 0 } },
     so_cong_chuan: { ...decimalColumn('so_cong_chuan', 5, 2, 22), validate: { min: 0 } },
     so_cong_thuc_te: { ...decimalColumn('so_cong_thuc_te', 5, 2, 0), validate: { min: 0 } },
     so_tiet_nghia_vu: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, validate: { min: 0 } },

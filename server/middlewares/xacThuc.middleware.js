@@ -1,12 +1,4 @@
-/**
- * Auth & RBAC Middleware (server/middlewares/auth.middleware.js)
- * Mã nguồn sạch 100% chuẩn CSDL v2.5 cho môi trường Đại Học:
- * - Xác thực JWT Access Token, thu hồi token in-memory, kiểm tra tokenVersion.
- * - Phân quyền theo 10 chức danh đại học chuẩn (Admin, BGH, Trưởng khoa, GV, CV,...).
- * - Hỗ trợ nhiệm kỳ công tác (tự động tước quyền khi vai trò hết hạn).
- * - Hạt nhân phân quyền chi tiết (requirePermission, requireAnyPermission, requireAllPermissions).
- * - Xác thực trạm camera điểm danh (verifyTerminalKey).
- */
+// Xác thực JWT / Terminal Key và kiểm tra phân quyền RBAC theo vai trò hoặc quyền chi tiết
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { isTokenRevokedAsync } = require('../utils/thuHoiToken');
@@ -14,9 +6,7 @@ const { NguoiDung, VaiTroNguoiDung } = require('../models');
 const { ROLE_PERMISSIONS, getEffectivePermissions } = require('../config/permissions');
 const { sendError } = require('../utils/phanHoiHttp');
 
-/**
- * 1. Middleware xác thực JWT Access Token & Trạng thái tài khoản
- */
+// Xác thực JWT Bearer token, kiểm tra thu hồi và nạp thông tin người dùng vào req.user
 const verifyToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization || null;
@@ -66,7 +56,7 @@ const verifyToken = async (req, res, next) => {
         {
           model: VaiTroNguoiDung,
           as: 'danh_sach_vai_tro',
-          attributes: ['id', 'ma_vai_tro', 'pham_vi', 'don_vi_id', 'tu_ngay', 'den_ngay'],
+          attributes: ['id', 'ma_vai_tro', 'pham_vi', 'don_vi_id', 'duoc_uy_quyen', 'tu_ngay', 'den_ngay'],
         },
       ],
     });
@@ -79,7 +69,6 @@ const verifyToken = async (req, res, next) => {
       return sendError(res, 'Tài khoản của bạn đã bị vô hiệu hóa hoặc đã nghỉ việc.', null, 403);
     }
 
-    // Kiểm tra thu hồi phiên đăng nhập hàng loạt qua phien_ban_token
     const userTokenVersion = user.phien_ban_token || 0;
     if (decoded.tokenVersion !== undefined && decoded.tokenVersion < userTokenVersion) {
       return sendError(
@@ -91,7 +80,6 @@ const verifyToken = async (req, res, next) => {
       );
     }
 
-    // Kiểm tra thời điểm đổi mật khẩu gần nhất
     const passwordChangedAt = user.doi_mat_khau_luc;
     if (passwordChangedAt) {
       const changedTimestamp = Math.floor(new Date(passwordChangedAt).getTime() / 1000);
@@ -127,16 +115,12 @@ const verifyToken = async (req, res, next) => {
 
 const { normalizeRole } = require('../utils/vaiTro.utils');
 
-/**
- * Trợ thủ: Lấy toàn bộ danh sách vai trò đang còn hiệu lực của người dùng theo chuẩn lowercase snake_case
- */
+// Chuẩn hóa tên vai trò về chữ thường snake_case
 const normalizeRoleKey = (r) => {
   return normalizeRole(r);
 };
 
-/**
- * Trợ thủ: Lấy toàn bộ danh sách vai trò đang còn hiệu lực của người dùng (chỉ chứa Canonical Keys)
- */
+// Kiểm tra vai trò phụ có đang trong thời hạn hiệu lực (tu_ngay <= hôm nay <= den_ngay)
 const isRoleEntryActive = (entry, todayKey) => {
   if (!entry || typeof entry !== 'object') return false;
   const start = entry.tu_ngay || entry.startDate;
@@ -146,6 +130,7 @@ const isRoleEntryActive = (entry, todayKey) => {
   return true;
 };
 
+// Tập hợp tất cả vai trò đang hiệu lực của người dùng (vai trò chính + vai trò phụ)
 const getActiveRoles = (user) => {
   const todayKey = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Ho_Chi_Minh',
@@ -180,9 +165,7 @@ const getActiveRoles = (user) => {
   return roles;
 };
 
-/**
- * Trợ thủ: Tập hợp toàn bộ quyền hạn (permissions) hợp lệ của người dùng
- */
+// Tổng hợp tập quyền chi tiết của người dùng
 const getUserPermissions = (user) => {
   const permissions = getEffectivePermissions(user);
   const activeRoles = getActiveRoles(user);
@@ -197,9 +180,7 @@ const getUserPermissions = (user) => {
   return permissions;
 };
 
-/**
- * 2. Phân quyền theo vai trò (Role-based)
- */
+// Chỉ cho phép nếu người dùng giữ ít nhất 1 vai trò trong danh sách
 const verifyRole = (allowedRoles = []) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -225,8 +206,10 @@ const verifyRole = (allowedRoles = []) => {
   };
 };
 
+// Alias cho verifyRole, nhận danh sách vai trò dạng tham số rời
 const authorizeRoles = (...roles) => verifyRole(roles.flat());
 
+// Kiểm tra người dùng có một quyền cụ thể hay không
 const userHasPerm = (user, perm) => {
   if (typeof user.hasPermission === 'function') {
     return user.hasPermission(perm);
@@ -235,9 +218,7 @@ const userHasPerm = (user, perm) => {
   return userPerms.has(perm);
 };
 
-/**
- * 3. Hạt nhân phân quyền RBAC: Yêu cầu 1 quyền cụ thể
- */
+// Kiểm tra đủ 1 quyền RBAC cụ thể
 const requirePermission = (permission) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -258,9 +239,7 @@ const requirePermission = (permission) => {
   };
 };
 
-/**
- * 4. Hạt nhân phân quyền RBAC: Yêu cầu ít nhất 1 trong danh sách quyền
- */
+// Kiểm tra có ít nhất 1 quyền trong danh sách
 const requireAnyPermission = (...permissions) => {
   const permList = permissions.flat();
   return (req, res, next) => {
@@ -284,9 +263,7 @@ const requireAnyPermission = (...permissions) => {
   };
 };
 
-/**
- * 5. Hạt nhân phân quyền RBAC: Yêu cầu tất cả quyền trong danh sách
- */
+// Kiểm tra có đầy đủ tất cả quyền trong danh sách
 const requireAllPermissions = (...permissions) => {
   const permList = permissions.flat();
   return (req, res, next) => {
@@ -310,9 +287,7 @@ const requireAllPermissions = (...permissions) => {
   };
 };
 
-/**
- * 6. Xác thực trạm camera điểm danh (Ưu tiên Bearer Token, fallback Terminal Key)
- */
+// Xác thực trạm camera/kiosk (ưu tiên Bearer Token, fallback sang x-terminal-key)
 const verifyTerminalKey = async (req, res, next) => {
   if (req.headers.authorization) {
     return verifyToken(req, res, next);

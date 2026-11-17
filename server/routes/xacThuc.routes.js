@@ -1,3 +1,4 @@
+// Định tuyến API xác thực đăng nhập, làm mới token, đăng xuất, đổi mật khẩu và khôi phục bằng OTP (/api/xac-thuc)
 const express = require('express');
 const router = express.Router();
 const {

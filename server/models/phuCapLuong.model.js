@@ -1,8 +1,8 @@
+// Mô hình bảng phu_cap_luong: các khoản phụ cấp chi tiết theo từng phiếu lương.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, moneyColumn, decimalColumn } = require('./modelHelpers');
 
-/** Bảng phu_cap_luong: từng khoản phụ cấp của một phiếu lương. */
 class PhuCapLuong extends Model {}
 
 PhuCapLuong.init(

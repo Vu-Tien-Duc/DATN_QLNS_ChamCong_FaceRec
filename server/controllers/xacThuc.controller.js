@@ -1,14 +1,4 @@
-/**
- * Authentication Controller (server/controllers/auth.controller.js)
- * Mã nguồn sạch 100% chuẩn CSDL v2.5 cho môi trường Đại Học:
- * - Đăng nhập tài khoản (login).
- * - Làm mới Token với Grace Period 15s và chống Replay Attack (refreshToken).
- * - Đăng xuất và thu hồi phiên (logout).
- * - Lấy thông tin cá nhân (getMe).
- * - Đổi mật khẩu tài khoản (changePassword).
- * - Cập nhật ảnh đại diện (updateAvatar).
- * - CẮT BỎ HOÀN TOÀN các luồng rác cũ (OTP, tự đăng ký tài khoản tự do).
- */
+// Xác thực đăng nhập, xoay vòng Refresh Token, đăng xuất, đổi mật khẩu và khôi phục bằng OTP
 const authService = require('../services/heThong/xacThuc.service');
 const { ServiceError } = authService;
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
@@ -20,6 +10,7 @@ const COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
 };
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleServiceError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -27,10 +18,7 @@ const handleServiceError = (res, error, next) => {
   next(error);
 };
 
-/**
- * 1. Đăng nhập hệ thống
- * @route POST /api/auth/login
- */
+// POST /api/xac-thuc/dang-nhap - Đăng nhập hệ thống
 const login = async (req, res, next) => {
   try {
     const email = req.body?.email;
@@ -52,10 +40,7 @@ const login = async (req, res, next) => {
   }
 };
 
-/**
- * 2. Làm mới Token (Refresh Token Rotation + Grace Period 15s)
- * @route POST /api/xac-thuc/lam-moi-token
- */
+// POST /api/xac-thuc/lam-moi-token - Cấp lại Access Token (Refresh Token Rotation)
 const refreshToken = async (req, res, next) => {
   try {
     const tokenFromCookie = req.cookies?.refreshToken;
@@ -82,10 +67,7 @@ const refreshToken = async (req, res, next) => {
   }
 };
 
-/**
- * 3. Đăng xuất hệ thống
- * @route POST /api/xac-thuc/dang-xuat
- */
+// POST /api/xac-thuc/dang-xuat - Thu hồi token và kết thúc phiên đăng nhập
 const logout = async (req, res, next) => {
   try {
     const refreshTokenString = req.cookies?.refreshToken || req.body?.ma_lam_moi || req.body?.refreshToken || null;
@@ -112,10 +94,7 @@ const logout = async (req, res, next) => {
   }
 };
 
-/**
- * 4. Lấy thông tin tài khoản hiện tại
- * @route GET /api/auth/me
- */
+// GET /api/xac-thuc/ho-so - Lấy thông tin tài khoản hiện tại
 const getMe = async (req, res, next) => {
   try {
     const userId = req.user?._id;
@@ -126,10 +105,7 @@ const getMe = async (req, res, next) => {
   }
 };
 
-/**
- * 5. Đổi mật khẩu
- * @route PUT /api/auth/change-password
- */
+// PUT /api/xac-thuc/doi-mat-khau - Đổi mật khẩu tài khoản
 const changePassword = async (req, res, next) => {
   try {
     const userId = req.user?._id;
@@ -152,10 +128,7 @@ const changePassword = async (req, res, next) => {
   }
 };
 
-/**
- * 6. Cập nhật ảnh đại diện
- * @route PUT /api/xac-thuc/anh-dai-dien
- */
+// PUT /api/xac-thuc/anh-dai-dien - Cập nhật ảnh đại diện cá nhân
 const updateAvatar = async (req, res, next) => {
   try {
     const userId = req.user?._id;
@@ -190,10 +163,7 @@ const updateAvatar = async (req, res, next) => {
   }
 };
 
-/**
- * 7. Yêu cầu gửi mã OTP đặt lại mật khẩu qua email
- * @route POST /api/xac-thuc/quen-mat-khau
- */
+// POST /api/xac-thuc/quen-mat-khau - Gửi mã OTP đặt lại mật khẩu qua email
 const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -211,10 +181,7 @@ const forgotPassword = async (req, res, next) => {
   }
 };
 
-/**
- * 8. Đặt lại mật khẩu mới bằng mã OTP
- * @route POST /api/xac-thuc/dat-lai-mat-khau
- */
+// POST /api/xac-thuc/dat-lai-mat-khau - Xác nhận OTP và đặt mật khẩu mới
 const resetPassword = async (req, res, next) => {
   try {
     const email = req.body?.email;

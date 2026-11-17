@@ -1,7 +1,4 @@
-/**
- * Check-Out Service (server/services/attendance/checkOut.service.js)
- * Chuẩn hóa Sequelize + SQL Server 3NF (NhatKyChamCong, LuotQuetChamCong, LichTrinh, CaLamViec, NguoiDung).
- */
+// Xử lý điểm danh ra về (Check-out), tính thời lượng làm việc và số tiết thực dạy
 const { Op } = require('sequelize');
 const { NhatKyChamCong, LuotQuetChamCong, LichTrinh, CaLamViec, NguoiDung } = require('../../models');
 const { sendCheckOutNotificationEmail } = require('../heThong/guiEmail.service');
@@ -17,6 +14,7 @@ const {
   calculateCheckOutStatus,
 } = require('../../utils/thoiGianChamCong.utils');
 
+// Xử lý chấm công tan ca, tính thời gian làm việc, số tiết thực dạy và trạng thái về sớm
 const performCheckOut = async ({
   nguoi_dung_id,
   ca_id,
@@ -213,6 +211,18 @@ const performCheckOut = async ({
       }
     })
     .catch(() => {});
+
+  try {
+    const { emitAttendanceUpdate, emitFraudAlert } = require('../../config/socket');
+    emitAttendanceUpdate(openLog.toJSON ? openLog.toJSON() : openLog);
+    if (isFraud) {
+      emitFraudAlert({
+        type: 'GEOFENCE_CHECK_OUT_ALERT',
+        message: fraudReason || 'Cảnh báo vị trí check-out ngoài phạm vi trường.',
+        details: { userId: nguoi_dung_id, attendanceId: openLog.id },
+      });
+    }
+  } catch (_) {}
 
   return {
     success: true,

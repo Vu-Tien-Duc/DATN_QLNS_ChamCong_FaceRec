@@ -1,6 +1,4 @@
-/**
- * Dịch vụ Xuất Dữ Liệu Báo Cáo Excel 5 Sheets (server/services/baoCao/xuatBaoCaoExcel.service.js)
- */
+// Tổng hợp dữ liệu báo cáo chấm công nhiều sheet (tổng hợp, chi tiết, đi muộn, nghỉ phép, theo đơn vị) để xuất Excel
 const { Op } = require('sequelize');
 const {
   NhatKyChamCong,
@@ -30,8 +28,10 @@ const {
   getLeaveTypeLabel,
   getLeaveStatusLabel,
   getRoleLabel,
+  sanitizeExcelRow,
 } = require('./dinhDangBaoCao.helper');
 
+// Tổng hợp toàn bộ các bảng dữ liệu chi tiết để xuất báo cáo Excel nhiều sheet
 const generateExportReportData = async ({
   month,
   year,
@@ -393,13 +393,14 @@ const generateExportReportData = async ({
       approvedLeaveDays,
       exportedAt: `${formatDateVN(new Date())} ${formatTimeVN(new Date())}`,
     },
-    attendanceLogs: attendanceDetailList,
-    leaveRequests: leaveDetailList,
-    staffStats: staffStatsList,
+    attendanceLogs: attendanceDetailList.map(sanitizeExcelRow),
+    leaveRequests: leaveDetailList.map(sanitizeExcelRow),
+    staffStats: staffStatsList.map(sanitizeExcelRow),
     dailyStats: dailyStatsList,
   };
 };
 
+// Kiểm tra phạm vi quyền truy cập và trả về dữ liệu xuất Excel cho người dùng yêu cầu
 const getExportReportDataForUser = async ({ query, currentUser }) => {
   const userId = query.nguoi_dung_id || query.userId;
   const departmentId = query.don_vi_id || query.phong_ban_id || query.departmentId;

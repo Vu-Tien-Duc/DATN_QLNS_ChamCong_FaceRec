@@ -1,10 +1,9 @@
-/**
- * Controller quản lý cấu hình hệ thống (SystemConfig)
- */
+// Xem và cập nhật tham số cấu hình hệ thống tập trung (ngưỡng AI, lương, chấm công)
 const systemConfigService = require('../services/heThong/cauHinhHeThong.service');
 const ServiceError = require('../utils/loiNghiepVu');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
+// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
 const handleError = (res, error, next) => {
   if (error instanceof ServiceError || error.statusCode) {
     return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
@@ -12,10 +11,7 @@ const handleError = (res, error, next) => {
   return next(error);
 };
 
-/**
- * GET /api/system/configs
- * Lấy toàn bộ danh sách cấu hình hệ thống
- */
+// GET /api/he-thong/cau-hinh - Lấy toàn bộ danh sách cấu hình hệ thống
 const getSystemConfigs = async (req, res, next) => {
   try {
     const configs = await systemConfigService.getAllConfigs();
@@ -25,10 +21,7 @@ const getSystemConfigs = async (req, res, next) => {
   }
 };
 
-/**
- * PUT /api/he-thong/cau-hinh
- * Cập nhật giá trị cấu hình theo khóa (hỗ trợ cả đơn lẻ và hàng loạt)
- */
+// PUT /api/he-thong/cau-hinh - Cập nhật giá trị cấu hình theo khóa (đơn lẻ hoặc hàng loạt)
 const updateSystemConfig = async (req, res, next) => {
   try {
     const key = req.body?.khoa_cau_hinh || req.body?.khoa;

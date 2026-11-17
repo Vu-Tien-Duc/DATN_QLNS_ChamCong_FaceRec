@@ -14,7 +14,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from config import DETECTION_SIZE, INTERNAL_API_KEY, MODEL_NAME
+from config import (
+    CORS_ALLOW_ORIGINS,
+    DETECTION_SIZE,
+    INTERNAL_API_KEY,
+    MODEL_NAME,
+    REQUIRE_INTERNAL_API_KEY,
+)
 from routers import (
     enrollment_router,
     faiss_router,
@@ -58,29 +64,33 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_allow_wildcard_cors = "*" in CORS_ALLOW_ORIGINS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"] if _allow_wildcard_cors else CORS_ALLOW_ORIGINS,
+    allow_credentials=not _allow_wildcard_cors,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "x-internal-api-key", "Authorization"],
 )
 
 
 @app.middleware("http")
 async def verify_internal_api_key(request: Request, call_next):
-    """Bảo vệ các endpoint /v1/* bằng INTERNAL_API_KEY khi biến môi trường được cấu hình."""
-    if (
-        INTERNAL_API_KEY
-        and request.method != "OPTIONS"
-        and request.url.path not in {"/", "/health"}
-    ):
-        provided_key = request.headers.get("x-internal-api-key", "")
-        if not provided_key or not hmac.compare_digest(provided_key, INTERNAL_API_KEY):
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Unauthorized internal access to Face Service."},
-            )
+    """Bảo vệ các endpoint /v1/* bằng INTERNAL_API_KEY (fail-closed khi production hoặc bắt buộc)."""
+    if request.method != "OPTIONS" and request.url.path not in {"/", "/health"}:
+        if not INTERNAL_API_KEY:
+            if REQUIRE_INTERNAL_API_KEY:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Face Service chưa cấu hình FACE_SERVICE_API_KEY."},
+                )
+        else:
+            provided_key = request.headers.get("x-internal-api-key", "")
+            if not provided_key or not hmac.compare_digest(provided_key, INTERNAL_API_KEY):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Unauthorized internal access to Face Service."},
+                )
     return await call_next(request)
 
 

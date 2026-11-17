@@ -1,3 +1,4 @@
+// Kiểm thử phân quyền RBAC đa vai trò, lọc lịch đổi ca, mã QR động và hàng rào địa lý GPS/IP.
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -5,6 +6,8 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'unit-test-jwt-secret-key';
 
 const { PERMISSIONS, getEffectivePermissions, hasPermission } = require('../config/permissions');
 const { getActiveRoles } = require('../middlewares/xacThuc.middleware');
+const { hasAnyActiveRole } = require('../utils/vaiTro.utils');
+const { isScheduleActiveOnDate } = require('../utils/ngayLichTrinh.utils');
 const {
   generateDynamicQRCode,
   verifyDynamicQRCode,
@@ -42,6 +45,35 @@ describe('RBAC Permissions & Active Roles', () => {
     assert.equal(activeRoles.has('admin'), false);
     assert.equal(hasPermission(user, PERMISSIONS.HE_THONG_CAU_HINH), false);
     assert.equal(hasPermission(user, PERMISSIONS.DON_TU_DUYET_CAP_1), false);
+    assert.equal(hasAnyActiveRole(user, ['truong_khoa', 'admin']), false);
+    assert.equal(hasAnyActiveRole(user, ['nhan_vien']), true);
+  });
+
+  it('chỉ cấp quyền duyệt cấp 1 cho phó đơn vị khi vai trò có cờ duoc_uy_quyen = true', () => {
+    const nonDelegatedVice = {
+      vai_tro_chinh: 'pho_khoa',
+      danh_sach_vai_tro: [{ ma_vai_tro: 'pho_khoa', duoc_uy_quyen: false }],
+    };
+    const delegatedVice = {
+      vai_tro_chinh: 'pho_khoa',
+      danh_sach_vai_tro: [{ ma_vai_tro: 'pho_khoa', duoc_uy_quyen: true }],
+    };
+
+    assert.equal(hasPermission(nonDelegatedVice, PERMISSIONS.DON_TU_DUYET_CAP_1), false);
+    assert.equal(hasPermission(delegatedVice, PERMISSIONS.DON_TU_DUYET_CAP_1), true);
+  });
+
+  it('loại trừ lịch gốc đã đổi ca sang giảng viên dạy thay và giữ nguyên bản ghi cho người dạy thay', () => {
+    const ownerSchedule = {
+      id: 'sch-1',
+      nguoi_dung_id: 'owner-1',
+      ngay_bat_dau: '2026-09-01',
+      ngoai_le: [{ ngay: '2026-09-08', trang_thai: 'doi_ca', giang_vien_day_thay_id: 'sub-2' }],
+    };
+    const substituteSchedule = { ...ownerSchedule, _isSubstituteOverride: true };
+
+    assert.equal(isScheduleActiveOnDate(ownerSchedule, '2026-09-08'), false);
+    assert.equal(isScheduleActiveOnDate(substituteSchedule, '2026-09-08'), true);
   });
 });
 

@@ -1,14 +1,11 @@
-/**
- * Mã hóa & Giải mã Dữ liệu Sinh trắc học Khuôn mặt (AES-256-GCM).
- * Tuân thủ Nghị định 13/2023/NĐ-CP về bảo vệ dữ liệu cá nhân nhạy cảm (dữ liệu sinh trắc học).
- * Hỗ trợ giải mã tương thích ngược với dữ liệu JSON thuần cũ nếu có.
- */
+// Mã hóa và giải mã dữ liệu vector sinh trắc học khuôn mặt bằng AES-256-GCM (hỗ trợ đọc dữ liệu JSON cũ).
 const crypto = require('crypto');
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const ENVELOPE_VERSION = 'v1';
 
+// Tạo khóa AES-256 từ biến môi trường BIOMETRIC_ENCRYPTION_KEY hoặc JWT_SECRET
 const deriveAes256Key = () => {
   const rawSecret =
     process.env.BIOMETRIC_ENCRYPTION_KEY ||
@@ -17,6 +14,7 @@ const deriveAes256Key = () => {
   return crypto.createHash('sha256').update(String(rawSecret)).digest();
 };
 
+// Kiểm tra dữ liệu đã ở định dạng phong bì mã hóa hay chưa
 const isEncryptedEnvelope = (value) =>
   Boolean(
     value &&
@@ -29,6 +27,7 @@ const isEncryptedEnvelope = (value) =>
       typeof value.data === 'string'
   );
 
+// Mã hóa chuỗi hoặc JSON sang phong bì AES-256-GCM
 const encryptBiometricJson = (value) => {
   if (value === null || value === undefined) return null;
   if (isEncryptedEnvelope(value)) return JSON.stringify(value);
@@ -50,6 +49,7 @@ const encryptBiometricJson = (value) => {
   });
 };
 
+// Giải mã phong bì AES-256-GCM về dữ liệu gốc (hỗ trợ đọc JSON cũ chưa mã hóa)
 const decryptBiometricJson = (raw, fallback = null) => {
   if (raw === null || raw === undefined || raw === '') return fallback;
 

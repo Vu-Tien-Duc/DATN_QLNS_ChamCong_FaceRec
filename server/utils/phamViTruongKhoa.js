@@ -1,7 +1,9 @@
+// Xác định phạm vi đơn vị và danh sách nhân sự thuộc quyền quản lý của lãnh đạo khoa / đơn vị.
 const { Op } = require('sequelize');
 const { NguoiDung, PhongBan, VaiTroNguoiDung } = require('../models');
 const { UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES, normalizeRole } = require('./vaiTro.utils');
 
+// Kiểm tra người dùng có giữ vai trò lãnh đạo đơn vị (Trưởng/Phó khoa, bộ môn, phòng)
 const isUnitLeader = (actor) => {
   if (!actor) return false;
   const role = normalizeRole(actor.vai_tro_chinh);
@@ -10,6 +12,7 @@ const isUnitLeader = (actor) => {
   return Array.isArray(roles) && roles.some((r) => UNIT_LEADER_ROLES.includes(normalizeRole(r.ma_vai_tro)));
 };
 
+// Kiểm tra người dùng thuộc nhóm quản trị cấp trường
 const isGlobalAdmin = (actor) => {
   if (!actor) return false;
   const role = normalizeRole(actor.vai_tro_chinh);
@@ -18,9 +21,7 @@ const isGlobalAdmin = (actor) => {
   return Array.isArray(roles) && roles.some((r) => GLOBAL_ADMIN_ROLES.includes(normalizeRole(r.ma_vai_tro)));
 };
 
-/**
- * Lấy danh sách ID đơn vị thuộc phạm vi quản lý của Trưởng khoa / Trưởng đơn vị (gồm Khoa và các Bộ môn con)
- */
+// Lấy danh sách ID đơn vị thuộc quyền quản lý của trưởng đơn vị (gồm cả bộ môn con)
 const getDeanDepartmentIds = async (actor) => {
   if (!actor || !isUnitLeader(actor)) return [];
 
@@ -62,9 +63,7 @@ const getDeanDepartmentIds = async (actor) => {
   return allDeptIds;
 };
 
-/**
- * Lấy danh sách ID người dùng thuộc phạm vi quản lý của Trưởng khoa / Trưởng đơn vị
- */
+// Lấy danh sách ID người dùng thuộc quyền quản lý của trưởng đơn vị
 const getDeanScopedUserIds = async (actor) => {
   if (!actor || !isUnitLeader(actor)) return [];
   const departmentIds = await getDeanDepartmentIds(actor);
@@ -90,9 +89,7 @@ const getDeanScopedUserIds = async (actor) => {
   return Array.from(idSet);
 };
 
-/**
- * Kiểm tra xem một user mục tiêu có nằm trong phạm vi quản lý của Trưởng đơn vị hay không
- */
+// Kiểm tra người dùng mục tiêu có nằm trong phạm vi quản lý của trưởng đơn vị không
 const isUserInDeanScope = async (actor, targetUserId) => {
   if (!actor) return false;
   if (isGlobalAdmin(actor)) return true;

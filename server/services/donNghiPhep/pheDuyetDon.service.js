@@ -1,7 +1,4 @@
-/**
- * Dịch vụ Phê duyệt, Từ chối & Hủy đơn nghỉ phép (server/services/donNghiPhep/pheDuyetDon.service.js)
- * Bao gồm: Chặn tự duyệt đơn, Khóa lạc quan, Duyệt đa cấp (Khoa -> BGH) và Hồi tố/Hoàn tác công.
- */
+// Phê duyệt, từ chối và hủy đơn nghỉ phép đa cấp (Khoa -> BGH), chặn tự duyệt và đồng bộ/hoàn tác bảng công
 const { Op } = require('sequelize');
 const {
   DonNghiPhep,
@@ -20,7 +17,7 @@ const { isScheduleActiveOnDate } = require('../../utils/ngayLichTrinh.utils');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 const { isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
-const { normalizeRole, UNIT_LEADER_ROLES } = require('../../utils/vaiTro.utils');
+const { normalizeRole, UNIT_LEADER_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
 const { getEffectivePermissions, PERMISSIONS } = require('../../config/permissions');
 const { calculateCheckOutStatus } = require('../../utils/thoiGianChamCong.utils');
 const { sendLeaveApprovedEmail, sendLeaveRejectedEmail } = require('../heThong/guiEmail.service');
@@ -35,6 +32,7 @@ const {
   leaveInclude,
 } = require('./tinhPhepNam.helper');
 
+// Kiểm tra thẩm quyền duyệt đơn đa cấp (chặn tự duyệt, kiểm tra phạm vi đơn vị và ủy quyền phó khoa)
 const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
   const applicantId = String(leaveRequest.nguoi_dung_id);
   const currentUserId = String(currentUser.id);
@@ -48,12 +46,12 @@ const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
     };
   }
 
-  const role = normalizeRole(currentUser.vai_tro_chinh || currentUser.role);
   const status = leaveRequest.trang_thai;
   const currentLevel = status === 'pending_bgh' ? 2 : 1;
 
-  if (['admin', 'bgh', 'tccb'].includes(role)) {
-    if (role === 'tccb') {
+  if (hasAnyActiveRole(currentUser, ['admin', 'bgh', 'tccb'])) {
+    const isAdminOrBgh = hasAnyActiveRole(currentUser, ['admin', 'bgh']);
+    if (!isAdminOrBgh && hasAnyActiveRole(currentUser, ['tccb'])) {
       const applicant = await NguoiDung.findByPk(applicantId, { attributes: ['id', 'vai_tro_chinh'] });
       const applicantRole = normalizeRole(applicant?.vai_tro_chinh);
       if (['admin', 'bgh'].includes(applicantRole)) {
@@ -77,7 +75,7 @@ const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
     };
   }
 
-  if (UNIT_LEADER_ROLES.includes(role)) {
+  if (hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES)) {
     const applicant = await NguoiDung.findByPk(applicantId, {
       attributes: ['id', 'vai_tro_chinh', 'don_vi_chinh_id'],
     });
@@ -96,9 +94,7 @@ const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
     }
 
     const effectivePerms = getEffectivePermissions(currentUser);
-    const hasDelegation =
-      Boolean(currentUser.isAuthorized || currentUser.duoc_uy_quyen) ||
-      effectivePerms.has(PERMISSIONS.DON_TU_DUYET_CAP_1);
+    const hasDelegation = effectivePerms.has(PERMISSIONS.DON_TU_DUYET_CAP_1);
     if (['pho_khoa', 'pho_bo_mon', 'pho_phong'].includes(role) && !hasDelegation) {
       return {
         allowed: false,
@@ -124,6 +120,7 @@ const validateLeaveApprovalPermission = async (currentUser, leaveRequest) => {
   return { allowed: false, message: 'Bạn không có quyền thực hiện hành động này.', status: 403 };
 };
 
+// Kiểm tra phiên bản bản ghi để chống ghi đè đồng thời (Optimistic Locking)
 const assertExpectedVersion = (request, phien_ban_ky_vong) => {
   if (phien_ban_ky_vong !== undefined && phien_ban_ky_vong !== null && request.cap_nhat_luc) {
     const expectedMs = Number(phien_ban_ky_vong);
@@ -138,6 +135,7 @@ const assertExpectedVersion = (request, phien_ban_ky_vong) => {
   }
 };
 
+// Chặn chỉnh sửa nếu bản ghi chấm công của ngày đó đã khóa sổ lương
 const assertAttendanceLogUnlocked = (existingLog, dateLabel) => {
   if (existingLog && existingLog.da_chot) {
     throw new ServiceError(
@@ -148,6 +146,7 @@ const assertAttendanceLogUnlocked = (existingLog, dateLabel) => {
   }
 };
 
+// Phê duyệt đơn (chuyển cấp Khoa -> BGH hoặc chốt duyệt và cập nhật bảng công/lịch)
 const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong, currentUser, dia_chi_ip }) => {
   if (!id || !isValidUuid(String(id))) {
     throw new ServiceError('Mã đơn (id) không hợp lệ.', 400);
@@ -170,43 +169,50 @@ const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong,
     throw new ServiceError(permCheck.message, permCheck.status || 403, permCheck.errorCode || null);
   }
 
-  if (request.loai_don === 'nghi_phep') {
-    const targetYear = new Date(request.ngay_bat_dau).getFullYear();
-    const yearStart = new Date(targetYear, 0, 1);
-    const yearEnd = new Date(targetYear, 11, 31, 23, 59, 59, 999);
-    const targetYearLeavesStart = new Date(Math.max(new Date(request.ngay_bat_dau).getTime(), yearStart.getTime()));
-    const targetYearLeavesEnd = new Date(Math.min(new Date(request.ngay_ket_thuc).getTime(), yearEnd.getTime()));
-    const isHalfDay = Number(request.so_ngay) === 0.5;
-    const holidaySet = await getHolidayDateSet(targetYearLeavesStart, targetYearLeavesEnd);
-    const requestedDays = isHalfDay
-      ? 0.5
-      : calculateLeaveDays(targetYearLeavesStart, targetYearLeavesEnd, false, holidaySet);
-
-    const applicantUser = await NguoiDung.findByPk(request.nguoi_dung_id, {
-      include: [{ model: HoSoCanBo, as: 'ho_so', attributes: ['han_muc_phep_nam'] }],
-    });
-    const quota = applicantUser?.ho_so?.han_muc_phep_nam !== undefined ? Number(applicantUser.ho_so.han_muc_phep_nam) : 12;
-
-    const { daysUsed } = await getLeaveStatsByYear(request.nguoi_dung_id, targetYear);
-    const remainingDays = Math.max(0, quota - daysUsed);
-    if (requestedDays > remainingDays) {
-      throw new ServiceError(
-        `Không thể phê duyệt đơn: Cán bộ/giảng viên chỉ còn ${remainingDays} ngày phép khả dụng, đơn này xin nghỉ ${requestedDays} ngày trong năm ${targetYear}.`,
-        400,
-        'INSUFFICIENT_LEAVE_DAYS'
-      );
-    }
-  }
-
   const cleanNote = typeof ghi_chu_duyet === 'string' ? ghi_chu_duyet.trim() : '';
   const currentUserId = currentUser.id;
   const currentLevel = currentStatus === 'pending_bgh' ? 2 : 1;
   const requiredLevels = Number(request.so_ngay || 1) > 3 ? 2 : 1;
-  const approverRole = normalizeRole(currentUser.vai_tro_chinh);
-  const isFinalApproval = ['admin', 'bgh', 'tccb'].includes(approverRole) || currentLevel >= requiredLevels;
+  const isFinalApproval = hasAnyActiveRole(currentUser, ['admin', 'bgh', 'tccb']) || currentLevel >= requiredLevels;
   const nextStatus = isFinalApproval ? 'approved' : 'pending_bgh';
 
   const updatedRequest = await runInTransaction(async (transaction) => {
+    if (request.loai_don === 'nghi_phep') {
+      const startDate = new Date(request.ngay_bat_dau);
+      const endDate = new Date(request.ngay_ket_thuc);
+      const startYear = startDate.getFullYear();
+      const endYear = endDate.getFullYear();
+      const isHalfDay = Number(request.so_ngay) === 0.5;
+      const holidaySet = await getHolidayDateSet(startDate, endDate, { transaction });
+
+      const applicantUser = await NguoiDung.findByPk(request.nguoi_dung_id, {
+        include: [{ model: HoSoCanBo, as: 'ho_so', attributes: ['han_muc_phep_nam'] }],
+        transaction,
+      });
+      const quota = applicantUser?.ho_so?.han_muc_phep_nam !== undefined ? Number(applicantUser.ho_so.han_muc_phep_nam) : 12;
+
+      for (let targetYear = startYear; targetYear <= endYear; targetYear += 1) {
+        const yearStart = new Date(targetYear, 0, 1);
+        const yearEnd = new Date(targetYear, 11, 31, 23, 59, 59, 999);
+        const targetYearLeavesStart = new Date(Math.max(startDate.getTime(), yearStart.getTime()));
+        const targetYearLeavesEnd = new Date(Math.min(endDate.getTime(), yearEnd.getTime()));
+        const requestedDays = isHalfDay
+          ? 0.5
+          : calculateLeaveDays(targetYearLeavesStart, targetYearLeavesEnd, false, holidaySet);
+        if (requestedDays <= 0) continue;
+
+        const { daysUsed } = await getLeaveStatsByYear(request.nguoi_dung_id, targetYear, { transaction });
+        const remainingDays = Math.max(0, quota - daysUsed);
+        if (requestedDays > remainingDays) {
+          throw new ServiceError(
+            `Không thể phê duyệt đơn: Cán bộ/giảng viên chỉ còn ${remainingDays} ngày phép khả dụng, đơn này xin nghỉ ${requestedDays} ngày trong năm ${targetYear}.`,
+            400,
+            'INSUFFICIENT_LEAVE_DAYS'
+          );
+        }
+      }
+    }
+
     const [affectedCount] = await DonNghiPhep.update(
       {
         trang_thai: nextStatus,
@@ -239,38 +245,57 @@ const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong,
 
     if (isFinalApproval) {
       if (request.loai_don === 'day_bu' && request.lich_trinh_id && request.ngay_day_bu) {
-        await NgoaiLeLichTrinh.findOrCreate({
+        const makeupPayload = {
+          ly_do: `Dạy bù theo đơn nghỉ phép #${request.id}`,
+          trang_thai: 'day_bu',
+          ngay_day_bu: request.ngay_day_bu,
+          giang_vien_day_thay_id: request.giang_vien_day_thay_id || null,
+          ca_thay_the_id: request.ca_thay_the_id || null,
+        };
+        const [ex, created] = await NgoaiLeLichTrinh.findOrCreate({
           where: { lich_trinh_id: request.lich_trinh_id, ngay: request.ngay_day_bu },
-          defaults: {
-            ly_do: `Dạy bù theo đơn nghỉ phép #${request.id}`,
-            trang_thai: 'day_bu',
-            ngay_day_bu: request.ngay_day_bu,
-          },
+          defaults: makeupPayload,
           transaction,
         });
+        if (!created) {
+          await ex.update(makeupPayload, { transaction });
+        }
       }
 
       if (request.loai_don === 'doi_ca' && request.lich_trinh_id) {
         const shiftDateKey = getVietnamDateKey(request.ngay_bat_dau);
-        await NgoaiLeLichTrinh.findOrCreate({
+        const hasSubstituteOrShiftSwap = Boolean(request.giang_vien_day_thay_id || request.ca_thay_the_id);
+        const swapPayload = {
+          ly_do: `Đổi ca theo đơn #${request.id}`,
+          trang_thai: hasSubstituteOrShiftSwap ? 'doi_ca' : 'nghi',
+          ngay_day_bu: request.ngay_day_bu || null,
+          giang_vien_day_thay_id: request.giang_vien_day_thay_id || null,
+          ca_thay_the_id: request.ca_thay_the_id || null,
+        };
+        const [swapEx, swapCreated] = await NgoaiLeLichTrinh.findOrCreate({
           where: { lich_trinh_id: request.lich_trinh_id, ngay: shiftDateKey },
-          defaults: {
-            ly_do: `Đổi ca theo đơn #${request.id}`,
-            trang_thai: 'nghi',
-            ngay_day_bu: request.ngay_day_bu || null,
-          },
+          defaults: swapPayload,
           transaction,
         });
-        if (request.ngay_day_bu) {
-          await NgoaiLeLichTrinh.findOrCreate({
+        if (!swapCreated) {
+          await swapEx.update(swapPayload, { transaction });
+        }
+        if (request.ngay_day_bu && request.ngay_day_bu !== shiftDateKey) {
+          const targetPayload = {
+            ly_do: `Lịch dạy thay thế (đổi ca) theo đơn #${request.id}`,
+            trang_thai: 'day_bu',
+            ngay_day_bu: request.ngay_day_bu,
+            giang_vien_day_thay_id: request.giang_vien_day_thay_id || null,
+            ca_thay_the_id: request.ca_thay_the_id || null,
+          };
+          const [targetEx, targetCreated] = await NgoaiLeLichTrinh.findOrCreate({
             where: { lich_trinh_id: request.lich_trinh_id, ngay: request.ngay_day_bu },
-            defaults: {
-              ly_do: `Lịch dạy thay thế (đổi ca) theo đơn #${request.id}`,
-              trang_thai: 'day_bu',
-              ngay_day_bu: request.ngay_day_bu,
-            },
+            defaults: targetPayload,
             transaction,
           });
+          if (!targetCreated) {
+            await targetEx.update(targetPayload, { transaction });
+          }
         }
       }
 
@@ -462,9 +487,21 @@ const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong,
     });
   }
 
-  return formatLeaveRequestDoc(updatedRequest);
+  const formattedApproved = formatLeaveRequestDoc(updatedRequest);
+  try {
+    const { emitLeaveRequestUpdate } = require('../../config/socket');
+    emitLeaveRequestUpdate({
+      ...formattedApproved,
+      nguoi_dung_id: request.nguoi_dung_id,
+      don_vi_chinh_id: updatedRequest?.nguoi_dung?.don_vi_chinh_id,
+      ho_ten_nguoi_tao: updatedRequest?.nguoi_dung?.ho_ten,
+    });
+  } catch (_) {}
+
+  return formattedApproved;
 };
 
+// Từ chối đơn xin phép và lưu lý do vào lịch sử duyệt
 const rejectLeaveRequestDomain = async ({ id, ly_do_tu_choi, phien_ban_ky_vong, currentUser, dia_chi_ip }) => {
   if (!id || !isValidUuid(String(id))) {
     throw new ServiceError('Mã đơn (id) không hợp lệ.', 400);
@@ -552,9 +589,21 @@ const rejectLeaveRequestDomain = async ({ id, ly_do_tu_choi, phien_ban_ky_vong, 
     });
   }
 
-  return formatLeaveRequestDoc(updatedRequest);
+  const formattedApproved = formatLeaveRequestDoc(updatedRequest);
+  try {
+    const { emitLeaveRequestUpdate } = require('../../config/socket');
+    emitLeaveRequestUpdate({
+      ...formattedApproved,
+      nguoi_dung_id: request.nguoi_dung_id,
+      don_vi_chinh_id: updatedRequest?.nguoi_dung?.don_vi_chinh_id,
+      ho_ten_nguoi_tao: updatedRequest?.nguoi_dung?.ho_ten,
+    });
+  } catch (_) {}
+
+  return formattedApproved;
 };
 
+// Hủy đơn xin phép (hoàn tác công hoặc ngoại lệ lịch nếu đơn đã duyệt trước đó)
 const cancelLeaveRequestDomain = async ({ id, phien_ban_ky_vong, currentUser, dia_chi_ip }) => {
   if (!id || !isValidUuid(String(id))) {
     throw new ServiceError('Mã đơn (id) không hợp lệ.', 400);
@@ -570,8 +619,7 @@ const cancelLeaveRequestDomain = async ({ id, phien_ban_ky_vong, currentUser, di
   const currentUserId = String(currentUser.id);
   const applicantId = String(request.nguoi_dung_id);
   const isApplicant = applicantId === currentUserId;
-  const role = normalizeRole(currentUser.vai_tro_chinh);
-  const isAdmin = ['admin', 'bgh'].includes(role);
+  const isAdmin = hasAnyActiveRole(currentUser, ['admin', 'bgh']);
 
   if (!isApplicant && !isAdmin) {
     throw new ServiceError('Bạn chỉ có quyền hủy đơn của chính mình.', 403, 'CANCEL_UNAUTHORIZED');
@@ -627,6 +675,8 @@ const cancelLeaveRequestDomain = async ({ id, phien_ban_ky_vong, currentUser, di
         } else {
           log.trang_thai = 'absent';
           log.don_tu_id = null;
+          log.so_tiet_thuc_day = 0;
+          log.thoi_luong_lam_viec_phut = 0;
           log.ly_do_ghi_de = 'Đơn nghỉ phép đã bị hủy (Hoàn tác công)';
           await log.save({ transaction });
         }
@@ -663,7 +713,7 @@ const cancelLeaveRequestDomain = async ({ id, phien_ban_ky_vong, currentUser, di
         where: {
           lich_trinh_id: request.lich_trinh_id,
           ngay: shiftDateKey,
-          trang_thai: 'nghi',
+          trang_thai: { [Op.in]: ['nghi', 'doi_ca'] },
         },
         transaction,
       });
@@ -691,7 +741,18 @@ const cancelLeaveRequestDomain = async ({ id, phien_ban_ky_vong, currentUser, di
     dia_chi_ip: dia_chi_ip || null,
   });
 
-  return formatLeaveRequestDoc(updatedRequest);
+  const formattedApproved = formatLeaveRequestDoc(updatedRequest);
+  try {
+    const { emitLeaveRequestUpdate } = require('../../config/socket');
+    emitLeaveRequestUpdate({
+      ...formattedApproved,
+      nguoi_dung_id: request.nguoi_dung_id,
+      don_vi_chinh_id: updatedRequest?.nguoi_dung?.don_vi_chinh_id,
+      ho_ten_nguoi_tao: updatedRequest?.nguoi_dung?.ho_ten,
+    });
+  } catch (_) {}
+
+  return formattedApproved;
 };
 
 module.exports = {

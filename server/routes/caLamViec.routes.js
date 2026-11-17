@@ -1,3 +1,4 @@
+// Định tuyến API quản lý danh mục ca làm việc (/api/ca-lam-viec)
 const express = require('express');
 const router = express.Router();
 const {

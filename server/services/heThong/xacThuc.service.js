@@ -1,7 +1,4 @@
-/**
- * Authentication Service (server/services/auth.service.js)
- * Chuẩn hóa Sequelize + SQL Server 3NF (NguoiDung, PhongBan, VaiTroNguoiDung, MauKhuonMat, XacThucOtp, MaLamMoi, NhatKyKiemToan).
- */
+// Xử lý đăng nhập, xoay vòng Refresh Token, đăng xuất, đổi mật khẩu, ảnh đại diện và OTP quên mật khẩu.
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -11,33 +8,28 @@ const { Op } = require('sequelize');
 const {
   NguoiDung,
   PhongBan,
+  VaiTroNguoiDung,
   MauKhuonMat,
   XacThucOtp,
   MaLamMoi,
   NhatKyKiemToan,
 } = require('../../models');
 const { revokeToken } = require('../../utils/thuHoiToken');
+const { runInTransaction } = require('../../utils/giaoDichDb');
 const minioStorage = require('../../config/minio');
 const { setGraceToken, getGraceToken, deleteGraceToken, redisSet, redisGet } = require('../../config/redis');
 const { transporter } = require('../../config/mailer');
-const { normalizeRole } = require('../../utils/vaiTro.utils');
+const { normalizeRole, getActiveUserRoles } = require('../../utils/vaiTro.utils');
+const ServiceError = require('../../utils/loiNghiepVu');
 
-class ServiceError extends Error {
-  constructor(message, statusCode = 400, errorCode = null, data = null) {
-    super(message);
-    this.name = 'ServiceError';
-    this.statusCode = statusCode;
-    this.errorCode = errorCode;
-    this.data = data;
-  }
-}
-
+// Băm token bằng SHA-256 trước khi lưu hoặc tra cứu
 const hashToken = (tokenStr) => crypto.createHash('sha256').update(String(tokenStr).trim()).digest('hex');
 
 const GRACE_REVOKED_USER_PREFIX = 'TOKEN_GRACE_REVOKED:';
 const revokedGraceUserMap = new Map();
 const rotationGraceCache = new Map();
 
+// Vô hiệu hóa các token đang nằm trong grace period của người dùng khi đăng xuất hoặc bị thu hồi
 const revokeUserGraceTokens = async (userId, specificRefreshToken = null) => {
   const now = Date.now();
   if (specificRefreshToken) {
@@ -59,6 +51,7 @@ const revokeUserGraceTokens = async (userId, specificRefreshToken = null) => {
   }
 };
 
+// Kiểm tra bản ghi grace period của token đã bị thu hồi hay chưa
 const isGraceItemRevoked = async (graceItem) => {
   if (!graceItem || !graceItem.userId) return false;
   const uid = String(graceItem.userId);
@@ -83,8 +76,10 @@ if (process.env.NODE_ENV !== 'test') {
   if (cleanupTimer.unref) cleanupTimer.unref();
 }
 
+// Ký và cấp Access Token chứa vai trò và phiên bản token hiện tại
 const generateAccessToken = (user) => {
   const roleVal = normalizeRole(user.vai_tro_chinh);
+  const activeRoles = Array.from(getActiveUserRoles(user));
   const deptId = user.don_vi_chinh_id ? String(user.don_vi_chinh_id) : null;
   const userIdStr = String(user.id);
 
@@ -92,8 +87,10 @@ const generateAccessToken = (user) => {
     id: userIdStr,
     userId: userIdStr,
     email: user.email,
+    ho_ten: user.ho_ten || '',
     role: roleVal,
     vai_tro_chinh: roleVal,
+    danh_sach_vai_tro: activeRoles.length > 0 ? activeRoles : (roleVal ? [roleVal] : []),
     departmentId: deptId,
     don_vi_chinh_id: deptId,
     tokenVersion: user.phien_ban_token || 1,
@@ -105,6 +102,7 @@ const generateAccessToken = (user) => {
   });
 };
 
+// Ký và cấp Refresh Token thuộc cùng họ token (tokenFamily)
 const generateRefreshToken = (user, existingFamily = null) => {
   const tokenFamily = existingFamily || crypto.randomBytes(16).toString('hex');
   const expiresDays = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '7', 10);
@@ -123,6 +121,7 @@ const generateRefreshToken = (user, existingFamily = null) => {
   return { tokenString, tokenFamily };
 };
 
+// Chuẩn hóa thông tin người dùng trả về client (ẩn mật khẩu băm, kèm trạng thái Face ID)
 const formatUserResponse = (userInstance, faceTemplate) => {
   const userObj = userInstance.toJSON ? userInstance.toJSON() : { ...userInstance };
   delete userObj.mat_khau_ma_hoa;
@@ -145,7 +144,7 @@ const formatUserResponse = (userInstance, faceTemplate) => {
   userObj.don_vi_chinh_id = deptObj || userObj.don_vi_chinh_id || null;
   userObj.anh_dai_dien = userObj.anh_dai_dien || null;
 
-  // Frontend compatibility
+  // Giữ tương thích tên trường cho frontend
   userObj.fullName = userObj.ho_ten;
   userObj.staffCode = userObj.ma_can_bo;
   userObj.phoneNumber = userObj.so_dien_thoai;
@@ -158,9 +157,7 @@ const formatUserResponse = (userInstance, faceTemplate) => {
   return userObj;
 };
 
-/**
- * 1. Đăng nhập hệ thống
- */
+// Đăng nhập hệ thống
 const login = async ({ email, password, ipAddress, userAgent }) => {
   if (!email || !password) {
     throw new ServiceError('Vui lòng nhập đầy đủ email và mật khẩu.', 400);
@@ -181,6 +178,11 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
         model: PhongBan,
         as: 'don_vi_chinh',
         attributes: ['id', 'ten_phong_ban', 'loai_don_vi', 'vi_do', 'kinh_do', 'ban_kinh_met'],
+      },
+      {
+        model: VaiTroNguoiDung,
+        as: 'danh_sach_vai_tro',
+        attributes: ['ma_vai_tro', 'don_vi_id', 'pham_vi', 'tu_ngay', 'den_ngay'],
       },
     ],
   });
@@ -244,9 +246,7 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   };
 };
 
-/**
- * 2. Làm mới Token (Refresh Token Rotation với Grace Period 15s & Chống Replay Attack)
- */
+// Làm mới Access Token và xoay vòng Refresh Token (có grace period 15 giây)
 const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent }) => {
   const incomingToken = token || refreshTokenString;
   if (!incomingToken) {
@@ -269,31 +269,84 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
     };
   }
 
-  const tokenDoc = await MaLamMoi.findOne({
-    where: { chuoi_token: incomingHash },
-  });
+  const txResult = await runInTransaction(async (transaction) => {
+    const tokenDoc = await MaLamMoi.findOne({
+      where: { chuoi_token: incomingHash },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
 
-  if (!tokenDoc) {
-    throw new ServiceError('Refresh token không hợp lệ hoặc đã bị hủy.', 403);
-  }
-
-  const tokenFamily = tokenDoc.ma_nhom_token;
-  const userId = tokenDoc.nguoi_dung_id;
-
-  if (tokenDoc.da_su_dung) {
-    const usedAtTime = tokenDoc.thoi_diem_su_dung;
-    const elapsedMs = usedAtTime ? Date.now() - new Date(usedAtTime).getTime() : Infinity;
-
-    if (elapsedMs <= 15000 && graceItem && !(await isGraceItemRevoked(graceItem))) {
-      return {
-        accessToken: graceItem.newAccessToken,
-        token: graceItem.newAccessToken,
-        newAccessToken: graceItem.newAccessToken,
-        refreshToken: graceItem.newRefreshTokenString,
-        newRefreshTokenString: graceItem.newRefreshTokenString,
-      };
+    if (!tokenDoc) {
+      throw new ServiceError('Refresh token không hợp lệ hoặc đã bị hủy.', 403);
     }
 
+    const tokenFamily = tokenDoc.ma_nhom_token;
+    const userId = tokenDoc.nguoi_dung_id;
+
+    if (tokenDoc.da_su_dung) {
+      const usedAtTime = tokenDoc.thoi_diem_su_dung;
+      const elapsedMs = usedAtTime ? Date.now() - new Date(usedAtTime).getTime() : Infinity;
+      if (elapsedMs <= 15000 && graceItem && !(await isGraceItemRevoked(graceItem))) {
+        return { outcome: 'grace' };
+      }
+      return { outcome: 'replay', tokenFamily, userId };
+    }
+
+    if (tokenDoc.het_han_luc && new Date(tokenDoc.het_han_luc).getTime() < Date.now()) {
+      throw new ServiceError('Refresh token đã hết hạn.', 403);
+    }
+
+    const user = await NguoiDung.findByPk(userId, {
+      include: [
+        {
+          model: VaiTroNguoiDung,
+          as: 'danh_sach_vai_tro',
+          attributes: ['ma_vai_tro', 'don_vi_id', 'pham_vi', 'tu_ngay', 'den_ngay'],
+        },
+      ],
+      transaction,
+    });
+    if (!user || user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
+      throw new ServiceError('Tài khoản người dùng không còn tồn tại hoặc đã bị khóa.', 401);
+    }
+
+    tokenDoc.da_su_dung = true;
+    tokenDoc.thoi_diem_su_dung = new Date();
+    await tokenDoc.save({ transaction });
+
+    const newAccessToken = generateAccessToken(user);
+    const { tokenString: newRefreshTokenString } = generateRefreshToken(user, tokenFamily);
+
+    const expiresDays = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '7', 10);
+    const expiresAt = new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000);
+
+    await MaLamMoi.create(
+      {
+        chuoi_token: hashToken(newRefreshTokenString),
+        ma_nhom_token: tokenFamily,
+        nguoi_dung_id: user.id,
+        dia_chi_ip: ipAddress || null,
+        thiet_bi: userAgent || null,
+        het_han_luc: expiresAt,
+      },
+      { transaction }
+    );
+
+    return { outcome: 'rotated', user, newAccessToken, newRefreshTokenString };
+  });
+
+  if (txResult.outcome === 'grace') {
+    return {
+      accessToken: graceItem.newAccessToken,
+      token: graceItem.newAccessToken,
+      newAccessToken: graceItem.newAccessToken,
+      refreshToken: graceItem.newRefreshTokenString,
+      newRefreshTokenString: graceItem.newRefreshTokenString,
+    };
+  }
+
+  if (txResult.outcome === 'replay') {
+    const { tokenFamily, userId } = txResult;
     await revokeUserGraceTokens(userId, incomingToken);
 
     if (tokenFamily) {
@@ -323,33 +376,7 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
     );
   }
 
-  if (tokenDoc.het_han_luc && new Date(tokenDoc.het_han_luc).getTime() < Date.now()) {
-    throw new ServiceError('Refresh token đã hết hạn.', 403);
-  }
-
-  const user = await NguoiDung.findByPk(userId);
-  if (!user || user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
-    throw new ServiceError('Tài khoản người dùng không còn tồn tại hoặc đã bị khóa.', 401);
-  }
-
-  tokenDoc.da_su_dung = true;
-  tokenDoc.thoi_diem_su_dung = new Date();
-  await tokenDoc.save();
-
-  const newAccessToken = generateAccessToken(user);
-  const { tokenString: newRefreshTokenString } = generateRefreshToken(user, tokenFamily);
-
-  const expiresDays = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '7', 10);
-  const expiresAt = new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000);
-
-  await MaLamMoi.create({
-    chuoi_token: hashToken(newRefreshTokenString),
-    ma_nhom_token: tokenFamily,
-    nguoi_dung_id: user.id,
-    dia_chi_ip: ipAddress || null,
-    thiet_bi: userAgent || null,
-    het_han_luc: expiresAt,
-  });
+  const { user, newAccessToken, newRefreshTokenString } = txResult;
 
   const graceData = {
     userId: String(user.id),
@@ -372,15 +399,32 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
   };
 };
 
-/**
- * 3. Đăng xuất hệ thống
- */
+// Đăng xuất và thu hồi token hiện tại
 const logout = async ({ refreshTokenString, accessTokenString, userId }) => {
+  let effectiveUserId = userId || null;
+
   if (accessTokenString) {
-    revokeToken(accessTokenString);
+    const decoded = jwt.decode(accessTokenString);
+    const remainingSeconds =
+      decoded && typeof decoded.exp === 'number'
+        ? Math.max(1, Math.ceil(decoded.exp - Date.now() / 1000))
+        : undefined;
+    revokeToken(accessTokenString, remainingSeconds);
+
+    if (!effectiveUserId) {
+      try {
+        const verified = jwt.verify(
+          accessTokenString,
+          process.env.JWT_SECRET || 'secret-jwt-fallback-key',
+          { ignoreExpiration: true }
+        );
+        if (verified?.id) {
+          effectiveUserId = verified.id;
+        }
+      } catch (_) {}
+    }
   }
 
-  let effectiveUserId = userId || null;
   if (refreshTokenString) {
     const tokenHash = hashToken(refreshTokenString);
     const tokenDoc = await MaLamMoi.findOne({
@@ -405,12 +449,12 @@ const logout = async ({ refreshTokenString, accessTokenString, userId }) => {
 
   await revokeUserGraceTokens(effectiveUserId, refreshTokenString);
 
-  if (userId) {
+  if (effectiveUserId) {
     NhatKyKiemToan.create({
-      nguoi_thuc_hien_id: userId,
+      nguoi_thuc_hien_id: effectiveUserId,
       loai_chu_the: 'user',
       hanh_dong: 'LOGOUT',
-      doi_tuong_id: String(userId),
+      doi_tuong_id: String(effectiveUserId),
       loai_doi_tuong: 'nguoi_dung',
       chi_tiet: { message: 'Đăng xuất thành công, token đã bị thu hồi.' },
     }).catch((err) => console.error('[AuditLog Error]:', err.message));
@@ -419,9 +463,7 @@ const logout = async ({ refreshTokenString, accessTokenString, userId }) => {
   return { message: 'Đăng xuất thành công.' };
 };
 
-/**
- * 4. Lấy thông tin tài khoản hiện tại
- */
+// Lấy thông tin tài khoản hiện tại
 const getMe = async (userId) => {
   const user = await NguoiDung.findByPk(userId, {
     include: [
@@ -429,6 +471,11 @@ const getMe = async (userId) => {
         model: PhongBan,
         as: 'don_vi_chinh',
         attributes: ['id', 'ten_phong_ban', 'loai_don_vi', 'vi_do', 'kinh_do', 'ban_kinh_met'],
+      },
+      {
+        model: VaiTroNguoiDung,
+        as: 'danh_sach_vai_tro',
+        attributes: ['ma_vai_tro', 'don_vi_id', 'pham_vi', 'tu_ngay', 'den_ngay'],
       },
     ],
   });
@@ -445,9 +492,7 @@ const getMe = async (userId) => {
   return formatUserResponse(user, template);
 };
 
-/**
- * 5. Đổi mật khẩu
- */
+// Đổi mật khẩu tài khoản
 const changePassword = async ({ userId, currentPassword, oldPassword, newPassword, ipAddress }) => {
   const currentPass = currentPassword || oldPassword;
   if (!currentPass || !newPassword) {
@@ -493,9 +538,7 @@ const changePassword = async ({ userId, currentPassword, oldPassword, newPasswor
   return { message: 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại trên các thiết bị khác.' };
 };
 
-/**
- * 6. Cập nhật ảnh đại diện người dùng
- */
+// Cập nhật ảnh đại diện người dùng
 const updateAvatar = async ({ userId, avatarUrl, imageBuffer, file, ipAddress }) => {
   const user = await NguoiDung.findByPk(userId);
   if (!user) {
@@ -554,9 +597,7 @@ const updateAvatar = async ({ userId, avatarUrl, imageBuffer, file, ipAddress })
   };
 };
 
-/**
- * 7. Yêu cầu đặt lại mật khẩu qua mã OTP gửi về Email (sử dụng bảng xac_thuc_otp)
- */
+// Gửi mã OTP đặt lại mật khẩu qua email
 const forgotPassword = async ({ email, ipAddress }) => {
   if (!email || !String(email).trim()) {
     throw new ServiceError('Email là bắt buộc.', 400);
@@ -638,15 +679,12 @@ const forgotPassword = async ({ email, ipAddress }) => {
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   return {
-    message: 'Mã OTP xác thực đã được gửi tới email của bạn. Vui lòng kiểm tra hộp thư.',
-    email: user.email,
-    expiresInMinutes: 10,
+    success: true,
+    message: 'Nếu email tồn tại và đang hoạt động trong hệ thống, mã OTP khôi phục mật khẩu đã được gửi.',
   };
 };
 
-/**
- * 8. Xác thực OTP và đặt lại mật khẩu mới
- */
+// Xác thực OTP và đặt lại mật khẩu mới
 const resetPassword = async ({ email, otp, newPassword, ipAddress }) => {
   if (!email || !String(email).trim()) {
     throw new ServiceError('Email là bắt buộc.', 400);
@@ -663,7 +701,7 @@ const resetPassword = async ({ email, otp, newPassword, ipAddress }) => {
 
   const user = await NguoiDung.scope('withPassword').findOne({ where: { email: cleanEmail } });
   if (!user) {
-    throw new ServiceError('Không tìm thấy tài khoản người dùng.', 404);
+    throw new ServiceError('Email hoặc mã OTP không hợp lệ.', 400);
   }
 
   const otpDoc = await XacThucOtp.findOne({

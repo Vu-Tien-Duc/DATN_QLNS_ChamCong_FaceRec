@@ -1,6 +1,4 @@
-/**
- * Quản lý cấu hình ca làm việc (CaLamViec) trên SQL Server (Sequelize).
- */
+// Quản lý danh mục ca làm việc trong hệ thống.
 const { Op } = require('sequelize');
 const { CaLamViec, LichTrinh } = require('../../models');
 const ServiceError = require('../../utils/loiNghiepVu');
@@ -8,6 +6,7 @@ const { isValidUuid } = require('../../utils/hoTroSequelize');
 
 const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+// Kiểm tra chuỗi giờ đúng định dạng HH:mm (00:00 - 23:59)
 const validateTime = (value, fieldName) => {
   if (typeof value !== 'string' || !TIME_REGEX.test(value.trim())) {
     throw new ServiceError(
@@ -18,8 +17,10 @@ const validateTime = (value, fieldName) => {
   }
 };
 
+// Lấy danh sách toàn bộ ca làm việc sắp xếp theo giờ bắt đầu
 const getAllShiftConfigs = () => CaLamViec.findAll({ order: [['gio_bat_dau', 'ASC']] });
 
+// Lấy chi tiết một ca làm việc theo ID
 const getShiftConfigById = async (id) => {
   if (!isValidUuid(id)) {
     throw new ServiceError('Định dạng ID ca làm việc không hợp lệ.', 400, 'SHIFT_003');
@@ -29,6 +30,7 @@ const getShiftConfigById = async (id) => {
   return shift;
 };
 
+// Tạo mới một ca làm việc
 const createShiftConfig = async (payload = {}) => {
   const { ten_ca, gio_bat_dau, gio_ket_thuc, nguong_di_muon_phut } = payload;
   const kich_hoat = payload.kich_hoat !== undefined ? Boolean(payload.kich_hoat) : true;
@@ -63,6 +65,7 @@ const createShiftConfig = async (payload = {}) => {
   });
 };
 
+// Cập nhật thông tin ca làm việc
 const updateShiftConfig = async (id, data = {}) => {
   const shift = await getShiftConfigById(id);
   const { ten_ca, gio_bat_dau, gio_ket_thuc, nguong_di_muon_phut, kich_hoat } = data;
@@ -96,6 +99,7 @@ const updateShiftConfig = async (id, data = {}) => {
   return shift;
 };
 
+// Xóa ca làm việc nếu chưa có lịch trình tham chiếu
 const deleteShiftConfig = async (id) => {
   const shift = await getShiftConfigById(id);
   const scheduleCount = await LichTrinh.count({ where: { ca_id: id } });
@@ -111,6 +115,7 @@ const deleteShiftConfig = async (id) => {
 };
 
 module.exports = {
+  ServiceError,
   getAllShiftConfigs,
   getShiftConfigById,
   createShiftConfig,

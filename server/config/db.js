@@ -1,10 +1,5 @@
+// Kết nối SQL Server qua Sequelize (mặc định dùng cột snake_case và giữ nguyên tên bảng tiếng Việt).
 const { Sequelize } = require('sequelize');
-
-/**
- * Cấu hình kết nối cơ sở dữ liệu Microsoft SQL Server (MSSQL) thông qua Sequelize & Tedious.
- * Đề tài: Hệ thống Quản lý Nhân sự & Chấm công ứng dụng Thị giác Máy tính
- * Sinh viên thực hiện: Vũ Tiến Đức - MSV: 2310900023
- */
 
 const dbName = process.env.DB_NAME || 'DATN_QLNS_ChamCong_FaceRec';
 const dbUser = process.env.DB_USER || 'sa';
@@ -32,7 +27,7 @@ const sequelize = new Sequelize(dbName, dbUser, dbPassword, {
   port: dbInstance ? undefined : dbPort,
   dialect: 'mssql',
   dialectOptions,
-  logging: process.env.NODE_ENV === 'development' ? false : false, // Bật console.log nếu cần debug SQL
+  logging: process.env.NODE_ENV === 'development' ? false : false,
   pool: {
     max: 20,
     min: 2,
@@ -41,16 +36,14 @@ const sequelize = new Sequelize(dbName, dbUser, dbPassword, {
   },
   define: {
     timestamps: true,
-    underscored: true, // Tự động chuyển camelCase sang snake_case cho cột hệ thống
-    freezeTableName: true, // Giữ nguyên tên bảng thuần Việt theo CSDL v2.5
+    underscored: true,
+    freezeTableName: true,
     createdAt: 'tao_luc',
     updatedAt: 'cap_nhat_luc',
   },
 });
 
-/**
- * Quản lý kết nối đến cơ sở dữ liệu SQL Server.
- */
+// Kiểm tra và mở kết nối tới SQL Server
 const connectDB = async () => {
   try {
     await sequelize.authenticate();

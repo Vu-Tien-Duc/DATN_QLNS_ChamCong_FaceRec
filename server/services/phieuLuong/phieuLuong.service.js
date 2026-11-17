@@ -1,7 +1,4 @@
-/**
- * Dịch vụ Quản lý Bảng lương & Khóa sổ (server/services/phieuLuong.service.js)
- * Khởi tạo bảng lương hàng loạt, khóa/mở khóa sổ lương và re-export các module tính lương & xuất phiếu lương.
- */
+// Khởi tạo bảng lương tháng hàng loạt, khóa/mở sổ lương và điều phối xuất phiếu lương Excel/PDF
 const { Op } = require('sequelize');
 const {
   PhieuLuong,
@@ -15,8 +12,9 @@ const {
   NhatKyKiemToan,
 } = require('../../models');
 const { runInTransaction } = require('../../utils/giaoDichDb');
+const { isValidUuid } = require('../../utils/hoTroSequelize');
 const { getDeanScopedUserIds } = require('../../utils/phamViTruongKhoa');
-const { normalizeRole } = require('../../utils/vaiTro.utils');
+const { UNIT_LEADER_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
 const tinhThueVaLuongHelper = require('./tinhThueVaLuong.helper');
 const xuatPhieuLuongService = require('./xuatPhieuLuong.service');
 
@@ -29,12 +27,12 @@ const {
   formatPayrollDoc,
 } = tinhThueVaLuongHelper;
 
+// Tính và tạo bảng lương tháng hàng loạt cho nhân sự thuộc phạm vi quản lý
 const generateMonthlyPayroll = async ({ thang, nam, don_vi_id, currentUser }) => {
   const currentUserId = currentUser.id;
-  const role = normalizeRole(currentUser.vai_tro_chinh);
-  const isAdminOrHR = ['admin', 'bgh', 'ke_toan'].includes(role);
+  const isAdminOrHR = hasAnyActiveRole(currentUser, ['admin', 'bgh', 'ke_toan']);
 
-  if (!isAdminOrHR && !['truong_khoa', 'pho_khoa'].includes(role)) {
+  if (!isAdminOrHR && !hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES)) {
     throw new ServiceError('Bạn không có quyền khởi tạo bảng lương.', 403);
   }
 
@@ -152,20 +150,35 @@ const generateMonthlyPayroll = async ({ thang, nam, don_vi_id, currentUser }) =>
   };
 };
 
+// Lấy danh sách ID nhân sự thuộc đơn vị và các đơn vị con để lọc bảng lương
 const resolveDepartmentUserIdsFilter = async (departmentId) => {
   if (!departmentId || !isValidUuid(String(departmentId))) return null;
+  const allDeptIds = [String(departmentId)];
+  let parentIds = [String(departmentId)];
+  while (parentIds.length > 0) {
+    const childDepts = await PhongBan.findAll({
+      where: { don_vi_cha_id: { [Op.in]: parentIds } },
+      attributes: ['id'],
+      raw: true,
+    });
+    const newChildren = childDepts.map((d) => String(d.id)).filter((id) => !allDeptIds.includes(id));
+    if (newChildren.length === 0) break;
+    allDeptIds.push(...newChildren);
+    parentIds = newChildren;
+  }
+
   const users = await NguoiDung.findAll({
-    where: { don_vi_chinh_id: String(departmentId) },
+    where: { don_vi_chinh_id: { [Op.in]: allDeptIds } },
     attributes: ['id'],
     raw: true,
   });
   return users.map((u) => u.id);
 };
 
+// Khóa sổ bảng lương tháng và khóa đồng thời nhật ký chấm công liên quan
 const lockMonthlyPayroll = async ({ month, year, departmentId = null, currentUser, ip }) => {
   const currentUserId = currentUser.id;
-  const role = normalizeRole(currentUser.vai_tro_chinh);
-  if (!['admin', 'bgh', 'ke_toan'].includes(role)) {
+  if (!hasAnyActiveRole(currentUser, ['admin', 'bgh', 'ke_toan'])) {
     throw new ServiceError('Chỉ Quản trị viên hoặc Ban Giám Hiệu mới có quyền khóa bảng lương.', 403);
   }
 
@@ -229,10 +242,10 @@ const lockMonthlyPayroll = async ({ month, year, departmentId = null, currentUse
   };
 };
 
+// Mở khóa bảng lương tháng có ghi nhận lý do và nhật ký kiểm toán
 const unlockMonthlyPayroll = async ({ month, year, departmentId = null, reason, currentUser, ip }) => {
   const currentUserId = currentUser.id;
-  const role = normalizeRole(currentUser.vai_tro_chinh);
-  if (!['admin', 'bgh', 'ke_toan'].includes(role)) {
+  if (!hasAnyActiveRole(currentUser, ['admin', 'bgh', 'ke_toan'])) {
     throw new ServiceError('Chỉ Quản trị viên hoặc Ban Giám Hiệu mới có quyền mở khóa bảng lương.', 403);
   }
 
@@ -247,6 +260,17 @@ const unlockMonthlyPayroll = async ({ month, year, departmentId = null, reason, 
     ? { nguoi_dung_id: { [Op.in]: scopedUserIds.length ? scopedUserIds : ['00000000-0000-0000-0000-000000000000'] } }
     : {};
 
+  const paidCount = await PhieuLuong.count({
+    where: { thang: m, nam: y, trang_thai: 'da_chi_tra', ...userFilter },
+  });
+  if (paidCount > 0) {
+    throw new ServiceError(
+      `Không thể mở khóa bảng lương tháng ${m}/${y} vì đã có ${paidCount} phiếu lương ở trạng thái đã chi trả (da_chi_tra).`,
+      403,
+      'PAYROLL_ALREADY_PAID'
+    );
+  }
+
   const monthStr = String(m).padStart(2, '0');
   const startDateStr = `${y}-${monthStr}-01`;
   const lastDay = new Date(y, m, 0).getDate();
@@ -255,7 +279,7 @@ const unlockMonthlyPayroll = async ({ month, year, departmentId = null, reason, 
   const unlockedPayrollsCount = await runInTransaction(async (transaction) => {
     const [pCount] = await PhieuLuong.update(
       { trang_thai: 'nhap', thoi_gian_duyet: null, ghi_chu: `Mở khóa: ${reason.trim()}` },
-      { where: { thang: m, nam: y, ...userFilter }, transaction }
+      { where: { thang: m, nam: y, trang_thai: 'da_duyet', ...userFilter }, transaction }
     );
 
     await NhatKyChamCong.update(

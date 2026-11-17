@@ -1,11 +1,12 @@
+// Mô hình bảng xac_thuc_otp: lưu mã OTP băm SHA-256 phục vụ xác thực và đặt lại mật khẩu.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk } = require('./modelHelpers');
 
 const LOAI_OTP = ['forgot_password', 'verify_email'];
 
-/** Bảng xac_thuc_otp: mã OTP băm SHA-256 (64 ký tự hex), vòng đời ngắn, tách khỏi nguoi_dung. */
 class XacThucOtp extends Model {
+  // Kiểm tra mã OTP chưa dùng và vẫn còn hạn
   conHieuLuc(at = new Date()) {
     return !this.da_su_dung && new Date(this.het_han_luc).getTime() > at.getTime();
   }

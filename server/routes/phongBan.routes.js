@@ -1,3 +1,4 @@
+// Định tuyến API quản lý cơ cấu Khoa, Bộ môn và Phòng ban (/api/phong-ban)
 const express = require('express');
 const router = express.Router();
 const {

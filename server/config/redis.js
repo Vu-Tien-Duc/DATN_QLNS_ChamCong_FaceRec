@@ -1,19 +1,6 @@
-/**
- * Redis & Distributed Cache Client (Hệ Thống Phân Tán Đa Container)
- * 
- * Kiến trúc Hybrid thông minh (Redis First + Memory Fallback):
- * 1. Khi có Redis (REDIS_URL / localhost:6379):
- *    - Sử dụng Redis làm bộ nhớ đệm phân tán tập trung chia sẻ giữa tất cả các tiến trình (PM2 / Docker / K8s).
- *    - Quản lý Cooldown chống quẹt lặp 60s, Grace Period RTR Token 15s, Distributed Lock (Atomic SET NX PX + Lua).
- * 2. Khi không có Redis hoặc Redis mất kết nối (Offline / Test cô lập):
- *    - Tự động chuyển đổi trong suốt (Transparent Fallback) sang In-Memory Store có TTL tự động dọn dẹp.
- *    - Đảm bảo 100% Zero Downtime và không làm gián đoạn hay crash bất kỳ luồng nghiệp vụ nào.
- * 3. Tự động phục hồi (Auto Reconnect):
- *    - Khi Redis online trở lại, tự động tái kết nối và phục hồi chế độ phân tán ngay lập tức.
- */
+// Bộ đệm Redis kèm dự phòng In-Memory: ưu tiên Redis khi online; tự chuyển In-Memory TTL khi offline
 const Redis = require('ioredis');
 
-// Cấu hình kết nối từ biến môi trường
 const REDIS_URL = process.env.REDIS_URL || process.env.REDIS_URI || null;
 const REDIS_HOST = process.env.REDIS_HOST || '127.0.0.1';
 const REDIS_PORT = parseInt(process.env.REDIS_PORT, 10) || 6379;
@@ -24,11 +11,10 @@ let redisClient = null;
 let isConnected = false;
 let hasLoggedConnection = false;
 
-// -------------------------------------------------------------
-// TẦNG LƯU TRỮ DỰ PHÒNG IN-MEMORY (KHI REDIS OFFLINE)
-// -------------------------------------------------------------
-const memoryStore = new Map(); // key -> { value, expiresAt }
+// Bộ nhớ dự phòng trong RAM khi Redis chưa sẵn sàng
+const memoryStore = new Map();
 
+// Dọn các khóa bộ nhớ tạm đã hết hạn
 const cleanExpiredMemory = () => {
   const now = Date.now();
   for (const [key, item] of memoryStore.entries()) {
@@ -38,15 +24,12 @@ const cleanExpiredMemory = () => {
   }
 };
 
-// Dọn dẹp định kỳ 30s
 if (process.env.NODE_ENV !== 'test') {
   const memInterval = setInterval(cleanExpiredMemory, 30000);
   if (memInterval.unref) memInterval.unref();
 }
 
-// -------------------------------------------------------------
-// KHỞI TẠO KẾT NỐI IOREDIS AN TOÀN
-// -------------------------------------------------------------
+// Khởi tạo kết nối Redis hoặc tự động chuyển sang bộ nhớ cục bộ nếu lỗi
 const initRedis = () => {
   if (process.env.DISABLE_REDIS === 'true') {
     return null;
@@ -55,14 +38,13 @@ const initRedis = () => {
   try {
     const options = {
       retryStrategy: (times) => {
-        // Trong môi trường test hoặc khi không có server Redis (times > 1), dừng retry để giải phóng event loop
         if (process.env.NODE_ENV === 'test' || (!REDIS_URL && times > 1) || times > 3) {
-          return null; // Trả về null để ioredis không tạo timer giữ tiến trình
+          return null;
         }
         return Math.min(times * 1000, 3000);
       },
       maxRetriesPerRequest: 1,
-      enableOfflineQueue: false, // Không kẹt request khi offline, lập tức fallback
+      enableOfflineQueue: false,
       lazyConnect: true,
       connectTimeout: 2000,
     };
@@ -93,9 +75,7 @@ const initRedis = () => {
 
     redisClient.on('error', (err) => {
       isConnected = false;
-      // Chỉ log cảnh báo nhẹ, không throw ra ngoài để đảm bảo tính sẵn sàng cao
       if (!hasLoggedConnection) {
-        // Lần đầu offline: thông báo chế độ Fallback In-Memory
         console.warn(`[Redis Cache] Không thể kết nối Redis (${err.code || err.message}). Tự động kích hoạt cơ chế In-Memory Fallback.`);
         hasLoggedConnection = true;
       }
@@ -105,7 +85,6 @@ const initRedis = () => {
       isConnected = false;
     });
 
-    // Thử kết nối ngầm (non-blocking)
     redisClient.connect().catch(() => {
       isConnected = false;
     });
@@ -120,18 +99,16 @@ const initRedis = () => {
 
 initRedis();
 
-// -------------------------------------------------------------
-// CÁC HÀM TIỆN ÍCH CORE (GET, SET, DEL, JSON)
-// -------------------------------------------------------------
+// Kiểm tra Redis đang sẵn sàng
 const isRedisReady = () => isConnected && redisClient && redisClient.status === 'ready';
 
+// Đọc chuỗi từ Redis (fallback về RAM nếu Redis offline)
 const redisGet = async (key) => {
   if (isRedisReady()) {
     try {
       return await redisClient.get(key);
     } catch (_) {}
   }
-  // Fallback In-Memory
   const item = memoryStore.get(key);
   if (!item) return null;
   if (item.expiresAt && item.expiresAt <= Date.now()) {
@@ -141,6 +118,7 @@ const redisGet = async (key) => {
   return item.value;
 };
 
+// Ghi chuỗi vào Redis hoặc RAM kèm thời hạn TTL
 const redisSet = async (key, value, ttlSeconds = null) => {
   const strVal = typeof value === 'string' ? value : String(value);
 
@@ -155,12 +133,12 @@ const redisSet = async (key, value, ttlSeconds = null) => {
     } catch (_) {}
   }
 
-  // Fallback In-Memory
   const expiresAt = ttlSeconds && ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : null;
   memoryStore.set(key, { value: strVal, expiresAt });
   return true;
 };
 
+// Xóa khóa khỏi Redis và RAM
 const redisDel = async (key) => {
   if (isRedisReady()) {
     try {
@@ -171,6 +149,7 @@ const redisDel = async (key) => {
   return true;
 };
 
+// Đọc dữ liệu JSON từ Redis hoặc RAM
 const redisGetJson = async (key) => {
   const raw = await redisGet(key);
   if (!raw) return null;
@@ -181,40 +160,31 @@ const redisGetJson = async (key) => {
   }
 };
 
+// Lưu dữ liệu JSON vào Redis hoặc RAM kèm thời hạn TTL
 const redisSetJson = async (key, data, ttlSeconds = null) => {
   return redisSet(key, JSON.stringify(data), ttlSeconds);
 };
 
-// -------------------------------------------------------------
-// 1. NGHIỆP VỤ COOLDOWN CHỐNG QUÉT LẶP PHÂN TÁN (60 GIÂY)
-// -------------------------------------------------------------
+// Cooldown chống quét chấm công lặp trong N giây (mặc định 60s)
 const COOLDOWN_PREFIX = 'ATTENDANCE_COOLDOWN:';
 
-/**
- * Kiểm tra và đặt Cooldown quét thẻ cho người dùng (Đồng bộ đa container)
- * @param {string} userId ID người dùng
- * @param {number} [cooldownSeconds=60] Thời gian cooldown (giây)
- * @returns {Promise<{ allowed: boolean, remainingSeconds: number }>}
- */
+// Kiểm tra và đặt thời gian chờ (cooldown) chống quét lặp
 const checkAndSetCooldown = async (userId, cooldownSeconds = 60) => {
   const key = `${COOLDOWN_PREFIX}${userId}`;
   const now = Date.now();
 
   if (isRedisReady()) {
     try {
-      // Dùng SET key now EX ttl NX: chỉ gán nếu chưa có khóa
       const result = await redisClient.set(key, now.toString(), 'EX', cooldownSeconds, 'NX');
       if (result === 'OK') {
         return { allowed: true, remainingSeconds: 0 };
       }
-      // Khóa đã tồn tại -> lấy TTL còn lại
       const ttl = await redisClient.ttl(key);
       const remainingSeconds = ttl > 0 ? ttl : cooldownSeconds;
       return { allowed: false, remainingSeconds };
     } catch (_) {}
   }
 
-  // Fallback In-Memory
   const item = memoryStore.get(key);
   if (item && item.expiresAt > now) {
     const remainingSeconds = Math.ceil((item.expiresAt - now) / 1000);
@@ -228,6 +198,7 @@ const checkAndSetCooldown = async (userId, cooldownSeconds = 60) => {
   return { allowed: true, remainingSeconds: 0 };
 };
 
+// Lấy số giây cooldown còn lại của người dùng
 const getCooldownRemaining = async (userId) => {
   const key = `${COOLDOWN_PREFIX}${userId}`;
   if (isRedisReady()) {
@@ -241,38 +212,37 @@ const getCooldownRemaining = async (userId) => {
   return Math.max(0, Math.ceil((item.expiresAt - Date.now()) / 1000));
 };
 
+// Xóa trạng thái cooldown của người dùng
 const resetCooldown = async (userId) => {
   const key = `${COOLDOWN_PREFIX}${userId}`;
   return redisDel(key);
 };
 
-// -------------------------------------------------------------
-// 2. NGHIỆP VỤ GRACE PERIOD CACHE CHO REFRESH TOKEN (RTR - 15 GIÂY)
-// -------------------------------------------------------------
+// Lưu tạm cặp token mới trong 15s khi xoay vòng Refresh Token (tránh race condition đa request)
 const GRACE_PREFIX = 'TOKEN_GRACE:';
 
+// Lưu cặp token mới trong grace period để tránh lỗi khi gửi nhiều request làm mới song song
 const setGraceToken = async (hashedToken, data, graceSeconds = 15) => {
   const key = `${GRACE_PREFIX}${hashedToken}`;
   return redisSetJson(key, data, graceSeconds);
 };
 
+// Lấy cặp token đang nằm trong grace period
 const getGraceToken = async (hashedToken) => {
   const key = `${GRACE_PREFIX}${hashedToken}`;
   return redisGetJson(key);
 };
 
+// Xóa token khỏi grace period
 const deleteGraceToken = async (hashedToken) => {
   if (!hashedToken) return false;
   const key = `${GRACE_PREFIX}${hashedToken}`;
   return redisDel(key);
 };
 
-// -------------------------------------------------------------
-// 3. KHÓA PHÂN TÁN REDIS (DISTRIBUTED LOCK - ATOMIC SET NX PX + LUA)
-// -------------------------------------------------------------
+// Khóa phân tán Redis dùng SET NX EX và Lua script để mở khóa đúng chủ sở hữu
 const LOCK_PREFIX = 'DIST_LOCK:';
 
-// Lua Script đảm bảo chỉ worker nắm khóa mới được xóa khóa của chính mình (Atomic Safe Release)
 const RELEASE_LOCK_LUA_SCRIPT = `
 if redis.call("get", KEYS[1]) == ARGV[1] then
     return redis.call("del", KEYS[1])
@@ -281,15 +251,9 @@ else
 end
 `;
 
-/**
- * Giành khóa phân tán qua Redis
- * @param {string} lockKey Tên khóa
- * @param {number} ttlSeconds Thời gian sống tối đa (giây)
- * @param {string} workerId Mã worker nắm giữ khóa
- * @returns {Promise<boolean>}
- */
+// Giành khóa phân tán trên Redis
 const acquireRedisLock = async (lockKey, ttlSeconds = 60, workerId) => {
-  if (!isRedisReady()) return null; // Trả về null để báo hiệu fallback sang SQL Server/Memory
+  if (!isRedisReady()) return null;
   const key = `${LOCK_PREFIX}${lockKey.toUpperCase().trim()}`;
   try {
     const res = await redisClient.set(key, workerId, 'EX', ttlSeconds, 'NX');
@@ -300,12 +264,7 @@ const acquireRedisLock = async (lockKey, ttlSeconds = 60, workerId) => {
   }
 };
 
-/**
- * Giải phóng khóa phân tán qua Redis
- * @param {string} lockKey Tên khóa
- * @param {string} workerId Mã worker cần giải phóng
- * @returns {Promise<boolean>}
- */
+// Giải phóng khóa phân tán đúng chủ sở hữu qua Lua script
 const releaseRedisLock = async (lockKey, workerId) => {
   if (!isRedisReady()) return null;
   const key = `${LOCK_PREFIX}${lockKey.toUpperCase().trim()}`;
@@ -318,26 +277,25 @@ const releaseRedisLock = async (lockKey, workerId) => {
   }
 };
 
-// -------------------------------------------------------------
-// 4. BỘ ĐỆM CACHE MẪU KHUÔN MẶT SINH TRẮC HỌC (FACE TEMPLATES)
-// -------------------------------------------------------------
+// Cache vector khuôn mặt phục vụ nhận diện
 const FACE_CACHE_KEY = 'FACE_TEMPLATES_CACHE:ACTIVE';
 
+// Lưu cache danh sách vector khuôn mặt vào Redis
 const cacheFaceVectors = async (templates, ttlSeconds = 1800) => {
   return redisSetJson(FACE_CACHE_KEY, templates, ttlSeconds);
 };
 
+// Đọc cache danh sách vector khuôn mặt từ Redis
 const getCachedFaceVectors = async () => {
   return redisGetJson(FACE_CACHE_KEY);
 };
 
+// Xóa cache vector khuôn mặt
 const invalidateFaceCache = async () => {
   return redisDel(FACE_CACHE_KEY);
 };
 
-// -------------------------------------------------------------
-// DỌN DẸP KHI SHUTDOWN HOẶC RESET TEST
-// -------------------------------------------------------------
+// Đóng kết nối Redis và dọn bộ nhớ tạm
 const closeRedis = async () => {
   if (redisClient) {
     try {
@@ -351,6 +309,7 @@ const closeRedis = async () => {
   memoryStore.clear();
 };
 
+// Xóa sạch dữ liệu trong bộ nhớ tạm (dùng cho test)
 const clearAllMemoryStore = () => {
   memoryStore.clear();
 };

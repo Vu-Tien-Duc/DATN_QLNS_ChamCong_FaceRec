@@ -1,19 +1,9 @@
-/**
- * Tiện ích tính ngày phép năm & định dạng đơn từ (server/services/donNghiPhep/tinhPhepNam.helper.js)
- */
+// Tính số ngày nghỉ hợp lệ (loại trừ Chủ nhật, ngày lễ), thống kê quỹ phép năm và định dạng dữ liệu đơn từ
 const { Op } = require('sequelize');
 const { DonNghiPhep, LichSuDuyetDon, NguoiDung, PhongBan, NgayNghiLe } = require('../../models');
+const ServiceError = require('../../utils/loiNghiepVu');
 
-class ServiceError extends Error {
-  constructor(message, statusCode = 400, errorCode = null, data = null) {
-    super(message);
-    this.name = 'ServiceError';
-    this.statusCode = statusCode;
-    this.errorCode = errorCode;
-    this.data = data;
-  }
-}
-
+// Chuyển mốc thời gian sang chuỗi YYYY-MM-DD theo múi giờ Việt Nam
 const getVietnamDateKey = (date) =>
   new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Ho_Chi_Minh',
@@ -22,6 +12,7 @@ const getVietnamDateKey = (date) =>
     day: '2-digit',
   }).format(new Date(date));
 
+// Liệt kê các ngày trong khoảng thời gian trùng với thứ học của lịch trình
 const getLeaveOccurrenceDates = (startDate, endDate, weekday) => {
   const startKey = getVietnamDateKey(startDate);
   const endKey = getVietnamDateKey(endDate);
@@ -41,6 +32,7 @@ const getLeaveOccurrenceDates = (startDate, endDate, weekday) => {
   return occurrences;
 };
 
+// Tính số ngày nghỉ thực tế (loại trừ Chủ nhật và ngày nghỉ lễ)
 const calculateLeaveDays = (startDate, endDate, isHalfDay = false, holidayDates = null) => {
   if (isHalfDay) return 0.5;
   const s = new Date(startDate);
@@ -69,6 +61,7 @@ const calculateLeaveDays = (startDate, endDate, isHalfDay = false, holidayDates 
   return count;
 };
 
+// Lấy tập hợp các ngày nghỉ lễ (YYYY-MM-DD) giao với khoảng thời gian truyền vào
 const getHolidayDateSet = async (startDate, endDate, { transaction } = {}) => {
   const startKey = getVietnamDateKey(startDate);
   const endKey = getVietnamDateKey(endDate);
@@ -92,6 +85,7 @@ const getHolidayDateSet = async (startDate, endDate, { transaction } = {}) => {
   return dateSet;
 };
 
+// Thống kê số ngày phép năm đã dùng và đang chờ duyệt trong năm
 const getLeaveStatsByYear = async (userId, year, { transaction } = {}) => {
   const targetYear = Number(year) || new Date().getFullYear();
   const yearStart = `${targetYear}-01-01`;
@@ -153,6 +147,7 @@ const getLeaveStatsByYear = async (userId, year, { transaction } = {}) => {
   };
 };
 
+// Định dạng bản ghi đơn nghỉ phép kèm thông tin cấp duyệt và phiên bản
 const formatLeaveRequestDoc = (doc) => {
   if (!doc) return null;
   const raw = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };

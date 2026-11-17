@@ -65,8 +65,9 @@ class MemoryVectorIndex:
                     arr = np.asarray(sub_emb, dtype=np.float32)
                     if arr.ndim == 1 and arr.size == self.dimension and np.isfinite(arr).all():
                         norm = np.linalg.norm(arr)
-                        if norm > 0:
-                            arr = arr / norm
+                        if norm <= 1e-8:
+                            continue
+                        arr = arr / norm
                         idx = len(vectors)
                         vectors.append(arr)
                         profiles.append({
@@ -104,8 +105,9 @@ class MemoryVectorIndex:
             arr = np.asarray(item, dtype=np.float32)
             if arr.ndim == 1 and arr.size == self.dimension and np.isfinite(arr).all():
                 norm = np.linalg.norm(arr)
-                if norm > 0:
-                    arr = arr / norm
+                if norm <= 1e-8:
+                    continue
+                arr = arr / norm
                 new_vecs.append(arr)
 
         if not new_vecs:
@@ -195,6 +197,45 @@ class MemoryVectorIndex:
                     break
 
             return candidates
+
+    def verify_user(self, target_id: str, query_vec: np.ndarray) -> Optional[Dict[str, Any]]:
+        """
+        Đối chiếu 1:1 trực tiếp với toàn bộ vector mẫu của một nhân viên (khớp userId hoặc employee_id).
+        Tránh bỏ sót khi ứng viên nằm ngoài top-K tìm kiếm toàn cục.
+        """
+        target = str(target_id or "").strip()
+        if not target:
+            return None
+
+        with self._lock:
+            if self.vectors_matrix is None or len(self.profiles) == 0:
+                return None
+
+            matching_indices = [
+                i
+                for i, prof in enumerate(self.profiles)
+                if prof.get("userId") == target or prof.get("employee_id") == target
+            ]
+            if not matching_indices:
+                return None
+
+            q = np.asarray(query_vec, dtype=np.float32).flatten()
+            norm = np.linalg.norm(q)
+            if norm <= 1e-8 or q.size != self.dimension:
+                return None
+            q = q / norm
+
+            sub_matrix = self.vectors_matrix[matching_indices]
+            scores = np.dot(sub_matrix, q)
+            best_pos = int(np.argmax(scores))
+            best_idx = matching_indices[best_pos]
+            prof = self.profiles[best_idx]
+            return {
+                "userId": prof["userId"],
+                "employee_id": prof["employee_id"],
+                "full_name": prof["full_name"],
+                "similarity": round(float(scores[best_pos]), 4),
+            }
 
 
 # Singleton vector store trong RAM

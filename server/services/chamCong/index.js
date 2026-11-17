@@ -1,6 +1,4 @@
-/**
- * Facade cho các nghiệp vụ chấm công, giữ API service ổn định trong khi logic nằm ở module chuyên biệt.
- */
+// Tập hợp và re-export toàn bộ hàm nghiệp vụ chấm công cho tầng controller
 const shared = require('../../utils/thoiGianChamCong.utils');
 const {
   euclideanDistance,

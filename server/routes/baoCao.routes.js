@@ -1,3 +1,4 @@
+// Định tuyến API tổng hợp báo cáo chấm công, báo cáo tháng và xuất dữ liệu Excel (/api/bao-cao)
 const express = require('express');
 const router = express.Router();
 const { getAttendanceReport, getMonthlyReport, getExportReportData } = require('../controllers/baoCao.controller');

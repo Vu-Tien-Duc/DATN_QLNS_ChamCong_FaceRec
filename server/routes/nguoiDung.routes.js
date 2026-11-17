@@ -1,3 +1,4 @@
+// Định tuyến API quản lý nhân sự, hồ sơ, khóa mềm và Face ID theo người dùng (/api/nguoi-dung)
 const express = require('express');
 const router = express.Router();
 const {
@@ -9,7 +10,8 @@ const {
   registerFaceDescriptor,
   deleteFaceDescriptor,
 } = require('../controllers/nguoiDung.controller');
-const { verifyToken, verifyRole } = require('../middlewares/xacThuc.middleware');
+const { verifyToken, verifyRole, requirePermission, requireAnyPermission } = require('../middlewares/xacThuc.middleware');
+const { PERMISSIONS } = require('../config/permissions');
 const { uploadFaceImages } = require('../middlewares/taiAnhKhuonMat.middleware');
 
 // Toàn bộ các thao tác người dùng đều yêu cầu đăng nhập
@@ -21,10 +23,10 @@ router.get('/', verifyRole(['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']),
 // 2. Thêm người dùng mới (Chỉ Admin / BGH / TCCB)
 router.post('/', verifyRole(['admin', 'bgh', 'tccb']), createUser);
 
-// 3. Đăng ký & Xóa vector khuôn mặt Face ID (Admin / BGH / TCCB)
+// Đăng ký và xóa dữ liệu Face ID theo người dùng
 router.post('/:id/khuon-mat', verifyRole(['admin', 'bgh', 'tccb']), uploadFaceImages, registerFaceDescriptor);
 router.delete('/:id/khuon-mat', verifyRole(['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']), deleteFaceDescriptor);
-// Alias: xóa FaceID thông qua face.controller (dùng bởi FaceRegistrationModal)
+
 
 
 // Trợ thủ phân quyền: Cho phép chính chủ người dùng xem/sửa hồ sơ cá nhân của mình, hoặc các vai trò quản trị
@@ -46,7 +48,7 @@ router.get('/:id', allowSelfOrRoles(['admin', 'bgh', 'tccb', 'truong_khoa', 'pho
 // 5. Cập nhật thông tin người dùng (Chính chủ, Admin, BGH, TCCB hoặc Trưởng khoa)
 router.put('/:id', allowSelfOrRoles(['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']), updateUser);
 
-// 6. Vô hiệu hóa người dùng (Soft Delete: isActive = false) (Chỉ Admin / BGH)
+// Vô hiệu hóa tài khoản (kich_hoat = false, chỉ Admin / BGH)
 router.delete('/:id', verifyRole(['admin', 'bgh']), deleteUser);
 
 module.exports = router;

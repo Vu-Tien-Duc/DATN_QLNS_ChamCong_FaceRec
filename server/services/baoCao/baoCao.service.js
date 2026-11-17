@@ -1,7 +1,4 @@
-/**
- * Dịch vụ Báo cáo & Thống kê Chấm công (server/services/baoCao.service.js)
- * Tổng hợp báo cáo chấm công theo quyền truy cập, báo cáo tháng và re-export module xuất Excel.
- */
+// Tổng hợp báo cáo thống kê chấm công theo phạm vi quyền truy cập và xuất dữ liệu Excel
 const { Op } = require('sequelize');
 const {
   NhatKyChamCong,
@@ -13,7 +10,7 @@ const {
 const { buildAttendanceDateFilter, getVietnamTime } = require('../../utils/thoiGianChamCong.utils');
 const { getDeanDepartmentIds, getDeanScopedUserIds } = require('../../utils/phamViTruongKhoa');
 const { PERMISSIONS, hasPermission } = require('../../config/permissions');
-const { normalizeRole, UNIT_LEADER_ROLES } = require('../../utils/vaiTro.utils');
+const { UNIT_LEADER_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
 const ServiceError = require('../../utils/loiNghiepVu');
 const {
   calculateCalendarDays,
@@ -23,6 +20,7 @@ const {
 const { calculateLeaveDays, getHolidayDateSet } = require('../donNghiPhep/tinhPhepNam.helper');
 const xuatBaoCaoExcelService = require('./xuatBaoCaoExcel.service');
 
+// Lấy báo cáo chấm công tổng hợp trong khoảng thời gian theo phạm vi phân quyền
 const getAttendanceReportData = async (payload = {}) => {
   const userId = payload.nguoi_dung_id;
   const departmentId = payload.don_vi_id;
@@ -30,11 +28,10 @@ const getAttendanceReportData = async (payload = {}) => {
   const to = payload.den_ngay;
   const currentUser = payload.currentUser;
   let targetUserIds = [];
-  const currentRole = normalizeRole(currentUser.vai_tro_chinh);
   const canViewAll =
-    hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || ['admin', 'bgh'].includes(currentRole);
+    hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || hasAnyActiveRole(currentUser, ['admin', 'bgh']);
   const canViewDept =
-    hasPermission(currentUser, PERMISSIONS.CONG_XEM_DON_VI) || UNIT_LEADER_ROLES.includes(currentRole);
+    hasPermission(currentUser, PERMISSIONS.CONG_XEM_DON_VI) || hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES);
 
   if (canViewAll) {
     if (userId) {
@@ -201,6 +198,7 @@ const getAttendanceReportData = async (payload = {}) => {
   };
 };
 
+// Tổng hợp số liệu chấm công, đơn nghỉ phép và xu hướng theo tuần của một tháng
 const generateMonthlyReport = async (month, year, departmentId = null, options = {}) => {
   const mStr = String(month).padStart(2, '0');
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -235,7 +233,10 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
     deptMap[String(d.id)] = d.ten_phong_ban || '';
   });
 
-  const { page, limit } = options;
+  const { page, limit, userId } = options;
+  if (userId) {
+    userWhere.id = userId;
+  }
   const candidateUsers = await NguoiDung.findAll({
     where: userWhere,
     attributes: ['id', 'ho_ten', 'email', 'vai_tro_chinh', 'don_vi_chinh_id', 'anh_dai_dien', 'ma_can_bo'],
@@ -360,6 +361,7 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
   };
 };
 
+// Kiểm tra tham số tháng/năm và trả về báo cáo tổng hợp tháng theo phạm vi quyền
 const getMonthlyReportData = async (payload = {}) => {
   const monthInput = payload.thang;
   const yearInput = payload.nam;
@@ -380,12 +382,12 @@ const getMonthlyReportData = async (payload = {}) => {
   const year = parsedYear || nowVN.getUTCFullYear();
 
   let departmentFilter = departmentId || null;
-  const currentRole = normalizeRole(currentUser.vai_tro_chinh);
   const canViewAll =
-    hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || ['admin', 'bgh'].includes(currentRole);
+    hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || hasAnyActiveRole(currentUser, ['admin', 'bgh']);
   const canViewDept =
-    hasPermission(currentUser, PERMISSIONS.CONG_XEM_DON_VI) || UNIT_LEADER_ROLES.includes(currentRole);
+    hasPermission(currentUser, PERMISSIONS.CONG_XEM_DON_VI) || hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES);
 
+  const options = {};
   if (!canViewAll && canViewDept) {
     const scopedDepartmentIds = await getDeanDepartmentIds(currentUser);
     if (departmentFilter) {
@@ -399,12 +401,12 @@ const getMonthlyReportData = async (payload = {}) => {
     const myDeptId =
       currentUser.don_vi_chinh_id || (await NguoiDung.findByPk(currentUser.id))?.don_vi_chinh_id;
     if (departmentFilter && String(departmentFilter) !== String(myDeptId)) {
-      throw new ServiceError('Bạn chỉ có thể xem báo cáo trong đơn vị của mình.', 403);
+      throw new ServiceError('Bạn chỉ có thể xem báo cáo chấm công của bản thân.', 403);
     }
-    departmentFilter = myDeptId ? [myDeptId] : [];
+    departmentFilter = null;
+    options.userId = currentUser.id;
   }
 
-  const options = {};
   if (page !== undefined || limit !== undefined) {
     options.page = Math.max(1, parseInt(page, 10) || 1);
     options.limit = Math.min(200, Math.max(1, parseInt(limit, 10) || 20));
