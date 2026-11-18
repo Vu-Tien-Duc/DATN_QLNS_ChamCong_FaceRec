@@ -57,6 +57,9 @@ export interface LeaveRequestData {
   totalDays?: number;
   scheduleId?: any;
   makeupDate?: string;
+  leavePeriods?: number;
+  substituteShiftId?: any;
+  substituteTeacherId?: any;
   attachmentUrl?: string;
   status: BackendLeaveStatus;
   trang_thai?: string;
@@ -91,7 +94,10 @@ export interface CreateLeavePayload {
   startDate: string;
   endDate: string;
   isHalfDay?: boolean;
+  leavePeriods?: number;
   scheduleId?: string;
+  substituteShiftId?: string;
+  substituteTeacherId?: string;
   makeupDate?: string;
   attachmentUrl?: string;
   file?: File;
@@ -165,7 +171,12 @@ export const leaveRequestApi = {
       formData.append('ngay_bat_dau', payload.startDate);
       formData.append('ngay_ket_thuc', payload.endDate);
       if (payload.isHalfDay) formData.append('nua_ngay', 'true');
+      if (payload.leavePeriods !== undefined && payload.leavePeriods > 0) {
+        formData.append('so_tiet_nghi', String(payload.leavePeriods));
+      }
       if (payload.scheduleId) formData.append('lich_trinh_id', payload.scheduleId);
+      if (payload.substituteShiftId) formData.append('ca_thay_the_id', payload.substituteShiftId);
+      if (payload.substituteTeacherId) formData.append('giang_vien_day_thay_id', payload.substituteTeacherId);
       if (payload.makeupDate) formData.append('ngay_day_bu', payload.makeupDate);
       formData.append('file', payload.file);
 
@@ -181,29 +192,37 @@ export const leaveRequestApi = {
       ngay_bat_dau: payload.startDate,
       ngay_ket_thuc: payload.endDate,
       nua_ngay: payload.isHalfDay,
+      so_tiet_nghi: payload.leavePeriods,
       lich_trinh_id: payload.scheduleId,
+      ca_thay_the_id: payload.substituteShiftId,
+      giang_vien_day_thay_id: payload.substituteTeacherId,
       ngay_day_bu: payload.makeupDate,
       tep_dinh_kem: payload.attachmentUrl,
     });
     return res.data;
   },
 
-  approveLeaveRequest: async (id: string, approvalNote?: string) => {
+  approveLeaveRequest: async (id: string, approvalNote?: string, expectedVersion?: number) => {
     const res = await apiClient.put(`/don-nghi-phep/${id}/phe-duyet`, {
       ghi_chu_duyet: approvalNote || 'Đã phê duyệt đơn.',
+      ...(expectedVersion !== undefined ? { phien_ban: expectedVersion } : {}),
     });
     return res.data;
   },
 
-  rejectLeaveRequest: async (id: string, rejectionReason: string) => {
+  rejectLeaveRequest: async (id: string, rejectionReason: string, expectedVersion?: number) => {
     const res = await apiClient.put(`/don-nghi-phep/${id}/tu-choi`, {
       ly_do_tu_choi: rejectionReason,
+      ...(expectedVersion !== undefined ? { phien_ban: expectedVersion } : {}),
     });
     return res.data;
   },
 
-  cancelLeaveRequest: async (id: string) => {
-    const res = await apiClient.put(`/don-nghi-phep/${id}/huy`);
+  cancelLeaveRequest: async (id: string, expectedVersion?: number) => {
+    const res = await apiClient.put(
+      `/don-nghi-phep/${id}/huy`,
+      expectedVersion !== undefined ? { phien_ban: expectedVersion } : undefined
+    );
     return res.data;
   },
 };

@@ -55,6 +55,9 @@ export interface RegistrationStatusResponse {
     sampleAngles?: string[];
     sampleCount?: number;
     embeddingModel?: string;
+    vectorDimension?: number | null;
+    isDefaultFace?: boolean;
+    faceStatus?: string | null;
   };
 }
 
@@ -127,8 +130,11 @@ export const faceApi = {
   /**
    * Kiểm tra tình trạng kết nối máy chủ AI Microservice
    */
-  async getHealth(): Promise<{ status: string; face_service?: any }> {
-    const res = await apiClient.get<{ status: string; face_service?: any }>('/khuon-mat/suc-khoe');
+  async getHealth(): Promise<{ status: string; ready?: boolean; face_service?: any }> {
+    const res = await apiClient.get<any>('/khuon-mat/suc-khoe');
+    if (res.data && typeof res.data === 'object' && 'data' in res.data && res.data.data) {
+      return res.data.data;
+    }
     return res.data;
   },
 

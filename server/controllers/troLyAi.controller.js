@@ -10,6 +10,31 @@ const {
   deleteDocument,
   canManageSchoolDocuments,
 } = require('../services/ai/khoTriThucRag.service');
+const { loadConfigsIntoCache, getConfigSync } = require('../services/heThong/cauHinhHeThong.service');
+
+const AI_CONFIG_KEYS = [
+  'AI_DEFAULT_PROVIDER',
+  'GEMINI_API_KEY',
+  'GEMINI_MODEL',
+  'GROQ_API_KEY',
+  'GROQ_MODEL',
+  'DEEPSEEK_API_KEY',
+  'DEEPSEEK_MODEL',
+];
+
+const syncAiRuntimeConfig = async () => {
+  try {
+    await loadConfigsIntoCache();
+    for (const k of AI_CONFIG_KEYS) {
+      const val = getConfigSync(k);
+      if (typeof val === 'string' && val.trim()) {
+        process.env[k] = val.trim();
+      }
+    }
+  } catch {
+    // Bỏ qua nếu DB chưa sẵn sàng
+  }
+};
 
 const QUICK_PROMPTS = {
   hr_work: [
@@ -72,6 +97,7 @@ const decodeOriginalFilename = (name = 'tai_lieu') => {
 // POST /api/tro-ly-ai/tro-chuyen - Trò chuyện AI (hỗ trợ JSON và ảnh / PDF / Word đính kèm)
 const chat = async (req, res) => {
   try {
+    await syncAiRuntimeConfig();
     const body = req.body || {};
     const {
       tin_nhan: message,
@@ -276,7 +302,8 @@ const getModes = (req, res) => {
 };
 
 // GET /api/tro-ly-ai/nha-cung-cap - Danh sách mô hình/nhà cung cấp AI khả dụng
-const getProviders = (req, res) => {
+const getProviders = async (req, res) => {
+  await syncAiRuntimeConfig();
   const providers = [
     {
       id: 'gemini',
@@ -288,14 +315,14 @@ const getProviders = (req, res) => {
     {
       id: 'groq',
       name: 'Groq Cloud',
-      model: 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
       isConfigured: !!process.env.GROQ_API_KEY,
       description: 'Suy luận tốc độ cao với mô hình Llama 3 mã nguồn mở',
     },
     {
       id: 'deepseek',
       name: 'DeepSeek',
-      model: 'deepseek-chat',
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
       isConfigured: !!process.env.DEEPSEEK_API_KEY,
       description: 'Mô hình lập trình và suy luận chi phí siêu tiết kiệm',
     },
@@ -379,7 +406,8 @@ const uploadDocument = async (req, res) => {
 // GET /api/tro-ly-ai/tai-lieu/:id - Chi tiết tài liệu RAG
 const getDocumentDetail = async (req, res) => {
   try {
-    const detail = await getDocumentById(req.params.id, req.user);
+    const limit = req.query?.gioi_han || req.query?.limit;
+    const detail = await getDocumentById(req.params.id, req.user, { limit });
     return res.status(200).json({
       success: true,
       data: detail,

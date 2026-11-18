@@ -36,6 +36,9 @@ import { useAuthStore } from '../../stores/useXacThucStore';
 import { authApi } from '../../api/xacThuc.api';
 import { userApi } from '../../api/nguoiDung.api';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
+import { getRoleLabel } from '../../utils/phanQuyen';
+import { HoSoBenTrai, ThanhTabHoSo } from '../../components/chung/HoSoBenTrai';
+import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
 
 export const Profile: React.FC = () => {
   const navigate = useNavigate();
@@ -48,7 +51,7 @@ export const Profile: React.FC = () => {
   const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form thông tin cá nhân
+  // Form thông tin cá nhân (khớp chính xác các cột có thể tự cập nhật trong CSDL)
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
@@ -56,9 +59,9 @@ export const Profile: React.FC = () => {
     address: '',
     dateOfBirth: '',
     gender: 'nam',
-    bio: '',
-    researchInterests: '',
-    officeRoom: '',
+    bankAccount: '',
+    bankName: '',
+    bankBranch: '',
   });
 
   // Form đổi mật khẩu
@@ -79,13 +82,11 @@ export const Profile: React.FC = () => {
         phone: user.phoneNumber || '',
         email: user.email || '',
         address: user.address || '',
-        dateOfBirth: user.dateOfBirth ? user.dateOfBirth.slice(0, 10) : '',
+        dateOfBirth: user.dateOfBirth ? String(user.dateOfBirth).slice(0, 10) : '',
         gender: user.gender || 'nam',
-        bio: (user as any)?.tieu_su || (user as any)?.bio || '',
-        researchInterests: Array.isArray((user as any)?.huong_nghien_cuu)
-          ? (user as any).huong_nghien_cuu.join(', ')
-          : ((user as any)?.researchInterests || ''),
-        officeRoom: (user as any)?.phong_lam_viec || (user as any)?.officeRoom || '',
+        bankAccount: user.so_tai_khoan_ngan_hang || '',
+        bankName: user.ten_ngan_hang || '',
+        bankBranch: user.chi_nhanh_ngan_hang || '',
       });
       setPreviewAvatar(user.avatar || null);
     }
@@ -118,8 +119,8 @@ export const Profile: React.FC = () => {
     try {
       const res = await authApi.updateAvatar(formDataUpload);
       await fetchMe();
-      if (res.data?.avatar) {
-        setPreviewAvatar(res.data.avatar);
+      if ((res.data as any)?.anh_dai_dien || res.data?.avatar) {
+        setPreviewAvatar((res.data as any).anh_dai_dien || res.data.avatar);
       }
       toast.success('Cập nhật ảnh đại diện thành công!', { id: toastId });
     } catch (err: any) {
@@ -166,11 +167,9 @@ export const Profile: React.FC = () => {
         address: formData.address,
         gender: formData.gender as any,
         dateOfBirth: formData.dateOfBirth,
-        tieu_su: formData.bio,
-        huong_nghien_cuu: formData.researchInterests
-          ? formData.researchInterests.split(',').map((s) => s.trim()).filter(Boolean)
-          : [],
-        phong_lam_viec: formData.officeRoom,
+        so_tai_khoan_ngan_hang: formData.bankAccount.trim() || null,
+        ten_ngan_hang: formData.bankName.trim() || null,
+        chi_nhanh_ngan_hang: formData.bankBranch.trim() || null,
       });
       await fetchMe();
       toast.success('Cập nhật hồ sơ cá nhân thành công!');
@@ -292,8 +291,60 @@ export const Profile: React.FC = () => {
   };
 
   const roleInfo = getRoleBadge(user?.role);
-  const isFaceRegistered = !!user?.isFaceRegistered || !!(user as any)?.da_dang_ky_face;
+  const isFaceRegistered = Boolean(user?.isFaceRegistered);
   const currentAvatarUrl = previewAvatar || user?.avatar;
+  const userExtra = (user || {}) as Record<string, any>;
+
+  const EMPLOYMENT_STATUS_LABELS: Record<string, string> = {
+    dang_lam_viec: 'Đang làm việc',
+    tam_nghi: 'Tạm nghỉ',
+    da_nghi_viec: 'Đã nghỉ việc',
+  };
+  const ACADEMIC_RANK_LABELS: Record<string, string> = {
+    khong: 'Không',
+    giao_su: 'Giáo sư (GS)',
+    pho_giao_su: 'Phó Giáo sư (PGS)',
+  };
+  const DEGREE_LABELS: Record<string, string> = {
+    tien_si: 'Tiến sĩ (TS)',
+    thac_si: 'Thạc sĩ (ThS)',
+    cu_nhan: 'Cử nhân / Đại học',
+    ky_su: 'Kỹ sư',
+    khac: 'Khác',
+  };
+  const STAFF_TYPE_LABELS: Record<string, string> = {
+    giang_vien: 'Giảng viên',
+    can_bo_quan_ly: 'Cán bộ quản lý',
+    chuyen_vien: 'Chuyên viên',
+    nhan_vien: 'Nhân viên',
+  };
+  const CONTRACT_TYPE_LABELS: Record<string, string> = {
+    toan_thoi_gian: 'Cơ hữu toàn thời gian',
+    ban_thoi_gian: 'Bán thời gian',
+    thinh_giang: 'Thỉnh giảng',
+    hop_dong_vu_viec: 'Hợp đồng vụ việc',
+  };
+
+  const formatDateVi = (val?: string | null) => {
+    if (!val) return 'Chưa cập nhật';
+    const d = new Date(val);
+    return Number.isNaN(d.getTime()) ? 'Chưa cập nhật' : d.toLocaleDateString('vi-VN');
+  };
+
+  const employmentStatusKey = user?.employmentStatus || 'dang_lam_viec';
+  const employmentStatusLabel = EMPLOYMENT_STATUS_LABELS[employmentStatusKey] || 'Đang làm việc';
+  const academicRankLabel =
+    user?.academicRank && user.academicRank !== 'khong'
+      ? ACADEMIC_RANK_LABELS[user.academicRank] || user.academicRank
+      : '';
+  const degreeLabel = user?.degree ? DEGREE_LABELS[user.degree] || user.degree : 'Chưa cập nhật';
+  const academicSummary = academicRankLabel ? `${academicRankLabel} • ${degreeLabel}` : degreeLabel;
+  const contractLabel = user?.contractType
+    ? CONTRACT_TYPE_LABELS[user.contractType] || user.contractType
+    : 'Chưa cập nhật';
+  const staffTypeLabel = user?.staffType
+    ? STAFF_TYPE_LABELS[user.staffType] || user.staffType
+    : 'Chưa cập nhật';
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16 animate-in fade-in duration-300">
@@ -307,298 +358,133 @@ export const Profile: React.FC = () => {
       />
 
       {/* ===================================================================
-          1. HERO PROFILE CARD WITH GRADIENT COVER BANNER
+          BỐ CỤC HỒ SƠ NHÂN VIÊN: CỘT TRÁI (ẢNH + TÓM TẮT) | CỘT PHẢI (TAB + NỘI DUNG)
          =================================================================== */}
-      <div className="relative rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xl overflow-hidden">
-        {/* Cover Banner với họa tiết NTU Smart HR */}
-        <div className="h-44 sm:h-52 w-full bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 relative overflow-hidden">
-          {/* Lưới chấm vi mô & ánh sáng trang trí */}
-          <div
-            className="absolute inset-0 opacity-15"
-            style={{
-              backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)',
-              backgroundSize: '24px 24px',
-            }}
-          />
-          <div className="absolute -top-12 -right-12 w-80 h-80 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-10 left-1/4 w-72 h-72 bg-brand-500/20 rounded-full blur-3xl pointer-events-none" />
-
-          {/* Huy hiệu thương hiệu Đại Học Nguyễn Trãi */}
-          <div className="absolute top-4 right-5 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/30 backdrop-blur-md border border-white/10 text-white text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>NTU Smart HR • Hồ Sơ Điện Tử</span>
-          </div>
-        </div>
-
-        {/* Thông tin hồ sơ chính (Avatar, Tên, Chức vụ, Nút thao tác) */}
-        <div className="px-6 pb-6 pt-0 relative">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 -mt-16 sm:-mt-20">
-            {/* Cụm Avatar lớn & Thông tin nhận diện */}
-            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-5 text-center sm:text-left">
-              {/* Avatar khung lớn với nút tương tác ảnh */}
-              <div className="relative group shrink-0">
-                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-white dark:bg-slate-900 p-1.5 ring-4 ring-white dark:ring-slate-900 shadow-2xl overflow-hidden">
-                  <div className="w-full h-full rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center relative">
-                    {currentAvatarUrl ? (
-                      <img
-                        src={currentAvatarUrl}
-                        alt={user?.fullName || 'Avatar'}
-                        className="w-full h-full object-cover"
-                        onError={() => setPreviewAvatar(null)}
-                      />
-                    ) : (
-                      <UserAvatar
-                        user={user}
-                        name={user?.fullName}
-                        avatarUrl={user?.avatar}
-                        size="xl"
-                        className="w-full h-full text-2xl font-black"
-                      />
-                    )}
-
-                    {/* Loading overlay khi đang tải ảnh */}
-                    {uploadingAvatar && (
-                      <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs flex flex-col items-center justify-center text-white z-20">
-                        <Loader2 className="w-7 h-7 animate-spin text-cyan-400" />
-                        <span className="text-[10px] font-bold mt-1">Đang lưu...</span>
-                      </div>
-                    )}
-                  </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)] gap-6 items-start">
+        <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden lg:sticky lg:top-4">
+          <HoSoBenTrai
+            anhDaiDien={
+              <div className="relative">
+                <div className="w-32 h-32 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 ring-4 ring-white dark:ring-slate-900 shadow-lg flex items-center justify-center relative">
+                  {currentAvatarUrl ? (
+                    <img
+                      src={currentAvatarUrl}
+                      alt={user?.fullName || 'Avatar'}
+                      className="w-full h-full object-cover"
+                      onError={() => setPreviewAvatar(null)}
+                    />
+                  ) : (
+                    <UserAvatar
+                      user={user}
+                      name={user?.fullName}
+                      avatarUrl={user?.avatar}
+                      staffCode={user?.staffCode || user?._id}
+                      size="full"
+                      className="w-full h-full"
+                    />
+                  )}
+                  {uploadingAvatar && (
+                    <div className="absolute inset-0 bg-slate-950/70 flex flex-col items-center justify-center text-white z-20">
+                      <Loader2 className="w-7 h-7 animate-spin text-cyan-400" />
+                      <span className="text-[10px] font-bold mt-1">Đang lưu...</span>
+                    </div>
+                  )}
                 </div>
-
-                {/* Nút Camera đổi ảnh nổi góc dưới */}
                 <button
                   type="button"
                   disabled={uploadingAvatar}
                   onClick={() => fileInputRef.current?.click()}
                   title="Thay đổi ảnh đại diện"
-                  className="absolute bottom-1 right-1 w-9 h-9 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center shadow-lg ring-2 ring-white dark:ring-slate-900 transition-transform active:scale-95 cursor-pointer disabled:opacity-50"
+                  className="absolute bottom-1 right-1 w-9 h-9 rounded-full bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center shadow-lg ring-2 ring-white dark:ring-slate-900 transition-transform active:scale-95 cursor-pointer disabled:opacity-50"
                 >
                   <Camera className="w-4 h-4" />
                 </button>
               </div>
-
-              {/* Tên & chức vụ */}
-              <div className="space-y-1.5 pt-2">
-                <div className="flex items-center justify-center sm:justify-start gap-2.5 flex-wrap">
-                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                    {user?.fullName || 'Cán Bộ Hệ Thống'}
-                  </h1>
-                  {user?.staffCode && (
-                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-2xs">
-                      {user.staffCode}
-                    </span>
-                  )}
-                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${roleInfo.color}`}>
-                    {roleInfo.tag}
+            }
+            maCanBo={user?.staffCode}
+            trangThai={employmentStatusLabel}
+            trangThaiHoatDong={employmentStatusKey !== 'da_nghi_viec' && user?.isActive !== false}
+            hoTen={user?.fullName || 'Cán Bộ Hệ Thống'}
+            thongTinChinh={[
+              { icon: <Building2 className="w-3.5 h-3.5" />, text: user?.departmentName || 'Chưa phân công đơn vị' },
+              {
+                icon: <GraduationCap className="w-3.5 h-3.5" />,
+                text:
+                  user?.position && user.position !== 'khong'
+                    ? user.position
+                    : academicRankLabel || getRoleLabel(user?.role),
+              },
+            ]}
+            lienHe={[
+              { icon: <Phone className="w-3.5 h-3.5" />, text: user?.phoneNumber || 'Chưa cập nhật' },
+              { icon: <Mail className="w-3.5 h-3.5" />, text: user?.email || '—' },
+            ]}
+            cacNhomPhu={[
+              { tieuDe: 'Vai trò', noiDung: getRoleLabel(user?.role) },
+              { tieuDe: 'Ngày vào làm', noiDung: formatDateVi(user?.startDate) },
+              {
+                tieuDe: 'Sinh trắc học Face ID',
+                noiDung: (
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className={`w-2 h-2 rounded-full ${isFaceRegistered ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                    />
+                    {isFaceRegistered ? 'Đã kích hoạt 512D' : 'Chưa đăng ký'}
                   </span>
-                </div>
-
-                <div className="flex items-center justify-center sm:justify-start gap-3 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
-                  <span className="flex items-center gap-1 font-medium text-slate-700 dark:text-slate-300">
-                    <Building2 className="w-3.5 h-3.5 text-indigo-500" />
-                    {user?.departmentName || 'Khoa Công Nghệ Thông Tin'}
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
-                    {user?.position || (user as any)?.academicRank || 'Giảng viên'}
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    {user?.email || 'email@daihoc.edu.vn'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Các nút hành động chính */}
-            <div className="flex items-center justify-center sm:justify-end gap-2.5 shrink-0 flex-wrap">
-              <button
-                type="button"
-                disabled={uploadingAvatar}
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer shadow-2xs"
-              >
-                <Upload className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>{uploadingAvatar ? 'Đang tải...' : 'Tải Ảnh Đại Diện'}</span>
-              </button>
-
-              {currentAvatarUrl && (
+                ),
+              },
+            ]}
+            thaoTac={
+              <>
                 <button
                   type="button"
-                  disabled={uploadingAvatar}
-                  onClick={handleRemoveAvatar}
-                  title="Gỡ ảnh đại diện"
-                  className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+                  onClick={() => {
+                    setActiveTab('info');
+                    setIsEditing(true);
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Hiệu Chỉnh Hồ Sơ</span>
                 </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('info');
-                  setIsEditing(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md shadow-indigo-600/20 cursor-pointer"
-              >
-                <UserCheck className="w-3.5 h-3.5" />
-                <span>Hiệu Chỉnh Hồ Sơ</span>
-              </button>
-            </div>
-          </div>
+                {currentAvatarUrl && (
+                  <button
+                    type="button"
+                    disabled={uploadingAvatar}
+                    onClick={handleRemoveAvatar}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Gỡ ảnh đại diện</span>
+                  </button>
+                )}
+              </>
+            }
+          />
         </div>
 
-        {/* Dải 4 Thẻ KPI Tóm Tắt Nhanh */}
-        <div className="grid grid-cols-2 md:grid-cols-4 border-t border-slate-200/90 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50">
-          <div className="p-4 border-r border-slate-200/90 dark:border-slate-800">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-              Sinh Trắc Học Face ID
-            </span>
-            <div className="flex items-center gap-2">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  isFaceRegistered ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-                }`}
-              />
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                {isFaceRegistered ? 'Đã kích hoạt 512D' : 'Chưa đăng ký'}
-              </span>
-            </div>
+        <div className="min-w-0 space-y-6">
+          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+            <ThanhTabHoSo
+              active={activeTab}
+              onChange={(id) => setActiveTab(id as typeof activeTab)}
+              tabs={[
+                { id: 'info', label: 'Thông tin cá nhân & liên hệ', icon: <User className="w-3.5 h-3.5" /> },
+                { id: 'hrm', label: 'Hồ sơ công tác & học thuật', icon: <Briefcase className="w-3.5 h-3.5" /> },
+                { id: 'face', label: 'Sinh trắc học Face ID', icon: <Camera className="w-3.5 h-3.5" /> },
+                { id: 'security', label: 'Bảo mật & mật khẩu', icon: <KeyRound className="w-3.5 h-3.5" /> },
+              ]}
+              className="border-b-0"
+            />
           </div>
-
-          <div className="p-4 border-r border-slate-200/90 dark:border-slate-800">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-              Trạng Thái Công Tác
-            </span>
-            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Chính thức
-            </span>
-          </div>
-
-          <div className="p-4 border-r border-slate-200/90 dark:border-slate-800">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-              Phân Quyền Vai Trò
-            </span>
-            <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase">
-              {user?.role || 'GIANGVIEN'}
-            </span>
-          </div>
-
-          <div className="p-4">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-              An Toàn Tài Khoản
-            </span>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              Bảo mật 2 lớp OTP
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* ===================================================================
-          2. NAVIGATION TABS (Phong Cách Capsule Cao Cấp)
-         =================================================================== */}
-      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 overflow-x-auto custom-scrollbar">
-        {[
-          { id: 'info', label: '1. Thông Tin Cá Nhân & Liên Hệ', icon: User },
-          { id: 'hrm', label: '2. Hồ Sơ Công Tác & Học Thuật HRM', icon: Briefcase },
-          { id: 'face', label: '3. Sinh Trắc Học Face ID 512D', icon: Camera },
-          { id: 'security', label: '4. Bảo Mật & Đổi Mật Khẩu', icon: KeyRound },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                isActive
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/80 dark:border-slate-700'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/50'
-              }`}
-            >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : ''}`} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
 
       {/* ===================================================================
           TAB 1: THÔNG TIN CÁ NHÂN & LIÊN HỆ
          =================================================================== */}
       {activeTab === 'info' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Cột trái: Quản lý Ảnh Đại Diện Chi Tiết */}
-          <div className="md:col-span-1 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 shadow-sm space-y-5">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Camera className="w-4 h-4 text-indigo-600" />
-              <span>Ảnh Đại Diện Cá Nhân</span>
-            </h3>
-
-            <div className="flex flex-col items-center text-center p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80">
-              <div className="w-32 h-32 rounded-3xl overflow-hidden bg-white dark:bg-slate-900 shadow-md ring-2 ring-indigo-500/20 mb-3 flex items-center justify-center">
-                {currentAvatarUrl ? (
-                  <img
-                    src={currentAvatarUrl}
-                    alt={user?.fullName || 'Avatar'}
-                    className="w-full h-full object-cover"
-                    onError={() => setPreviewAvatar(null)}
-                  />
-                ) : (
-                  <UserAvatar
-                    user={user}
-                    name={user?.fullName}
-                    avatarUrl={user?.avatar}
-                    size="xl"
-                    className="w-full h-full text-3xl font-black"
-                  />
-                )}
-              </div>
-
-              <div className="w-full space-y-2">
-                <button
-                  type="button"
-                  disabled={uploadingAvatar}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  {uploadingAvatar ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Upload className="w-4 h-4" />
-                  )}
-                  <span>{uploadingAvatar ? 'Đang tải lên...' : 'Chọn Ảnh Từ Máy Tính'}</span>
-                </button>
-
-                {currentAvatarUrl && (
-                  <button
-                    type="button"
-                    disabled={uploadingAvatar}
-                    onClick={handleRemoveAvatar}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Gỡ Ảnh Đại Diện</span>
-                  </button>
-                )}
-              </div>
-
-              <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
-                Định dạng JPG, PNG, WebP (tối đa 5MB). Ảnh hiển thị ngay trên toàn hệ thống sau khi lưu.
-              </p>
-            </div>
-          </div>
-
           {/* Cột phải: Form thông tin cá nhân */}
-          <div className="md:col-span-2 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 sm:p-7 shadow-sm">
+          <div className="md:col-span-3 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 sm:p-7 shadow-sm">
             <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -700,7 +586,7 @@ export const Profile: React.FC = () => {
                   </select>
                 </div>
 
-                <div>
+                <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                     Địa Chỉ Thường Trú / Nơi Ở
                   </label>
@@ -714,64 +600,49 @@ export const Profile: React.FC = () => {
                   />
                 </div>
 
-                {/* Phần Hồ Sơ Khoa Học Công Khai (Phenikaa Showcase) */}
-                <div className="md:col-span-2 pt-4 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <GraduationCap className="w-4 h-4 text-amber-500" />
-                      <span>Hồ Sơ Khoa Học & Danh Bạ Công Khai (ĐH Nguyễn Trãi - NTU)</span>
-                    </span>
-                    <a
-                      href={`/giang-vien/${user?._id || (user as any)?.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      <span>Xem trang công khai của tôi</span>
-                    </a>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Thông tin tài khoản ngân hàng nhận lương (bảng ho_so_can_bo) */}
+                <div className="md:col-span-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block mb-3">
+                    Tài Khoản Ngân Hàng Nhận Lương
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Phòng Làm Việc Tại Campus
+                        Số Tài Khoản
                       </label>
                       <input
                         type="text"
                         disabled={!isEditing}
-                        placeholder="VD: Phòng 402, Tòa A1, ĐH Nguyễn Trãi (NTU)"
-                        value={formData.officeRoom}
-                        onChange={(e) => setFormData({ ...formData, officeRoom: e.target.value })}
-                        className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75 disabled:cursor-not-allowed"
+                        placeholder="VD: 1903..."
+                        value={formData.bankAccount}
+                        onChange={(e) => setFormData({ ...formData, bankAccount: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75 disabled:cursor-not-allowed"
                       />
                     </div>
-
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Hướng Nghiên Cứu Chính (Cách nhau bằng dấu phẩy)
+                        Tên Ngân Hàng
                       </label>
                       <input
                         type="text"
                         disabled={!isEditing}
-                        placeholder="VD: Trí tuệ Nhân tạo, Thị giác máy tính, IoT"
-                        value={formData.researchInterests}
-                        onChange={(e) => setFormData({ ...formData, researchInterests: e.target.value })}
+                        placeholder="VD: Vietcombank, BIDV..."
+                        value={formData.bankName}
+                        onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
                         className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75 disabled:cursor-not-allowed"
                       />
                     </div>
-
-                    <div className="md:col-span-2">
+                    <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Tiểu Sử Khoa Học & Giới Thiệu Bản Thân
+                        Chi Nhánh
                       </label>
-                      <textarea
-                        rows={3}
+                      <input
+                        type="text"
                         disabled={!isEditing}
-                        placeholder="Tóm tắt quá trình đào tạo, chuyên ngành và các thành tựu khoa học tiêu biểu..."
-                        value={formData.bio}
-                        onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                        className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75 disabled:cursor-not-allowed resize-none"
+                        placeholder="VD: Chi nhánh Hà Nội"
+                        value={formData.bankBranch}
+                        onChange={(e) => setFormData({ ...formData, bankBranch: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -814,7 +685,7 @@ export const Profile: React.FC = () => {
               <span>Đơn Vị & Vị Trí Việc Làm</span>
             </h3>
 
-            <div className="space-y-3.5 text-xs">
+            <div className="space-y-3 text-xs">
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
                 <span className="text-slate-500">Mã số nhân sự:</span>
                 <span className="font-mono font-bold text-slate-900 dark:text-white">
@@ -825,59 +696,94 @@ export const Profile: React.FC = () => {
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
                 <span className="text-slate-500">Khoa / Phòng ban chính:</span>
                 <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                  {user?.departmentName || 'Khoa Công Nghệ Thông Tin'}
+                  {user?.departmentName || 'Chưa phân công đơn vị'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-                <span className="text-slate-500">Chức vụ quản lý:</span>
+                <span className="text-slate-500">Loại nhân sự & Chức vụ:</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {user?.position || 'Giảng viên'}
+                  {user?.position && user.position !== 'khong' ? user.position : staffTypeLabel}
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
                 <span className="text-slate-500">Học hàm & Học vị:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{academicSummary}</span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
+                <span className="text-slate-500">Ngày vào làm / Thâm niên:</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {(user as any)?.academicRank || 'Thạc sĩ'}
+                  {formatDateVi(user?.startDate)}
+                  {userExtra.tham_nien_nam ? ` (${userExtra.tham_nien_nam} năm)` : ''}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
+                <span className="text-slate-500">Ngày bắt đầu giảng dạy:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {formatDateVi(userExtra.ngay_bat_dau_giang_day)}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Chế độ đãi ngộ & Lương */}
+          {/* Chế độ đãi ngộ, lương & pháp lý */}
           <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 shadow-sm space-y-4">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Award className="w-4 h-4 text-emerald-600" />
-              <span>Chế Độ Đãi Ngộ & Hợp Đồng</span>
+              <span>Chế Độ Đãi Ngộ, Hợp Đồng & Thuế</span>
             </h3>
 
-            <div className="space-y-3.5 text-xs">
+            <div className="space-y-3 text-xs">
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
                 <span className="text-slate-500">Loại hợp đồng:</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  Hợp đồng xác định thời hạn
-                </span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{contractLabel}</span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-                <span className="text-slate-500">Hạn mức phép năm:</span>
+                <span className="text-slate-500">Hạn hợp đồng / Phép năm:</span>
                 <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                  12 ngày / năm
+                  {userExtra.ngay_het_han_hop_dong ? `${formatDateVi(userExtra.ngay_het_han_hop_dong)} • ` : ''}
+                  {user?.annualLeaveQuota ?? 12} ngày / năm
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-                <span className="text-slate-500">Ngạch bậc lương:</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  Giảng viên chính (Hạng II)
+                <span className="text-slate-500">Ngạch bậc & Hệ số lương:</span>
+                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                  {user?.salaryScale || 'Chưa cập nhật'} • HS{' '}
+                  {user?.salaryCoefficient !== undefined ? Number(user.salaryCoefficient).toFixed(2) : '—'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-                <span className="text-slate-500">Hệ số lương cơ sở:</span>
-                <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                  4.40
+                <span className="text-slate-500">Số CCCD / Người phụ thuộc:</span>
+                <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                  {userExtra.so_cccd || 'Chưa cập nhật'} • {user?.dependentsCount ?? 0} NPT
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
+                <span className="text-slate-500">Mã số thuế cá nhân:</span>
+                <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                  {userExtra.ma_so_thue || 'Chưa cập nhật'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
+                <span className="text-slate-500">Tài khoản ngân hàng:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 text-right">
+                  {userExtra.so_tai_khoan_ngan_hang
+                    ? `${userExtra.so_tai_khoan_ngan_hang}${
+                        userExtra.ten_ngan_hang
+                          ? ` (${userExtra.ten_ngan_hang}${
+                              userExtra.chi_nhanh_ngan_hang ? ` - ${userExtra.chi_nhanh_ngan_hang}` : ''
+                            })`
+                          : ''
+                      }`
+                    : 'Chưa cập nhật'}
                 </span>
               </div>
             </div>
@@ -915,11 +821,17 @@ export const Profile: React.FC = () => {
             {/* Ảnh khuôn mặt đăng ký */}
             <div className="md:col-span-1 flex flex-col items-center p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-center">
               <div className="w-40 h-40 rounded-3xl bg-white dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 overflow-hidden flex items-center justify-center relative shadow-inner">
-                {user?.facePhoto || (user as any)?.anh_khuon_mat ? (
-                  <img
-                    src={user.facePhoto || (user as any).anh_khuon_mat}
+                {user?.facePhoto ? (
+                  <AnhBaoMat
+                    src={user.facePhoto}
                     alt={user.fullName}
                     className="w-full h-full object-cover"
+                    fallback={
+                      <div className="text-slate-400 flex flex-col items-center gap-1.5">
+                        <Camera className="w-10 h-10 opacity-30 text-indigo-600" />
+                        <span className="text-xs font-medium">Chưa có ảnh Face ID</span>
+                      </div>
+                    }
                   />
                 ) : (
                   <div className="text-slate-400 flex flex-col items-center gap-1.5">
@@ -945,21 +857,27 @@ export const Profile: React.FC = () => {
                         : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
                     }`}
                   >
-                    {isFaceRegistered ? '✓ Đã kích hoạt mẫu 5 góc' : 'Chưa đăng ký mẫu'}
+                    {isFaceRegistered
+                      ? `✓ Đã kích hoạt (${userExtra.so_luong_mau || 5} mẫu)`
+                      : 'Chưa đăng ký mẫu'}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-500">Mô hình AI nhận diện:</span>
                   <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                    ArcFace ResNet-100 (512D Embeddings)
+                    {isFaceRegistered
+                      ? `${userExtra.mo_hinh_ai || 'buffalo_s'} (${userExtra.vectorDimension || userExtra.so_chieu_vector || 512}D${userExtra.isDefaultFace === false ? ' • Phụ' : ' • Mặc định'})`
+                      : 'Chưa kích hoạt'}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500">Chấp thuận dữ liệu sinh trắc học:</span>
+                  <span className="text-slate-500">Ngày đăng ký / Xác nhận NĐ 13:</span>
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    {isFaceRegistered ? 'Đã ký xác nhận (NĐ 13/2023)' : 'Chưa xác nhận'}
+                    {isFaceRegistered
+                      ? `Đã đăng ký (${formatDateVi(user?.faceRegisteredAt)})`
+                      : 'Chưa xác nhận'}
                   </span>
                 </div>
               </div>
@@ -988,6 +906,25 @@ export const Profile: React.FC = () => {
             <p className="text-xs text-slate-500">
               Mật khẩu mới phải có tối thiểu 6 ký tự để đảm bảo an toàn tài khoản.
             </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 text-xs">
+            <div>
+              <span className="text-slate-500 block">Đăng nhập gần nhất:</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 block">
+                {(userExtra.lastLoginAt || userExtra.lan_dang_nhap_cuoi)
+                  ? new Date(userExtra.lastLoginAt || userExtra.lan_dang_nhap_cuoi).toLocaleString('vi-VN')
+                  : 'Chưa ghi nhận'}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block">Đổi mật khẩu gần nhất:</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 block">
+                {(userExtra.passwordChangedAt || userExtra.doi_mat_khau_luc)
+                  ? new Date(userExtra.passwordChangedAt || userExtra.doi_mat_khau_luc).toLocaleString('vi-VN')
+                  : 'Chưa thay đổi'}
+              </span>
+            </div>
           </div>
 
           <form onSubmit={handleChangePassword} className="space-y-4">
@@ -1071,6 +1008,8 @@ export const Profile: React.FC = () => {
           </form>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 };

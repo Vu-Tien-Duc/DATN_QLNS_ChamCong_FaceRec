@@ -79,14 +79,23 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.so_dien_thoai = copy.so_dien_thoai || copy.phoneNumber || '';
       copy.role = copy.vai_tro_chinh || copy.role || 'giang_vien';
       copy.vai_tro_chinh = copy.vai_tro_chinh || copy.role || 'giang_vien';
-      copy.departmentId = copy.don_vi_chinh_id !== undefined ? copy.don_vi_chinh_id : copy.departmentId;
+      copy.departmentId = copy.don_vi_chinh && typeof copy.don_vi_chinh === 'object'
+        ? copy.don_vi_chinh
+        : (copy.don_vi_chinh_id !== undefined ? copy.don_vi_chinh_id : copy.departmentId);
       copy.don_vi_chinh_id = copy.don_vi_chinh_id !== undefined ? copy.don_vi_chinh_id : copy.departmentId;
+      copy.createdAt = copy.tao_luc || copy.createdAt || null;
+      copy.updatedAt = copy.cap_nhat_luc || copy.updatedAt || null;
       copy.isActive = copy.kich_hoat !== undefined ? copy.kich_hoat : (copy.isActive !== undefined ? copy.isActive : true);
       copy.kich_hoat = copy.isActive;
       copy.isFaceRegistered = copy.da_dang_ky_face !== undefined ? copy.da_dang_ky_face : Boolean(copy.isFaceRegistered);
       copy.da_dang_ky_face = copy.isFaceRegistered;
       copy.faceRegisteredAt = copy.ngay_dang_ky_face || copy.faceRegisteredAt || null;
       copy.ngay_dang_ky_face = copy.faceRegisteredAt;
+      copy.vectorDimension = copy.so_chieu_vector !== undefined ? copy.so_chieu_vector : copy.vectorDimension;
+      copy.isDefaultFace = copy.mac_dinh !== undefined ? Boolean(copy.mac_dinh) : copy.isDefaultFace;
+      copy.faceStatus = copy.trang_thai_khuon_mat || copy.faceStatus || null;
+      copy.lastLoginAt = copy.lan_dang_nhap_cuoi || copy.lastLoginAt || null;
+      copy.passwordChangedAt = copy.doi_mat_khau_luc || copy.passwordChangedAt || null;
       copy.avatar = copy.anh_dai_dien || copy.avatar || null;
       copy.anh_dai_dien = copy.avatar;
       copy.academicRank = copy.hoc_ham || copy.academicRank || 'khong';
@@ -140,10 +149,14 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.ten_phong_ban = copy.name;
       copy.type = copy.loai_don_vi || copy.type || 'phong_ban';
       copy.loai_don_vi = copy.type;
-      copy.parentId = copy.don_vi_cha_id !== undefined ? copy.don_vi_cha_id : copy.parentId;
-      copy.don_vi_cha_id = copy.parentId;
-      copy.managerId = copy.truong_don_vi_id !== undefined ? copy.truong_don_vi_id : copy.managerId;
-      copy.truong_don_vi_id = copy.managerId;
+      copy.parentId = copy.don_vi_cha && typeof copy.don_vi_cha === 'object'
+        ? copy.don_vi_cha
+        : (copy.don_vi_cha_id !== undefined ? copy.don_vi_cha_id : copy.parentId);
+      copy.don_vi_cha_id = copy.don_vi_cha_id !== undefined ? copy.don_vi_cha_id : copy.parentId;
+      copy.managerId = copy.truong_don_vi && typeof copy.truong_don_vi === 'object'
+        ? copy.truong_don_vi
+        : (copy.truong_don_vi_id !== undefined ? copy.truong_don_vi_id : copy.managerId);
+      copy.truong_don_vi_id = copy.truong_don_vi_id !== undefined ? copy.truong_don_vi_id : copy.managerId;
       copy.radiusMeters = copy.ban_kinh_met !== undefined ? copy.ban_kinh_met : copy.radiusMeters;
       copy.ban_kinh_met = copy.radiusMeters;
 
@@ -188,8 +201,10 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.ma_mon = copy.code;
       copy.credits = copy.so_tin_chi !== undefined ? copy.so_tin_chi : copy.credits;
       copy.so_tin_chi = copy.credits;
-      copy.departmentId = copy.phong_ban_id !== undefined ? copy.phong_ban_id : copy.departmentId;
-      copy.phong_ban_id = copy.departmentId;
+      copy.departmentId = copy.phong_ban && typeof copy.phong_ban === 'object'
+        ? copy.phong_ban
+        : (copy.phong_ban_id !== undefined ? copy.phong_ban_id : copy.departmentId);
+      copy.phong_ban_id = copy.phong_ban_id !== undefined ? copy.phong_ban_id : copy.departmentId;
       copy.description = copy.mo_ta || copy.description || '';
       copy.mo_ta = copy.description;
       copy.isActive = copy.kich_hoat !== undefined ? copy.kich_hoat : (copy.isActive !== undefined ? copy.isActive : true);
@@ -206,17 +221,25 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.gio_bat_dau = copy.startTime;
       copy.endTime = copy.gio_ket_thuc || copy.endTime || '';
       copy.gio_ket_thuc = copy.endTime;
-      copy.subjectId = copy.mon_hoc_id !== undefined ? copy.mon_hoc_id : copy.subjectId;
-      copy.mon_hoc_id = copy.subjectId;
-      copy.shiftId = copy.ca_id !== undefined ? copy.ca_id : copy.shiftId;
-      copy.ca_id = copy.shiftId;
+      copy.subjectId = copy.mon_hoc && typeof copy.mon_hoc === 'object'
+        ? copy.mon_hoc
+        : (copy.mon_hoc_id !== undefined ? copy.mon_hoc_id : copy.subjectId);
+      copy.mon_hoc_id = copy.mon_hoc_id !== undefined ? copy.mon_hoc_id : copy.subjectId;
+      copy.shiftId = copy.ca && typeof copy.ca === 'object'
+        ? copy.ca
+        : (copy.ca_id !== undefined ? copy.ca_id : copy.shiftId);
+      copy.ca_id = copy.ca_id !== undefined ? copy.ca_id : copy.shiftId;
       if (copy.nguoi_dung && !('user' in copy)) copy.user = copy.nguoi_dung;
       if (copy.ca && !('shift' in copy)) copy.shift = copy.ca;
       if (copy.lich_trinh && !('schedule' in copy)) copy.schedule = copy.lich_trinh;
       if (copy.don_tu && !('leaveRequest' in copy)) copy.leaveRequest = copy.don_tu;
       if (Array.isArray(copy.luot_quet) && !('punches' in copy)) copy.punches = copy.luot_quet;
-      copy.userId = copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId;
-      copy.nguoi_dung_id = copy.userId;
+      copy.userId = copy.giang_vien && typeof copy.giang_vien === 'object'
+        ? copy.giang_vien
+        : copy.nguoi_dung && typeof copy.nguoi_dung === 'object'
+          ? copy.nguoi_dung
+          : (copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId);
+      copy.nguoi_dung_id = copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId;
       copy.startPeriod = copy.tiet_bat_dau !== undefined ? copy.tiet_bat_dau : copy.startPeriod;
       copy.tiet_bat_dau = copy.startPeriod;
       copy.periodCount = copy.so_tiet !== undefined ? copy.so_tiet : copy.periodCount;
@@ -231,6 +254,11 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.ngoai_le = copy.exceptions;
       copy.scheduleType = copy.loai_lich || copy.scheduleType || 'chinh_khoa';
       copy.loai_lich = copy.scheduleType;
+      copy.academicYear = copy.nam_hoc || copy.academicYear || '';
+      copy.semester = copy.hoc_ky !== undefined ? Number(copy.hoc_ky) : copy.semester;
+      if (copy.vi_do !== undefined && copy.vi_do !== null && copy.latitude === undefined) copy.latitude = Number(copy.vi_do);
+      if (copy.kinh_do !== undefined && copy.kinh_do !== null && copy.longitude === undefined) copy.longitude = Number(copy.kinh_do);
+      if (copy.ban_kinh_met !== undefined && copy.radiusMeters === undefined) copy.radiusMeters = Number(copy.ban_kinh_met);
       if (copy.giang_vien && !('user' in copy)) copy.user = copy.giang_vien;
       if (copy.ca && !('shift' in copy)) copy.shift = copy.ca;
       if (copy.mon_hoc && !('subject' in copy)) copy.subject = copy.mon_hoc;
@@ -251,19 +279,47 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.ngay_bat_dau = copy.startDate;
       copy.endDate = copy.ngay_ket_thuc || copy.endDate || '';
       copy.ngay_ket_thuc = copy.endDate;
+      copy.isHalfDay = copy.nua_ngay !== undefined ? Boolean(copy.nua_ngay) : copy.isHalfDay;
       copy.totalDays = copy.so_ngay !== undefined ? copy.so_ngay : copy.totalDays;
       copy.so_ngay = copy.totalDays;
-      copy.userId = copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId;
-      copy.nguoi_dung_id = copy.userId;
-      copy.approverId = copy.nguoi_duyet_id !== undefined ? copy.nguoi_duyet_id : copy.approverId;
-      copy.nguoi_duyet_id = copy.approverId;
+      copy.userId = copy.nguoi_dung && typeof copy.nguoi_dung === 'object'
+        ? copy.nguoi_dung
+        : (copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId);
+      copy.nguoi_dung_id = copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId;
+      copy.approverId = copy.nguoi_duyet && typeof copy.nguoi_duyet === 'object'
+        ? copy.nguoi_duyet
+        : (copy.nguoi_duyet_id !== undefined ? copy.nguoi_duyet_id : copy.approverId);
+      copy.nguoi_duyet_id = copy.nguoi_duyet_id !== undefined ? copy.nguoi_duyet_id : copy.approverId;
+      copy.approvedBy = copy.nguoi_duyet || copy.approvedBy || null;
       copy.approverComment = copy.ghi_chu_duyet || copy.approverComment || '';
+      copy.approvalNote = copy.ghi_chu_duyet || copy.approvalNote || '';
       copy.ghi_chu_duyet = copy.approverComment;
+      copy.rejectionReason = copy.ly_do_tu_choi || copy.rejectionReason || '';
+      copy.scheduleId = copy.lich_trinh && typeof copy.lich_trinh === 'object'
+        ? copy.lich_trinh
+        : (copy.lich_trinh_id !== undefined ? copy.lich_trinh_id : copy.scheduleId);
+      copy.makeupDate = copy.ngay_day_bu || copy.makeupDate || null;
+      copy.attachmentUrl = copy.tep_dinh_kem || copy.attachmentUrl || null;
+      copy.leavePeriods = copy.so_tiet_nghi !== undefined ? copy.so_tiet_nghi : copy.leavePeriods;
+      copy.substituteShiftId = copy.ca_thay_the || copy.ca_thay_the_id || copy.substituteShiftId || null;
+      copy.substituteTeacherId = copy.giang_vien_day_thay || copy.giang_vien_day_thay_id || copy.substituteTeacherId || null;
+      copy.approvedAt = copy.thoi_gian_duyet || copy.approvedAt || null;
+      copy.createdAt = copy.tao_luc || copy.createdAt || null;
+      copy.updatedAt = copy.cap_nhat_luc || copy.updatedAt || null;
       if (copy.nguoi_dung && !('user' in copy)) copy.user = copy.nguoi_dung;
       if (copy.nguoi_duyet && !('approver' in copy)) copy.approver = copy.nguoi_duyet;
       if (Array.isArray(copy.lich_su_duyet) && !('approvalHistory' in copy)) copy.approvalHistory = copy.lich_su_duyet;
       if (copy.cap_duyet_hien_tai !== undefined && copy.currentApprovalLevel === undefined) copy.currentApprovalLevel = copy.cap_duyet_hien_tai;
       if (copy.so_cap_duyet !== undefined && copy.totalApprovalLevels === undefined) copy.totalApprovalLevels = copy.so_cap_duyet;
+    }
+
+    // 6.2. Chuẩn hóa Lịch sử duyệt đơn (LichSuDuyetDon)
+    if ('cap_duyet' in copy && ('y_kien' in copy || 'thoi_diem' in copy || 'hanh_dong' in copy)) {
+      copy.level = copy.cap_duyet;
+      copy.action = copy.hanh_dong || copy.action || '';
+      copy.comment = copy.y_kien || copy.comment || '';
+      copy.timestamp = copy.thoi_diem || copy.timestamp || '';
+      if (copy.nguoi_duyet && !('approver' in copy)) copy.approver = copy.nguoi_duyet;
     }
 
     // 6.1. Chuẩn hóa Đối tượng Số dư phép (LeaveBalance)
@@ -297,17 +353,69 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.trang_thai = copy.status;
       copy.lateMinutes = copy.di_muon_phut !== undefined ? copy.di_muon_phut : copy.lateMinutes;
       copy.di_muon_phut = copy.lateMinutes;
-      copy.earlyMinutes = copy.ve_som_phut !== undefined ? copy.ve_som_phut : copy.earlyMinutes;
-      copy.ve_som_phut = copy.earlyMinutes;
-      copy.userId = copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId;
-      copy.nguoi_dung_id = copy.userId;
-      copy.shiftId = copy.ca_id !== undefined ? copy.ca_id : copy.shiftId;
-      copy.ca_id = copy.shiftId;
+      copy.earlyExitMinutes = copy.ve_som_phut !== undefined ? copy.ve_som_phut : copy.earlyExitMinutes;
+      copy.earlyMinutes = copy.earlyExitMinutes;
+      copy.ve_som_phut = copy.earlyExitMinutes;
+      copy.workDurationMinutes = copy.thoi_luong_lam_viec_phut !== undefined
+        ? Number(copy.thoi_luong_lam_viec_phut)
+        : copy.workDurationMinutes;
+      copy.workHours = copy.so_gio_cong !== undefined
+        ? Number(copy.so_gio_cong)
+        : (copy.workDurationMinutes !== undefined
+          ? Number((Number(copy.workDurationMinutes) / 60).toFixed(2))
+          : copy.workHours);
+      copy.userId = copy.nguoi_dung && typeof copy.nguoi_dung === 'object'
+        ? copy.nguoi_dung
+        : (copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId);
+      copy.nguoi_dung_id = copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId;
+      copy.shiftId = copy.ca && typeof copy.ca === 'object'
+        ? copy.ca
+        : (copy.ca_id !== undefined ? copy.ca_id : copy.shiftId);
+      copy.ca_id = copy.ca_id !== undefined ? copy.ca_id : copy.shiftId;
+      copy.scheduleId = copy.lich_trinh && typeof copy.lich_trinh === 'object'
+        ? copy.lich_trinh
+        : (copy.lich_trinh_id !== undefined ? copy.lich_trinh_id : copy.scheduleId);
+      copy.actualTeachingPeriods = copy.so_tiet_thuc_day !== undefined ? copy.so_tiet_thuc_day : copy.actualTeachingPeriods;
+      copy.isClosed = copy.da_chot !== undefined ? Boolean(copy.da_chot) : copy.isClosed;
+      copy.overrideBy = copy.nguoi_ghi_de || copy.nguoi_ghi_de_id || copy.overrideBy || null;
+      copy.fraudReason = copy.ly_do_ghi_de || copy.fraudReason || '';
+      copy.isFraud = copy.co_gian_lan !== undefined ? Boolean(copy.co_gian_lan) : Boolean(copy.isFraud);
+      copy.leaveRequestId = copy.don_tu && typeof copy.don_tu === 'object'
+        ? copy.don_tu
+        : (copy.don_tu_id !== undefined ? copy.don_tu_id : copy.leaveRequestId);
       if (copy.nguoi_dung && !('user' in copy)) copy.user = copy.nguoi_dung;
       if (copy.ca && !('shift' in copy)) copy.shift = copy.ca;
       if (copy.lich_trinh && !('schedule' in copy)) copy.schedule = copy.lich_trinh;
       if (copy.don_tu && !('leaveRequest' in copy)) copy.leaveRequest = copy.don_tu;
-      if (Array.isArray(copy.luot_quet) && !('punches' in copy)) copy.punches = copy.luot_quet;
+      if (Array.isArray(copy.luot_quet) && !('punches' in copy)) {
+        copy.punches = copy.luot_quet;
+      }
+      if (Array.isArray(copy.luot_quet) && !('punchLogIds' in copy)) {
+        copy.punchLogIds = copy.luot_quet;
+      }
+      if (!copy.capturedImage && Array.isArray(copy.luot_quet)) {
+        const photoPunch = copy.luot_quet.find((p: any) => p?.anh_minh_chung);
+        if (photoPunch) copy.capturedImage = photoPunch.anh_minh_chung;
+      }
+    }
+
+    // 7.1. Chuẩn hóa Đối tượng Lượt quét thô (LuotQuetChamCong)
+    if ('loai_quet' in copy || 'thoi_gian_quet' in copy) {
+      copy.punchType = copy.loai_quet || copy.punchType || 'check_in';
+      copy.punchTime = copy.thoi_gian_quet || copy.punchTime || '';
+      copy.method = copy.phuong_thuc || copy.method || 'face_ai';
+      copy.confidenceScore = copy.do_tin_cay_ai !== undefined ? copy.do_tin_cay_ai : copy.confidenceScore;
+      copy.livenessScore = copy.diem_mat_that !== undefined ? copy.diem_mat_that : copy.livenessScore;
+      copy.recognizedAngle = copy.goc_mat_nhan_dien || copy.recognizedAngle || null;
+      copy.latitude = copy.vi_do !== undefined && copy.vi_do !== null ? Number(copy.vi_do) : copy.latitude;
+      copy.longitude = copy.kinh_do !== undefined && copy.kinh_do !== null ? Number(copy.kinh_do) : copy.longitude;
+      copy.gpsAccuracy = copy.do_chinh_xac_gps !== undefined ? copy.do_chinh_xac_gps : copy.gpsAccuracy;
+      copy.isMockLocation = copy.vi_tri_gia_lap !== undefined ? Boolean(copy.vi_tri_gia_lap) : copy.isMockLocation;
+      copy.distanceMeters = copy.khoang_cach_met !== undefined ? copy.khoang_cach_met : copy.distanceMeters;
+      copy.isValid = copy.hop_le !== undefined ? Boolean(copy.hop_le) : copy.isValid;
+      copy.invalidReason = copy.ly_do_khong_hop_le || copy.invalidReason || null;
+      copy.deviceId = copy.ma_thiet_bi || copy.deviceId || null;
+      copy.evidencePhoto = copy.anh_minh_chung || copy.evidencePhoto || null;
     }
 
     // 8. Chuẩn hóa Đối tượng Phiếu lương (Payroll)
@@ -316,17 +424,53 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.thang = copy.month;
       copy.year = copy.nam !== undefined ? copy.nam : copy.year;
       copy.nam = copy.year;
-      copy.netSalary = copy.thuc_linh_net !== undefined ? copy.thuc_linh_net : (copy.thuc_linh !== undefined ? copy.thuc_linh : copy.netSalary);
+      copy.salaryCoefficient = copy.he_so_luong !== undefined ? Number(copy.he_so_luong) : copy.salaryCoefficient;
+      copy.baseSalary = copy.luong_co_ban !== undefined
+        ? Number(copy.luong_co_ban)
+        : (copy.luong_co_so !== undefined ? Number(copy.luong_co_so) : copy.baseSalary);
+      copy.primarySalary = copy.luong_chinh !== undefined
+        ? Number(copy.luong_chinh)
+        : copy.primarySalary;
+      copy.positionAllowance = copy.phu_cap_chuc_vu !== undefined ? Number(copy.phu_cap_chuc_vu) : copy.positionAllowance;
+      copy.seniorityAllowance = copy.phu_cap_tham_nien !== undefined ? Number(copy.phu_cap_tham_nien) : copy.seniorityAllowance;
+      copy.vocationalAllowance = copy.phu_cap_uu_dai_nghe !== undefined ? Number(copy.phu_cap_uu_dai_nghe) : copy.vocationalAllowance;
+      copy.netSalary = copy.thuc_linh_net !== undefined
+        ? Number(copy.thuc_linh_net)
+        : (copy.thuc_linh !== undefined ? Number(copy.thuc_linh) : copy.netSalary);
       copy.thuc_linh_net = copy.netSalary;
-      copy.grossSalary = copy.tong_thu_nhap_gross !== undefined ? copy.tong_thu_nhap_gross : copy.grossSalary;
-      copy.tong_thu_nhap_gross = copy.grossSalary;
-      copy.baseSalary = copy.luong_chinh !== undefined ? copy.luong_chinh : (copy.luong_co_ban !== undefined ? copy.luong_co_ban : copy.baseSalary);
-      copy.luong_chinh = copy.baseSalary;
-      copy.userId = copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId;
-      copy.nguoi_dung_id = copy.userId;
-      copy.status = copy.trang_thai || copy.status || 'draft';
+      copy.grossIncome = copy.tong_thu_nhap_gross !== undefined
+        ? Number(copy.tong_thu_nhap_gross)
+        : (copy.grossIncome !== undefined ? copy.grossIncome : copy.grossSalary);
+      copy.grossSalary = copy.grossIncome;
+      copy.tong_thu_nhap_gross = copy.grossIncome;
+      copy.luong_chinh = copy.primarySalary;
+      copy.userId = copy.nguoi_dung && typeof copy.nguoi_dung === 'object'
+        ? copy.nguoi_dung
+        : (copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId);
+      copy.nguoi_dung_id = copy.nguoi_dung_id !== undefined ? copy.nguoi_dung_id : copy.userId;
+      copy.status = copy.trang_thai || copy.status || 'nhap';
       copy.trang_thai = copy.status;
+      copy.standardWorkDays = copy.so_cong_chuan !== undefined ? Number(copy.so_cong_chuan) : copy.standardWorkDays;
+      copy.actualWorkDays = copy.so_cong_thuc_te !== undefined ? Number(copy.so_cong_thuc_te) : copy.actualWorkDays;
+      copy.totalDeductions = copy.tong_giam_tru !== undefined ? Number(copy.tong_giam_tru) : copy.totalDeductions;
+      copy.approvedAt = copy.thoi_gian_duyet || copy.approvedAt || null;
+      copy.notes = copy.ghi_chu ?? copy.notes;
+      copy.createdAt = copy.tao_luc || copy.createdAt || null;
+      copy.updatedAt = copy.cap_nhat_luc || copy.updatedAt || null;
+      if (copy.gio_giang && typeof copy.gio_giang === 'object' && !('teachingHours' in copy)) {
+        copy.teachingHours = {
+          baseQuota: Number(copy.gio_giang.dinh_muc_goc ?? 0),
+          accumulatedStandardHours: Number(copy.gio_giang.gio_quy_doi_tich_luy ?? 0),
+          overQuotaHours: Number(copy.gio_giang.gio_vuot_dinh_muc ?? 0),
+          hourlyRate: Number(copy.gio_giang.don_gia_gio_chuan ?? 0),
+          overQuotaRemuneration: Number(copy.gio_giang.thu_lao_vuot_gio ?? 0),
+        };
+      }
+      if (copy.bao_hiem && !('insurance' in copy)) copy.insurance = copy.bao_hiem;
+      if (copy.thue_tncn && !('personalIncomeTax' in copy)) copy.personalIncomeTax = copy.thue_tncn;
       if (copy.nguoi_dung && !('user' in copy)) copy.user = copy.nguoi_dung;
+      if (copy.nguoi_lap && !('createdByUser' in copy)) copy.createdByUser = copy.nguoi_lap;
+      if (copy.nguoi_duyet && !('approvedByUser' in copy)) copy.approvedByUser = copy.nguoi_duyet;
       if (Array.isArray(copy.danh_sach_phu_cap) && !('allowances' in copy)) copy.allowances = copy.danh_sach_phu_cap;
       if (Array.isArray(copy.cac_khoan_giam_tru) && !('deductions' in copy)) copy.deductions = copy.cac_khoan_giam_tru;
     }
@@ -357,14 +501,20 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.loai_doi_tuong = copy.targetType;
       copy.targetId = copy.doi_tuong_id || copy.targetId || '';
       copy.doi_tuong_id = copy.targetId;
-      copy.actor = copy.nguoi_thuc_hien_id !== undefined ? copy.nguoi_thuc_hien_id : copy.actor;
-      copy.nguoi_thuc_hien_id = copy.actor;
+      if (copy.nguoi_thuc_hien && typeof copy.nguoi_thuc_hien === 'object') {
+        copy.actor = copy.nguoi_thuc_hien;
+      } else if (copy.nguoi_thuc_hien_id && typeof copy.nguoi_thuc_hien_id === 'object') {
+        copy.actor = copy.nguoi_thuc_hien_id;
+      } else if (!copy.actor || typeof copy.actor !== 'object') {
+        copy.actor = copy.nguoi_thuc_hien_id !== undefined ? copy.nguoi_thuc_hien_id : copy.actor;
+      }
       copy.actorType = copy.loai_chu_the || copy.actorType || 'user';
       copy.loai_chu_the = copy.actorType;
       copy.ipAddress = copy.dia_chi_ip || copy.ipAddress || null;
       copy.dia_chi_ip = copy.ipAddress;
-      copy.userAgent = copy.thong_tin_trinh_duyet || copy.userAgent || null;
+      copy.userAgent = copy.user_agent || copy.thong_tin_trinh_duyet || copy.userAgent || null;
       copy.thong_tin_trinh_duyet = copy.userAgent;
+      copy.failureReason = copy.ly_do_that_bai || copy.failureReason || null;
       copy.status = copy.ket_qua || copy.status || 'success';
       copy.ket_qua = copy.status;
       copy.timestamp = copy.thoi_diem || copy.timestamp || copy.tao_luc || '';
@@ -490,6 +640,9 @@ export function normalizeFrontendPayload(payload: any): any {
     ['approvalNote', 'ghi_chu_duyet'],
     ['rejectionReason', 'ly_do_tu_choi'],
     ['scheduleId', 'lich_trinh_id'],
+    ['leavePeriods', 'so_tiet_nghi'],
+    ['substituteShiftId', 'ca_thay_the_id'],
+    ['substituteTeacherId', 'giang_vien_day_thay_id'],
     ['makeupDate', 'ngay_day_bu'],
     ['attachmentUrl', 'tep_dinh_kem'],
     ['isHalfDay', 'nua_ngay'],

@@ -11,6 +11,10 @@ export interface StatMetric {
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+export type AccentColor = 'indigo' | 'blue' | 'emerald' | 'violet' | 'rose' | 'amber';
+
+export type FontScale = 'compact' | 'normal' | 'large';
+
 export interface NavigationItem {
   name: string;
   path: string;

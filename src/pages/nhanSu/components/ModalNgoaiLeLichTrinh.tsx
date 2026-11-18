@@ -72,6 +72,7 @@ export const ModalNgoaiLeLichTrinh: React.FC<ModalNgoaiLeLichTrinhProps> = ({
               >
                 <option value="nghi">Báo Nghỉ (Tạm hoãn buổi học)</option>
                 <option value="day_bu">Xếp Lịch Học Bù</option>
+                <option value="doi_ca">Đổi Ca Giảng Dạy</option>
                 <option value="huy">Hủy Bỏ Buổi Học Này</option>
               </select>
             </div>

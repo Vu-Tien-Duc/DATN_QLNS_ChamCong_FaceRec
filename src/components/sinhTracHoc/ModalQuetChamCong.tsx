@@ -778,6 +778,30 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
         throw err;
       }
 
+      // Thử thách Liveness (chống dùng ảnh tĩnh): yêu cầu người dùng thực hiện tư thế ngẫu nhiên
+      if (verifySuccess) {
+        const LIVENESS_LABELS: Record<string, string> = {
+          LOOK_UP: 'ngẩng mặt lên',
+          LOOK_DOWN: 'cúi mặt xuống',
+          TURN_LEFT: 'quay mặt sang trái',
+          TURN_RIGHT: 'quay mặt sang phải',
+        };
+        const { challenge, challengeToken } = await attendanceApi.getLivenessChallenge();
+        const instruction = `Vui lòng ${LIVENESS_LABELS[challenge] || 'thực hiện tư thế yêu cầu'}`;
+        setStatusText(instruction);
+        toast(instruction, { icon: '🧑‍💻', duration: 4000 });
+
+        // Chờ người dùng thực hiện tư thế rồi chụp khung hình kiểm tra
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        const livenessBlob = await captureHighQualityBlob();
+        if (!livenessBlob) throw new Error('Không thể chụp ảnh xác thực Liveness.');
+
+        const livenessRes = await attendanceApi.verifyLivenessChallenge(livenessBlob, challengeToken);
+        if (!livenessRes?.passed) {
+          throw new Error(`Chưa thực hiện đúng thử thách: ${instruction.toLowerCase()}. Vui lòng thử lại.`);
+        }
+      }
+
       if (verifySuccess) {
         audioFeedback.playShutterClick();
         const now = new Date();

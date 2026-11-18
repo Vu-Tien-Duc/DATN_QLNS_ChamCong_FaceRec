@@ -80,8 +80,13 @@ const USER_INCLUDES = [
 const formatUserDetail = (userInstance, faceTemplate = null) => {
   const raw = userInstance.toJSON ? userInstance.toJSON() : { ...userInstance };
   delete raw.mat_khau_ma_hoa;
-  const profile = raw.ho_so || {};
+  const profile = raw.ho_so && typeof raw.ho_so === 'object' ? { ...raw.ho_so } : {};
+  delete profile.id;
+  delete profile.nguoi_dung_id;
+  delete profile.tao_luc;
+  delete profile.cap_nhat_luc;
   const deptObj = raw.don_vi_chinh || null;
+  const isRegistered = Boolean(faceTemplate);
 
   return {
     ...profile,
@@ -102,9 +107,15 @@ const formatUserDetail = (userInstance, faceTemplate = null) => {
     trang_thai_lam_viec: raw.trang_thai_lam_viec || 'dang_lam_viec',
     anh_dai_dien: raw.anh_dai_dien || null,
     tham_nien_nam: userInstance.ho_so?.tham_nien_nam ?? 0,
-    da_dang_ky_face: Boolean(faceTemplate),
+    da_dang_ky_face: isRegistered,
     ngay_dang_ky_face: faceTemplate?.ngay_dang_ky || null,
     so_luong_mau: faceTemplate?.so_luong_mau || 0,
+    mo_hinh_ai: isRegistered ? (faceTemplate?.mo_hinh_ai || 'buffalo_s') : null,
+    so_chieu_vector: isRegistered ? (faceTemplate?.so_chieu_vector || 512) : null,
+    mac_dinh: isRegistered ? Boolean(faceTemplate?.mac_dinh ?? true) : false,
+    trang_thai_khuon_mat: isRegistered ? (faceTemplate?.trang_thai || 'hoat_dong') : null,
+    anh_khuon_mat: isRegistered ? (faceTemplate?.anh_dai_dien || null) : null,
+    facePhoto: isRegistered ? (faceTemplate?.anh_dai_dien || null) : null,
   };
 };
 
@@ -159,7 +170,7 @@ const fetchUsers = async ({ vai_tro, don_vi_id, dang_hoat_dong, kich_hoat, tim_k
   const templates = userIds.length
     ? await MauKhuonMat.findAll({
         where: { nguoi_dung_id: { [Op.in]: userIds }, mac_dinh: true },
-        attributes: ['nguoi_dung_id', 'ngay_dang_ky', 'so_luong_mau'],
+        attributes: ['nguoi_dung_id', 'ngay_dang_ky', 'so_luong_mau', 'anh_dai_dien', 'mo_hinh_ai', 'so_chieu_vector', 'mac_dinh', 'trang_thai'],
       })
     : [];
 
@@ -200,7 +211,7 @@ const fetchUserById = async (id, currentUser) => {
 
   const template = await MauKhuonMat.findOne({
     where: { nguoi_dung_id: user.id, mac_dinh: true },
-    attributes: ['ngay_dang_ky', 'so_luong_mau'],
+    attributes: ['ngay_dang_ky', 'so_luong_mau', 'anh_dai_dien', 'mo_hinh_ai', 'so_chieu_vector', 'mac_dinh', 'trang_thai'],
   });
 
   return formatUserDetail(user, template);
@@ -433,7 +444,9 @@ const updateExistingUser = async (id, data, currentUser, dia_chi_ip = null) => {
     user.vai_tro_chinh = normalizeRole(payload.vai_tro_chinh);
   }
 
-  await validateDepartmentRoleRule(normalizeRole(user.vai_tro_chinh), user.don_vi_chinh_id);
+  if (payload.don_vi_chinh_id !== undefined || payload.vai_tro_chinh !== undefined) {
+    await validateDepartmentRoleRule(normalizeRole(user.vai_tro_chinh), user.don_vi_chinh_id);
+  }
 
   if (payload.so_dien_thoai !== undefined) user.so_dien_thoai = payload.so_dien_thoai || null;
   if (payload.trang_thai_lam_viec !== undefined) user.trang_thai_lam_viec = payload.trang_thai_lam_viec;
@@ -464,7 +477,11 @@ const updateExistingUser = async (id, data, currentUser, dia_chi_ip = null) => {
       'ma_so_thue', 'so_tai_khoan_ngan_hang', 'ten_ngan_hang', 'chi_nhanh_ngan_hang',
     ];
     for (const f of profileFields) {
-      if (payload[f] !== undefined) profileUpdates[f] = payload[f] === '' ? null : payload[f];
+      if (payload[f] !== undefined) {
+        profileUpdates[f] = (f === 'dia_chi' || f === 'chuc_vu')
+          ? String(payload[f] ?? '')
+          : (payload[f] === '' ? null : payload[f]);
+      }
     }
     if (payload.he_so_luong !== undefined) profileUpdates.he_so_luong = Number(payload.he_so_luong);
     if (payload.so_nguoi_phu_thuoc !== undefined) profileUpdates.so_nguoi_phu_thuoc = Number(payload.so_nguoi_phu_thuoc);

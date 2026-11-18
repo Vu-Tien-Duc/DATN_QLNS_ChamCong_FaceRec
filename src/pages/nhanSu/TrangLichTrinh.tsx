@@ -49,7 +49,7 @@ import { ModalNgoaiLeLichTrinh } from './components/ModalNgoaiLeLichTrinh';
 // =============================================================================
 
 export type ScheduleType = 'chinh_khoa' | 'day_bu';
-export type ScheduleExceptionStatus = 'nghi' | 'day_bu' | 'huy';
+export type ScheduleExceptionStatus = 'nghi' | 'day_bu' | 'doi_ca' | 'huy';
 export type ViewMode = 'matrix' | 'lecturer' | 'table' | 'calendar';
 
 interface ScheduleItem {
@@ -1192,7 +1192,7 @@ export const Schedules: React.FC = () => {
   // =============================================================================
 
   const renderMatrixView = () => (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+    <div className="w-full overflow-hidden">
       <div className={`overflow-x-auto custom-scrollbar ${widthMode === 'scroll' ? 'min-w-[1300px]' : 'w-full'}`}>
         <table className="w-full border-collapse text-left table-fixed">
           {/* Table Header: CA GIẢNG DẠY + 7 Days */}
@@ -1464,7 +1464,7 @@ export const Schedules: React.FC = () => {
     });
 
     return (
-      <div className="space-y-4">
+      <div className="p-4 space-y-4">
         {loading ? (
           <div className="p-16 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-center">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" />
@@ -1650,7 +1650,7 @@ export const Schedules: React.FC = () => {
   const totalPages = Math.ceil(filteredSchedules.length / tablePageSize) || 1;
 
   const renderTableView = () => (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+    <div className="w-full overflow-hidden">
       <div className="overflow-x-auto custom-scrollbar">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
@@ -1856,7 +1856,7 @@ export const Schedules: React.FC = () => {
   // =============================================================================
 
   const renderCalendarView = () => (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-4 space-y-3">
+    <div className="p-4 space-y-3">
       {/* Calendar Header Month Navigator */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center gap-2">
@@ -1983,105 +1983,182 @@ export const Schedules: React.FC = () => {
   return (
     <div className="space-y-4 font-sans pb-12 select-none">
       {/* =========================================================================
-          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+          PAGE HEADER + ACTIONS
          ========================================================================= */}
       <PageHeader
-        title="Lịch Giảng Dạy & Thời Khóa Biểu Học Phần"
-        subtitle="Quản trị thời khóa biểu học kỳ, phân bổ phòng học, giảng viên phụ trách và đối soát chống xung đột lịch dạy 2 chiều."
-        icon={<CalendarDays className="w-5 h-5 text-brand-600" />}
-        badge="Học Kỳ 1 - 2026"
-        badgeVariant="brand"
+        title="Lịch Giảng Dạy & Thời Khóa Biểu"
+        subtitle="Thời khóa biểu học kỳ, phân bổ phòng học và giảng viên phụ trách."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExportScheduleExcel}
+              leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+              title="Xuất Thời Khóa Biểu ra file Excel (.xlsx)"
+            >
+              Xuất Excel
+            </Button>
+
+            {isAdminOrDean && (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => openCreateModal()}
+                leftIcon={<Plus className="w-3.5 h-3.5" />}
+              >
+                Thêm lịch
+              </Button>
+            )}
+          </div>
+        }
       />
 
       {/* =========================================================================
-          BAR 1: HEADER & VIEW MODE SELECTOR (4 MODES)
+          UNIFIED SCHEDULE WORKSPACE CARD (TABS + FILTERS + WEEK/DAY NAV + VIEW)
          ========================================================================= */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-2.5 shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-        {/* Left: View Mode Tabs */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setViewMode('matrix')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-              viewMode === 'matrix'
-                ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/20'
-                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 border border-slate-200/60 dark:border-slate-700'
-            }`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span>Thời khóa biểu tuần</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setViewMode('lecturer')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-              viewMode === 'lecturer'
-                ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/20'
-                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 border border-slate-200/60 dark:border-slate-700'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>Theo giảng viên</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setViewMode('table')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-              viewMode === 'table'
-                ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/20'
-                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 border border-slate-200/60 dark:border-slate-700'
-            }`}
-          >
-            <TableIcon className="w-3.5 h-3.5" />
-            <span>Dạng bảng quản trị</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setViewMode('calendar')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-              viewMode === 'calendar'
-                ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/20'
-                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 border border-slate-200/60 dark:border-slate-700'
-            }`}
-          >
-            <CalendarDays className="w-3.5 h-3.5" />
-            <span>Lịch tháng</span>
-          </button>
-        </div>
-
-        {/* Right: Primary Create Button & Export Button */}
-        <div className="flex items-center gap-2 self-end lg:self-auto">
-          <button
-            type="button"
-            onClick={handleExportScheduleExcel}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-2xs hover:shadow-xs transition-all shrink-0"
-            title="Xuất Thời Khóa Biểu ra file Excel (.xlsx)"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span className="hidden sm:inline">Xuất TKB (.xlsx)</span>
-          </button>
-
-          {/* Primary Create Button */}
-          {isAdminOrDean && (
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
+        {/* Hàng 1: Chế độ xem + Điều hướng tuần + Độ rộng */}
+        <div className="p-3 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/70 dark:border-slate-700/70">
             <button
               type="button"
-              onClick={() => openCreateModal()}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-xs hover:shadow-md transition-all shrink-0"
+              onClick={() => setViewMode('matrix')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === 'matrix'
+                  ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
             >
-              <Plus className="w-4 h-4" />
-              <span>Thêm lịch</span>
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>TKB tuần</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode('lecturer')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === 'lecturer'
+                  ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Theo giảng viên</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+              <span>Dạng bảng</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode('calendar')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === 'calendar'
+                  ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <CalendarDays className="w-3.5 h-3.5" />
+              <span>Lịch tháng</span>
+            </button>
+          </div>
+
+          {(viewMode === 'matrix' || viewMode === 'lecturer') && (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handlePrevWeek}
+                  title="Tuần trước"
+                  className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <div className="h-8 flex items-center gap-1.5 px-3 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 tabular-nums">
+                    Tuần: {formatDayMonth(weekDaysList[0].date)}/{weekDaysList[0].date.getFullYear()} - {formatDayMonth(weekDaysList[6].date)}/{weekDaysList[6].date.getFullYear()}
+                  </span>
+                  <label title="Chọn ngày để chuyển tuần" className="cursor-pointer ml-0.5 flex items-center text-brand-600 dark:text-brand-400 hover:text-brand-700">
+                    <CalendarIcon className="w-3.5 h-3.5" />
+                    <input
+                      type="date"
+                      value={toIsoDateString(weekRefDate)}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setWeekRefDate(new Date(e.target.value));
+                        }
+                      }}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleNextWeek}
+                  title="Tuần sau"
+                  className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleTodayWeek}
+                  className="h-8 px-2.5 rounded-full text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/40 transition-colors cursor-pointer"
+                >
+                  Tuần này
+                </button>
+              </div>
+
+              {viewMode === 'matrix' && (
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-full border border-slate-200/70 dark:border-slate-700/70">
+                  <button
+                    type="button"
+                    onClick={() => setWidthMode('fit')}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                      widthMode === 'fit'
+                        ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    <Minimize2 className="w-3.5 h-3.5" />
+                    <span className="hidden xl:inline">Vừa màn hình</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWidthMode('scroll')}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                      widthMode === 'scroll'
+                        ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span className="hidden xl:inline">Cuộn rộng</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
-      </div>
 
-      {/* =========================================================================
-          BAR 2: ADVANCED FILTER TOOLBAR (LỌC THEO CA, THEO NGÀNH, GIẢNG VIÊN, TỪ KHÓA)
-         ========================================================================= */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-2.5 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+        {/* Hàng 2: Thanh lọc Ca, Khoa, Giảng viên, Từ khóa */}
+        <div className="px-3 py-2.5 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-850/40 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 flex-1">
           {/* Filter Icon & Label */}
           <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400 pl-1 shrink-0">
@@ -2359,136 +2436,51 @@ export const Schedules: React.FC = () => {
         </div>
 
         {/* Counter Badge */}
-        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 shrink-0 pr-1">
-          Hiển thị <strong className="text-blue-600 dark:text-blue-400">{filteredSchedules.length}</strong> / {schedules.length} phân công
+        <div className="text-xs font-medium text-slate-500 dark:text-slate-400 shrink-0 pr-1">
+          Hiển thị <strong className="text-brand-600 dark:text-brand-400">{filteredSchedules.length}</strong> / {schedules.length} phân công
         </div>
       </div>
 
-      {/* =========================================================================
-          BAR 3: WEEK NAVIGATION & DAY TABS (Used for 'matrix' and 'lecturer')
-         ========================================================================= */}
+      {/* Hàng 3 (nếu cần): Xem nhanh theo ngày */}
       {(viewMode === 'matrix' || viewMode === 'lecturer') && (
-        <div className="space-y-2">
-          {/* Week Navigator & Width Toggles */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-2.5 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
+        <div className="px-3 py-2 border-b border-slate-200/80 dark:border-slate-800 flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0 mr-1">
+            Xem ngày:
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setSelectedDayFilter('all')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all shrink-0 cursor-pointer ${
+              selectedDayFilter === 'all'
+                ? 'bg-brand-600 text-white shadow-2xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700'
+            }`}
+          >
+            Tất cả (7 ngày)
+          </button>
+
+          {weekDaysList.map((day) => {
+            const isSelected = selectedDayFilter === day.weekday;
+            return (
               <button
+                key={day.isoDate}
                 type="button"
-                onClick={handlePrevWeek}
-                title="Tuần trước"
-                className="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 transition-colors"
+                onClick={() => setSelectedDayFilter(day.weekday)}
+                className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all shrink-0 cursor-pointer ${
+                  isSelected
+                    ? 'bg-brand-600 text-white shadow-2xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700'
+                }`}
               >
-                <ChevronLeft className="w-4 h-4" />
+                <span>{day.shortLabel}</span>
+                <span className="opacity-80">({day.dayNumber}/{day.monthNumber})</span>
+                {day.isToday && (
+                  <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-brand-600'} animate-pulse`} />
+                )}
               </button>
-
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700/80">
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  Tuần: {formatDayMonth(weekDaysList[0].date)}/{weekDaysList[0].date.getFullYear()} - {formatDayMonth(weekDaysList[6].date)}/{weekDaysList[6].date.getFullYear()}
-                </span>
-                <label title="Chọn ngày để chuyển tuần" className="cursor-pointer ml-1 flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-700">
-                  <CalendarIcon className="w-3.5 h-3.5" />
-                  <input
-                    type="date"
-                    value={toIsoDateString(weekRefDate)}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        setWeekRefDate(new Date(e.target.value));
-                      }
-                    }}
-                    className="sr-only"
-                  />
-                </label>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleNextWeek}
-                title="Tuần sau"
-                className="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 transition-colors"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-
-              <button
-                type="button"
-                onClick={handleTodayWeek}
-                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline px-2 py-1 transition-colors"
-              >
-                Tuần này
-              </button>
-            </div>
-
-            {/* Matrix Width Toggles */}
-            {viewMode === 'matrix' && (
-              <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                <button
-                  type="button"
-                  onClick={() => setWidthMode('fit')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                    widthMode === 'fit'
-                      ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800 shadow-2xs'
-                      : 'bg-white text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <Minimize2 className="w-3.5 h-3.5" />
-                  Vừa màn hình (7 ngày)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setWidthMode('scroll')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                    widthMode === 'scroll'
-                      ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800 shadow-2xs'
-                      : 'bg-white text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <Maximize2 className="w-3.5 h-3.5" />
-                  Cuộn rộng
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* "Xem ngày:" Tabs */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-2 shadow-xs flex items-center gap-2 overflow-x-auto custom-scrollbar">
-            <span className="text-xs font-bold text-slate-600 dark:text-slate-400 shrink-0 pl-1">
-              Xem ngày:
-            </span>
-
-            <button
-              type="button"
-              onClick={() => setSelectedDayFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
-                selectedDayFilter === 'all'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 border border-slate-200/60 dark:border-slate-700'
-              }`}
-            >
-              Tất cả (7 ngày)
-            </button>
-
-            {weekDaysList.map((day) => {
-              const isSelected = selectedDayFilter === day.weekday;
-              return (
-                <button
-                  key={day.isoDate}
-                  type="button"
-                  onClick={() => setSelectedDayFilter(day.weekday)}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 border ${
-                    isSelected
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                      : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <span>{day.shortLabel}</span>
-                  <span className="opacity-80">({day.dayNumber}/{day.monthNumber})</span>
-                  {day.isToday && (
-                    <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-blue-600'} animate-pulse`} />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+            );
+          })}
         </div>
       )}
 
@@ -2499,6 +2491,7 @@ export const Schedules: React.FC = () => {
       {viewMode === 'lecturer' && renderLecturerView()}
       {viewMode === 'table' && renderTableView()}
       {viewMode === 'calendar' && renderCalendarView()}
+      </div>
 
       {/* =========================================================================
           MODAL 1: CREATE / EDIT SCHEDULE FORM
@@ -3079,6 +3072,14 @@ export const Schedules: React.FC = () => {
                       <span className="text-slate-400">Đến hết ngày: </span>
                       <strong className="text-slate-800 dark:text-slate-200 font-mono">{formatDateFull(endDate)}</strong>
                     </div>
+                    {(selectedSchedule.academicYear || selectedSchedule.semester) && (
+                      <div className="sm:col-span-2">
+                        <span className="text-slate-400">Năm học / Học kỳ: </span>
+                        <strong className="text-slate-800 dark:text-slate-200 font-mono">
+                          {selectedSchedule.academicYear || '—'}{selectedSchedule.semester ? ` • Học kỳ ${selectedSchedule.semester}` : ''}
+                        </strong>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3092,7 +3093,21 @@ export const Schedules: React.FC = () => {
                     <div className="space-y-1.5 pl-6">
                       {exceptions.map((ex: any, idx: number) => (
                         <div key={idx} className="text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between">
-                          <span>Ngày {formatDateFull(ex.date)}: <strong>{ex.status === 'nghi' ? 'Nghỉ' : String(ex.status).toLowerCase() === 'day_bu' ? 'Dạy bù' : ex.status}</strong> {ex.reason ? `(${ex.reason})` : ''}</span>
+                          <span>
+                            Ngày {formatDateFull(ex.date)}:{' '}
+                            <strong>
+                              {ex.status === 'nghi'
+                                ? 'Nghỉ'
+                                : String(ex.status).toLowerCase() === 'day_bu'
+                                  ? 'Dạy bù'
+                                  : ex.status === 'doi_ca'
+                                    ? 'Đổi ca'
+                                    : ex.status === 'huy'
+                                      ? 'Hủy buổi'
+                                      : ex.status}
+                            </strong>{' '}
+                            {ex.reason ? `(${ex.reason})` : ''}
+                          </span>
                         </div>
                       ))}
                     </div>

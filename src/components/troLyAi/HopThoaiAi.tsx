@@ -224,6 +224,8 @@ export const AiChatBox: React.FC = () => {
   const [modes, setModes] = useState<AIMode[]>(DEFAULT_MODES);
   const [quickPrompts, setQuickPrompts] = useState<Record<string, string[]>>(DEFAULT_QUICK_PROMPTS);
   const [showPrompts, setShowPrompts] = useState(true);
+  const [providers, setProviders] = useState<AIProviderInfo[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<string>('gemini');
 
   // Đính kèm tệp trực tiếp trong tin nhắn (Ảnh OCR / PDF / Word)
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -269,6 +271,19 @@ export const AiChatBox: React.FC = () => {
     };
   }, [revokeAllSessionBlobUrls]);
 
+  // Lắng nghe sự kiện mở nhanh Trợ lý AI & Kho tài liệu RAG từ Sidebar
+  useEffect(() => {
+    const handleOpenFromSidebar = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      setIsOpen(true);
+      if (detail?.openRag) {
+        setShowRagPanel(true);
+      }
+    };
+    window.addEventListener('ntu:open-ai-hub', handleOpenFromSidebar);
+    return () => window.removeEventListener('ntu:open-ai-hub', handleOpenFromSidebar);
+  }, []);
+
   // Reset lịch sử & tài liệu RAG khi đổi tài khoản đăng nhập
   useEffect(() => {
     if (lastUserIdRef.current !== user?._id) {
@@ -302,18 +317,30 @@ export const AiChatBox: React.FC = () => {
     fetchMetadata();
   }, []);
 
-  // Tải danh sách tài liệu RAG khi mở hộp thoại chat
+  // Tải danh sách providers & tài liệu RAG khi mở hộp thoại chat
   const fetchRagDocuments = useCallback(async () => {
     if (!user) return;
     setIsLoadingDocs(true);
     try {
-      const res = await aiApi.getDocuments();
-      if (res.success && res.data) {
-        setRagDocuments(res.data.documents || []);
-        setCanUploadSchoolWide(Boolean(res.data.canUploadSchoolWide));
+      const [docRes, provRes] = await Promise.all([
+        aiApi.getDocuments().catch(() => null),
+        aiApi.getProviders().catch(() => null),
+      ]);
+      if (docRes?.success && docRes.data) {
+        setRagDocuments(docRes.data.documents || []);
+        setCanUploadSchoolWide(Boolean(docRes.data.canUploadSchoolWide));
+      }
+      if (provRes?.success && provRes.data) {
+        const list = provRes.data.providers || [];
+        setProviders(list);
+        const def = provRes.data.defaultProvider || 'gemini';
+        const firstConfigured = list.find((p) => p.id === def && p.isConfigured) || list.find((p) => p.isConfigured);
+        if (firstConfigured) {
+          setSelectedProvider(firstConfigured.id);
+        }
       }
     } catch (err) {
-      console.warn('Không thể tải danh sách tài liệu RAG:', err);
+      console.warn('Không thể tải dữ liệu AI & RAG:', err);
     } finally {
       setIsLoadingDocs(false);
     }
@@ -503,12 +530,15 @@ export const AiChatBox: React.FC = () => {
       }));
 
     try {
+      const activeProv = providers.find((p) => p.id === selectedProvider);
       const res = await aiApi.chat({
         message: content,
         mode: selectedMode,
+        provider: selectedProvider,
+        model: activeProv?.model,
         history: historyPayload,
         documentIds: selectedDocIds,
-        useRag: selectedMode === 'rag_doc' || selectedDocIds.length > 0,
+        useRag: true,
         file: fileToSend,
       });
 
@@ -609,7 +639,7 @@ export const AiChatBox: React.FC = () => {
       {isOpen && (
         <div className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-50 w-[94vw] sm:w-[470px] h-[650px] max-h-[85vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/90 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
           {/* Pug Mascot perched on top of the chat window */}
-          <div className="absolute -top-15 right-6 pointer-events-auto filter drop-shadow-xl z-10">
+          <div className="absolute -top-[60px] right-6 pointer-events-auto filter drop-shadow-xl z-10">
             <Mascot
               directions="/mascots/pug-directions.webp"
               reactions="/mascots/pug-reactions.webp"
@@ -619,8 +649,8 @@ export const AiChatBox: React.FC = () => {
           </div>
 
           {/* Header */}
-          <div className="px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between rounded-t-3xl">
-            <div className="flex items-center gap-2.5 min-w-0 pr-16">
+          <div className="px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 rounded-t-3xl">
+            <div className="flex items-center gap-2.5 min-w-0 pr-2">
               <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60 flex items-center justify-center shrink-0">
                 <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
@@ -642,23 +672,6 @@ export const AiChatBox: React.FC = () => {
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
-                onClick={() => setShowRagPanel((prev) => !prev)}
-                title="Kho tài liệu tri thức RAG"
-                className={`relative p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  showRagPanel || selectedDocIds.length > 0
-                    ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400'
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                <Database className="w-4 h-4" />
-                {ragDocuments.length > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
-                    {selectedDocIds.length > 0 ? selectedDocIds.length : ragDocuments.length}
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
                 onClick={handleClearHistory}
                 title="Xóa đoạn chat"
                 className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
@@ -676,174 +689,45 @@ export const AiChatBox: React.FC = () => {
             </div>
           </div>
 
-          {/* Mode Selector Tabs */}
-          <div className="bg-slate-50/80 dark:bg-slate-850/60 p-1.5 border-b border-slate-100 dark:border-slate-800 flex gap-1 overflow-x-auto scrollbar-none">
-            {modes.map((mode) => {
-              const isActive = selectedMode === mode.id;
-              return (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedMode(mode.id);
-                    setShowPrompts(true);
-                    if (mode.id === 'rag_doc' && ragDocuments.length === 0) {
-                      setShowRagPanel(true);
-                    }
-                  }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200/70 dark:border-slate-700/80'
-                  }`}
-                >
-                  {MODE_ICONS[mode.id] || <Sparkles className="w-3.5 h-3.5" />}
-                  <span>{mode.name}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Khay Quản Lý Kho Tài Liệu RAG (Thu gọn / Mở rộng) */}
-          {showRagPanel && (
-            <div className="bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-700 px-3 py-2.5 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Database className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
-                    Kho Tài Liệu RAG ({ragDocuments.length})
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {canUploadSchoolWide && (
-                    <select
-                      value={ragUploadScope}
-                      onChange={(e) => setRagUploadScope(e.target.value as 'ca_nhan' | 'toan_truong')}
-                      className="text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-1.5 py-1 text-slate-700 dark:text-slate-200 outline-none"
-                      title="Phạm vi chia sẻ tài liệu tải lên"
-                    >
-                      <option value="ca_nhan">Cá nhân</option>
-                      <option value="toan_truong">Toàn trường</option>
-                    </select>
-                  )}
-
-                  <input
-                    ref={ragFileInputRef}
-                    type="file"
-                    accept=".pdf,.doc,.docx,.txt,.md"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleUploadRagDocument(file);
-                    }}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    disabled={isUploadingRag}
-                    onClick={() => ragFileInputRef.current?.click()}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold transition-colors disabled:opacity-60 cursor-pointer"
-                  >
-                    {isUploadingRag ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Upload className="w-3 h-3" />
-                    )}
-                    <span>{isUploadingRag ? 'Đang nạp...' : 'Tải tài liệu'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {isLoadingDocs ? (
-                <div className="text-[11px] text-slate-500 flex items-center gap-1.5 py-1">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Đang tải kho tài liệu...
-                </div>
-              ) : ragDocuments.length === 0 ? (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Chưa có tài liệu nào. Hãy tải tệp PDF, DOCX, DOC, TXT lên để AI đọc và ghi nhớ hỏi đáp lâu dài.
-                </p>
-              ) : (
-                <div className="max-h-32 overflow-y-auto space-y-1 pr-0.5">
-                  {ragDocuments.map((doc) => {
-                    const isSelected = selectedDocIds.includes(doc._id);
-                    const ownerId =
-                      typeof doc.nguoi_tai_id === 'object' ? doc.nguoi_tai_id?._id : doc.nguoi_tai_id;
-                    const canDelete = ownerId === user?._id || canUploadSchoolWide;
-
-                    return (
-                      <div
-                        key={doc._id}
-                        onClick={() => toggleDocSelection(doc._id)}
-                        className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl border text-xs cursor-pointer transition-all ${
-                          isSelected
-                            ? 'bg-blue-50/90 dark:bg-blue-950/40 border-blue-400 dark:border-blue-700'
-                            : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-700 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span
-                            className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${
-                              isSelected
-                                ? 'bg-blue-600 border-blue-600 text-white'
-                                : 'border-slate-300 dark:border-slate-600'
-                            }`}
-                          >
-                            {isSelected && <Check className="w-3 h-3" />}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-slate-800 dark:text-slate-100 truncate text-[11px]">
-                              {doc.tieu_de}
-                            </p>
-                            <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-                              <span
-                                className={`px-1 rounded font-semibold ${
-                                  doc.pham_vi === 'toan_truong'
-                                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400'
-                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                                }`}
-                              >
-                                {doc.pham_vi === 'toan_truong' ? 'Toàn trường' : 'Cá nhân'}
-                              </span>
-                              <span>•</span>
-                              <span className="uppercase font-mono">{doc.loai_tep}</span>
-                              <span>•</span>
-                              <span>{doc.tong_so_doan} đoạn</span>
-                              <span>•</span>
-                              <span>{formatBytesShort(doc.kich_thuoc_byte)}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {canDelete && (
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteRagDocument(doc._id, doc.tieu_de, e)}
-                            title="Xóa tài liệu"
-                            className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors shrink-0 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {selectedDocIds.length > 0 && (
-                <div className="flex items-center justify-between text-[10px] text-blue-600 dark:text-blue-400 pt-0.5">
-                  <span>Đang chọn {selectedDocIds.length} tài liệu làm nguồn trả lời</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDocIds([])}
-                    className="hover:underline cursor-pointer"
-                  >
-                    Bỏ chọn tất cả
-                  </button>
-                </div>
-              )}
+          {/* Thanh Chọn Model AI Đã Liên Kết & Trạng Thái Kho Tri Thức RAG */}
+          <div className="bg-slate-50/90 dark:bg-slate-850/70 px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                Model AI:
+              </span>
+              <select
+                value={selectedProvider}
+                onChange={(e) => setSelectedProvider(e.target.value)}
+                className="text-xs font-semibold bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1 outline-none focus:border-blue-500 truncate max-w-[230px] cursor-pointer"
+                title="Chọn mô hình AI đã liên kết trong Cấu hình tham số"
+              >
+                {(providers.length > 0
+                  ? providers
+                  : [
+                      {
+                        id: 'gemini',
+                        name: 'Google Gemini',
+                        model: 'gemini-2.5-flash',
+                        isConfigured: true,
+                        description: '',
+                      },
+                    ]
+                ).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.isConfigured ? '🟢' : '⚪'} {p.name} ({p.model})
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
+
+            <div
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200/70 dark:border-blue-800/60 text-[10px] font-semibold whitespace-nowrap shrink-0"
+              title="Số tài liệu RAG toàn trường đang được liên kết tự động (quản lý tại Cấu hình tham số)"
+            >
+              <Database className="w-3 h-3 shrink-0" />
+              <span>RAG: {ragDocuments.length} tài liệu</span>
+            </div>
+          </div>
 
           {/* Danh Sách Tin Nhắn */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-950/40">
@@ -889,10 +773,10 @@ export const AiChatBox: React.FC = () => {
                     <div
                       className={`px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
                         isUser
-                          ? 'bg-blue-600 text-white rounded-tr-xs shadow-xs'
+                          ? 'bg-blue-600 text-white rounded-tr-sm shadow-xs'
                           : msg.isError
-                          ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900 rounded-tl-xs'
-                          : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 rounded-tl-xs shadow-xs'
+                          ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900 rounded-tl-sm'
+                          : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 rounded-tl-sm shadow-xs'
                       }`}
                     >
                       {isUser ? (
@@ -940,7 +824,7 @@ export const AiChatBox: React.FC = () => {
                 <div className="w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
                   <Bot className="w-4 h-4" />
                 </div>
-                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3.5 py-2 rounded-2xl rounded-tl-xs shadow-xs flex items-center gap-2 text-xs">
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3.5 py-2 rounded-2xl rounded-tl-sm shadow-xs flex items-center gap-2 text-xs">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
                   <span>Trợ lý AI đang đọc tài liệu & tổng hợp câu trả lời...</span>
                 </div>
@@ -950,29 +834,21 @@ export const AiChatBox: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Gợi Ý Câu Hỏi Nhanh (Quick Prompts) */}
-          {showPrompts && activeQuickPrompts.length > 0 && !pendingFile && (
-            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-850/80 border-t border-slate-100 dark:border-slate-800">
-              <div className="flex items-center justify-between text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1.5">
-                <span className="flex items-center gap-1 font-semibold text-blue-600 dark:text-blue-400">
-                  <Sparkles className="w-3 h-3" /> Gợi ý câu hỏi nhanh:
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowPrompts(false)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs cursor-pointer"
-                >
-                  Ẩn
-                </button>
+          {/* Gợi Ý Câu Hỏi Nhanh (Quick Prompts) — Tự ẩn khi đang mở Kho RAG để không ép nhỏ khung chat */}
+          {showPrompts && !showRagPanel && activeQuickPrompts.length > 0 && !pendingFile && (
+            <div className="px-3 py-2 bg-slate-50/90 dark:bg-slate-850/80 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 mb-1.5">
+                <Sparkles className="w-3 h-3 shrink-0" />
+                <span>Gợi ý câu hỏi nhanh:</span>
               </div>
-              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                 {activeQuickPrompts.map((promptText, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => handleSendMessage(promptText)}
                     disabled={isLoading}
-                    className="text-left text-xs bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/40 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-300 border border-slate-200/80 dark:border-slate-700 px-2.5 py-1 rounded-full transition-colors shadow-2xs truncate max-w-full cursor-pointer"
+                    className="text-left text-[11px] bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/40 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-300 border border-slate-200/80 dark:border-slate-700 px-2.5 py-1 rounded-full transition-colors shadow-2xs whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     {promptText}
                   </button>

@@ -111,7 +111,7 @@ const getAuditLogs = async (params = {}) => {
       {
         model: NguoiDung,
         as: 'nguoi_thuc_hien',
-        attributes: ['id', 'ho_ten', 'email', 'vai_tro_chinh'],
+        attributes: ['id', 'ho_ten', 'ma_can_bo', 'email', 'vai_tro_chinh'],
       },
     ],
     order: [['thoi_diem', 'DESC']],

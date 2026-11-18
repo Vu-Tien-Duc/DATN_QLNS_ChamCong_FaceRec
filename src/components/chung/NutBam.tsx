@@ -21,21 +21,21 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseStyles =
-    'inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed select-none active:scale-[0.98] whitespace-nowrap';
+    'inline-flex items-center justify-center font-semibold rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed select-none active:scale-[0.98] whitespace-nowrap cursor-pointer';
 
   const sizeStyles = {
-    sm: 'text-xs px-3 py-1.5 gap-1.5',
+    sm: 'h-9 text-xs px-3.5 gap-1.5',
     md: 'text-sm px-4 py-2.5 gap-2',
     lg: 'text-base px-5 py-3 gap-2.5',
   };
 
   const variantStyles = {
     primary:
-      'bg-brand-600 hover:bg-brand-700 text-white shadow-sm hover:shadow-glow-primary focus:ring-brand-500 border border-transparent dark:bg-brand-500 dark:hover:bg-brand-600',
+      'bg-brand-600 hover:bg-brand-700 text-white shadow-xs hover:shadow-glow-primary focus:ring-brand-500 border border-transparent dark:bg-brand-500 dark:hover:bg-brand-600',
     secondary:
-      'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 focus:ring-slate-400 border border-slate-200/60 dark:border-slate-700/60',
+      'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 focus:ring-slate-400 border border-slate-200/80 dark:border-slate-700',
     outline:
-      'bg-transparent hover:bg-slate-100 text-slate-700 border border-slate-300 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60 focus:ring-brand-500',
+      'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/80 focus:ring-brand-500',
     ghost:
       'bg-transparent hover:bg-slate-100 text-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/70 focus:ring-slate-400 border border-transparent',
     danger:
@@ -51,7 +51,7 @@ export const Button: React.FC<ButtonProps> = ({
       {...props}
     >
       {isLoading ? (
-        <Loader2 className="w-4 h-4 animate-spin text-current" />
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-current" />
       ) : (
         leftIcon && <span className="flex-shrink-0">{leftIcon}</span>
       )}

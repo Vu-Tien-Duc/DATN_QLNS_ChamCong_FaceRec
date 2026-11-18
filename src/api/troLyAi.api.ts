@@ -33,12 +33,21 @@ export interface AIAttachmentMeta {
   isScannedPdf?: boolean;
 }
 
+export interface AIDocumentChunk {
+  id: string;
+  thu_tu: number;
+  noi_dung_chunk: string;
+  so_tu: number;
+}
+
 export interface AIDocumentItem {
   _id: string;
   tieu_de: string;
   ten_tep_goc: string;
   loai_tep: 'pdf' | 'docx' | 'doc' | 'txt' | 'md';
+  mime_type?: string | null;
   kich_thuoc_byte: number;
+  ma_bam_sha256?: string | null;
   pham_vi: 'ca_nhan' | 'toan_truong';
   tom_tat?: string | null;
   tong_ky_tu: number;
@@ -46,12 +55,18 @@ export interface AIDocumentItem {
   phuong_thuc_trich_xuat?: 'text_parser' | 'gemini_ocr';
   mo_hinh_embedding?: string;
   trang_thai: 'dang_xu_ly' | 'san_sang' | 'loi';
+  thong_bao_loi?: string | null;
+  duong_dan?: string | null;
   tao_luc?: string;
   nguoi_tai_id?: {
     _id: string;
     ho_ten?: string;
     vai_tro_chinh?: string;
   } | string;
+}
+
+export interface AIDocumentDetail extends AIDocumentItem {
+  xem_truoc_phan_doan?: AIDocumentChunk[];
 }
 
 export interface AIChatMessage {
@@ -166,6 +181,11 @@ export const aiApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 60000,
     });
+    return response.data;
+  },
+
+  getDocumentDetail: async (id: string): Promise<ApiResponse<AIDocumentDetail>> => {
+    const response = await apiClient.get<ApiResponse<AIDocumentDetail>>(`/tro-ly-ai/tai-lieu/${id}`);
     return response.data;
   },
 

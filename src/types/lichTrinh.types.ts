@@ -1,7 +1,7 @@
 import { ShiftItem } from './chamCong.types';
 
 export type ScheduleType = 'chinh_khoa' | 'day_bu';
-export type ScheduleExceptionStatus = 'nghi' | 'huy' | 'day_bu';
+export type ScheduleExceptionStatus = 'nghi' | 'huy' | 'day_bu' | 'doi_ca';
 
 export interface ScheduleExceptionItem {
   _id?: string;

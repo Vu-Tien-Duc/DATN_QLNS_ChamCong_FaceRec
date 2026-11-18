@@ -1,7 +1,7 @@
 import { UserProfile } from './nguoiDung.types';
 
-export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
-export type LeaveType = 'nghi_phep' | 'day_bu' | 'doi_ca' | 'nghi_om' | 'viec_rieng';
+export type LeaveStatus = 'pending' | 'pending_dean' | 'pending_bgh' | 'approved' | 'rejected' | 'cancelled';
+export type LeaveType = 'nghi_phep' | 'day_bu' | 'doi_ca' | 'nghi_om' | 'viec_rieng' | 'giai_trinh_cong';
 
 export interface LeaveRequestItem {
   _id: string;

@@ -21,7 +21,7 @@ export const apiClient = axios.create({
 // Request Interceptor: Gắn Bearer Token & Chuẩn hóa Payload / Query Params
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token') || sessionStorage.getItem('accessToken') || localStorage.getItem('token') || localStorage.getItem('accessToken');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -160,14 +160,11 @@ apiClient.interceptors.response.use(
     }
 
     isRefreshing = true;
-    const refreshToken = localStorage.getItem('refreshToken');
+    const refreshToken = sessionStorage.getItem('refreshToken') || localStorage.getItem('refreshToken');
 
     if (!refreshToken) {
       isRefreshing = false;
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
+      for (const st of [sessionStorage, localStorage]) { st.removeItem('accessToken'); st.removeItem('token'); st.removeItem('refreshToken'); st.removeItem('user'); st.removeItem('ntu_last_activity'); }
       window.location.href = '/dang-nhap';
       return Promise.reject(error);
     }
@@ -182,10 +179,10 @@ apiClient.interceptors.response.use(
       const newRefreshToken = (res.data.data as any)?.ma_lam_moi || res.data.data?.refreshToken;
 
       if (newToken) {
-        localStorage.setItem('token', newToken);
-        if (newRefreshToken) {
-          localStorage.setItem('refreshToken', newRefreshToken);
-        }
+        const targetStorage = sessionStorage.getItem('token') || sessionStorage.getItem('refreshToken') ? sessionStorage : localStorage;
+        targetStorage.setItem('token', newToken);
+        targetStorage.setItem('ntu_last_activity', String(Date.now()));
+        if (newRefreshToken) { targetStorage.setItem('refreshToken', newRefreshToken); }
 
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
         processQueue(null, newToken);
@@ -199,10 +196,7 @@ apiClient.interceptors.response.use(
       }
     } catch (refreshErr) {
       processQueue(refreshErr, null);
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
+      for (const st of [sessionStorage, localStorage]) { st.removeItem('accessToken'); st.removeItem('token'); st.removeItem('refreshToken'); st.removeItem('user'); st.removeItem('ntu_last_activity'); }
       window.location.href = '/dang-nhap';
       return Promise.reject(refreshErr);
     } finally {

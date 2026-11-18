@@ -13,7 +13,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Layers,
-  Network,
   UserCheck,
   AlertCircle,
   X,
@@ -32,6 +31,7 @@ import {
   User,
   ArrowRight,
   ScanFace,
+  Eye,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/useXacThucStore';
@@ -44,11 +44,13 @@ import {
 } from '../../types/index';
 import { Card, CardContent } from '../../components/chung/TheThongTin';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import { Button } from '../../components/chung/NutBam';
 import { Badge } from '../../components/chung/NhanTrangThai';
 import { hasRole } from '../../utils/phanQuyen';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 import { Portal } from '../../components/chung/CongDichChuyen';
+import { TruongThongTin } from '../../components/chung/HoSoBenTrai';
 
 // =============================================================================
 // HELPERS & CONSTANTS
@@ -172,6 +174,8 @@ export const Departments: React.FC = () => {
   // Modals State
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
   const [deleteTarget, setDeleteTarget] = useState<DepartmentItem | null>(null);
+  const [detailDept, setDetailDept] = useState<DepartmentItem | null>(null);
+  const [detailMember, setDetailMember] = useState<UserProfile | null>(null);
   const [editingDept, setEditingDept] = useState<DepartmentItem | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -596,7 +600,7 @@ export const Departments: React.FC = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  leftIcon={<Plus className="w-3.5 h-3.5 text-indigo-500" />}
+                  leftIcon={<Plus className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />}
                   onClick={() => openCreateModal('bo_mon')}
                 >
                   Thêm Bộ Môn
@@ -616,86 +620,46 @@ export const Departments: React.FC = () => {
       />
 
       {/* =========================================================================
-          EXECUTIVE KPI STRIP
+          COMPACT KPI STRIP (SECONDARY)
          ========================================================================= */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="border-slate-200/80 dark:border-slate-800/80">
-          <CardContent className="p-3.5 flex items-center justify-between">
-            <div className="space-y-0.5">
-              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Tổng Đơn Vị Tổ Chức</p>
-              <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.total}</p>
-              <p className="text-[10px] text-slate-400">{stats.assignedManagers}/{stats.total} đã có Trưởng ĐV</p>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 flex items-center justify-center">
-              <Network className="w-4 h-4" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/80 dark:border-slate-800/80">
-          <CardContent className="p-3.5 flex items-center justify-between">
-            <div className="space-y-0.5">
-              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Khoa Đào Tạo (Cấp 1)</p>
-              <p className="text-xl font-bold text-brand-600 dark:text-brand-400">{stats.khoaCount}</p>
-              <p className="text-[10px] text-brand-500 font-medium">Khối học thuật chuyên môn</p>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 flex items-center justify-center">
-              <GraduationCap className="w-4 h-4" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/80 dark:border-slate-800/80">
-          <CardContent className="p-3.5 flex items-center justify-between">
-            <div className="space-y-0.5">
-              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Bộ Môn (Cấp 2)</p>
-              <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400">{stats.bomonCount}</p>
-              <p className="text-[10px] text-indigo-500 font-medium">Trực thuộc các Khoa</p>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center">
-              <Layers className="w-4 h-4" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/80 dark:border-slate-800/80">
-          <CardContent className="p-3.5 flex items-center justify-between">
-            <div className="space-y-0.5">
-              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Phòng Ban Chức Năng</p>
-              <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{stats.phongbanCount}</p>
-              <p className="text-[10px] text-emerald-500 font-medium">Khối Quản trị & Trung tâm</p>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 flex items-center justify-center">
-              <Briefcase className="w-4 h-4" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* =========================================================================
+          UNIFIED ORGANIZATION CARD: KPI STRIP + 2-COLUMN TREE & STAFF DIRECTORY
+         ========================================================================= */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
+        <CompactStatsBar
+          embedded
+          items={[
+            { label: 'Tổng đơn vị', value: stats.total, badge: `${stats.assignedManagers} có TĐV`, tone: 'neutral' },
+            { label: 'Khoa đào tạo', value: stats.khoaCount, unit: 'khoa', tone: 'brand' },
+            { label: 'Bộ môn', value: stats.bomonCount, unit: 'bộ môn', tone: 'neutral' },
+            { label: 'Phòng ban', value: stats.phongbanCount, unit: 'phòng', tone: 'success' },
+          ]}
+        />
 
       {/* =========================================================================
           MAIN 2-COLUMN SPLIT VIEW (ORGANIZATION DIRECTORY TREE)
          ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 lg:divide-x divide-y lg:divide-y-0 divide-slate-200/80 dark:divide-slate-800 items-start">
         {/* =======================================================================
-            LEFT COLUMN (33% - 4 cols): INTERACTIVE DIRECTORY TREE (STICKY)
+            LEFT COLUMN (42% - 5 cols): INTERACTIVE DIRECTORY TREE (STICKY)
            ======================================================================= */}
-        <div className="lg:col-span-4 xl:col-span-4 space-y-3 lg:sticky lg:top-4 self-start">
-          <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs overflow-hidden rounded-2xl">
+        <div className="lg:col-span-5 xl:col-span-5 lg:sticky lg:top-4 self-start">
+          <div className="overflow-hidden">
             {/* Tree Navigation Header */}
-            <div className="px-3.5 py-3 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center">
-                  <FolderTree className="w-3.5 h-3.5" />
+            <div className="px-4 py-3.5 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center">
+                  <FolderTree className="w-4 h-4" />
                 </div>
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
                   Cơ Cấu Tổ Chức
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-[11px]">
+              <div className="flex items-center gap-1.5 text-xs">
                 <button
                   type="button"
                   onClick={handleExpandAll}
-                  className="px-1.5 py-0.5 rounded text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/60 font-semibold transition-colors"
+                  className="px-2 py-1 rounded-md text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/60 font-semibold transition-colors"
                 >
                   Mở hết
                 </button>
@@ -703,7 +667,7 @@ export const Departments: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleCollapseAll}
-                  className="px-1.5 py-0.5 rounded text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="px-2 py-1 rounded-md text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   Thu gọn
                 </button>
@@ -711,44 +675,44 @@ export const Departments: React.FC = () => {
             </div>
 
             {/* Tree Search Box */}
-            <div className="p-2.5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+            <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
               <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
                   value={treeSearch}
                   onChange={(e) => setTreeSearch(e.target.value)}
                   placeholder="Lọc tên đơn vị trong sơ đồ..."
-                  className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1.5 focus:ring-brand-500 transition-all"
+                  className="w-full h-9 pl-9 pr-3 text-sm rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
                 />
               </div>
             </div>
 
             {/* THE VISUAL TREE NODES */}
-            <div className="p-2.5 max-h-[calc(100vh-280px)] min-h-[460px] overflow-y-auto space-y-1 font-sans select-none text-xs">
+            <div className="p-3 max-h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto space-y-1.5 font-sans select-none text-sm">
               {/* 1. ROOT NODE: BAN GIÁM HIỆU */}
               <div
                 onClick={() => setSelectedNodeId('ROOT_BGH')}
-                className={`p-2 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                className={`px-3 py-2.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
                   selectedNodeId === 'ROOT_BGH'
-                    ? 'bg-brand-600 text-white font-bold shadow-xs ring-2 ring-brand-500/20'
-                    : 'bg-slate-100/70 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
+                    ? 'bg-brand-600 text-white font-semibold shadow-xs'
+                    : 'bg-slate-100/70 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 font-medium'
                 }`}
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <div
-                    className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
                       selectedNodeId === 'ROOT_BGH'
                         ? 'bg-white/20 text-white'
                         : 'bg-brand-100 dark:bg-brand-950 text-brand-600 dark:text-brand-400'
                     }`}
                   >
-                    <Building2 className="w-3.5 h-3.5" />
+                    <Building2 className="w-4 h-4" />
                   </div>
                   <span className="truncate">Ban Giám Hiệu • ĐHNT</span>
                 </div>
                 <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                  className={`text-xs px-2 py-0.5 rounded-md font-semibold ${
                     selectedNodeId === 'ROOT_BGH'
                       ? 'bg-white/20 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
@@ -759,7 +723,7 @@ export const Departments: React.FC = () => {
               </div>
 
               {/* TREE TRUNK: 2 MAIN BRANCHES */}
-              <div className="relative pl-3 border-l-2 border-slate-200/80 dark:border-slate-700/60 ml-3 pt-1 space-y-2">
+              <div className="relative pl-3.5 border-l-2 border-slate-200/80 dark:border-slate-700/60 ml-3.5 pt-1 space-y-2">
                 {/* BRANCH 1: KHỐI KHOA ĐÀO TẠO & CÁC BỘ MÔN */}
                 <div>
                   <div
@@ -767,13 +731,13 @@ export const Departments: React.FC = () => {
                       setIsFacultiesFolderOpen(!isFacultiesFolderOpen);
                       setSelectedNodeId('KHU_KHOA');
                     }}
-                    className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                    className={`px-2.5 py-2 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
                       selectedNodeId === 'KHU_KHOA'
-                        ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/70 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-800 shadow-2xs'
+                        ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/70 dark:text-brand-300 font-semibold border border-brand-200 dark:border-brand-800'
                         : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-semibold'
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -783,25 +747,25 @@ export const Departments: React.FC = () => {
                         className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400"
                       >
                         {isFacultiesFolderOpen ? (
-                          <ChevronDown className="w-3.5 h-3.5" />
+                          <ChevronDown className="w-4 h-4" />
                         ) : (
-                          <ChevronRight className="w-3.5 h-3.5" />
+                          <ChevronRight className="w-4 h-4" />
                         )}
                       </button>
                       {isFacultiesFolderOpen ? (
-                        <FolderOpen className="w-4 h-4 text-brand-500 shrink-0" />
+                        <FolderOpen className="w-[18px] h-[18px] text-brand-500 shrink-0" />
                       ) : (
-                        <Folder className="w-4 h-4 text-brand-500 shrink-0" />
+                        <Folder className="w-[18px] h-[18px] text-brand-500 shrink-0" />
                       )}
                       <span className="truncate">Khối Khoa Đào Tạo</span>
                     </div>
-                    <span className="px-1.5 py-0.5 rounded bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-300 text-[10px] font-bold shrink-0">
+                    <span className="px-2 py-0.5 rounded-md bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-300 text-xs font-semibold shrink-0 tabular-nums">
                       {filteredFaculties.length}
                     </span>
                   </div>
 
                   {isFacultiesFolderOpen && (
-                    <div className="relative pl-2.5 border-l-2 border-brand-200/80 dark:border-brand-800/60 ml-2 mt-1 space-y-1">
+                    <div className="relative pl-3 border-l-2 border-brand-200/80 dark:border-brand-800/60 ml-2.5 mt-1 space-y-1">
                       {filteredFaculties.map((faculty) => {
                         const isExpanded = Boolean(expandedFacultyIds[faculty._id]);
                         const children = childrenByFacultyId[faculty._id] || [];
@@ -812,13 +776,13 @@ export const Departments: React.FC = () => {
                           <div key={faculty._id} className="relative">
                             <div
                               onClick={() => setSelectedNodeId(faculty._id)}
-                              className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                              className={`px-2.5 py-2 rounded-xl cursor-pointer flex items-center justify-between gap-2 transition-all ${
                                 isSelected
-                                  ? 'bg-brand-50 text-brand-800 dark:bg-brand-950 dark:text-brand-200 font-bold border-l-[3px] border-l-brand-600 border border-brand-200 dark:border-brand-700 shadow-2xs'
-                                  : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
+                                  ? 'bg-brand-50 text-brand-800 dark:bg-brand-950 dark:text-brand-200 font-semibold border-l-[3px] border-l-brand-600 border border-brand-200 dark:border-brand-700'
+                                  : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300 font-medium'
                               }`}
                             >
-                              <div className="flex items-center gap-1.5 min-w-0">
+                              <div className="flex items-center gap-2 min-w-0">
                                 {children.length > 0 ? (
                                   <button
                                     type="button"
@@ -832,25 +796,25 @@ export const Departments: React.FC = () => {
                                     className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400"
                                   >
                                     {isExpanded ? (
-                                      <ChevronDown className="w-3 h-3" />
+                                      <ChevronDown className="w-3.5 h-3.5" />
                                     ) : (
-                                      <ChevronRight className="w-3 h-3" />
+                                      <ChevronRight className="w-3.5 h-3.5" />
                                     )}
                                   </button>
                                 ) : (
-                                  <span className="w-3.5 h-3.5 inline-block" />
+                                  <span className="w-4 h-4 inline-block shrink-0" />
                                 )}
-                                <GraduationCap className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />
+                                <GraduationCap className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
                                 <span className="truncate">{faculty.name}</span>
                               </div>
 
                               <div className="flex items-center gap-1 shrink-0">
                                 {children.length > 0 && (
-                                  <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-semibold">
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-medium tabular-nums">
                                     {children.length} BM
                                   </span>
                                 )}
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 font-semibold">
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 font-medium tabular-nums">
                                   {agg.totalMembers} CB
                                 </span>
                               </div>
@@ -858,24 +822,24 @@ export const Departments: React.FC = () => {
 
                             {/* Bo Mon Children */}
                             {isExpanded && children.length > 0 && (
-                              <div className="relative pl-2.5 border-l-2 border-indigo-200/80 dark:border-indigo-800/60 ml-2 mt-0.5 space-y-0.5">
+                              <div className="relative pl-3 border-l-2 border-indigo-200/80 dark:border-indigo-800/60 ml-2.5 mt-1 space-y-1">
                                 {children.map((bm) => {
                                   const isBmSelected = selectedNodeId === bm._id;
                                   return (
                                     <div
                                       key={bm._id}
                                       onClick={() => setSelectedNodeId(bm._id)}
-                                      className={`p-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${
+                                      className={`px-2.5 py-2 rounded-lg cursor-pointer flex items-center justify-between gap-2 transition-colors ${
                                         isBmSelected
-                                          ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200 font-bold border-l-[3px] border-l-indigo-600 border border-indigo-200 dark:border-indigo-700 shadow-2xs'
-                                          : 'hover:bg-slate-100 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400'
+                                          ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200 font-semibold border-l-[3px] border-l-indigo-600 border border-indigo-200 dark:border-indigo-700'
+                                          : 'hover:bg-slate-100 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400 font-medium'
                                       }`}
                                     >
-                                      <div className="flex items-center gap-1.5 min-w-0">
-                                        <CornerDownRight className="w-3 h-3 text-indigo-400 shrink-0" />
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <CornerDownRight className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                                         <span className="truncate">{bm.name}</span>
                                       </div>
-                                      <span className="text-[9px] text-slate-400 font-semibold shrink-0">
+                                      <span className="text-xs text-slate-500 dark:text-slate-400 font-medium shrink-0 tabular-nums">
                                         {getDirectMemberCount(bm)} GV
                                       </span>
                                     </div>
@@ -897,13 +861,13 @@ export const Departments: React.FC = () => {
                       setIsFunctionalFolderOpen(!isFunctionalFolderOpen);
                       setSelectedNodeId('KHU_PHONGBAN');
                     }}
-                    className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                    className={`px-2.5 py-2 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
                       selectedNodeId === 'KHU_PHONGBAN'
-                        ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 shadow-2xs'
+                        ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-800'
                         : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-semibold'
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -913,42 +877,42 @@ export const Departments: React.FC = () => {
                         className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400"
                       >
                         {isFunctionalFolderOpen ? (
-                          <ChevronDown className="w-3.5 h-3.5" />
+                          <ChevronDown className="w-4 h-4" />
                         ) : (
-                          <ChevronRight className="w-3.5 h-3.5" />
+                          <ChevronRight className="w-4 h-4" />
                         )}
                       </button>
                       {isFunctionalFolderOpen ? (
-                        <FolderOpen className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <FolderOpen className="w-[18px] h-[18px] text-emerald-500 shrink-0" />
                       ) : (
-                        <Folder className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <Folder className="w-[18px] h-[18px] text-emerald-500 shrink-0" />
                       )}
                       <span className="truncate">Khối Phòng Ban Chức Năng</span>
                     </div>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 text-[10px] font-bold shrink-0">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 text-xs font-semibold shrink-0 tabular-nums">
                       {filteredFunctionalDepts.length}
                     </span>
                   </div>
 
                   {isFunctionalFolderOpen && (
-                    <div className="relative pl-2.5 border-l-2 border-emerald-200/80 dark:border-emerald-800/60 ml-2 mt-1 space-y-1">
+                    <div className="relative pl-3 border-l-2 border-emerald-200/80 dark:border-emerald-800/60 ml-2.5 mt-1 space-y-1">
                       {filteredFunctionalDepts.map((pb) => {
                         const isSelected = selectedNodeId === pb._id;
                         return (
                           <div
                             key={pb._id}
                             onClick={() => setSelectedNodeId(pb._id)}
-                            className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                            className={`px-2.5 py-2 rounded-xl cursor-pointer flex items-center justify-between gap-2 transition-all ${
                               isSelected
-                                ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 font-bold border-l-[3px] border-l-emerald-600 border border-emerald-200 dark:border-emerald-700 shadow-2xs'
-                                : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
+                                ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 font-semibold border-l-[3px] border-l-emerald-600 border border-emerald-200 dark:border-emerald-700'
+                                : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300 font-medium'
                             }`}
                           >
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <Briefcase className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Briefcase className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                               <span className="truncate">{pb.name}</span>
                             </div>
-                            <span className="text-[9px] text-slate-400 font-semibold shrink-0">
+                            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium shrink-0 tabular-nums">
                               {getDirectMemberCount(pb)} CB
                             </span>
                           </div>
@@ -959,13 +923,13 @@ export const Departments: React.FC = () => {
                 </div>
               </div>
             </div>
-          </Card>
+          </div>
         </div>
 
         {/* =======================================================================
-            RIGHT COLUMN (67% - 8 cols): SELECTED DEPARTMENT DETAIL PANEL & STAFF DIRECTORY
+            RIGHT COLUMN (58% - 7 cols): SELECTED DEPARTMENT DETAIL PANEL & STAFF DIRECTORY
            ======================================================================= */}
-        <div className="lg:col-span-8 xl:col-span-8 space-y-4">
+        <div className="lg:col-span-7 xl:col-span-7 p-4 sm:p-5 space-y-4">
           {/* CASE A: ROOT BGH IS SELECTED */}
           {selectedNodeId === 'ROOT_BGH' && (
             <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xs rounded-2xl">
@@ -1246,39 +1210,50 @@ export const Departments: React.FC = () => {
                     </div>
 
                     {/* Action Buttons for this unit */}
-                    {isAdmin && (
-                      <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                        {activeDepartment.type === 'khoa' && (
+                    <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        leftIcon={<Eye className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />}
+                        onClick={() => setDetailDept(activeDepartment)}
+                      >
+                        Chi tiết
+                      </Button>
+                      {isAdmin && (
+                        <>
+                          {activeDepartment.type === 'khoa' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs"
+                              leftIcon={<Plus className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />}
+                              onClick={() => openCreateModal('bo_mon', activeDepartment._id)}
+                            >
+                              Thêm Bộ Môn
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
                             className="text-xs"
-                            leftIcon={<Plus className="w-3.5 h-3.5 text-indigo-500" />}
-                            onClick={() => openCreateModal('bo_mon', activeDepartment._id)}
+                            leftIcon={<Edit className="w-3.5 h-3.5 text-brand-600" />}
+                            onClick={(e) => openEditModal(activeDepartment, e)}
                           >
-                            Thêm Bộ Môn
+                            Sửa
                           </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs"
-                          leftIcon={<Edit className="w-3.5 h-3.5 text-brand-600" />}
-                          onClick={(e) => openEditModal(activeDepartment, e)}
-                        >
-                          Sửa
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          className="text-xs"
-                          leftIcon={<Trash2 className="w-3.5 h-3.5" />}
-                          onClick={() => setDeleteTarget(activeDepartment)}
-                        >
-                          Xóa
-                        </Button>
-                      </div>
-                    )}
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            className="text-xs"
+                            leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                            onClick={() => setDeleteTarget(activeDepartment)}
+                          >
+                            Xóa
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1534,7 +1509,7 @@ export const Departments: React.FC = () => {
                             <th className="py-2.5 px-3.5">Cán Bộ / Giảng Viên</th>
                             <th className="py-2.5 px-3.5 hidden sm:table-cell">Mã CB / Liên Hệ</th>
                             <th className="py-2.5 px-3.5 hidden md:table-cell">Chức Vụ / Vai Trò</th>
-                            <th className="py-2.5 px-3.5 text-right">Face ID</th>
+                            <th className="py-2.5 px-3.5 text-right">Face ID / Thao Tác</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
@@ -1543,7 +1518,8 @@ export const Departments: React.FC = () => {
                             return (
                               <tr
                                 key={member._id}
-                                className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                                onClick={() => setDetailMember(member)}
+                                className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                               >
                                 <td className="py-2.5 px-3.5">
                                   <div className="flex items-center gap-3 min-w-0">
@@ -1591,15 +1567,28 @@ export const Departments: React.FC = () => {
                                 </td>
 
                                 <td className="py-2.5 px-3.5 text-right">
-                                  {member.isFaceRegistered ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800">
-                                      <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Face ID
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-400">
-                                      Chưa có
-                                    </span>
-                                  )}
+                                  <div className="inline-flex items-center justify-end gap-2">
+                                    {member.isFaceRegistered ? (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800">
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Face ID
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-400">
+                                        Chưa có
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDetailMember(member);
+                                      }}
+                                      className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                      title="Xem chi tiết cán bộ"
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -1613,6 +1602,7 @@ export const Departments: React.FC = () => {
             </div>
           )}
         </div>
+      </div>
       </div>
 
       {/* =========================================================================
@@ -1890,6 +1880,203 @@ export const Departments: React.FC = () => {
                   isLoading={submitting}
                 >
                   Xác nhận xóa
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      {/* =========================================================================
+          MODAL 3: POPUP XEM CHI TIẾT ĐƠN VỊ TỔ CHỨC
+         ========================================================================= */}
+      {detailDept && (
+        <Portal>
+          <div
+            onClick={() => setDetailDept(null)}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+            >
+              <div className="flex items-center justify-between p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-900 text-white shrink-0">
+                <div className="flex items-center gap-3.5 min-w-0 pr-4">
+                  <div className="w-11 h-11 rounded-2xl bg-brand-600/20 border border-brand-400/30 text-brand-300 flex items-center justify-center shrink-0">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-lg bg-white/10 text-[10px] font-bold uppercase tracking-wider text-slate-200">
+                        {UNIT_TYPE_META[detailDept.type]?.label || detailDept.type}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-bold">
+                        {getDirectMemberCount(detailDept)} nhân sự
+                      </span>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-bold text-white mt-1 truncate">
+                      {detailDept.name}
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailDept(null)}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                  <TruongThongTin
+                    label="Đơn vị quản lý cấp trên"
+                    value={
+                      typeof detailDept.parentId === 'object' && detailDept.parentId
+                        ? detailDept.parentId.name
+                        : 'Ban Giám Hiệu • Trường ĐH Nguyễn Trãi'
+                    }
+                  />
+                  <TruongThongTin
+                    label="Lãnh đạo phụ trách"
+                    value={
+                      typeof detailDept.managerId === 'object' && detailDept.managerId
+                        ? (detailDept.managerId as any).fullName
+                        : 'Chưa bổ nhiệm'
+                    }
+                  />
+                  <TruongThongTin
+                    label="Tọa độ tâm GPS Geofence"
+                    mono
+                    value={(() => {
+                      const lat = detailDept.latitude ?? detailDept.location?.latitude ?? detailDept.location?.lat;
+                      const lng = detailDept.longitude ?? detailDept.location?.longitude ?? detailDept.location?.lng;
+                      return lat != null && lng != null
+                        ? `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`
+                        : '21.028511, 105.804817';
+                    })()}
+                  />
+                  <TruongThongTin
+                    label="Bán kính cho phép chấm công"
+                    value={`${detailDept.radiusMeters || 200} mét`}
+                  />
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 flex items-center justify-between gap-2 shrink-0">
+                {isAdmin && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<Edit className="w-3.5 h-3.5" />}
+                    onClick={(e) => {
+                      const target = detailDept;
+                      setDetailDept(null);
+                      openEditModal(target, e);
+                    }}
+                  >
+                    Chỉnh sửa đơn vị
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDetailDept(null)}
+                  className="ml-auto"
+                >
+                  Đóng
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      {/* =========================================================================
+          MODAL 4: POPUP XEM CHI TIẾT CÁN BỘ TRỰC THUỘC ĐƠN VỊ
+         ========================================================================= */}
+      {detailMember && (
+        <Portal>
+          <div
+            onClick={() => setDetailMember(null)}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+            >
+              <div className="flex items-center justify-between p-5 sm:p-6 border-b border-slate-800 bg-slate-900 text-white shrink-0">
+                <div className="flex items-center gap-3.5 min-w-0 pr-4">
+                  <UserAvatar
+                    user={detailMember}
+                    name={detailMember.fullName}
+                    avatarUrl={detailMember.avatar}
+                    staffCode={detailMember.staffCode || detailMember._id}
+                    size="lg"
+                    shape="rounded"
+                  />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-lg bg-white/10 text-[10px] font-mono font-bold text-slate-200">
+                        {detailMember.staffCode || 'CHƯA CẤP MÃ'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-semibold">
+                        {detailMember.role || 'Cán bộ'}
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-white mt-1 truncate">
+                      {splitNameAndTitle(detailMember.fullName).cleanName}
+                    </h3>
+                    {splitNameAndTitle(detailMember.fullName).title && (
+                      <p className="text-xs text-slate-400 truncate">
+                        {splitNameAndTitle(detailMember.fullName).title}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailMember(null)}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                  <TruongThongTin
+                    label="Đơn vị công tác"
+                    value={activeDepartment?.name || 'Trường ĐH Nguyễn Trãi'}
+                  />
+                  <TruongThongTin
+                    label="Sinh trắc học Face ID"
+                    value={
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            detailMember.isFaceRegistered ? 'bg-emerald-500' : 'bg-slate-400'
+                          }`}
+                        />
+                        {detailMember.isFaceRegistered ? 'Đã đăng ký Face ID (5 góc)' : 'Chưa đăng ký'}
+                      </span>
+                    }
+                  />
+                  <TruongThongTin
+                    label="Email công vụ"
+                    value={detailMember.email || 'Chưa cập nhật email'}
+                  />
+                  <TruongThongTin
+                    label="Số điện thoại"
+                    value={detailMember.phoneNumber || 'Chưa cập nhật'}
+                  />
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 flex items-center justify-end gap-2 shrink-0">
+                <Button variant="outline" size="sm" onClick={() => setDetailMember(null)}>
+                  Đóng
                 </Button>
               </div>
             </div>

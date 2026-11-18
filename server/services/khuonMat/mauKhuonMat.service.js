@@ -310,7 +310,7 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
 const getFaceTemplateByUserId = async (userId) => {
   return MauKhuonMat.findOne({
     where: { nguoi_dung_id: userId, mac_dinh: true },
-    attributes: ['id', 'so_luong_mau', 'mo_hinh_ai', 'ngay_dang_ky', 'so_chieu_vector', 'anh_dai_dien', 'trang_thai'],
+    attributes: ['id', 'so_luong_mau', 'mo_hinh_ai', 'ngay_dang_ky', 'so_chieu_vector', 'mac_dinh', 'anh_dai_dien', 'trang_thai'],
   });
 };
 
@@ -362,6 +362,9 @@ const getFaceRegistrationStatusByUserId = async (targetId) => {
     so_luong_mau: sampleCount,
     cac_goc_chup: sampleAngles,
     mo_hinh_ai: template?.mo_hinh_ai || 'buffalo_s',
+    so_chieu_vector: hasValidTemplate ? Number(template?.so_chieu_vector || 512) : null,
+    mac_dinh: hasValidTemplate ? Boolean(template?.mac_dinh ?? true) : false,
+    trang_thai_khuon_mat: hasValidTemplate ? (template?.trang_thai || 'hoat_dong') : null,
     userId: user.id,
     fullName: user.ho_ten,
     staffCode: user.ma_can_bo,
@@ -371,6 +374,9 @@ const getFaceRegistrationStatusByUserId = async (targetId) => {
     sampleCount,
     sampleAngles,
     embeddingModel: template?.mo_hinh_ai || 'buffalo_s',
+    vectorDimension: hasValidTemplate ? Number(template?.so_chieu_vector || 512) : null,
+    isDefaultFace: hasValidTemplate ? Boolean(template?.mac_dinh ?? true) : false,
+    faceStatus: hasValidTemplate ? (template?.trang_thai || 'hoat_dong') : null,
   };
 };
 

@@ -5,7 +5,13 @@ import { attendanceApi } from '../../../api/chamCong.api';
 import { Card, CardContent } from '../../../components/chung/TheThongTin';
 import { Button } from '../../../components/chung/NutBam';
 
-export const BangDieuKhienAiVaHangDoi: React.FC = () => {
+interface BangDieuKhienAiVaHangDoiProps {
+  selectedGroup?: string;
+}
+
+export const BangDieuKhienAiVaHangDoi: React.FC<BangDieuKhienAiVaHangDoiProps> = ({
+  selectedGroup = 'ALL',
+}) => {
   const [vectorStats, setVectorStats] = useState<any>(null);
   const [queueStats, setQueueStats] = useState<any>(null);
   const [viDo, setViDo] = useState('21.028511');
@@ -69,8 +75,17 @@ export const BangDieuKhienAiVaHangDoi: React.FC = () => {
     }
   };
 
+  const showVectorAndQueue =
+    selectedGroup === 'ALL' || selectedGroup === 'AI' || selectedGroup === 'HE_THONG';
+  const showCampusGps = selectedGroup === 'ALL' || selectedGroup === 'GPS';
+
+  if (!showVectorAndQueue && !showCampusGps) {
+    return null;
+  }
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+    <div className={`grid grid-cols-1 ${showVectorAndQueue && showCampusGps ? 'lg:grid-cols-2' : ''} gap-4 mt-6`}>
+      {showVectorAndQueue && (
       <Card>
         <CardContent className="p-5 space-y-4">
           <div className="flex items-center justify-between">
@@ -116,7 +131,9 @@ export const BangDieuKhienAiVaHangDoi: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+      )}
 
+      {showCampusGps && (
       <Card>
         <CardContent className="p-5">
           <form onSubmit={handleSaveCampus} className="space-y-3">
@@ -181,6 +198,7 @@ export const BangDieuKhienAiVaHangDoi: React.FC = () => {
           </form>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 };

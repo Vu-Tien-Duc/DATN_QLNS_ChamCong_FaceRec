@@ -4,9 +4,7 @@ import {
   Menu,
   Bell,
   Search,
-  CheckCircle2,
   Camera,
-  Shield,
   ChevronDown,
   User,
   Clock,
@@ -23,12 +21,15 @@ import {
   ArrowRight,
   Check,
   GraduationCap,
+  Palette,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { ThemeToggle } from '../chung/NutChuyenGiaoDien';
 import { Portal } from '../chung/CongDichChuyen';
-import { UserRoleLegacy } from '../../types/index';
+import { ModalCaiDatGiaoDien } from '../chung/ModalCaiDatGiaoDien';
+import { UserAvatar } from '../chung/AnhDaiDienNguoiDung';
+import { hasRole, getRoleLabel } from '../../utils/phanQuyen';
 import { attendanceApi, AttendanceHistoryItem } from '../../api/chamCong.api';
 import { leaveRequestApi } from '../../api/donNghiPhep.api';
 import { thongBaoApi } from '../../api/thongBao.api';
@@ -44,12 +45,14 @@ interface QuickSearchItem {
   path: string;
   icon: React.ComponentType<{ className?: string }>;
   description: string;
+  roles?: string[];
+  excludeRoles?: string[];
 }
 
 const SEARCH_ITEMS: QuickSearchItem[] = [
   {
     id: 'public-faculty',
-    title: 'Cổng Thông Tin & Danh Bạ Giảng Viên (ĐH Nguyễn Trãi - NTU)',
+    title: 'Website Giới Thiệu & Danh Bạ Giảng Viên (ĐH Nguyễn Trãi - NTU)',
     category: 'Trang Chức Năng',
     path: '/giang-vien',
     icon: GraduationCap,
@@ -70,6 +73,7 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/quan-ly-cham-cong',
     icon: Clock,
     description: 'Bảng tổng hợp công tháng, đi muộn, về sớm toàn trường & theo khoa',
+    roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb'],
   },
   {
     id: 'profile',
@@ -86,6 +90,7 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/cham-cong-ca-nhan',
     icon: Clock,
     description: 'Lịch sử vào - ra, ngày công cá nhân và gửi đơn giải trình công',
+    excludeRoles: ['admin'],
   },
   {
     id: 'users',
@@ -94,6 +99,7 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/nguoi-dung',
     icon: UsersIcon,
     description: 'Hồ sơ nhân sự, mã cán bộ, học hàm, học vị và ảnh sinh trắc học',
+    roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'tccb'],
   },
   {
     id: 'depts',
@@ -126,22 +132,22 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/cai-dat',
     icon: Settings,
     description: 'Cấu hình ngưỡng nhận diện, Geofence trường học và máy chủ MinIO',
+    roles: ['admin'],
   },
 ];
 
 export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
   const navigate = useNavigate();
-  const { user, switchDemoRole, logout } = useAuthStore();
+  const { user, logout } = useAuthStore();
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Dropdown & Modal States
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showThemeSettings, setShowThemeSettings] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [switchingRole, setSwitchingRole] = useState(false);
 
   // Dynamic Notifications State (từ GET /api/thong-bao)
   const [unreadCount, setUnreadCount] = useState(0);
@@ -157,6 +163,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
   >([]);
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const dropdownGroupRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -201,7 +208,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
     return () => clearInterval(timer);
   }, []);
 
-  // Keyboard shortcut listener for Global Search (Cmd+K / Ctrl+K / Escape)
+  // Keyboard shortcut listener for Global Search (Cmd+K / Ctrl+K / Escape) & click outside dropdowns
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -209,13 +216,22 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
         setShowSearchModal((prev) => !prev);
       } else if (e.key === 'Escape') {
         setShowSearchModal(false);
-        setShowRoleMenu(false);
+        setShowNotifications(false);
+        setShowUserMenu(false);
+      }
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownGroupRef.current && !dropdownGroupRef.current.contains(e.target as Node)) {
         setShowNotifications(false);
         setShowUserMenu(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   // Focus search input when search modal opens
@@ -246,16 +262,22 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
     });
   };
 
-  const rolesList: { role: UserRoleLegacy; label: string; sub: string }[] = [
-    { role: 'bgh', label: 'Ban Giám Hiệu', sub: 'GS. TS. Nguyễn Văn An (Hiệu Trưởng)' },
-    { role: 'admin', label: 'Quản Trị Viên (IT Admin)', sub: 'Toàn quyền cấu hình hệ thống' },
-    { role: 'truong_khoa', label: 'Trưởng Khoa CNTT', sub: 'PGS. TS. Lê Hoàng Nam' },
-    { role: 'giang_vien', label: 'Giảng Viên Chuyên Môn', sub: 'TS. Trần Thị Bích (Bộ môn KTPM)' },
-    { role: 'nhan_vien', label: 'Chuyên Viên Phòng Ban', sub: 'Đỗ Thu Hà (Phòng Đào Tạo)' },
-  ];
+  // Filtered search results (lọc theo quyền truy cập thực tế của user)
+  const canManageAttendance = hasRole(user, [
+    'admin',
+    'bgh',
+    'truong_khoa',
+    'pho_khoa',
+    'truong_bo_mon',
+    'pho_bo_mon',
+    'truong_phong',
+    'pho_phong',
+    'tccb',
+  ]);
+  const roleLabel = getRoleLabel(user?.role);
 
-  // Filtered search results
   const filteredSearchItems = SEARCH_ITEMS.filter((item) => {
+    if (!hasRole(user, item.roles, item.excludeRoles)) return false;
     if (!searchQuery.trim()) return true;
     const kw = searchQuery.toLowerCase().trim();
     return (
@@ -268,16 +290,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
   const handleSelectSearchItem = (path: string) => {
     setShowSearchModal(false);
     navigate(path);
-  };
-
-  const handleRoleChange = async (role: UserRoleLegacy) => {
-    setSwitchingRole(true);
-    setShowRoleMenu(false);
-    try {
-      await switchDemoRole(role);
-    } finally {
-      setSwitchingRole(false);
-    }
   };
 
   const handleLogout = async () => {
@@ -298,15 +310,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
 
   return (
     <>
-      <header className="sticky top-0 z-30 h-16 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 transition-colors">
-        <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-3">
+      <header className="sticky top-0 z-30 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-700/80 transition-colors">
+        <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
           {/* ===================================================================
-              LEFT SECTION: MOBILE HAMBURGER + GLOBAL SEARCH BAR (COMMAND PALETTE)
+              LEFT SECTION: MOBILE HAMBURGER + GLOBAL SEARCH BAR
              =================================================================== */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
             <button
               onClick={onMobileOpen}
-              className="lg:hidden p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="lg:hidden w-9 h-9 inline-flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
               title="Mở menu điều hướng"
             >
               <Menu className="w-5 h-5" />
@@ -315,129 +327,81 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
             {/* Interactive Search Bar Trigger */}
             <div
               onClick={() => setShowSearchModal(true)}
-              className="hidden sm:flex items-center relative cursor-pointer group"
-              title="Nhấn để mở hộp tìm kiếm nhanh (Ctrl+K / ⌘K)"
+              className="hidden sm:flex items-center relative cursor-pointer group flex-1 min-w-0 max-w-xs lg:max-w-sm"
+              title="Tìm kiếm nhanh cán bộ, ca làm việc, môn học..."
             >
-              <Search className="w-4 h-4 text-slate-400 group-hover:text-brand-500 absolute left-3.5 pointer-events-none transition-colors" />
+              <Search className="w-4 h-4 text-slate-400 group-hover:text-brand-600 dark:group-hover:text-brand-400 absolute left-3.5 pointer-events-none transition-colors" />
               <input
                 type="text"
                 readOnly
                 placeholder="Tìm kiếm cán bộ, ca làm việc, môn học..."
-                className="pl-9 pr-14 py-2 w-64 md:w-80 rounded-xl text-xs bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 group-hover:border-brand-500/50 text-slate-800 dark:text-slate-200 placeholder-slate-400 cursor-pointer focus:outline-none transition-all shadow-2xs"
+                className="h-9 pl-10 pr-4 w-full rounded-xl text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 group-hover:border-brand-500/60 group-hover:bg-white dark:group-hover:bg-slate-850 text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400 cursor-pointer focus:outline-none transition-colors truncate"
               />
-              <kbd className="absolute right-3 text-[10px] bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 shadow-2xs group-hover:border-brand-500/50 transition-colors pointer-events-none">
-                ⌘K
-              </kbd>
             </div>
           </div>
 
           {/* ===================================================================
-              RIGHT SECTION: CLOCK, AI CAMERA LIVE PILL, THEME, ROLE, NOTIFS, USER
+              RIGHT SECTION: CLOCK, WEBSITE, THEME & PALETTE, NOTIFS, USER
              =================================================================== */}
-          <div className="flex items-center gap-2 sm:gap-2.5">
+          <div ref={dropdownGroupRef} className="flex items-center gap-2 shrink-0">
             {/* 1. Realtime Digital Clock */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 text-xs shadow-2xs">
-              <span className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <div className="hidden xl:flex items-center gap-2 h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/70 text-xs whitespace-nowrap shrink-0">
+              <Clock className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />
+              <span className="font-mono tabular-nums font-semibold text-slate-700 dark:text-slate-200">
                 {formatTime(currentTime)}
               </span>
-              <span className="text-slate-300 dark:text-slate-600">|</span>
+              <span className="text-slate-300 dark:text-slate-600">•</span>
               <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium">
                 {formatDate(currentTime)}
               </span>
             </div>
 
-            {/* 2. AI Camera Live Status Pill (Interactive Click -> Go to Face Attendance) */}
-            <button
-              type="button"
-              onClick={() => navigate('/diem-danh-khuon-mat')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/70 border border-emerald-200/70 dark:border-emerald-800/60 text-xs font-semibold text-emerald-700 dark:text-emerald-300 shadow-2xs hover:shadow-xs transition-all active:scale-95"
-              title="Nhấp để vào màn hình Trạm Điểm Danh AI Trực Tiếp (/face-attendance)"
+            {/* 2. Liên kết tới Website Giới Thiệu & Danh Bạ Giảng Viên Công Khai */}
+            <a
+              href="/giang-vien"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200/80 dark:border-slate-700 hover:border-brand-300 dark:hover:border-brand-700 text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors whitespace-nowrap shrink-0"
+              title="Mở Website Giới Thiệu & Danh Bạ Giảng Viên NTU (tab mới)"
             >
-              <Camera className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
-              <span className="hidden sm:inline">Camera AI: Sẵn sàng</span>
-              <span className="sm:hidden">AI Live</span>
-            </button>
+              <GraduationCap className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
+              <span className="hidden lg:inline">Website Giảng Viên</span>
+              <ExternalLink className="w-3 h-3 text-slate-400 shrink-0" />
+            </a>
 
-            {/* 3. Dark / Light Mode Switcher */}
-            <ThemeToggle />
-
-            {/* 4. Role Switcher Dropdown (Kiểm thử phân quyền RBAC CSDL v2.5) */}
-            <div className="relative">
+            {/* 3. Dark / Light Mode Switcher & Appearance Settings Popup Trigger */}
+            <div className="flex items-center gap-1 shrink-0">
+              <ThemeToggle />
               <button
                 type="button"
                 onClick={() => {
-                  setShowRoleMenu(!showRoleMenu);
+                  setShowThemeSettings(true);
                   setShowNotifications(false);
                   setShowUserMenu(false);
                 }}
-                disabled={switchingRole}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60 transition-colors shadow-2xs"
-                title="Chuyển đổi vai trò để kiểm thử phân quyền giao diện"
+                className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200/80 dark:border-slate-700 hover:border-brand-300 dark:hover:border-brand-700 text-slate-700 dark:text-slate-200 text-xs font-medium transition-colors cursor-pointer"
+                title="Tùy chỉnh bảng màu, nền & cỡ chữ giao diện"
+                aria-label="Tùy chỉnh giao diện và màu sắc"
               >
-                <Shield className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
-                <span className="hidden sm:inline text-slate-500 dark:text-slate-400 font-normal">
-                  Vai trò:
-                </span>
-                <span className="font-bold text-brand-600 dark:text-brand-400 uppercase">
-                  {user?.role ? user.role.toUpperCase() : 'ADMIN'}
-                </span>
-                <ChevronDown className="w-3 h-3 text-slate-400" />
+                <Palette className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-brand-600 ring-2 ring-white dark:ring-slate-900 shrink-0" />
               </button>
-
-              {showRoleMenu && (
-                <div
-                  className="absolute right-0 mt-2 w-64 rounded-2xl bg-white dark:bg-slate-800 shadow-xl border border-slate-200/80 dark:border-slate-700 py-2 z-50 animate-fade-in"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="px-3.5 py-1.5 border-b border-slate-100 dark:border-slate-700/70 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                    <span>Chuyển Vai Trò Kiểm Thử</span>
-                    <span className="text-brand-600 font-mono">RBAC v2.5</span>
-                  </div>
-                  <div className="p-1 space-y-0.5">
-                    {rolesList.map((r) => {
-                      const isActive = (user?.role || '').toLowerCase() === r.role.toLowerCase();
-                      return (
-                        <button
-                          key={r.role}
-                          type="button"
-                          onClick={() => handleRoleChange(r.role)}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                            isActive
-                              ? 'font-bold text-brand-600 dark:text-brand-400 bg-brand-50/80 dark:bg-brand-950/50'
-                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
-                          }`}
-                        >
-                          <div>
-                            <p className="font-semibold">{r.label}</p>
-                            <p className="text-[10px] text-slate-400">{r.sub}</p>
-                          </div>
-                          {isActive && (
-                            <CheckCircle2 className="w-4 h-4 text-brand-600 dark:text-brand-400 flex-shrink-0" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* 5. Notifications Dropdown */}
+            {/* 4. Notifications Dropdown */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => {
                   setShowNotifications(!showNotifications);
-                  setShowRoleMenu(false);
                   setShowUserMenu(false);
                 }}
-                className="relative p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="relative w-9 h-9 inline-flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 title="Thông báo hệ thống"
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center ring-2 ring-white dark:ring-slate-900 animate-pulse">
+                  <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 bg-rose-500 text-white rounded-full text-[10px] font-semibold flex items-center justify-center ring-2 ring-white dark:ring-slate-900">
                     {unreadCount}
                   </span>
                 )}
@@ -515,7 +479,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
                       type="button"
                       onClick={() => {
                         setShowNotifications(false);
-                        navigate('/quan-ly-cham-cong');
+                        navigate(canManageAttendance ? '/quan-ly-cham-cong' : '/cham-cong-ca-nhan');
                       }}
                       className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline inline-flex items-center gap-1"
                     >
@@ -527,45 +491,34 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
             </div>
 
             {/* 6. User Profile Dropdown Menu */}
-            <div className="relative pl-2 sm:pl-3 border-l border-slate-200 dark:border-slate-700">
+            <div className="relative pl-2 sm:pl-2.5 border-l border-slate-200 dark:border-slate-700 shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   setShowUserMenu(!showUserMenu);
-                  setShowRoleMenu(false);
                   setShowNotifications(false);
                 }}
-                className="flex items-center gap-2.5 p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+                className="flex items-center gap-2 p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left whitespace-nowrap"
                 title="Tài khoản cá nhân & Tùy chọn"
               >
                 <div className="text-right hidden sm:block">
-                  <div className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-tight truncate max-w-[140px]">
+                  <div className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-tight truncate max-w-[145px]">
                     {user?.fullName || 'Quản Trị Viên'}
                   </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate max-w-[140px]">
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate max-w-[145px] mt-0.5">
                     {user?.staffCode ? `${user.staffCode} • ` : ''}
-                    {user?.role ? user.role.toUpperCase() : 'ADMIN'}
+                    {roleLabel}
                   </div>
                 </div>
 
-                {user?.avatar ? (
-                  <img
-                    src={
-                      user.avatar.startsWith('http') || user.avatar.startsWith('/api/')
-                        ? user.avatar
-                        : `/api/tai-tep/tep/${user.avatar.split('/').pop()}`
-                    }
-                    alt={user?.fullName || 'User'}
-                    className="w-9 h-9 rounded-full object-cover ring-2 ring-brand-500/30 shadow-xs"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <div className="w-9 h-9 rounded-full bg-linear-to-tr from-brand-600 to-indigo-600 text-white font-bold flex items-center justify-center text-xs shadow-xs ring-2 ring-brand-500/20">
-                    {user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'A'}
-                  </div>
-                )}
+                <UserAvatar
+                  user={user}
+                  name={user?.fullName || 'Quản Trị Viên'}
+                  avatarUrl={user?.avatar}
+                  staffCode={user?.staffCode || user?._id}
+                  size="md"
+                  shape="circle"
+                />
                 <ChevronDown className="w-3 h-3 text-slate-400 hidden sm:block" />
               </button>
 
@@ -595,7 +548,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
                     </p>
                     <div className="mt-1.5 flex items-center gap-1.5">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-                        {user?.role ? user.role.toUpperCase() : 'ADMIN'}
+                        {roleLabel}
                       </span>
                       {user?.staffCode && (
                         <span className="text-[10px] font-mono text-slate-400">
@@ -623,17 +576,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
                         HRM
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        navigate('/cham-cong-ca-nhan');
-                      }}
-                      className="w-full px-3 py-2 rounded-xl text-left font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2.5 transition-colors"
-                    >
-                      <Clock className="w-4 h-4 text-emerald-500" />
-                      Chấm công của tôi
-                    </button>
+                    {user?.role !== 'admin' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          navigate('/cham-cong-ca-nhan');
+                        }}
+                        className="w-full px-3 py-2 rounded-xl text-left font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2.5 transition-colors"
+                      >
+                        <Clock className="w-4 h-4 text-emerald-500" />
+                        Chấm công của tôi
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -669,6 +624,30 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
                         Cài đặt hệ thống
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        setShowThemeSettings(true);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-left font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2.5 transition-colors"
+                    >
+                      <Palette className="w-4 h-4 text-brand-500" />
+                      Tùy chỉnh giao diện &amp; màu sắc
+                    </button>
+                    <a
+                      href="/giang-vien"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setShowUserMenu(false)}
+                      className="w-full px-3 py-2 rounded-xl text-left font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-between transition-colors"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <GraduationCap className="w-4 h-4 text-indigo-500" />
+                        Website Giảng Viên NTU
+                      </span>
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                    </a>
                   </div>
 
                   <div className="pt-1 mt-1 border-t border-slate-100 dark:border-slate-700/80">
@@ -693,7 +672,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
          ========================================================================= */}
       {showSearchModal && (
         <Portal>
-          <div className="fixed inset-0 z-[100] flex items-start justify-center pt-20 p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+          <div
+            onClick={() => setShowSearchModal(false)}
+            className="fixed inset-0 z-[100] flex items-start justify-center pt-20 p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200"
+          >
           <div
             className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 max-w-xl w-full overflow-hidden animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
@@ -764,6 +746,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
         </div>
         </Portal>
       )}
+
+      {/* Popup Cài Đặt Giao Diện & Màu Sắc */}
+      <ModalCaiDatGiaoDien
+        isOpen={showThemeSettings}
+        onClose={() => setShowThemeSettings(false)}
+      />
     </>
   );
 };

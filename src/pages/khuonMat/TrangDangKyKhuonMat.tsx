@@ -18,7 +18,6 @@ import {
   Building2,
   Mail,
   UserCheck,
-  Percent,
   LayoutGrid,
   List,
   AlignJustify,
@@ -29,8 +28,11 @@ import {
   ChevronsLeft,
   ChevronsRight,
   FileSpreadsheet,
+  Eye,
+  X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { Button } from '../../components/chung/NutBam';
 import toast from 'react-hot-toast';
 import { faceApi, RegistrationStatusResponse } from '../../api/khuonMat.api';
 import { apiClient } from '../../api/apiClient';
@@ -40,6 +42,11 @@ import { FaceRegistrationModal } from '../../components/sinhTracHoc/ModalDangKyK
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { hasRole } from '../../utils/phanQuyen';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
+import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
+import { Portal } from '../../components/chung/CongDichChuyen';
+import { TruongThongTin } from '../../components/chung/HoSoBenTrai';
+import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
 
 export const FaceRegistrationPage: React.FC = () => {
   const { user: authUser, fetchMe } = useAuthStore();
@@ -51,6 +58,9 @@ export const FaceRegistrationPage: React.FC = () => {
 
   // Quản lý nhân sự khác (Admin / BGH / TCCB)
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
+  const [detailEmployee, setDetailEmployee] = useState<any>(null);
+  const [detailFaceStatus, setDetailFaceStatus] = useState<RegistrationStatusResponse['data'] | null>(null);
+  const [loadingDetailFace, setLoadingDetailFace] = useState<boolean>(false);
   const [employeeSearch, setEmployeeSearch] = useState<string>('');
   const [filterTab, setFilterTab] = useState<'all' | 'registered' | 'not_registered'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
@@ -146,6 +156,24 @@ export const FaceRegistrationPage: React.FC = () => {
   const handleOpenEmployeeEnroll = (emp: any) => {
     setSelectedEmployee(emp);
     setIsEnrollModalOpen(true);
+  };
+
+  const handleOpenEmployeeDetail = async (emp: any) => {
+    setDetailEmployee(emp);
+    setDetailFaceStatus(null);
+    const targetId = emp?._id || emp?.id;
+    if (!targetId) return;
+    try {
+      setLoadingDetailFace(true);
+      const res = await faceApi.getRegistrationStatus(String(targetId));
+      if (res?.success && res.data) {
+        setDetailFaceStatus(res.data);
+      }
+    } catch (_) {
+      // Fallback sang dữ liệu danh sách nếu không tải được chi tiết
+    } finally {
+      setLoadingDetailFace(false);
+    }
   };
 
   const handleDeleteEmployeeFace = async (targetId: string, targetName: string) => {
@@ -397,185 +425,143 @@ export const FaceRegistrationPage: React.FC = () => {
 
   return (
     <div className="w-full space-y-5 animate-fadeIn pb-16">
-      {/* ── 1. Header Trang: Hiện đại, Không lặp nút bấm ────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-              <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-brand-600 dark:text-brand-400" />
-              Đăng Ký & Quản Lý Face ID
-            </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
-              INSIGHTFACE 512D
-            </span>
-            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+      {/* ── 1. Header Trang: Chuẩn hóa PageHeader ───────────────────────── */}
+      <PageHeader
+        title="Đăng Ký & Quản Lý Face ID"
+        subtitle="Hệ thống nhận diện sinh trắc học khuôn mặt đa góc ArcFace 512 chiều phục vụ điểm danh thời gian thực."
+        icon={<Camera className="w-5 h-5" />}
+        badge="INSIGHTFACE 512D"
+        badgeVariant="brand"
+        actions={
+          <>
+            <div className="h-9 flex items-center gap-1.5 px-3 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
               <span
-                className={`w-2 h-2 rounded-full ${
-                  serviceHealth?.status === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-                }`}
+                className={`w-2 h-2 rounded-full ${serviceHealth?.status === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}
               />
               <span className="text-slate-600 dark:text-slate-300">
                 {serviceHealth?.status === 'ok' ? 'AI Sẵn sàng' : 'Chưa kết nối AI'}
               </span>
             </div>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Hệ thống nhận diện sinh trắc học khuôn mặt đa góc ArcFace 512 chiều phục vụ điểm danh thời gian thực.
-          </p>
-        </div>
 
-        {/* Nút thao tác trên Header */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <button
-            type="button"
-            onClick={handleExportFaceExcel}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all cursor-pointer shadow-2xs"
-            title="Xuất danh sách đăng ký Face ID ra file Excel (.xlsx)"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span className="hidden sm:inline">Xuất Excel (.xlsx)</span>
-          </button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExportFaceExcel}
+              leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+              title="Xuất danh sách đăng ký Face ID ra file Excel (.xlsx)"
+            >
+              <span className="hidden sm:inline">Xuất Excel (.xlsx)</span>
+            </Button>
 
-          <button
-            type="button"
-            onClick={() => {
-              loadStatus();
-              loadHealth();
-              if (canManageOthers) searchEmployees(employeeSearch);
-            }}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all cursor-pointer shadow-2xs"
-            title="Làm mới trạng thái dữ liệu"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Làm Mới</span>
-          </button>
-        </div>
-      </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                loadStatus();
+                loadHealth();
+                if (canManageOthers) searchEmployees(employeeSearch);
+              }}
+              disabled={loading}
+              leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />}
+              title="Làm mới trạng thái dữ liệu"
+            >
+              Làm mới
+            </Button>
+          </>
+        }
+      />
 
-      {/* ── 2. Thẻ Thống Kê Tổng Quan (Executive KPI Cards) ─────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-            <Users className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-              Tổng Cán Bộ / GV
-            </span>
-            <span className="text-lg font-bold text-slate-900 dark:text-white">
-              {totalEmployeesCount}
-            </span>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-              Đã Có Face ID
-            </span>
-            <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-              {totalRegisteredCount}
-            </span>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-            <AlertCircle className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-              Chưa Đăng Ký
-            </span>
-            <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
-              {Math.max(0, totalEmployeesCount - totalRegisteredCount)}
-            </span>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-            <Percent className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-              Tỷ Lệ Bao Phủ
-            </span>
-            <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
-              {coveragePercent}%
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 3. Bảng Danh Sách Cán Bộ & Giảng Viên (Đẹp Mắt, Chuyên Nghiệp) ─ */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-xs space-y-4">
-        {/* Header Quản Trị & Thanh tìm kiếm */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Users className="w-5 h-5 text-brand-600 dark:text-brand-400" />
-              Danh Sách Cán Bộ & Giảng Viên Nhà Trường
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Hỗ trợ chụp ảnh 5 góc, cập nhật hoặc xóa dữ liệu sinh trắc học theo Nghị định 13/2023/NĐ-CP.
-            </p>
+      {/* ── 2. KHUNG QUẢN LÝ FACE ID THỐNG NHẤT: KPI + TOOLBAR + DANH SÁCH ── */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden w-full">
+        <CompactStatsBar
+          embedded
+          items={[
+            {
+              label: 'Tổng Cán Bộ / GV',
+              value: totalEmployeesCount,
+              unit: 'nhân sự',
+              tone: 'neutral',
+              active: filterTab === 'all',
+              onClick: () => {
+                setFilterTab('all');
+                setCurrentPage(1);
+              },
+            },
+            {
+              label: 'Đã Có Face ID',
+              value: totalRegisteredCount,
+              tone: 'success',
+              active: filterTab === 'registered',
+              onClick: () => {
+                setFilterTab('registered');
+                setCurrentPage(1);
+              },
+            },
+            {
+              label: 'Chưa Đăng Ký',
+              value: Math.max(0, totalEmployeesCount - totalRegisteredCount),
+              tone: 'warning',
+              active: filterTab === 'not_registered',
+              onClick: () => {
+                setFilterTab('not_registered');
+                setCurrentPage(1);
+              },
+            },
+            {
+              label: 'Tỷ Lệ Bao Phủ',
+              value: `${coveragePercent}%`,
+              badge: '512D',
+              tone: 'brand',
+            },
+          ]}
+        />
+        <div className="p-3 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-2.5">
+          {/* Ô tìm kiếm */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={employeeSearch}
+              onChange={(e) => {
+                setEmployeeSearch(e.target.value);
+                setCurrentPage(1);
+                searchEmployees(e.target.value);
+              }}
+              placeholder="Tìm tên, mã CB, email..."
+              className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
+            />
           </div>
 
-          {/* Thanh công cụ tìm kiếm và lọc Đơn vị */}
-          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
-            {/* Bộ lọc Khoa / Bộ môn phân cấp */}
-            <div className="w-full sm:w-64">
-              <DepartmentSelect
-                departments={departments}
-                value={departmentFilter}
-                onChange={(val) => {
-                  setDepartmentFilter(val);
-                  setCurrentPage(1);
-                }}
-                allowAll={true}
-                allLabel="Tất cả Khoa / Đơn vị"
-                placeholder="Lọc theo đơn vị..."
-                size="sm"
-              />
-            </div>
-
-            {/* Ô tìm kiếm */}
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={employeeSearch}
-                onChange={(e) => {
-                  setEmployeeSearch(e.target.value);
-                  setCurrentPage(1);
-                  searchEmployees(e.target.value);
-                }}
-                placeholder="Tìm tên, mã CB, email..."
-                className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
+          {/* Bộ lọc Khoa / Bộ môn */}
+          <div className="w-full sm:w-56">
+            <DepartmentSelect
+              departments={departments}
+              value={departmentFilter}
+              onChange={(val) => {
+                setDepartmentFilter(val);
+                setCurrentPage(1);
+              }}
+              allowAll={true}
+              allLabel="Tất cả Khoa / Đơn vị"
+              placeholder="Lọc theo đơn vị..."
+              size="sm"
+            />
           </div>
-        </div>
 
-        {/* Thanh công cụ: Bộ lọc Tab & Bố cục hiển thị (View Mode Switcher) */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2.5">
-          {/* Bộ lọc Tab */}
-          <div className="flex items-center gap-1.5 text-xs overflow-x-auto">
+          {/* Bộ lọc Tab trạng thái */}
+          <div className="flex items-center gap-1 text-xs overflow-x-auto">
             <button
               type="button"
               onClick={() => {
                 setFilterTab('all');
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`h-9 px-3 rounded-full font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 filterTab === 'all'
-                  ? 'bg-brand-50 dark:bg-brand-950/50 text-brand-600 dark:text-brand-400 font-bold shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 font-semibold border border-brand-200 dark:border-brand-700'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               Tất cả ({totalEmployeesCount})
@@ -586,13 +572,13 @@ export const FaceRegistrationPage: React.FC = () => {
                 setFilterTab('registered');
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`h-9 px-3 rounded-full font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 filterTab === 'registered'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-bold shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-700'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Đã có Face ID ({totalRegisteredCount})
+              Đã có ({totalRegisteredCount})
             </button>
             <button
               type="button"
@@ -600,18 +586,18 @@ export const FaceRegistrationPage: React.FC = () => {
                 setFilterTab('not_registered');
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`h-9 px-3 rounded-full font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 filterTab === 'not_registered'
-                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 font-bold shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-700'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Chưa đăng ký ({Math.max(0, totalEmployeesCount - totalRegisteredCount)})
+              Chưa có ({Math.max(0, totalEmployeesCount - totalRegisteredCount)})
             </button>
           </div>
 
-          {/* Bộ chọn Bố Cục Hiển Thị (Segmented Control) */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl shrink-0 self-start sm:self-auto border border-slate-200/60 dark:border-slate-700/60">
+          {/* Bộ chọn Bố Cục Hiển Thị */}
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl shrink-0 border border-slate-200/70 dark:border-slate-700/70 ml-auto">
             <button
               type="button"
               onClick={() => handleSetViewMode('table')}
@@ -620,10 +606,10 @@ export const FaceRegistrationPage: React.FC = () => {
                   ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
-              title="Bố cục 1: Dạng Bảng chi tiết (Table View)"
+              title="Dạng Bảng chi tiết"
             >
               <List className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Bảng</span>
+              <span className="hidden lg:inline">Bảng</span>
             </button>
             <button
               type="button"
@@ -633,10 +619,10 @@ export const FaceRegistrationPage: React.FC = () => {
                   ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
-              title="Bố cục 2: Dạng Thẻ lưới sinh động (Card Grid)"
+              title="Dạng Thẻ lưới"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Thẻ lưới</span>
+              <span className="hidden lg:inline">Thẻ lưới</span>
             </button>
             <button
               type="button"
@@ -646,10 +632,10 @@ export const FaceRegistrationPage: React.FC = () => {
                   ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
-              title="Bố cục 3: Dạng Tinh gọn siêu tốc (Compact List)"
+              title="Dạng Tinh gọn"
             >
               <AlignJustify className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Tinh gọn</span>
+              <span className="hidden lg:inline">Tinh gọn</span>
             </button>
             <button
               type="button"
@@ -659,16 +645,16 @@ export const FaceRegistrationPage: React.FC = () => {
                   ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
-              title="Bố cục 4: Dạng Theo Khoa / Đơn vị (Department Groups)"
+              title="Dạng Theo Khoa / Đơn vị"
             >
               <Building2 className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Theo Khoa</span>
+              <span className="hidden lg:inline">Theo Khoa</span>
             </button>
           </div>
         </div>
 
-        {/* Khung Hiển Thị Danh Sách Nhân Sự Tự Căn Chỉnh Toàn Màn Hình */}
-        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden bg-white dark:bg-slate-900 w-full">
+        {/* Khung Hiển Thị Danh Sách Nhân Sự */}
+        <div className="w-full">
           {loadingEmployees ? (
             <div className="py-16 text-center text-slate-400">
               <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-brand-500" />
@@ -682,7 +668,7 @@ export const FaceRegistrationPage: React.FC = () => {
             /* ── CHẾ ĐỘ 1: BẢNG CHI TIẾT (TABLE VIEW) ── */
             <>
               {/* Header Bảng: 5 Cột Tách Biệt */}
-              <div className="hidden sm:grid grid-cols-[1.5fr_1fr_1.2fr_135px_140px] gap-3 sm:gap-4 px-4 py-3 bg-slate-50/90 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider items-center">
+              <div className="hidden sm:grid grid-cols-[1.5fr_1fr_1.2fr_140px_145px] gap-3 sm:gap-4 px-4 py-3 bg-slate-50/90 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider items-center">
                 <div className="min-w-0">Cán bộ / Giảng viên</div>
                 <div className="min-w-0">Mã CB / Email</div>
                 <div className="min-w-0">Khoa / Đơn vị</div>
@@ -703,7 +689,7 @@ export const FaceRegistrationPage: React.FC = () => {
                   return (
                     <div
                       key={emp._id}
-                      className="p-3.5 sm:px-4 sm:py-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors flex flex-col sm:grid sm:grid-cols-[1.5fr_1fr_1.2fr_135px_140px] gap-2.5 sm:gap-4 items-start sm:items-center w-full min-w-0"
+                      className="p-3.5 sm:px-4 sm:py-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors flex flex-col sm:grid sm:grid-cols-[1.5fr_1fr_1.2fr_140px_145px] gap-2.5 sm:gap-4 items-start sm:items-center w-full min-w-0"
                     >
                       {/* Cột 1: Cán bộ / Giảng viên */}
                       <div className="w-full sm:w-auto min-w-0 flex items-center justify-between sm:justify-start gap-2.5">
@@ -715,12 +701,12 @@ export const FaceRegistrationPage: React.FC = () => {
                             size="sm"
                             shape="rounded"
                           />
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-[13px] truncate block" title={parsed.name}>
+                          <div className="flex flex-col min-w-0 flex-1 leading-snug">
+                            <span className="font-semibold text-slate-900 dark:text-white text-sm truncate block" title={parsed.name}>
                               {parsed.name}
                             </span>
                             {parsed.title && (
-                              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate block" title={parsed.title}>
+                              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate block" title={parsed.title}>
                                 {parsed.title}
                               </span>
                             )}
@@ -728,17 +714,17 @@ export const FaceRegistrationPage: React.FC = () => {
                         </div>
 
                         {/* Trên Mobile hiển thị Mã CB bên phải Avatar */}
-                        <span className="sm:hidden font-mono text-[11px] font-bold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200/70 shrink-0">
+                        <span className="sm:hidden font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200/70 shrink-0">
                           {staffCodeVal}
                         </span>
                       </div>
 
                       {/* Cột 2: Mã CB / Email */}
-                      <div className="hidden sm:flex min-w-0 flex-col gap-0.5">
-                        <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/90 px-2 py-0.5 rounded-md inline-block w-fit tracking-wide border border-slate-200/70 dark:border-slate-700/70 shadow-2xs">
+                      <div className="hidden sm:flex min-w-0 flex-col gap-0.5 leading-snug">
+                        <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/90 px-2 py-0.5 rounded-md inline-block w-fit tracking-wide border border-slate-200/70 dark:border-slate-700/70">
                           {staffCodeVal}
                         </span>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate block" title={emp.email}>
+                        <span className="text-xs text-slate-500 dark:text-slate-400 truncate block" title={emp.email}>
                           {emp.email}
                         </span>
                       </div>
@@ -757,9 +743,9 @@ export const FaceRegistrationPage: React.FC = () => {
                       {/* Cột 4: Trạng thái Face ID */}
                       <div className="w-full sm:w-auto min-w-0 flex items-center justify-between sm:justify-center shrink-0">
                         <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold uppercase inline-flex items-center gap-1.5 shrink-0 ${
+                          className={`px-2.5 py-0.5 rounded-full text-xs font-medium inline-flex items-center gap-1.5 shrink-0 ${
                             isRegistered
-                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800'
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
                               : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                           }`}
                         >
@@ -812,6 +798,14 @@ export const FaceRegistrationPage: React.FC = () => {
 
                       {/* Cột 5: Thao tác */}
                       <div className="hidden sm:flex items-center justify-end gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEmployeeDetail(emp)}
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                          title="Xem chi tiết hồ sơ sinh trắc học"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
                         {isRegistered ? (
                           <>
                             <button
@@ -935,6 +929,14 @@ export const FaceRegistrationPage: React.FC = () => {
 
                     {/* Footer Actions */}
                     <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEmployeeDetail(emp)}
+                        className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-2xs shrink-0"
+                        title="Xem chi tiết hồ sơ sinh trắc học"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
                       {isRegistered ? (
                         <>
                           <button
@@ -1023,6 +1025,14 @@ export const FaceRegistrationPage: React.FC = () => {
                       </span>
 
                       <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEmployeeDetail(emp)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          title="Xem chi tiết hồ sơ sinh trắc học"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
                         {isRegistered ? (
                           <>
                             <button
@@ -1158,6 +1168,15 @@ export const FaceRegistrationPage: React.FC = () => {
                                   <span className="hidden sm:inline">{isRegistered ? 'Đã có Face ID' : 'Chưa có'}</span>
                                 </span>
 
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEmployeeDetail(emp)}
+                                  className="p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600 transition-colors cursor-pointer"
+                                  title="Xem chi tiết hồ sơ sinh trắc học"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                </button>
+
                                 {isRegistered ? (
                                   <div className="flex items-center gap-1">
                                     <button
@@ -1202,7 +1221,7 @@ export const FaceRegistrationPage: React.FC = () => {
 
         {/* ── BỘ ĐIỀU HƯỚNG PHÂN TRANG (PAGINATION BAR) ─────────── */}
         {totalFilteredCount > 0 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 px-1 text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
             {/* Hiển thị phạm vi bản ghi */}
             <div className="flex items-center gap-2">
               <span>
@@ -1324,6 +1343,199 @@ export const FaceRegistrationPage: React.FC = () => {
           if (canManageOthers) searchEmployees(employeeSearch);
         }}
       />
+
+      {/* ── 5. Popup Xem Chi Tiết Hồ Sơ Sinh Trắc Học Face ID ─────────── */}
+      {detailEmployee && (() => {
+        const isReg = detailFaceStatus ? Boolean(detailFaceStatus.isFaceRegistered) : Boolean(detailEmployee.isFaceRegistered);
+        const faceImgUrl = detailFaceStatus?.facePhoto || detailEmployee.facePhoto || detailEmployee.anh_khuon_mat || null;
+        const sampleQty = detailFaceStatus?.sampleCount ?? detailEmployee.sampleCount ?? detailEmployee.so_luong_mau ?? (isReg ? 5 : 0);
+        const aiModelName = detailFaceStatus?.embeddingModel || detailEmployee.mo_hinh_ai || 'buffalo_s';
+        const vectorDim = detailFaceStatus?.vectorDimension ?? (detailEmployee as any).vectorDimension ?? (detailEmployee as any).so_chieu_vector ?? 512;
+        const isDefaultFace = detailFaceStatus?.isDefaultFace ?? (detailEmployee as any).isDefaultFace ?? true;
+        const faceStatusVal = detailFaceStatus?.faceStatus || (detailEmployee as any).faceStatus || (isReg ? 'hoat_dong' : null);
+        const registeredAtRaw = detailFaceStatus?.faceRegisteredAt || detailEmployee.faceRegisteredAt || null;
+        const registeredAtText = registeredAtRaw ? new Date(registeredAtRaw).toLocaleString('vi-VN') : 'Chưa cập nhật';
+        const POSE_NAMES: Record<string, string> = {
+          chinh_dien: 'Chính diện',
+          nghieng_trai: 'Nghiêng trái',
+          nghieng_phai: 'Nghiêng phải',
+          ngua_len: 'Ngửa lên',
+          cui_xuong: 'Cúi xuống',
+        };
+        const angles = detailFaceStatus?.sampleAngles?.length
+          ? detailFaceStatus.sampleAngles
+          : isReg
+            ? ['chinh_dien', 'nghieng_trai', 'nghieng_phai', 'ngua_len', 'cui_xuong'].slice(0, sampleQty || 5)
+            : [];
+
+        return (
+        <Portal>
+          <div
+            onClick={() => setDetailEmployee(null)}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+            >
+              <div className="flex items-center justify-between p-5 sm:p-6 border-b border-slate-800 bg-slate-900 text-white shrink-0">
+                <div className="flex items-center gap-3.5 min-w-0 pr-4">
+                  <UserAvatar
+                    name={detailEmployee.fullName}
+                    avatarUrl={detailEmployee.avatar}
+                    staffCode={detailEmployee.staffCode || detailEmployee._id}
+                    size="lg"
+                    shape="rounded"
+                  />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-lg bg-white/10 text-[10px] font-mono font-bold text-slate-200">
+                        {detailEmployee.staffCode || 'CHƯA CẤP MÃ'}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${
+                          isReg
+                            ? 'bg-emerald-500/20 border border-emerald-400/30 text-emerald-300'
+                            : 'bg-amber-500/20 border border-amber-400/30 text-amber-300'
+                        }`}
+                      >
+                        {isReg ? 'ĐÃ ĐĂNG KÝ FACE ID' : 'CHƯA ĐĂNG KÝ'}
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-white mt-1 truncate">
+                      {formatNameAndTitle(detailEmployee.fullName || '').name}
+                    </h3>
+                    <p className="text-xs text-slate-400 truncate">
+                      {formatNameAndTitle(detailEmployee.fullName || '').title || getEmpDepartmentName(detailEmployee)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailEmployee(null)}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5 text-xs">
+                {/* Ảnh sinh trắc học + Thông số Face ID */}
+                <div className="flex flex-col sm:flex-row gap-5 items-center sm:items-start">
+                  <div className="w-36 h-36 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden flex items-center justify-center shrink-0">
+                    {loadingDetailFace ? (
+                      <RefreshCw className="w-6 h-6 text-slate-400 animate-spin" />
+                    ) : isReg && faceImgUrl ? (
+                      <AnhBaoMat
+                        src={faceImgUrl}
+                        alt={detailEmployee.fullName}
+                        className="w-full h-full object-cover"
+                        fallback={
+                          <div className="flex flex-col items-center gap-1.5 text-slate-400 p-3 text-center">
+                            <ScanFace className="w-9 h-9 opacity-40" />
+                            <span className="text-[11px] font-medium">Không tải được ảnh xem trước</span>
+                          </div>
+                        }
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1.5 text-slate-400 p-3 text-center">
+                        <ScanFace className="w-9 h-9 opacity-40" />
+                        <span className="text-[11px] font-medium">
+                          {isReg ? 'Chưa có ảnh xem trước' : 'Chưa có dữ liệu'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0 w-full space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3.5">
+                      <TruongThongTin
+                        label="Trạng thái kích hoạt"
+                        value={
+                          isReg
+                            ? `${faceStatusVal === 'bi_khoa' ? 'Tạm khóa' : 'Đã kích hoạt'} (${sampleQty} mẫu)`
+                            : 'Chưa đăng ký mẫu'
+                        }
+                      />
+                      <TruongThongTin
+                        label="Mô hình & Vector AI"
+                        value={isReg ? `${aiModelName} • ${vectorDim} chiều${isDefaultFace ? ' (Mặc định)' : ''}` : 'Chưa kích hoạt'}
+                        mono={isReg}
+                      />
+                      <TruongThongTin label="Thời gian đăng ký" value={isReg ? registeredAtText : 'Chưa đăng ký'} />
+                      <TruongThongTin label="Chuẩn mã hóa lưu trữ" value={isReg ? 'AES-256-GCM' : '—'} mono={isReg} />
+                    </div>
+
+                    {isReg && angles.length > 0 && (
+                      <div>
+                        <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1.5">
+                          Các góc khuôn mặt đã thu thập
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {angles.map((angle, i) => (
+                            <span
+                              key={i}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/70"
+                            >
+                              <CheckCircle2 className="w-3 h-3 shrink-0" />
+                              <span>{POSE_NAMES[angle] || angle}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4">
+                  <TruongThongTin label="Mã cán bộ" value={detailEmployee.staffCode || '—'} mono />
+                  <TruongThongTin label="Đơn vị công tác" value={getEmpDepartmentName(detailEmployee)} />
+                  <TruongThongTin label="Email công vụ" value={detailEmployee.email || '—'} />
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = detailEmployee;
+                      setDetailEmployee(null);
+                      handleOpenEmployeeEnroll(target);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold cursor-pointer shadow-sm"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>{isReg ? 'Chụp lại 5 góc' : 'Đăng ký Face ID'}</span>
+                  </button>
+                  {isReg && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = detailEmployee;
+                        setDetailEmployee(null);
+                        handleDeleteEmployeeFace(target._id || target.id, target.fullName);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-semibold cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Xóa mẫu Face ID</span>
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailEmployee(null)}
+                  className="px-5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer ml-auto"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+        );
+      })()}
 
     </div>
   );

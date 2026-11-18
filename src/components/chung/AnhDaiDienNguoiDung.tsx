@@ -21,7 +21,7 @@ export interface UserAvatarProps {
   name?: string;
   avatarUrl?: string | null;
   staffCode?: string;
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
   shape?: 'circle' | 'rounded';
   variant?: 'gradient' | 'soft';
   className?: string;
@@ -66,10 +66,11 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
     md: 'w-9 h-9 text-xs',
     lg: 'w-11 h-11 text-sm',
     xl: 'w-14 h-14 text-base font-extrabold',
+    full: 'w-full h-full text-3xl font-black',
   }[size];
 
   // Kiểu bo góc
-  const shapeClass = shape === 'circle' ? 'rounded-full' : 'rounded-xl';
+  const shapeClass = shape === 'circle' ? 'rounded-full' : size === 'full' ? 'rounded-2xl' : 'rounded-xl';
 
   // Chế độ màu sắc
   const colorClass =

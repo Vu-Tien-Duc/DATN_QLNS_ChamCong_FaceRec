@@ -49,7 +49,7 @@ export const ModalKhoiTaoLuong: React.FC<ModalKhoiTaoLuongProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+              className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -65,7 +65,7 @@ export const ModalKhoiTaoLuong: React.FC<ModalKhoiTaoLuongProps> = ({
                   max="12"
                   value={selectedMonth}
                   onChange={(e) => onChangeMonth(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-mono font-bold"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-mono font-bold"
                 />
               </div>
               <div>
@@ -76,7 +76,7 @@ export const ModalKhoiTaoLuong: React.FC<ModalKhoiTaoLuongProps> = ({
                   max="2035"
                   value={selectedYear}
                   onChange={(e) => onChangeYear(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-mono font-bold"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-mono font-bold"
                 />
               </div>
             </div>
@@ -96,15 +96,15 @@ export const ModalKhoiTaoLuong: React.FC<ModalKhoiTaoLuongProps> = ({
               </div>
             </div>
 
-            <div className="p-3 bg-amber-50/70 border border-amber-200/60 rounded-xl text-[11px] text-amber-800">
+            <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-xl text-[11px] text-amber-800 dark:text-amber-300">
               Hệ thống sẽ tự động quét số tiết giảng dạy, hệ số lương và khấu trừ bảo hiểm để tính ra bảng lương dự thảo cho tháng {selectedMonth}/{selectedYear}.
             </div>
 
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2.5">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2 font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
               >
                 Hủy bỏ
               </button>
@@ -173,7 +173,7 @@ export const ModalMoKhoaLuong: React.FC<ModalMoKhoaLuongProps> = ({
                 value={unlockReason}
                 onChange={(e) => onChangeReason(e.target.value)}
                 placeholder="VD: Điều chỉnh bổ sung tiết vượt giờ khoa CNTT theo đề xuất..."
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-slate-100"
               />
             </div>
 
@@ -181,7 +181,7 @@ export const ModalMoKhoaLuong: React.FC<ModalMoKhoaLuongProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
               >
                 Hủy bỏ
               </button>

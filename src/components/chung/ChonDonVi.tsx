@@ -1,8 +1,7 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   Building2,
   GraduationCap,
-  BookOpen,
   Crown,
   ChevronDown,
   Search,
@@ -12,6 +11,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { normalizeRoleKey } from '../../utils/phanQuyen';
+import { Portal } from './CongDichChuyen';
 
 export interface DepartmentItem {
   _id: string;
@@ -109,26 +109,55 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number; placeAbove: boolean }>({
+    top: 0,
+    left: 0,
+    width: 320,
+    placeAbove: false,
+  });
 
   // Trạng thái mở rộng danh sách bộ môn của từng Khoa (Accordion)
   const [expandedKhoas, setExpandedKhoas] = useState<Record<string, boolean>>({});
 
-  // Đóng dropdown khi click ngoài
+  // Tính vị trí nổi cố định theo nút bấm để không phá vỡ hoặc làm phình khung modal/form cha
+  const updateMenuPosition = useCallback(() => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const placeAbove = spaceBelow < 340 && rect.top > spaceBelow;
+    setMenuPos({
+      top: placeAbove ? rect.top - 6 : rect.bottom + 6,
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)),
+      width: rect.width,
+      placeAbove,
+    });
+  }, []);
+
+  // Đóng dropdown khi click ngoài và cập nhật vị trí khi cuộn/resize
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const inTrigger = containerRef.current?.contains(target);
+      const inMenu = dropdownRef.current?.contains(target);
+      if (!inTrigger && !inMenu) {
         setIsOpen(false);
       }
     };
 
     if (isOpen) {
+      updateMenuPosition();
       document.addEventListener('mousedown', handleClickOutside);
+      window.addEventListener('resize', updateMenuPosition);
+      window.addEventListener('scroll', updateMenuPosition, true);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
     };
-  }, [isOpen]);
+  }, [isOpen, updateMenuPosition]);
 
   // Focus ô tìm kiếm khi mở dropdown
   useEffect(() => {
@@ -285,7 +314,10 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          if (!isOpen) updateMenuPosition();
+          setIsOpen(!isOpen);
+        }}
         className={`w-full text-left ${paddingClass} rounded-xl border transition-all flex items-center justify-between gap-2 cursor-pointer ${
           disabled
             ? 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 opacity-80 cursor-not-allowed'
@@ -304,11 +336,11 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
             </>
           ) : selectedDept ? (
             <>
-              <span className={`${size === 'sm' ? 'text-xs' : 'text-sm'} shrink-0`}>
-                {selectedCategory === 'bgh' && '⭐'}
-                {selectedCategory === 'khoa' && '🏛️'}
-                {selectedCategory === 'bo_mon' && '📚'}
-                {selectedCategory === 'phong_ban' && '🏢'}
+              <span className={`${size === 'sm' ? 'text-xs' : 'text-sm'} shrink-0 text-slate-400 flex items-center`}>
+                {selectedCategory === 'bgh' && <Crown className="w-3.5 h-3.5 text-purple-500" />}
+                {selectedCategory === 'khoa' && <GraduationCap className="w-3.5 h-3.5 text-blue-500" />}
+                {selectedCategory === 'bo_mon' && <Layers className="w-3.5 h-3.5 text-emerald-500" />}
+                {selectedCategory === 'phong_ban' && <Building2 className="w-3.5 h-3.5 text-amber-500" />}
               </span>
               <span className={`font-medium text-slate-900 dark:text-white truncate ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
                 {selectedDept.name}
@@ -338,9 +370,21 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
         </div>
       </button>
 
-      {/* Popover Dropdown Tree Menu */}
+      {/* Popover Dropdown Tree Menu (render qua Portal để không phá vỡ khung modal/form cha) */}
       {isOpen && (
-        <div className="absolute left-0 right-0 sm:right-auto sm:w-80 min-w-full top-full mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-100">
+        <Portal lockScroll={false}>
+          <div
+            ref={dropdownRef}
+            style={{
+              position: 'fixed',
+              left: menuPos.left,
+              width: menuPos.width,
+              ...(menuPos.placeAbove
+                ? { bottom: window.innerHeight - menuPos.top }
+                : { top: menuPos.top }),
+            }}
+            className="z-[150] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden animate-in fade-in duration-100"
+          >
           {/* Thanh tìm kiếm nhỏ gọn */}
           <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/50">
             <div className="relative">
@@ -515,8 +559,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                                       <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] shrink-0 select-none">
                                         {isLast ? '└──' : '├──'}
                                       </span>
-                                      <BookOpen className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                      <span className="leading-snug">{bm.name}</span>
+                                      <span className="leading-snug truncate">{bm.name}</span>
                                     </div>
                                     {isBmSelected && (
                                       <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -536,7 +579,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                 {filteredTree.unassignedBomons.length > 0 && (
                   <div className="space-y-0.5 pt-1.5 first:pt-0">
                     <div className="px-2 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <BookOpen className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                      <Layers className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                       Bộ Môn Khác
                     </div>
                     {filteredTree.unassignedBomons.map((bm) => {
@@ -552,8 +595,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
-                            <BookOpen className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                            <span className="leading-snug">{bm.name}</span>
+                            <span className="leading-snug truncate">{bm.name}</span>
                           </div>
                           {isSelected && (
                             <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -599,6 +641,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
             )}
           </div>
         </div>
+        </Portal>
       )}
     </div>
   );

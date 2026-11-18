@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Camera } from 'lucide-react';
 import { attendanceApi } from '../../../api/chamCong.api';
+import { AnhBaoMat } from '../../../components/chung/AnhBaoMat';
 
 interface KhungAnhMinhChungProps {
   logId: string;
@@ -81,7 +82,7 @@ export const KhungAnhMinhChung: React.FC<KhungAnhMinhChungProps> = ({
           key={`${url}-${idx}`}
           className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black flex items-center justify-center max-h-72"
         >
-          <img
+          <AnhBaoMat
             src={resolveMediaUrl(url)}
             alt={`Ảnh minh chứng ${idx + 1}`}
             className="max-h-72 w-auto object-contain"

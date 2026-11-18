@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Mail, KeyRound, Lock, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi } from '../../../api/xacThuc.api';
+import { Portal } from '../../../components/chung/CongDichChuyen';
 
 interface ModalQuenMatKhauProps {
   isOpen: boolean;
@@ -75,8 +76,15 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+    <Portal>
+      <div
+        onClick={handleClose}
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        >
         <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <h3 className="text-base font-bold text-slate-900 dark:text-white">
             Khôi Phục Mật Khẩu Qua Email (OTP)
@@ -189,7 +197,8 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
             </div>
           )}
         </div>
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 };

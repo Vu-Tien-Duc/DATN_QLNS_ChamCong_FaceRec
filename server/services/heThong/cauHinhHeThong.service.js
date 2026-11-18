@@ -1,30 +1,91 @@
 // Quản lý cấu hình hệ thống tập trung kèm bộ nhớ đệm và nhật ký kiểm toán.
 const { CauHinhHeThong, NhatKyKiemToan } = require('../../models');
+const { CAU_HINH_MAC_DINH } = require('../../models/cauHinhHeThong.model');
 const ServiceError = require('../../utils/loiNghiepVu');
 
 const cache = new Map();
 let isInitialized = false;
 let lastLoadedTime = 0;
+let defaultSeeded = false;
 const CACHE_TTL_MS = 60000;
+
+const CANONICAL_CONFIG_META = {
+  HOC_KY: { nhom: 'DAO_TAO', mo_ta: 'Thông tin năm học, học kỳ hiện hành, ngày bắt đầu và số tuần học' },
+  DINH_MUC_GIO_CHUAN: { nhom: 'DAO_TAO', mo_ta: 'Định mức giờ chuẩn giảng dạy trong một học kỳ (tiết)' },
+  HE_SO_QUY_DOI_GIO: { nhom: 'DAO_TAO', mo_ta: 'Hệ số quy đổi giờ chuẩn theo hình thức học, hệ đào tạo và sĩ số lớp' },
+  GEOFENCE_TRUONG: { nhom: 'GPS', mo_ta: 'Tọa độ tâm khuôn viên trường và bán kính Geofence GPS (mét)' },
+  DANH_SACH_PHONG_HOC: { nhom: 'GPS', mo_ta: 'Danh mục phòng học kèm tọa độ GPS và bán kính điểm danh' },
+  LUONG_CO_SO: { nhom: 'TIEN_LUONG', mo_ta: 'Mức lương cơ sở áp dụng tính lương ngạch bậc (VNĐ)' },
+  TY_LE_BAO_HIEM: { nhom: 'TIEN_LUONG', mo_ta: 'Tỷ lệ trích đóng BHXH (8%), BHYT (1.5%), BHTN (1%) của người lao động' },
+  DON_GIA_GIO: { nhom: 'TIEN_LUONG', mo_ta: 'Đơn giá thanh toán 1 tiết giảng dạy vượt giờ định mức (VNĐ)' },
+  TY_LE_UU_DAI: { nhom: 'TIEN_LUONG', mo_ta: 'Tỷ lệ phụ cấp ưu đãi nghề đối với giảng viên và khối hành chính' },
+  GIAM_TRU: { nhom: 'THUE', mo_ta: 'Mức giảm trừ gia cảnh bản thân và người phụ thuộc khi tính thuế TNCN (VNĐ)' },
+  BIEU_THUE_5_BAC: { nhom: 'THUE', mo_ta: 'Biểu thuế lũy tiến từng phần 5 bậc tính thuế Thu nhập cá nhân' },
+  CHUC_VU: { nhom: 'CHUC_VU', mo_ta: 'Danh mục hệ số phụ cấp chức vụ và tỷ lệ giảm định mức giờ giảng' },
+  NGUONG_AI: { nhom: 'AI', mo_ta: 'Mô hình AI nhận diện khuôn mặt 512D, ngưỡng khớp Cosine và Liveness tối thiểu' },
+  MARGIN_TOP1_TOP2: { nhom: 'AI', mo_ta: 'Biên độ chênh lệch tối thiểu giữa kết quả giống nhất (Top-1) và thứ hai (Top-2)' },
+  COOLDOWN_QUET_GIAY: { nhom: 'CHAM_CONG', mo_ta: 'Thời gian chờ tối thiểu giữa 2 lần quét khuôn mặt liên tiếp (giây)' },
+  QUY_TAC_DIEM_DANH: { nhom: 'CHAM_CONG', mo_ta: 'Quy tắc mở cửa sổ check-in sớm, tỷ lệ đủ giờ, nửa giờ và làm tròn tiết' },
+  RETENTION_ANH_NAM: { nhom: 'HE_THONG', mo_ta: 'Thời hạn lưu trữ ảnh minh chứng chấm công sinh trắc học (năm)' },
+  RETENTION_METADATA_NAM: { nhom: 'HE_THONG', mo_ta: 'Thời hạn lưu trữ nhật ký chấm công và kiểm toán an ninh (năm)' },
+  CRON_LAST_RUN: { nhom: 'HE_THONG', mo_ta: 'Trạng thái và thời điểm chạy gần nhất của tiến trình tự động (Cron Job)' },
+};
+
+const normalizeConfigGroup = (key, rawGroup) => {
+  const upperKey = String(key || '').toUpperCase();
+  if (CANONICAL_CONFIG_META[upperKey]) {
+    return CANONICAL_CONFIG_META[upperKey].nhom;
+  }
+  const g = String(rawGroup || 'SYSTEM').toUpperCase();
+  if (g === 'PAYROLL' || g === 'LUONG') return 'TIEN_LUONG';
+  if (g === 'FACE_AI') return 'AI';
+  if (g === 'CHAM_CONG') return 'CHAM_CONG';
+  if (g === 'HE_THONG') return 'HE_THONG';
+  return g;
+};
 
 // Chuyển bản ghi Sequelize cấu hình sang object lưu cache RAM
 const toCacheEntry = (cfg) => ({
   id: cfg.id,
   khoa_cau_hinh: cfg.khoa_cau_hinh,
   gia_tri: cfg.gia_tri,
-  nhom: cfg.nhom || 'SYSTEM',
-  mo_ta: cfg.mo_ta || null,
+  nhom: normalizeConfigGroup(cfg.khoa_cau_hinh, cfg.nhom),
+  mo_ta: cfg.mo_ta || CANONICAL_CONFIG_META[cfg.khoa_cau_hinh]?.mo_ta || null,
   cap_nhat_luc: cfg.cap_nhat_luc,
 });
 
-// Nạp toàn bộ cấu hình hệ thống từ DB vào cache RAM (TTL 60 giây)
+// Nạp toàn bộ cấu hình hệ thống từ DB vào cache RAM (TTL 60 giây) và tự bổ sung đủ 19 tham số chuẩn
 const loadConfigsIntoCache = async (force = false) => {
   const now = Date.now();
   if (isInitialized && !force && now - lastLoadedTime < CACHE_TTL_MS) {
     return;
   }
 
-  const configs = await CauHinhHeThong.findAll();
+  let configs = await CauHinhHeThong.findAll();
+  if (!defaultSeeded && CAU_HINH_MAC_DINH) {
+    const existingKeys = new Set(configs.map((c) => String(c.khoa_cau_hinh || '').toUpperCase()));
+    let createdAny = false;
+    for (const [k, defaultVal] of Object.entries(CAU_HINH_MAC_DINH)) {
+      if (!existingKeys.has(k)) {
+        const meta = CANONICAL_CONFIG_META[k] || { nhom: 'HE_THONG', mo_ta: `Tham số hệ thống ${k}` };
+        try {
+          await CauHinhHeThong.create({
+            khoa_cau_hinh: k,
+            gia_tri: defaultVal,
+            nhom: meta.nhom,
+            mo_ta: meta.mo_ta,
+          });
+          createdAny = true;
+        } catch {
+          // ignore race condition
+        }
+      }
+    }
+    defaultSeeded = true;
+    if (createdAny) {
+      configs = await CauHinhHeThong.findAll();
+    }
+  }
   cache.clear();
   for (const cfg of configs) {
     const key = (cfg.khoa_cau_hinh || '').toUpperCase();
@@ -64,6 +125,8 @@ const getAllConfigs = async () => {
   return configs.map((doc) => {
     const obj = doc.toJSON();
     obj.gia_tri = doc.gia_tri;
+    obj.nhom = normalizeConfigGroup(doc.khoa_cau_hinh, doc.nhom);
+    obj.mo_ta = doc.mo_ta || CANONICAL_CONFIG_META[doc.khoa_cau_hinh]?.mo_ta || null;
     return obj;
   });
 };

@@ -7,6 +7,7 @@ const {
   PhongBan,
   CaLamViec,
   LichTrinh,
+  DonNghiPhep,
 } = require('../../models');
 const { getDeanScopedUserIds, isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
@@ -117,7 +118,10 @@ const getAttendanceHistory = async (params = {}) => {
       'phuong_thuc',
       'do_tin_cay_ai',
       'diem_mat_that',
+      'goc_mat_nhan_dien',
+      'do_chinh_xac_gps',
       'vi_tri_gia_lap',
+      'khoang_cach_met',
       'hop_le',
       'ly_do_khong_hop_le',
       'ma_thiet_bi',
@@ -149,6 +153,8 @@ const getAttendanceHistory = async (params = {}) => {
       },
       { model: CaLamViec, as: 'ca', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc'] },
       { model: LichTrinh, as: 'lich_trinh', attributes: ['id', 'phong_hoc', 'mon_hoc_id'] },
+      { model: NguoiDung, as: 'nguoi_ghi_de', attributes: ['id', 'ho_ten', 'ma_can_bo'] },
+      { model: DonNghiPhep, as: 'don_tu', attributes: ['id', 'loai_don', 'ngay_bat_dau', 'ngay_ket_thuc', 'trang_thai'] },
       punchInclude,
     ],
     order: [
@@ -295,6 +301,8 @@ const getAttendanceById = async ({ id, currentUser }) => {
       },
       { model: CaLamViec, as: 'ca', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc', 'nguong_di_muon_phut'] },
       { model: LichTrinh, as: 'lich_trinh', attributes: ['id', 'phong_hoc', 'mon_hoc_id', 'thu_trong_tuan', 'tiet_bat_dau', 'so_tiet'] },
+      { model: NguoiDung, as: 'nguoi_ghi_de', attributes: ['id', 'ho_ten', 'ma_can_bo'] },
+      { model: DonNghiPhep, as: 'don_tu', attributes: ['id', 'loai_don', 'ngay_bat_dau', 'ngay_ket_thuc', 'trang_thai'] },
       {
         model: LuotQuetChamCong,
         as: 'luot_quet',
@@ -305,7 +313,10 @@ const getAttendanceById = async ({ id, currentUser }) => {
           'phuong_thuc',
           'do_tin_cay_ai',
           'diem_mat_that',
+          'goc_mat_nhan_dien',
+          'do_chinh_xac_gps',
           'vi_tri_gia_lap',
+          'khoang_cach_met',
           'hop_le',
           'ly_do_khong_hop_le',
           'ma_thiet_bi',

@@ -1,9 +1,16 @@
 import { apiClient } from './apiClient';
 
 export interface PhuCapItem {
-  type: string;
-  rate?: number;
-  amount: number;
+  id?: string;
+  loai_phu_cap?: string;
+  he_so_hoac_ty_le?: number;
+  so_tien?: number;
+}
+
+export interface GiamTruItem {
+  id?: string;
+  ly_do?: string;
+  so_tien?: number;
 }
 
 export interface KhoanDieuChinhItem {
@@ -71,15 +78,30 @@ export interface PayrollRecord {
   seniorityAllowance?: number;
   vocationalAllowance?: number;
   allowances?: PhuCapItem[];
+  deductions?: GiamTruItem[];
   bonusItems?: KhoanDieuChinhItem[];
   deductionItems?: KhoanDieuChinhItem[];
   teachingHours?: TeachingHoursData;
   grossIncome: number;
+  standardWorkDays?: number;
+  actualWorkDays?: number;
+  createdByUser?: {
+    _id?: string;
+    fullName?: string;
+    email?: string;
+  };
+  approvedByUser?: {
+    _id?: string;
+    fullName?: string;
+    email?: string;
+  };
+  approvedAt?: string | null;
+  notes?: string;
   insurance?: InsuranceData;
   personalIncomeTax?: TaxTncnData;
   thue_tncn?: TaxTncnData;
   netSalary: number;
-  status: 'du_thao' | 'cho_duyet' | 'da_duyet' | 'da_khoa' | 'da_thanh_toan' | string;
+  status: 'nhap' | 'du_thao' | 'cho_duyet' | 'da_duyet' | 'da_khoa' | 'da_chi_tra' | 'da_thanh_toan' | string;
   isLocked?: boolean;
   lockedAt?: string;
   createdAt?: string;

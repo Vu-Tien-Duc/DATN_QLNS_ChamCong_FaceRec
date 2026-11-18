@@ -11,10 +11,8 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  Layers,
   Link2,
   Terminal,
-  Hash,
   User,
   Copy,
   Check,
@@ -28,6 +26,8 @@ import {
   X,
   Sparkles,
   FileSpreadsheet,
+  Layers,
+  Hash,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
@@ -36,6 +36,8 @@ import { Button } from '../../components/chung/NutBam';
 import { Badge } from '../../components/chung/NhanTrangThai';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
+import { getRoleLabel } from '../../utils/phanQuyen';
 import {
   auditLogApi,
   AuditLogItem,
@@ -55,10 +57,113 @@ function formatDateTimeVN(isoStr?: string): string {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+function formatDateAndTimeParts(isoStr?: string): { date: string; time: string } {
+  if (!isoStr) return { date: '--', time: '--' };
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return { date: isoStr, time: '--' };
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    date: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`,
+  };
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  LOGIN: 'Đăng nhập',
+  LOGOUT: 'Đăng xuất',
+  CHANGE_PASSWORD: 'Đổi mật khẩu',
+  FORGOT_PASSWORD_OTP_SENT: 'Gửi OTP khôi phục',
+  PASSWORD_RESET_SUCCESS: 'Đặt lại mật khẩu',
+  CREATE_USER: 'Tạo nhân sự',
+  UPDATE_USER: 'Cập nhật nhân sự',
+  SOFT_DELETE_USER: 'Khóa tài khoản',
+  UPDATE_AVATAR: 'Đổi ảnh đại diện',
+  REGISTER_FACE_DESCRIPTOR: 'Đăng ký Face ID',
+  FORCE_REGISTER_FACE_DESCRIPTOR: 'Ghi đè Face ID',
+  BIOMETRIC_DATA_PURGED_RIGHT_TO_ERASURE: 'Xóa dữ liệu Face ID',
+  REPLAY_ATTACK_DETECTED: 'Cảnh báo giả mạo',
+  ADMIN_OVERRIDE_ATTENDANCE: 'Điều chỉnh công',
+  APPROVE_LEAVE_FINAL: 'Duyệt đơn phép',
+  CANCEL_LEAVE_AND_ROLLBACK: 'Hủy đơn & hoàn phép',
+  ASSIGN_SUBSTITUTE_LECTURER: 'Phân công dạy thay',
+  CREATE_DEPARTMENT: 'Tạo đơn vị',
+  UPDATE_DEPARTMENT: 'Sửa đơn vị',
+  DELETE_DEPARTMENT: 'Xóa đơn vị',
+  CREATE_SCHEDULE: 'Tạo lịch dạy',
+  UPDATE_SCHEDULE: 'Sửa lịch dạy',
+  DELETE_SCHEDULE: 'Xóa lịch dạy',
+  SCHEDULE_AUTO_CANCELLED_LATE: 'Tự hủy lịch trễ',
+  GENERATE_PAYROLL: 'Khởi tạo bảng lương',
+  LOCK_PAYROLL: 'Khóa sổ lương',
+  UNLOCK_PAYROLL: 'Mở khóa sổ lương',
+  UPDATE_SYSTEM_CONFIG: 'Sửa cấu hình',
+  CRON_AUTO_ABSENT: 'Quét vắng tự động',
+  CRON_HOLIDAY_SKIPPED: 'Bỏ qua ngày lễ',
+};
+
+function getActionLabel(action?: string): string {
+  const act = String(action || '').trim();
+  const upper = act.toUpperCase();
+  if (ACTION_LABELS[upper]) return ACTION_LABELS[upper];
+  if (upper.startsWith('APPROVE_LEAVE_LEVEL_')) return 'Duyệt đơn cấp 1';
+  if (upper.startsWith('REJECT_LEAVE_LEVEL_')) return 'Từ chối đơn phép';
+  if (upper.startsWith('ATTENDANCE_FACE_') || upper.startsWith('ATTENDANCE_QUEUE_')) {
+    return 'Điểm danh Face ID';
+  }
+  return act || 'Thao tác';
+}
+
 function truncateHash(hash?: string | null, length: number = 10): string {
   if (!hash) return 'N/A';
   if (hash.length <= length * 2) return hash;
   return `${hash.slice(0, length)}...${hash.slice(-length)}`;
+}
+
+const TARGET_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'nguoi_dung', label: 'Cán bộ / Người dùng' },
+  { value: 'don_nghi_phep', label: 'Đơn nghỉ phép' },
+  { value: 'nhat_ky_cham_cong', label: 'Nhật ký chấm công' },
+  { value: 'phieu_luong', label: 'Bảng / Phiếu lương' },
+  { value: 'lich_trinh', label: 'Lịch giảng dạy' },
+  { value: 'phong_ban', label: 'Khoa / Phòng ban' },
+  { value: 'cau_hinh_he_thong', label: 'Cấu hình hệ thống' },
+  { value: 'ngay_nghi_le', label: 'Ngày nghỉ lễ' },
+  { value: 'ca_lam_viec', label: 'Ca làm việc' },
+  { value: 'mon_hoc', label: 'Môn học' },
+  { value: 'mau_khuon_mat', label: 'Mẫu khuôn mặt' },
+];
+
+const TARGET_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  TARGET_TYPE_OPTIONS.map((o) => [o.value, o.label])
+);
+
+function getAuditActorInfo(log: any): {
+  name: string;
+  role: string;
+  staffCode: string;
+  isSystem: boolean;
+} {
+  const actorObj =
+    (log?.nguoi_thuc_hien && typeof log.nguoi_thuc_hien === 'object' ? log.nguoi_thuc_hien : null) ||
+    (log?.actor && typeof log.actor === 'object' ? log.actor : null) ||
+    (log?.nguoi_thuc_hien_id && typeof log.nguoi_thuc_hien_id === 'object' ? log.nguoi_thuc_hien_id : null);
+  const actorType = String(log?.actorType || log?.loai_chu_the || 'user').toLowerCase();
+  const isSystem = actorType === 'system' || (!actorObj && !log?.nguoi_thuc_hien_id);
+
+  if (actorObj) {
+    return {
+      name: actorObj.fullName || actorObj.ho_ten || actorObj.email || 'Quản trị viên Hệ thống',
+      role: actorObj.role || actorObj.vai_tro_chinh || actorType,
+      staffCode: actorObj.staffCode || actorObj.ma_can_bo || '--',
+      isSystem: false,
+    };
+  }
+  return {
+    name: isSystem ? 'HỆ THỐNG' : 'Tài khoản đã xóa',
+    role: actorType || 'system',
+    staffCode: '--',
+    isSystem,
+  };
 }
 
 function getActionColor(action?: string): { bg: string; text: string; border: string } {
@@ -124,6 +229,7 @@ export const AuditLogs: React.FC = () => {
   const [selectedTargetType, setSelectedTargetType] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [showDateFilters, setShowDateFilters] = useState<boolean>(false);
   const [pageSize, setPageSize] = useState<number>(20);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
@@ -237,23 +343,17 @@ export const AuditLogs: React.FC = () => {
 
     try {
       const dataRows = logs.map((l, idx) => {
-        const actorName =
-          typeof l.actor === 'object' && l.actor
-            ? (l.actor as any).fullName || (l.actor as any).name || '--'
-            : l.actorType === 'system'
-            ? 'HỆ THỐNG (SYSTEM)'
-            : '--';
-        const actorCode = typeof l.actor === 'object' && l.actor ? (l.actor as any).staffCode || '--' : '--';
+        const actorInfo = getAuditActorInfo(l);
         const detailsStr = l.details ? JSON.stringify(l.details) : '';
 
         return {
           'STT': idx + 1,
           'Thời Điểm': formatDateTimeVN(l.timestamp),
           'Hành Động': l.action,
-          'Người Thực Hiện': actorName,
-          'Mã Cán Bộ': actorCode,
+          'Người Thực Hiện': actorInfo.name,
+          'Mã Cán Bộ': actorInfo.staffCode,
           'Loại Chủ Thể': l.actorType || 'user',
-          'Loại Đối Tượng': l.targetType,
+          'Loại Đối Tượng': TARGET_TYPE_LABELS[l.targetType] || l.targetType,
           'ID Đối Tượng': l.targetId,
           'Địa Chỉ IP': l.ipAddress || '--',
           'Kết Quả': l.status === 'success' ? 'Thành công' : 'Thất bại',
@@ -297,315 +397,178 @@ export const AuditLogs: React.FC = () => {
   // =============================================================================
 
   return (
-    <div className="space-y-6">
-      {/* 1. HEADER SECTION (Chuẩn hóa Typography & Bố cục CSDL v2.5) */}
+    <div className="space-y-4">
+      {/* 1. HEADER SECTION */}
       <PageHeader
-        title="Nhật Ký Kiểm Toán Hệ Thống (Audit Logs)"
-        subtitle="Lưu vết toàn bộ thao tác, hành vi truy cập và bảo vệ tính bất biến dữ liệu theo chuẩn an toàn thông tin CSDL v2.5."
-        icon={<ShieldCheck className="w-5 h-5 text-indigo-600" />}
-        badge="SHA-256 Hash Chaining"
-        badgeVariant="indigo"
-      />
-
-      {/* 2. BỘ 4 THẺ KPI KIỂM TOÁN */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Tổng số bản ghi */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Tổng Số Bản Ghi
-            </span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-              <Layers className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-1.5">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold font-mono text-slate-900 dark:text-white leading-none">
-                {kpis.totalRecords.toLocaleString()}
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">sự kiện đã ghi</span>
-            </div>
-            <div className="mt-1 text-xs text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1 truncate">
-              <Lock className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Cơ chế Append-Only (Bất biến)</span>
-            </div>
-          </div>
-        </div>
-
-        {/* KPI 2: Tỷ lệ thành công */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              Thao Tác Hợp Lệ
-            </span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-1.5">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 leading-none">
-                {kpis.successRate}%
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">tỷ lệ trang này</span>
-            </div>
-            <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-300 font-medium truncate">
-              {kpis.successCount} thao tác SUCCESS
-            </div>
-          </div>
-        </div>
-
-        {/* KPI 3: Thao tác thất bại / Cảnh báo */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-              Cảnh Báo / Thất Bại
-            </span>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
-              <ShieldAlert className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-1.5">
-            <div className="flex items-baseline gap-1.5">
-              <span className={`text-2xl font-bold font-mono leading-none ${kpis.failedCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
-                {kpis.failedCount}
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">thao tác FAILED</span>
-            </div>
-            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium truncate">
-              {kpis.failedCount === 0 ? 'An toàn, không có sự cố' : 'Cần kiểm tra chi tiết lỗi'}
-            </div>
-          </div>
-        </div>
-
-        {/* KPI 4: Tính toàn vẹn chuỗi Hash */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
-              Chuỗi Hash Chaining
-            </span>
-            <div className="w-8 h-8 rounded-lg bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
-              <Hash className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-1.5">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold font-mono text-cyan-600 dark:text-cyan-400 leading-none">
-                SHA-256
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">liên kết chuỗi</span>
-            </div>
-            <div className="mt-1 text-xs text-cyan-700 dark:text-cyan-300 font-medium flex items-center gap-1 truncate">
-              <Link2 className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Chống sửa lén &amp; xóa bản ghi</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. BỘ LỌC ĐA CHIỀU & TÌM KIẾM */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-        {/* Actions & Toolbar Row */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-            <Filter className="w-3.5 h-3.5 text-indigo-500" />
-            <span className="font-semibold text-slate-700 dark:text-slate-300">Bộ Lọc & Tra Cứu Sự Kiện Hệ Thống</span>
-            <span>• Tổng số <b>{totalRecords}</b> bản ghi</span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
+        title="Nhật Ký Kiểm Toán Hệ Thống"
+        subtitle="Lưu vết thao tác hệ thống và kiểm tra tính toàn vẹn dữ liệu SHA-256."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
             <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={fetchAuditLogs}
               disabled={isLoading}
-              className="flex items-center gap-1.5"
+              leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />}
             >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Làm Mới</span>
+              Làm mới
             </Button>
 
             <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={handleExportExcel}
               disabled={logs.length === 0}
-              className="flex items-center gap-1.5 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 font-semibold"
+              leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
               title="Xuất nhật ký kiểm toán ra file Excel (.xlsx)"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Xuất Excel (.xlsx)</span>
+              Xuất Excel
             </Button>
 
             <Button
+              type="button"
+              variant="primary"
               size="sm"
               onClick={runIntegrityVerification}
               disabled={isCheckingIntegrity}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-700 hover:to-cyan-700 text-white shadow-md shadow-indigo-600/20"
+              leftIcon={<Link2 className={`w-3.5 h-3.5 ${isCheckingIntegrity ? 'animate-spin' : ''}`} />}
             >
-              <Link2 className={`w-4 h-4 ${isCheckingIntegrity ? 'animate-spin' : ''}`} />
-              <span>{isCheckingIntegrity ? 'Đang Đối Soát...' : 'Đối Soát SHA-256'}</span>
+              {isCheckingIntegrity ? 'Đang đối soát...' : 'Đối soát SHA-256'}
             </Button>
           </div>
-        </div>
+        }
+      />
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-          {/* Keyword Search */}
-          <div className="md:col-span-4 relative">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Tìm theo Hành động, Loại đối tượng, ID..."
-              value={keyword}
-              onChange={(e) => {
-                setKeyword(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-10 pr-4 py-2 text-sm rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            {keyword && (
-              <button
-                onClick={() => setKeyword('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Target Type Filter */}
-          <div className="md:col-span-3">
-            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
-              <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-              <select
-                value={selectedTargetType}
+      {/* 2. UNIFIED AUDIT LOGS CARD: KPI STRIP + TOOLBAR + TABLE */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
+        <CompactStatsBar
+          embedded
+          items={[
+            { label: 'Tổng sự kiện', value: kpis.totalRecords.toLocaleString(), tone: 'neutral' },
+            { label: 'Thao tác hợp lệ', value: kpis.successCount, badge: `${kpis.successRate}%`, tone: 'success' },
+            { label: 'Cảnh báo / Lỗi', value: kpis.failedCount, tone: kpis.failedCount > 0 ? 'danger' : 'neutral' },
+            { label: 'Toàn vẹn dữ liệu', value: 'SHA-256', unit: 'Khớp chuỗi', tone: 'brand' },
+          ]}
+        />
+        <div className="p-3 border-b border-slate-200/70 dark:border-slate-800 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Keyword Search */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Tìm theo hành động, loại đối tượng, ID..."
+                value={keyword}
                 onChange={(e) => {
-                  setSelectedTargetType(e.target.value);
+                  setKeyword(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full bg-transparent text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
-              >
-                <option value="">Tất cả đối tượng</option>
-                <option value="User">User (Cán bộ / Tài khoản)</option>
-                <option value="Payroll">Payroll (Bảng Lương)</option>
-                <option value="AttendanceRecord">AttendanceRecord (Điểm danh)</option>
-                <option value="SystemConfig">SystemConfig (Cấu hình hệ thống)</option>
-                <option value="LeaveRequest">LeaveRequest (Đơn nghỉ phép)</option>
-                <option value="Schedule">Schedule (Thời khóa biểu / Lịch)</option>
-                <option value="FaceTemplate">FaceTemplate (Mẫu khuôn mặt)</option>
-                <option value="Holiday">Holiday (Ngày nghỉ lễ)</option>
-                <option value="ShiftConfig">ShiftConfig (Ca làm việc)</option>
-                <option value="Department">Department (Khoa / Phòng ban)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Status Filter */}
-          <div className="md:col-span-2">
-            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
-              <select
-                value={selectedStatus}
-                onChange={(e) => {
-                  setSelectedStatus(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full bg-transparent text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
-              >
-                <option value="">Tất cả kết quả</option>
-                <option value="success">Thành công (SUCCESS)</option>
-                <option value="failed">Thất bại (FAILED)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Date Range: From / To */}
-          <div className="md:col-span-3 flex items-center gap-2">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                setCurrentPage(1);
-              }}
-              title="Từ ngày"
-              className="w-1/2 px-2.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none"
-            />
-            <span className="text-slate-400 text-xs">→</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => {
-                setEndDate(e.target.value);
-                setCurrentPage(1);
-              }}
-              title="Đến ngày"
-              className="w-1/2 px-2.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {/* Active Filters Summary */}
-        {(keyword || selectedStatus || selectedTargetType || startDate || endDate) && (
-          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80 text-xs">
-            <span className="text-slate-400">Đang lọc theo:</span>
-            {keyword && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                Từ khóa: &quot;{keyword}&quot;
-                <button onClick={() => setKeyword('')} className="hover:text-indigo-900">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-            {selectedTargetType && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
-                Đối tượng: {selectedTargetType}
-                <button onClick={() => setSelectedTargetType('')} className="hover:text-cyan-900">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-            {selectedStatus && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                Kết quả: {selectedStatus}
-                <button onClick={() => setSelectedStatus('')} className="hover:text-emerald-900">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-            {(startDate || endDate) && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                Thời gian: {startDate || '...'} đến {endDate || '...'}
+                className="w-full h-9 pl-9 pr-7 text-xs rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
+              />
+              {keyword && (
                 <button
+                  type="button"
+                  onClick={() => setKeyword('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Target Type Filter */}
+            <select
+              value={selectedTargetType}
+              onChange={(e) => {
+                setSelectedTargetType(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="h-9 pl-3 pr-7 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:border-brand-500 cursor-pointer"
+            >
+              <option value="">Tất cả đối tượng</option>
+              {TARGET_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+
+            {/* Status Filter */}
+            <select
+              value={selectedStatus}
+              onChange={(e) => {
+                setSelectedStatus(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="h-9 pl-3 pr-7 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:border-brand-500 cursor-pointer"
+            >
+              <option value="">Tất cả kết quả</option>
+              <option value="success">Thành công</option>
+              <option value="failed">Thất bại</option>
+            </select>
+
+            {/* Date Filter Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowDateFilters((prev) => !prev)}
+              className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border text-xs font-semibold transition-colors cursor-pointer ${
+                showDateFilters || startDate || endDate
+                  ? 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-950/50 dark:text-brand-300 dark:border-brand-800'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/70'
+              }`}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span>Khoảng ngày</span>
+            </button>
+
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium ml-auto pr-1 whitespace-nowrap">
+              {totalRecords} bản ghi
+            </span>
+          </div>
+
+          {showDateFilters && (
+            <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-slate-500 font-medium">Từ ngày:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-9 px-2.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-mono focus:outline-none"
+              />
+              <span className="text-slate-400">→</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-9 px-2.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-mono focus:outline-none"
+              />
+              {(keyword || selectedStatus || selectedTargetType || startDate || endDate) && (
+                <button
+                  type="button"
                   onClick={() => {
+                    setKeyword('');
+                    setSelectedStatus('');
+                    setSelectedTargetType('');
                     setStartDate('');
                     setEndDate('');
+                    setCurrentPage(1);
                   }}
-                  className="hover:text-amber-900"
+                  className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline ml-auto cursor-pointer"
                 >
-                  <X className="w-3 h-3" />
+                  Đặt lại bộ lọc
                 </button>
-              </span>
-            )}
-            <button
-              onClick={() => {
-                setKeyword('');
-                setSelectedStatus('');
-                setSelectedTargetType('');
-                setStartDate('');
-                setEndDate('');
-                setCurrentPage(1);
-              }}
-              className="text-slate-400 hover:text-indigo-600 underline ml-auto cursor-pointer"
-            >
-              Đặt lại tất cả bộ lọc
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* 4. MAIN AUDIT LOGS TABLE */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              )}
+            </div>
+          )}
+        </div>
         {isLoading ? (
           <div className="p-12 text-center">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 mb-3 animate-spin">
@@ -628,46 +591,38 @@ export const AuditLogs: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="w-full overflow-hidden">
-            <table className="table-fixed w-full text-left border-collapse">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[780px] text-left border-collapse">
               <colgroup>
-                <col style={{ width: '14%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '24%' }} />
+                <col style={{ width: '20%' }} />
                 <col style={{ width: '18%' }} />
                 <col style={{ width: '12%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '11%' }} />
                 <col style={{ width: '10%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '7%' }} />
               </colgroup>
               <thead>
-                <tr className="bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  <th className="py-3 px-3 whitespace-nowrap">Thời Điểm</th>
+                <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/70 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <th className="py-3 px-4 whitespace-nowrap">Thời Điểm</th>
                   <th className="py-3 px-3 whitespace-nowrap">Người Thực Hiện</th>
                   <th className="py-3 px-3 whitespace-nowrap">Hành Động</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Đối Tượng Tác Động</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Địa Chỉ IP</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Đối Tượng</th>
                   <th className="py-3 px-3 text-center whitespace-nowrap">Kết Quả</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Mã Băm SHA-256</th>
-                  <th className="py-3 px-3 text-right whitespace-nowrap">Chi Tiết</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Thao Tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {logs.map((log: any) => {
                   const actVal = log.action || log.hanh_dong || 'THAO TÁC';
+                  const actLabel = getActionLabel(actVal);
                   const actStyle = getActionColor(actVal);
-                  const actorObj = typeof log.actor === 'object' && log.actor
-                    ? log.actor
-                    : (typeof log.nguoi_thuc_hien_id === 'object' && log.nguoi_thuc_hien_id ? log.nguoi_thuc_hien_id : null);
-                  const actorName =
-                    actorObj
-                      ? actorObj.fullName || actorObj.ho_ten || 'Quản trị viên Hệ thống'
-                      : (log.actorType === 'system' || log.loai_chu_the === 'system')
-                      ? 'HỆ THỐNG'
-                      : 'Ẩn danh / Không xác định';
-                  const actorRole = actorObj ? (actorObj.role || actorObj.vai_tro_chinh || 'admin') : (log.actorType || log.loai_chu_the || 'system');
+                  const actorInfo = getAuditActorInfo(log);
                   const timestampVal = log.timestamp || log.thoi_diem || log.tao_luc;
+                  const timeParts = formatDateAndTimeParts(timestampVal);
+                  const ipVal = log.ipAddress || log.dia_chi_ip || '127.0.0.1';
+                  const hashVal = log.currentHash || log.ma_bam_hien_tai || '';
                   const targetTypeVal = log.targetType || log.loai_doi_tuong || 'he_thong';
+                  const targetLabel = TARGET_TYPE_LABELS[targetTypeVal] || targetTypeVal;
                   const targetIdVal = log.targetId || log.doi_tuong_id || '';
                   const statusVal = (log.status || log.ket_qua || 'success').toString().toLowerCase();
                   const isSuccess = statusVal === 'success' || statusVal === 'thanh_cong';
@@ -675,94 +630,94 @@ export const AuditLogs: React.FC = () => {
                   return (
                     <tr
                       key={log._id}
-                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors group"
+                      className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group"
                     >
-                      {/* Thời điểm */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 text-[11px] text-slate-700 dark:text-slate-300 font-mono">
-                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span>{formatDateTimeVN(timestampVal)}</span>
+                      {/* Thời điểm & IP */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="leading-snug">
+                          <div className="flex items-center gap-1.5 text-sm font-medium tabular-nums text-slate-800 dark:text-slate-200">
+                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>{timeParts.date}</span>
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums pl-5">
+                            {timeParts.time} • {ipVal}
+                          </div>
                         </div>
                       </td>
 
                       {/* Người thực hiện */}
                       <td className="py-3 px-3 min-w-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs shrink-0">
-                            {log.actorType === 'system' || log.loai_chu_the === 'system' ? (
-                              <Server className="w-3.5 h-3.5 text-indigo-500" />
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
+                            {actorInfo.isSystem ? (
+                              <Server className="w-3.5 h-3.5 text-brand-500" />
                             ) : (
-                              <User className="w-3.5 h-3.5 text-slate-500" />
+                              <User className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                             )}
                           </div>
-                          <div className="min-w-0 truncate">
-                            <div className="font-semibold text-xs text-slate-900 dark:text-white truncate">
-                              {actorName}
+                          <div className="min-w-0 leading-snug">
+                            <div
+                              className="font-semibold text-sm text-slate-900 dark:text-white truncate"
+                              title={actorInfo.name}
+                            >
+                              {actorInfo.name}
                             </div>
-                            <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono uppercase tracking-wider truncate">
-                              {actorRole || 'system'}
+                            <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                              {actorInfo.isSystem ? 'Tác vụ hệ thống' : getRoleLabel(actorInfo.role)}
                             </div>
                           </div>
                         </div>
                       </td>
 
-                      {/* Hành động */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      {/* Hành động (Tiếng Việt dễ hiểu) */}
+                      <td className="py-3 px-3">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border tracking-wide uppercase ${actStyle.bg} ${actStyle.text} ${actStyle.border}`}
+                          title={`Mã hệ thống: ${actVal}`}
+                          className={`inline-flex items-center max-w-full truncate px-2.5 py-1 rounded-full text-xs font-medium border ${actStyle.bg} ${actStyle.text} ${actStyle.border}`}
                         >
-                          {actVal}
+                          {actLabel}
                         </span>
                       </td>
 
                       {/* Đối tượng tác động */}
                       <td className="py-3 px-3 min-w-0">
-                        <div className="text-xs truncate">
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            {targetTypeVal}
-                          </span>
-                          <span className="text-[11px] font-mono text-slate-400 ml-1.5">
+                        <div className="min-w-0 leading-snug">
+                          <div
+                            className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate"
+                            title={`${targetLabel} (${targetTypeVal})`}
+                          >
+                            {targetLabel}
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums truncate">
                             #{targetIdVal ? String(targetIdVal).slice(-8) : '--'}
-                          </span>
+                          </div>
                         </div>
-                      </td>
-
-                      {/* IP Address */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                          {log.ipAddress || log.dia_chi_ip || '127.0.0.1'}
-                        </span>
                       </td>
 
                       {/* Kết quả */}
                       <td className="py-3 px-3 text-center whitespace-nowrap">
                         {isSuccess ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                            SUCCESS
+                            Thành công
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
                             <XCircle className="w-3 h-3 text-rose-500" />
-                            FAILED
+                            Thất bại
                           </span>
                         )}
                       </td>
 
-                      {/* Mã băm SHA-256 */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <code
-                            title={log.currentHash || log.ma_bam_hien_tai || ''}
-                            className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/40"
-                          >
-                            {truncateHash(log.currentHash || log.ma_bam_hien_tai, 6)}
-                          </code>
-                          {(log.currentHash || log.ma_bam_hien_tai) && (
+                      {/* Thao tác: Copy SHA-256 & Xem chi tiết */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1">
+                          {hashVal && (
                             <button
-                              onClick={() => copyToClipboard(log.currentHash || log.ma_bam_hien_tai || '', log._id)}
-                              title="Sao chép toàn bộ mã băm"
-                              className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                              type="button"
+                              onClick={() => copyToClipboard(hashVal, log._id)}
+                              title={`Sao chép mã SHA-256 (${truncateHash(hashVal, 6)})`}
+                              className="p-1.5 text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors cursor-pointer"
                             >
                               {copiedKey === log._id ? (
                                 <Check className="w-3.5 h-3.5 text-emerald-500" />
@@ -771,21 +726,18 @@ export const AuditLogs: React.FC = () => {
                               )}
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedLog(log);
+                              setIsDetailModalOpen(true);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/40 rounded-full transition-colors cursor-pointer"
+                            title="Xem chi tiết sự kiện"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
                         </div>
-                      </td>
-
-                      {/* Thao tác */}
-                      <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => {
-                            setSelectedLog(log);
-                            setIsDetailModalOpen(true);
-                          }}
-                          className="p-1.5 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors cursor-pointer"
-                          title="Xem chi tiết sự kiện và payload"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
                       </td>
                     </tr>
                   );
@@ -897,7 +849,7 @@ export const AuditLogs: React.FC = () => {
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
                   <span className="text-[11px] text-slate-400 block">Loại Đối Tượng</span>
                   <span className="font-bold text-slate-900 dark:text-white mt-0.5 block truncate">
-                    {selectedLog.targetType}
+                    {TARGET_TYPE_LABELS[selectedLog.targetType] || selectedLog.targetType}
                   </span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
@@ -909,9 +861,7 @@ export const AuditLogs: React.FC = () => {
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
                   <span className="text-[11px] text-slate-400 block">Chủ Thể (Actor)</span>
                   <span className="font-bold text-slate-900 dark:text-white mt-0.5 block truncate">
-                    {typeof selectedLog.actor === 'object' && selectedLog.actor
-                      ? selectedLog.actor.fullName
-                      : selectedLog.actorType || 'system'}
+                    {getAuditActorInfo(selectedLog).name}
                   </span>
                 </div>
               </div>
@@ -969,6 +919,14 @@ export const AuditLogs: React.FC = () => {
                     <span className="text-slate-400 shrink-0">User-Agent:</span>
                     <span className="text-right text-slate-600 dark:text-slate-300 break-all font-mono text-[10px]">
                       {selectedLog.userAgent}
+                    </span>
+                  </div>
+                )}
+                {(selectedLog as any).failureReason && (
+                  <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
+                    <span className="text-rose-500 shrink-0 font-semibold">Lý do thất bại:</span>
+                    <span className="text-right text-rose-600 dark:text-rose-400 font-medium break-words">
+                      {(selectedLog as any).failureReason}
                     </span>
                   </div>
                 )}

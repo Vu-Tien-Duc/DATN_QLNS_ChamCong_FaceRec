@@ -10,10 +10,10 @@ import {
   Filter,
   Search,
   RotateCcw,
+  RefreshCw,
   Eye,
   Check,
   X,
-  ShieldAlert,
   Loader2,
   CalendarDays,
   CalendarCheck,
@@ -22,12 +22,10 @@ import {
   Paperclip,
   ChevronLeft,
   ChevronRight,
-  TrendingUp,
   Landmark,
   Info,
   ArrowRight,
   Printer,
-  Table,
   AlertTriangle,
   ShieldCheck,
   FileSpreadsheet,
@@ -40,6 +38,7 @@ import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { DepartmentSelect } from '../../components/chung/ChonDonVi';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import {
   leaveRequestApi,
   LeaveRequestData,
@@ -49,11 +48,14 @@ import {
 } from '../../api/donNghiPhep.api';
 import { departmentApi } from '../../api/phongBan.api';
 import { scheduleApi } from '../../api/lichTrinh.api';
+import { shiftApi } from '../../api/caLamViec.api';
+import { userApi } from '../../api/nguoiDung.api';
 import { extractArray } from '../../api/apiClient';
-import { DepartmentItem } from '../../types/index';
+import { DepartmentItem, ShiftItem, UserProfile } from '../../types/index';
 import { isAdmin as checkIsAdmin, hasRole } from '../../utils/phanQuyen';
 import { formatDateVN, formatDateTimeVN } from '../../utils/dinhDang';
 import { ModalPheDuyetDon } from './components/ModalPheDuyetDon';
+import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
 
 // =============================================================================
 // HELPER FUNCTIONS & FORMATTERS
@@ -226,12 +228,15 @@ export const LeaveRequests: React.FC = () => {
   const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalanceData | null>(null);
   const [schedules, setSchedules] = useState<any[]>([]);
+  const [shifts, setShifts] = useState<ShiftItem[]>([]);
+  const [teachers, setTeachers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Tracking broken avatars
   const [brokenAvatars, setBrokenAvatars] = useState<Record<string, boolean>>({});
 
-  // Filter States (Đồng bộ chuẩn 4 cột theo code.html)
+  // Filter States
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
   const [searchKeyword, setSearchKeyword] = useState<string>('');
   const [datePreset, setDatePreset] = useState<'all' | 'today' | 'week' | 'month' | 'semester' | 'custom'>('month');
   const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
@@ -312,7 +317,10 @@ export const LeaveRequests: React.FC = () => {
     startDate: string;
     endDate: string;
     isHalfDay: boolean;
+    leavePeriods: string;
     scheduleId: string;
+    substituteShiftId: string;
+    substituteTeacherId: string;
     makeupDate: string;
     file: File | null;
   }>({
@@ -321,7 +329,10 @@ export const LeaveRequests: React.FC = () => {
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     isHalfDay: false,
+    leavePeriods: '',
     scheduleId: '',
+    substituteShiftId: '',
+    substituteTeacherId: '',
     makeupDate: '',
     file: null,
   });
@@ -353,15 +364,19 @@ export const LeaveRequests: React.FC = () => {
 
   const loadMetadata = useCallback(async () => {
     try {
-      const [deptRes, balanceRes, schedRes] = await Promise.all([
+      const [deptRes, balanceRes, schedRes, shiftRes, usersRes] = await Promise.all([
         departmentApi.getDepartmentsFlat().catch(() => ({ data: [] })),
         leaveRequestApi.getLeaveBalance().catch(() => null),
         scheduleApi.getSchedules({ limit: 100 }).catch(() => ({ data: [] })),
+        shiftApi.getShifts().catch(() => []),
+        userApi.getUsers({ limit: 200 }).catch(() => ({ data: [] })),
       ]);
 
       setDepartments(Array.isArray(deptRes.data) ? deptRes.data : []);
       if (balanceRes) setLeaveBalance(balanceRes);
       setSchedules(extractArray<any>(schedRes));
+      setShifts(extractArray<ShiftItem>(shiftRes));
+      setTeachers(extractArray<UserProfile>(usersRes));
     } catch (err) {
       console.error('Error loading metadata:', err);
     }
@@ -489,7 +504,10 @@ export const LeaveRequests: React.FC = () => {
       startDate: new Date().toISOString().split('T')[0],
       endDate: new Date().toISOString().split('T')[0],
       isHalfDay: false,
+      leavePeriods: '',
       scheduleId: schedules[0]?._id || '',
+      substituteShiftId: '',
+      substituteTeacherId: '',
       makeupDate: '',
       file: null,
     });
@@ -514,15 +532,37 @@ export const LeaveRequests: React.FC = () => {
       return;
     }
 
+    if (
+      createFormData.type === 'doi_ca' &&
+      !createFormData.substituteShiftId &&
+      !createFormData.substituteTeacherId
+    ) {
+      toast.error('Đơn đổi ca cần chọn ít nhất ca thay thế hoặc giảng viên dạy thay');
+      return;
+    }
+
     setCreateSubmitting(true);
     try {
+      const parsedPeriods = Number(createFormData.leavePeriods);
       const payload: CreateLeavePayload = {
         type: createFormData.type,
         reason: createFormData.reason.trim(),
         startDate: createFormData.startDate,
         endDate: createFormData.endDate,
         isHalfDay: createFormData.isHalfDay,
-        scheduleId: createFormData.type === 'day_bu' ? createFormData.scheduleId : undefined,
+        leavePeriods: parsedPeriods > 0 ? parsedPeriods : undefined,
+        scheduleId:
+          createFormData.type === 'day_bu' || createFormData.type === 'doi_ca'
+            ? createFormData.scheduleId || undefined
+            : undefined,
+        substituteShiftId:
+          createFormData.type === 'doi_ca' && createFormData.substituteShiftId
+            ? createFormData.substituteShiftId
+            : undefined,
+        substituteTeacherId:
+          createFormData.type === 'doi_ca' && createFormData.substituteTeacherId
+            ? createFormData.substituteTeacherId
+            : undefined,
         makeupDate: createFormData.type === 'day_bu' ? createFormData.makeupDate : undefined,
         file: createFormData.file || undefined,
       };
@@ -595,6 +635,13 @@ export const LeaveRequests: React.FC = () => {
     setIsApprovalModalOpen(true);
   };
 
+  const getExpectedVersion = useCallback((req?: LeaveRequestData | null): number | undefined => {
+    const updated = req?.updatedAt || (req as any)?.cap_nhat_luc;
+    if (!updated) return undefined;
+    const ts = new Date(updated).getTime();
+    return Number.isFinite(ts) ? ts : undefined;
+  }, []);
+
   const handleApprovalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRequest) return;
@@ -606,11 +653,12 @@ export const LeaveRequests: React.FC = () => {
 
     setActionSubmitting(true);
     try {
+      const expectedVersion = getExpectedVersion(selectedRequest);
       if (approvalAction === 'APPROVE') {
-        await leaveRequestApi.approveLeaveRequest(selectedRequest._id, approvalNote.trim());
+        await leaveRequestApi.approveLeaveRequest(selectedRequest._id, approvalNote.trim(), expectedVersion);
         toast.success('Phê duyệt đơn xin nghỉ phép thành công');
       } else {
-        await leaveRequestApi.rejectLeaveRequest(selectedRequest._id, rejectionReason.trim());
+        await leaveRequestApi.rejectLeaveRequest(selectedRequest._id, rejectionReason.trim(), expectedVersion);
         toast.success('Đã từ chối đơn xin nghỉ phép');
       }
 
@@ -627,13 +675,13 @@ export const LeaveRequests: React.FC = () => {
   };
 
   // Xử lý Hủy đơn trực tuyến (Chủ đơn hoặc Admin)
-  const handleCancelRequest = async (requestId: string) => {
+  const handleCancelRequest = async (requestId: string, expectedVersion?: number) => {
     if (!window.confirm('Bạn có chắc chắn muốn hủy đơn này không? Đơn sau khi hủy sẽ không thể hoàn tác.')) {
       return;
     }
     setActionSubmitting(true);
     try {
-      await leaveRequestApi.cancelLeaveRequest(requestId);
+      await leaveRequestApi.cancelLeaveRequest(requestId, expectedVersion);
       toast.success('Hủy đơn xin nghỉ phép thành công');
       setIsDetailModalOpen(false);
       loadRequests();
@@ -713,441 +761,274 @@ export const LeaveRequests: React.FC = () => {
   return (
     <div className="flex flex-col w-full space-y-4">
       {/* =========================================================================
-          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+          1. PAGE HEADER + ACTIONS
          ========================================================================= */}
       <PageHeader
         title="Quản Lý Đơn Xin Nghỉ Phép & Giải Trình"
-        subtitle="Quy trình phê duyệt 2 cấp (Khoa/Viện trưởng ➔ Ban Giám Hiệu), tự động khấu trừ quỹ phép năm và khóa ca giảng dạy trên Thời khóa biểu."
-        icon={<FileText className="w-5 h-5 text-brand-600" />}
-        badge="Quy Trình 2 Cấp"
-        badgeVariant="brand"
-      />
-
-      {/* =========================================================================
-          SECTION 0: THẺ HẠN MỨC NGÀY PHÉP NĂM & SỐ NGÀY CÒN LẠI CỦA BẠN
-         ========================================================================= */}
-      {leaveBalance && !leaveBalance.isAdmin && (
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-100 dark:border-blue-900/50 shadow-xs">
-              <CalendarDays className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight">
-                  Quỹ Nghỉ Phép Năm {leaveBalance.year || (leaveBalance as any).nam || new Date().getFullYear()} Của Bạn
-                </h3>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wider uppercase border ${
-                  (leaveBalance.availableDays ?? (leaveBalance as any).so_ngay_kha_dung ?? 0) > 0
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
-                    : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
-                }`}>
-                  {(leaveBalance.availableDays ?? (leaveBalance as any).so_ngay_kha_dung ?? 0) > 0 ? 'Khả dụng' : 'Hết phép năm'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Chính sách đại học: Cán bộ được hưởng tối đa <strong className="text-slate-700 dark:text-slate-200">{leaveBalance.annualLeaveQuota ?? (leaveBalance as any).han_muc_phep_nam ?? 12} ngày phép năm</strong> có hưởng lương.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-2 sm:gap-2.5 shrink-0 text-center">
-            <div className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-              <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 block uppercase font-bold tracking-wider">Hạn mức</span>
-              <strong className="text-base sm:text-lg font-bold font-mono text-slate-800 dark:text-slate-100">{leaveBalance.annualLeaveQuota ?? (leaveBalance as any).han_muc_phep_nam ?? 12}</strong>
-              <span className="text-[10px] text-slate-400 block">ngày</span>
-            </div>
-            <div className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-              <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 block uppercase font-bold tracking-wider">Đã dùng</span>
-              <strong className="text-base sm:text-lg font-bold font-mono text-slate-800 dark:text-slate-100">{leaveBalance.daysUsed ?? (leaveBalance as any).so_ngay_da_nghi ?? 0}</strong>
-              <span className="text-[10px] text-slate-400 block">ngày</span>
-            </div>
-            <div className="px-3 py-2 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800">
-              <span className="text-[10px] sm:text-[11px] text-amber-700 dark:text-amber-300 block uppercase font-bold tracking-wider">Chờ duyệt</span>
-              <strong className="text-base sm:text-lg font-bold font-mono text-amber-600 dark:text-amber-400">{leaveBalance.pendingAnnualLeaveDays ?? (leaveBalance as any).so_ngay_cho_duyet ?? 0}</strong>
-              <span className="text-[10px] text-amber-600/80 dark:text-amber-400/80 block">ngày</span>
-            </div>
-            <div className="px-3 py-2 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800 shadow-xs">
-              <span className="text-[10px] sm:text-[11px] text-emerald-700 dark:text-emerald-300 block uppercase font-bold tracking-wider">Còn lại</span>
-              <strong className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">{leaveBalance.availableDays ?? (leaveBalance as any).so_ngay_kha_dung ?? 0}</strong>
-              <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 block">ngày</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          SECTION 1: 4 KPI METRIC CARDS (Bám sát 100% mẫu code.html)
-         ========================================================================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        {/* Metric 1: Tổng đơn tháng */}
-        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Tổng Đơn Tháng
-            </span>
-            <span className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              <FileText className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono leading-none">
-                {metrics.totalMonth}
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">đơn</span>
-            </div>
-            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
-              <TrendingUp className="w-3.5 h-3.5" /> +12%
-            </span>
-          </div>
-          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
-            <span>Hạn mức ĐH NTU</span>
-            <span className="text-blue-600 dark:text-blue-400 font-medium">82.4% khả dụng</span>
-          </div>
-        </div>
-
-        {/* Metric 2: Chờ duyệt Cấp 1 */}
-        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-              Chờ duyệt Cấp 1
-            </span>
-            <span className="px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-[10px] text-amber-700 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800">
-              {metrics.step1Count} CẦN XỬ LÝ
-            </span>
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono leading-none">
-                {String(metrics.step1Count).padStart(2, '0')}
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">đơn</span>
-            </div>
-            {metrics.step1Count > 0 && (
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
-            )}
-          </div>
-          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
-            <span>Khoa / Viện trưởng</span>
-            <span className="font-mono text-amber-600 dark:text-amber-400 font-medium">&lt; 24h quy định</span>
-          </div>
-        </div>
-
-        {/* Metric 3: Chờ duyệt Cấp 2 */}
-        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-              Chờ duyệt Cấp 2
-            </span>
-            <span className="px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200 dark:border-indigo-800">
-              {metrics.step2Count} TIẾP NHẬN
-            </span>
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono leading-none">
-                {String(metrics.step2Count).padStart(2, '0')}
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">đơn</span>
-            </div>
-            <span className="p-1 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-              <ShieldAlert className="w-3.5 h-3.5" />
-            </span>
-          </div>
-          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
-            <span>Phòng TCCB &amp; BGH</span>
-            <span className="font-medium text-indigo-600 dark:text-indigo-400">Hồ sơ thẩm định</span>
-          </div>
-        </div>
-
-        {/* Metric 4: Đã Phê Duyệt */}
-        <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 shadow-xs transition-all hover:shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              Đã Duyệt / Hợp Lệ
-            </span>
-            <span className="px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-800">
-              {metrics.approvalRate}% TỶ LỆ
-            </span>
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono leading-none">
-                {metrics.approvedCount}
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">đơn</span>
-            </div>
-            {metrics.rejectedCount > 0 && (
-              <span className="text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-1.5 py-0.5 rounded font-medium border border-rose-200 dark:border-rose-900">
-                {metrics.rejectedCount} Từ chối
-              </span>
-            )}
-          </div>
-          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
-            <span>Đồng bộ TKB &amp; Kiosk</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-medium">100% Khớp</span>
-          </div>
-        </div>
-      </div>
-
-      {/* =========================================================================
-          SECTION 2: FILTER & ACTION CENTER (Bám sát 100% mẫu code.html)
-         ========================================================================= */}
-      <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-4 shadow-xs flex flex-col gap-3">
-        {/* Row 1: Header and Quick Action Buttons */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-1.5 h-5 rounded-full bg-brand-600 shrink-0" />
-            <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 truncate">
-              Bộ Lọc &amp; Tra Cứu Đơn Nghỉ Phép
-            </h2>
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              Tổng số {filteredRequests.length} đơn
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
+        subtitle="Phê duyệt 2 cấp, theo dõi quỹ phép năm và đồng bộ lịch giảng dạy."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
               onClick={() => {
                 loadRequests();
                 loadMetadata();
               }}
               disabled={loading}
-              className="h-9 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
+              variant="outline"
+              size="sm"
+              leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />}
               title="Làm mới bảng dữ liệu và số dư phép"
               type="button"
             >
-              <RotateCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              <span>Làm Mới</span>
-            </button>
-            <button
+              Làm mới
+            </Button>
+            <Button
               onClick={handleExportExcel}
-              className="h-9 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-medium flex items-center gap-1.5 transition-colors shadow-xs"
+              variant="outline"
+              size="sm"
+              leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
               title="Xuất dữ liệu Excel (.xlsx)"
               type="button"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Xuất File Excel (.xlsx)</span>
-            </button>
+              Xuất Excel
+            </Button>
             {!isAdmin && (
-              <button
+              <Button
                 onClick={openCreateModal}
-                className="h-9 px-3.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+                variant="primary"
+                size="sm"
+                leftIcon={<Plus className="w-3.5 h-3.5" />}
                 type="button"
               >
-                <Plus className="w-4 h-4" />
-                <span>Tạo Đơn Phép Mới</span>
-              </button>
+                Tạo đơn phép
+              </Button>
             )}
           </div>
-        </div>
-
-        {/* Row 2: Search Input & Quick Date Filter Tabs */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              placeholder="Tìm theo tên cán bộ, giảng viên, mã CB (NTU-xxx), môn học hoặc lý do..."
-              className="w-full h-10 pl-9 pr-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-900 transition-all"
-            />
-          </div>
-
-          <div className="flex items-center h-10 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg shrink-0 border border-slate-200/60 dark:border-slate-700">
-            <button
-              onClick={() => setDatePreset('all')}
-              className={`h-full px-3 rounded-md text-xs font-medium transition-all ${
-                datePreset === 'all'
-                  ? 'bg-brand-600 text-white font-semibold shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-              type="button"
-            >
-              Tất Cả
-            </button>
-            <button
-              onClick={() => setDatePreset('today')}
-              className={`h-full px-3 rounded-md text-xs font-medium transition-all ${
-                datePreset === 'today'
-                  ? 'bg-brand-600 text-white font-semibold shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-              type="button"
-            >
-              Hôm Nay
-            </button>
-            <button
-              onClick={() => setDatePreset('week')}
-              className={`h-full px-3 rounded-md text-xs font-medium transition-all ${
-                datePreset === 'week'
-                  ? 'bg-brand-600 text-white font-semibold shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-              type="button"
-            >
-              Tuần Này
-            </button>
-            <button
-              onClick={() => setDatePreset('month')}
-              className={`h-full px-3 rounded-md text-xs font-medium transition-all ${
-                datePreset === 'month'
-                  ? 'bg-brand-600 text-white font-semibold shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-              type="button"
-            >
-              Tháng Này
-            </button>
-            <button
-              onClick={() => setDatePreset('semester')}
-              className={`h-full px-3 rounded-md text-xs font-medium transition-all ${
-                datePreset === 'semester'
-                  ? 'bg-brand-600 text-white font-semibold shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-              type="button"
-            >
-              Học Kỳ I
-            </button>
-          </div>
-        </div>
-
-        {/* Row 3: 4 Equal Columns Grid Dropdowns & Filter Checkbox */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-          {/* Col 1: Khoa / Phòng Ban Phân Cấp */}
-          <div className="flex flex-col space-y-1">
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Khoa / Phòng ban
-            </label>
-            <DepartmentSelect
-              departments={departments}
-              value={selectedDeptId === 'all' ? '' : selectedDeptId}
-              onChange={(val) => setSelectedDeptId(val || 'all')}
-              allowAll={true}
-              allLabel="-- Tất cả đơn vị (Toàn trường) --"
-              placeholder="-- Chọn đơn vị trực thuộc --"
-              size="sm"
-              className="w-full"
-            />
-          </div>
-
-          {/* Col 2: Hình Thức Nghỉ Phép */}
-          <div className="flex flex-col space-y-1">
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Hình thức nghỉ phép
-            </label>
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20 cursor-pointer"
-            >
-              <option value="all">-- Tất cả loại phép --</option>
-              <option value="nghi_phep">Nghỉ phép thường niên (Năm)</option>
-              <option value="day_bu">Kế hoạch đăng ký dạy bù</option>
-              <option value="doi_ca">Đơn xin đổi ca dạy</option>
-              <option value="nghi_om">Nghỉ ốm / Thai sản (Có BHXH)</option>
-              <option value="viec_rieng">Việc riêng / Không hưởng lương</option>
-              <option value="giai_trinh_cong">Giải trình chấm công (Quên quẹt thẻ)</option>
-            </select>
-          </div>
-
-          {/* Col 3: Trạng Thái Luồng Duyệt */}
-          <div className="flex flex-col space-y-1">
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Trạng thái luồng duyệt
-            </label>
-            <select
-              value={selectedWorkflowStatus}
-              onChange={(e) => setSelectedWorkflowStatus(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20 cursor-pointer"
-            >
-              <option value="all">-- Tất cả trạng thái --</option>
-              <option value="step1">Chờ duyệt Cấp 1 (Khoa/Bộ môn)</option>
-              <option value="step2">Chờ duyệt Cấp 2 (BGH/TCCB)</option>
-              <option value="approved">Đã phê duyệt hoàn tất</option>
-              <option value="rejected">Từ chối / Yêu cầu giải trình</option>
-            </select>
-          </div>
-
-          {/* Col 4: Checkbox Chỉ xem đơn cần tôi duyệt */}
-          <div className="flex flex-col space-y-1">
-            <span className="invisible text-[11px] leading-tight select-none">Placeholder</span>
-            <label className="h-10 px-3.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between w-full cursor-pointer select-none transition-colors">
-              <span className="flex items-center gap-1.5 text-xs text-slate-800 dark:text-slate-200 font-medium truncate">
-                <AlertCircle className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
-                <span className="truncate">Chỉ xem đơn cần tôi duyệt</span>
-              </span>
-              <input
-                type="checkbox"
-                checked={onlyMyApproval}
-                onChange={(e) => setOnlyMyApproval(e.target.checked)}
-                className="w-4 h-4 rounded text-brand-600 focus:ring-0 cursor-pointer accent-brand-600"
-              />
-            </label>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* =========================================================================
-          SECTION 3: MAIN DATA TABLE (Fixed Zero Horizontal Scroll - Matching code.html)
+          2. UNIFIED LEAVE WORKSPACE CARD: KPI STRIP + TOOLBAR + TABLE + POLICY
          ========================================================================= */}
-      <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col">
-        {/* Table Header Bar */}
-        <div className="px-3 sm:px-4 py-2.5 bg-slate-50/60 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Table className="w-4 h-4 text-brand-600 dark:text-brand-400" />
-            <span className="text-xs sm:text-[13px] font-semibold text-slate-900 dark:text-slate-100">
-              Danh sách đơn xin nghỉ phép gần đây
+      <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden flex flex-col">
+        <CompactStatsBar
+          embedded
+          items={[
+            { label: 'Tổng đơn tháng', value: metrics.totalMonth, unit: 'đơn', tone: 'neutral' },
+            { label: 'Chờ duyệt cấp 1', value: metrics.step1Count, unit: 'đơn', tone: 'warning' },
+            { label: 'Chờ duyệt cấp 2', value: metrics.step2Count, unit: 'đơn', tone: 'brand' },
+            {
+              label: 'Đã duyệt',
+              value: metrics.approvedCount,
+              badge: `${metrics.approvalRate}%`,
+              tone: 'success',
+            },
+            ...(leaveBalance && !leaveBalance.isAdmin
+              ? [
+                  {
+                    label: `Phép năm ${leaveBalance.year || (leaveBalance as any).nam || new Date().getFullYear()}`,
+                    value: `${leaveBalance.availableDays ?? (leaveBalance as any).so_ngay_kha_dung ?? 0}/${
+                      leaveBalance.annualLeaveQuota ?? (leaveBalance as any).han_muc_phep_nam ?? 12
+                    }`,
+                    unit: 'ngày',
+                    tone: 'brand' as const,
+                  },
+                ]
+              : []),
+          ]}
+        />
+        {/* Compact Toolbar */}
+        <div className="p-3 border-b border-slate-200/70 dark:border-slate-800 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                placeholder="Tìm theo tên, mã CB, môn học hoặc lý do..."
+                className="w-full h-9 pl-9 pr-7 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 transition-colors"
+              />
+              {searchKeyword && (
+                <button
+                  type="button"
+                  onClick={() => setSearchKeyword('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Date Preset */}
+            <div className="relative h-9 shrink-0">
+              <select
+                value={datePreset}
+                onChange={(e) => setDatePreset(e.target.value as any)}
+                className="h-9 appearance-none pl-3 pr-7 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium outline-none focus:border-brand-500 cursor-pointer"
+                aria-label="Khoảng thời gian"
+              >
+                <option value="all">Tất cả thời gian</option>
+                <option value="today">Hôm nay</option>
+                <option value="week">Tuần này</option>
+                <option value="month">Tháng này</option>
+                <option value="semester">Học kỳ I</option>
+              </select>
+              <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Workflow Status */}
+            <div className="relative h-9 shrink-0">
+              <select
+                value={selectedWorkflowStatus}
+                onChange={(e) => setSelectedWorkflowStatus(e.target.value)}
+                className="h-9 appearance-none pl-3 pr-7 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium outline-none focus:border-brand-500 cursor-pointer"
+                aria-label="Trạng thái duyệt"
+              >
+                <option value="all">Tất cả trạng thái</option>
+                <option value="step1">Chờ duyệt Cấp 1</option>
+                <option value="step2">Chờ duyệt Cấp 2</option>
+                <option value="approved">Đã phê duyệt</option>
+                <option value="rejected">Từ chối / Giải trình</option>
+              </select>
+              <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Expandable Advanced Filters Button */}
+            {(() => {
+              const extraCount =
+                (selectedDeptId !== 'all' ? 1 : 0) +
+                (selectedType !== 'all' ? 1 : 0) +
+                (onlyMyApproval ? 1 : 0);
+              return (
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters((prev) => !prev)}
+                  className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-lg border text-xs font-medium transition-colors shrink-0 ${
+                    showAdvancedFilters || extraCount > 0
+                      ? 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-950/50 dark:text-brand-300 dark:border-brand-800'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/70'
+                  }`}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>Bộ lọc</span>
+                  {extraCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-brand-600 text-white text-[10px] font-semibold">
+                      {extraCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
+
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium ml-auto whitespace-nowrap">
+              {filteredRequests.length} đơn
             </span>
           </div>
-          <div className="flex items-center gap-3 text-slate-500 text-xs font-mono">
-            <span>Khóa TKB Kỳ 1 2024-2025</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span className="hidden sm:inline">Tự động đồng bộ Kiosk</span>
-          </div>
+
+          {/* Expandable Secondary Filters Row */}
+          {showAdvancedFilters && (
+            <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2.5 text-xs animate-fade-in">
+              <div className="w-full sm:w-56">
+                <DepartmentSelect
+                  departments={departments}
+                  value={selectedDeptId === 'all' ? '' : selectedDeptId}
+                  onChange={(val) => setSelectedDeptId(val || 'all')}
+                  allowAll={true}
+                  allLabel="-- Tất cả đơn vị --"
+                  placeholder="Chọn Khoa / Đơn vị..."
+                  size="sm"
+                  className="w-full"
+                />
+              </div>
+
+              <div className="relative w-full sm:w-56">
+                <select
+                  value={selectedType}
+                  onChange={(e) => setSelectedType(e.target.value)}
+                  className="w-full h-9 appearance-none px-3 pr-7 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs outline-none focus:border-brand-500 cursor-pointer"
+                >
+                  <option value="all">-- Tất cả loại phép --</option>
+                  <option value="nghi_phep">Nghỉ phép thường niên</option>
+                  <option value="day_bu">Đăng ký dạy bù</option>
+                  <option value="doi_ca">Đơn xin đổi ca dạy</option>
+                  <option value="nghi_om">Nghỉ ốm / Thai sản</option>
+                  <option value="viec_rieng">Việc riêng / Không lương</option>
+                  <option value="giai_trinh_cong">Giải trình chấm công</option>
+                </select>
+                <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
+              <label className="h-9 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={onlyMyApproval}
+                  onChange={(e) => setOnlyMyApproval(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded text-brand-600 focus:ring-0 cursor-pointer accent-brand-600"
+                />
+                <AlertCircle className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />
+                <span className="text-slate-700 dark:text-slate-200 font-medium">Chỉ xem đơn cần tôi duyệt</span>
+              </label>
+
+              {(selectedDeptId !== 'all' || selectedType !== 'all' || selectedWorkflowStatus !== 'all' || onlyMyApproval || searchKeyword) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchKeyword('');
+                    setSelectedDeptId('all');
+                    setSelectedType('all');
+                    setSelectedWorkflowStatus('all');
+                    setOnlyMyApproval(false);
+                    setDatePreset('month');
+                  }}
+                  className="h-9 px-2.5 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 underline ml-auto"
+                >
+                  Đặt lại bộ lọc
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Responsive Table với thanh cuộn ngang khi màn hình hẹp, đảm bảo không chồng lấn cột Thao tác và Trạng thái */}
         <div className="w-full overflow-x-auto scrollbar-thin">
-          <table className="w-full min-w-[980px] text-left border-collapse">
+          <table className="w-full min-w-[860px] text-left border-collapse">
             <colgroup>
-              <col style={{ width: '23%', minWidth: '220px' }} />
-              <col style={{ width: '13%', minWidth: '130px' }} />
-              <col style={{ width: '14%', minWidth: '130px' }} />
-              <col style={{ width: '18%', minWidth: '160px' }} />
-              <col style={{ width: '14%', minWidth: '135px' }} />
-              <col style={{ width: '18%', minWidth: '225px' }} />
+              <col style={{ width: '21%', minWidth: '180px' }} />
+              <col style={{ width: '14%', minWidth: '125px' }} />
+              <col style={{ width: '14%', minWidth: '115px' }} />
+              <col style={{ width: '21%', minWidth: '160px' }} />
+              <col style={{ width: '16%', minWidth: '135px' }} />
+              <col style={{ width: '14%', minWidth: '120px' }} />
             </colgroup>
-            <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 uppercase text-[11px] font-semibold border-b border-slate-200/60 dark:border-slate-800">
+            <thead className="bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase text-xs font-semibold tracking-wider border-b border-slate-200/70 dark:border-slate-800">
               <tr>
-                <th className="py-2.5 px-3 text-left align-middle truncate">Cán bộ / Giảng viên</th>
-                <th className="py-2.5 px-2 text-left align-middle truncate">Loại phép</th>
-                <th className="py-2.5 px-2 text-left align-middle truncate">Thời gian nghỉ</th>
-                <th className="py-2.5 px-2 text-left align-middle truncate">Lý do & Kế hoạch bù / Dẫn chứng</th>
-                <th className="py-2.5 px-2 text-center align-middle truncate">Trạng thái duyệt</th>
-                <th className="py-2.5 pr-3 pl-2 text-right align-middle truncate">Thao tác</th>
+                <th className="py-3 px-3 text-left align-middle truncate">Cán bộ / Giảng viên</th>
+                <th className="py-3 px-3 text-left align-middle truncate">Loại phép</th>
+                <th className="py-3 px-3 text-left align-middle truncate">Thời gian nghỉ</th>
+                <th className="py-3 px-3 text-left align-middle truncate">Lý do &amp; Kế hoạch bù</th>
+                <th className="py-3 px-3 text-center align-middle truncate">Trạng thái duyệt</th>
+                <th className="py-3 px-3 text-center align-middle truncate">Thao tác</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center text-slate-400">
+                  <td colSpan={6} className="p-12 text-center text-sm text-slate-400">
                     <Loader2 className="w-7 h-7 animate-spin text-brand-600 mx-auto mb-2" />
-                    <span className="text-xs">Đang tải danh sách đơn xin nghỉ phép...</span>
+                    <span>Đang tải danh sách đơn xin nghỉ phép...</span>
                   </td>
                 </tr>
               ) : paginatedRequests.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-12 text-center text-slate-400">
                     <FileText className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                    <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                       Không tìm thấy đơn xin nghỉ phép nào
                     </h4>
-                    <p className="text-[11px] text-slate-400 mt-1">
+                    <p className="text-xs text-slate-400 mt-1">
                       {onlyMyApproval
                         ? 'Hiện tại không có đơn nào đang chờ bạn xét duyệt.'
                         : 'Không có bản ghi nào khớp với điều kiện tra cứu hiện tại.'}
@@ -1161,7 +1042,6 @@ export const LeaveRequests: React.FC = () => {
                   const isOwner = applicantId === currentUserId;
                   const typeMeta = getLeaveTypeMeta(item.type || item.loai_don);
                   const statusMeta = getLeaveStatusMeta(item.status || item.trang_thai);
-                  const TypeIcon = typeMeta.icon;
 
                   // Parse raw fullName
                   const rawName = applicant?.fullName || 'Cán Bộ';
@@ -1187,12 +1067,12 @@ export const LeaveRequests: React.FC = () => {
                     <tr
                       key={item._id}
                       onClick={() => openDetailModal(item)}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors group cursor-pointer"
+                      className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer"
                       title="Nhấp để xem chi tiết hồ sơ đơn & minh chứng đính kèm"
                     >
-                      {/* Cột 1: Cán bộ / Giảng viên (24%) */}
-                      <td className="py-2.5 px-3 align-middle">
-                        <div className="flex items-center gap-2 min-w-0">
+                      {/* Cột 1: Cán bộ / Giảng viên */}
+                      <td className="py-3 px-3 align-middle">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <UserAvatar
                             name={displayName}
                             avatarUrl={applicant?.avatar}
@@ -1200,15 +1080,15 @@ export const LeaveRequests: React.FC = () => {
                             size="sm"
                             shape="rounded"
                           />
-                          <div className="flex flex-col min-w-0 leading-tight">
+                          <div className="flex flex-col min-w-0 leading-snug">
                             <span
-                              className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 truncate group-hover:text-brand-600 transition-colors"
+                              className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate group-hover:text-brand-600 transition-colors"
                               title={displayName}
                             >
                               {displayName}
                             </span>
                             <span
-                              className="text-[11px] text-slate-500 font-mono truncate"
+                              className="text-xs text-slate-500 dark:text-slate-400 truncate"
                               title={`${staffCodeDisplay} • ${deptTitle}`}
                             >
                               {staffCodeDisplay} • {deptTitle}
@@ -1217,10 +1097,10 @@ export const LeaveRequests: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Cột 2: Loại phép (14%) */}
-                      <td className="py-2.5 px-2 align-middle">
+                      {/* Cột 2: Loại phép */}
+                      <td className="py-3 px-3 align-middle">
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border whitespace-nowrap truncate max-w-full ${typeMeta.badgeClass}`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap truncate max-w-full ${typeMeta.badgeClass}`}
                           title={typeMeta.label}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${typeMeta.dotColor}`} />
@@ -1228,63 +1108,60 @@ export const LeaveRequests: React.FC = () => {
                         </span>
                       </td>
 
-                      {/* Cột 3: Thời gian nghỉ (16%) */}
-                      <td className="py-2.5 px-2 align-middle">
-                        <div className="flex flex-col text-[12px] font-mono leading-tight whitespace-nowrap">
-                          <span className="font-semibold text-slate-900 dark:text-slate-100">
+                      {/* Cột 3: Thời gian nghỉ */}
+                      <td className="py-3 px-3 align-middle">
+                        <div className="flex flex-col leading-snug whitespace-nowrap">
+                          <span className="text-sm font-medium text-slate-900 dark:text-slate-100 tabular-nums">
                             {formatDateVN(item.startDate || item.ngay_bat_dau)}
                             {item.endDate && item.endDate !== item.startDate ? ` → ${formatDateVN(item.endDate || item.ngay_ket_thuc)}` : ''}
                           </span>
-                          <span className="text-[11px] text-slate-500">
+                          <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                             {daysCount} ngày
                           </span>
                         </div>
                       </td>
 
-                      {/* Cột 4: Lý do & Kế hoạch bù / Dẫn chứng (18%) */}
-                      <td className="py-2.5 px-2 align-middle">
-                        <div className="flex flex-col min-w-0 leading-tight gap-1">
-                          {/* 1. Lý do xin nghỉ (Hiển thị rõ ràng cho mọi loại đơn) */}
+                      {/* Cột 4: Lý do & Kế hoạch bù / Dẫn chứng */}
+                      <td className="py-3 px-3 align-middle">
+                        <div className="flex flex-col min-w-0 leading-snug gap-0.5">
                           <span
-                            className="text-[12px] text-slate-800 dark:text-slate-200 font-medium truncate"
+                            className="text-sm text-slate-800 dark:text-slate-200 font-medium truncate"
                             title={item.reason || item.ly_do || 'Nghỉ theo kế hoạch'}
                           >
                             {item.reason || item.ly_do || 'Nghỉ theo kế hoạch'}
                           </span>
 
-                          {/* 2. Kế hoạch dạy thay / dạy bù nếu có */}
-                          {(item as any).substituteTeacherId || (item as any).nguoi_day_thay_id ? (
-                            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium truncate flex items-center gap-1">
+                          {(item as any).substituteTeacherId ? (
+                            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium truncate flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                               Dạy thay: {typeof (item as any).substituteTeacherId === 'object'
-                                ? (item as any).substituteTeacherId?.fullName
+                                ? (item as any).substituteTeacherId?.fullName || (item as any).substituteTeacherId?.ho_ten
                                 : 'Đã phân công'}
                             </span>
                           ) : item.makeupDate || (item as any).ngay_day_bu ? (
-                            <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium truncate flex items-center gap-1">
+                            <span className="text-xs text-amber-600 dark:text-amber-400 font-medium truncate flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                               Dạy bù: {formatDateVN(item.makeupDate || (item as any).ngay_day_bu)}
                             </span>
                           ) : null}
 
-                          {/* 3. Dẫn chứng / Minh chứng đính kèm */}
                           {hasValidAttachment && (
                             <span
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 w-fit"
+                              className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 dark:text-brand-400 w-fit"
                               title="Cán bộ có đính kèm tệp minh chứng"
                             >
-                              <Paperclip className="w-3 h-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                              <span>Có tệp minh chứng</span>
+                              <Paperclip className="w-3 h-3 shrink-0" />
+                              <span>Tệp minh chứng</span>
                             </span>
                           )}
                         </div>
                       </td>
 
-                      {/* Cột 5: Trạng thái duyệt (14%, text-center) */}
-                      <td className="py-2.5 px-2 align-middle text-center">
-                        <div className="flex flex-col items-center gap-1">
+                      {/* Cột 5: Trạng thái duyệt */}
+                      <td className="py-3 px-3 align-middle text-center">
+                        <div className="flex flex-col items-center gap-0.5">
                           <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border whitespace-nowrap shadow-2xs ${statusMeta.badgeClass}`}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap ${statusMeta.badgeClass}`}
                           >
                             <span
                               className={`w-1.5 h-1.5 rounded-full ${statusMeta.dotColor} ${
@@ -1293,30 +1170,27 @@ export const LeaveRequests: React.FC = () => {
                             />
                             {statusMeta.label}
                           </span>
-                          {/* Người duyệt hoàn tất */}
                           {item.status === 'approved' && (
-                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium truncate max-w-[140px]" title={`Duyệt bởi: ${getApproverDisplayName(item)}`}>
-                              Duyệt: {getApproverDisplayName(item)}
+                            <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[150px]" title={`Duyệt bởi: ${getApproverDisplayName(item)}`}>
+                              {getApproverDisplayName(item)}
                             </span>
                           )}
-                          {/* Khoa đã thông qua, đang chờ BGH */}
                           {item.status === 'pending_bgh' && (
-                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium truncate max-w-[140px]" title={`Khoa đã thông qua: ${getStep1ApproverName(item)}`}>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[150px]" title={`Khoa đã thông qua: ${getStep1ApproverName(item)}`}>
                               Khoa: {getStep1ApproverName(item)}
                             </span>
                           )}
-                          {/* Đã từ chối */}
                           {item.status === 'rejected' && (
-                            <span className="text-[10px] text-rose-600 dark:text-rose-400 font-medium truncate max-w-[140px]" title={`Từ chối bởi ${getApproverDisplayName(item)}: ${item.rejectionReason || ''}`}>
-                              Từ chối: {getApproverDisplayName(item)}
+                            <span className="text-xs text-rose-600 dark:text-rose-400 truncate max-w-[150px]" title={`Từ chối bởi ${getApproverDisplayName(item)}: ${item.rejectionReason || ''}`}>
+                              {getApproverDisplayName(item)}
                             </span>
                           )}
                         </div>
                       </td>
 
-                      {/* Cột 6: Thao tác (text-right) */}
-                      <td className="py-2.5 pr-3 pl-2 align-middle text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                      {/* Cột 6: Thao tác */}
+                      <td className="py-3 px-3 align-middle text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="inline-flex items-center justify-center gap-1">
                           {canApprove && (
                             <>
                               <button
@@ -1324,24 +1198,22 @@ export const LeaveRequests: React.FC = () => {
                                   e.stopPropagation();
                                   openApprovalModal(item, 'APPROVE');
                                 }}
-                                className="h-7.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-600 border border-emerald-300/70 dark:border-emerald-800 shadow-2xs inline-flex items-center gap-1 transition-all cursor-pointer font-semibold text-xs shrink-0"
-                                title="Phê duyệt đơn này"
+                                className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/50 transition-colors cursor-pointer"
+                                title="Phê duyệt đơn"
                                 type="button"
                               >
-                                <Check className="w-3.5 h-3.5" />
-                                <span>Duyệt</span>
+                                <Check className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   openApprovalModal(item, 'REJECT');
                                 }}
-                                className="h-7.5 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-600 border border-rose-300/70 dark:border-rose-800 shadow-2xs inline-flex items-center gap-1 transition-all cursor-pointer font-semibold text-xs shrink-0"
-                                title="Từ chối đơn này"
+                                className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
+                                title="Từ chối đơn"
                                 type="button"
                               >
-                                <X className="w-3.5 h-3.5" />
-                                <span>Từ chối</span>
+                                <X className="w-4 h-4" />
                               </button>
                             </>
                           )}
@@ -1349,14 +1221,13 @@ export const LeaveRequests: React.FC = () => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleCancelRequest(item._id);
+                                handleCancelRequest(item._id, getExpectedVersion(item));
                               }}
-                              className="h-7.5 px-2.5 rounded-lg bg-amber-50 hover:bg-amber-600 text-amber-700 hover:text-white dark:bg-amber-950/60 dark:text-amber-300 dark:hover:bg-amber-600 border border-amber-300/70 dark:border-amber-800 shadow-2xs inline-flex items-center gap-1 transition-all cursor-pointer font-semibold text-xs shrink-0"
-                              title="Hủy đơn xin nghỉ này"
+                              className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/50 transition-colors cursor-pointer"
+                              title="Hủy đơn xin nghỉ"
                               type="button"
                             >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              <span>Hủy đơn</span>
+                              <RotateCcw className="w-4 h-4" />
                             </button>
                           )}
                           <button
@@ -1364,12 +1235,11 @@ export const LeaveRequests: React.FC = () => {
                               e.stopPropagation();
                               openDetailModal(item);
                             }}
-                            className="h-7.5 px-2.5 rounded-lg bg-slate-100 hover:bg-brand-50 hover:text-brand-600 hover:border-brand-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-2xs inline-flex items-center gap-1.5 transition-all cursor-pointer font-semibold text-xs shrink-0"
-                            title="Xem chi tiết toàn bộ hồ sơ đơn & minh chứng"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-brand-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                            title="Xem chi tiết đơn"
                             type="button"
                           >
-                            <Eye className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
-                            <span>Xem đơn</span>
+                            <Eye className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -1382,14 +1252,14 @@ export const LeaveRequests: React.FC = () => {
         </div>
 
         {/* Table Bottom Pagination & Summary Bar */}
-        <div className="px-3 sm:px-4 py-2 bg-slate-50/70 dark:bg-slate-800/40 border-t border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-1 text-slate-500 font-mono text-xs">
+        <div className="px-4 py-3 bg-slate-50/50 dark:bg-slate-800/30 border-t border-slate-200/70 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400 text-xs tabular-nums">
             <span>Hiển thị</span>
             <span className="font-semibold text-slate-900 dark:text-slate-100">
-              {filteredRequests.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} -{' '}
+              {filteredRequests.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} –{' '}
               {Math.min(currentPage * pageSize, filteredRequests.length)}
             </span>
-            <span>trong tổng số</span>
+            <span>trên tổng số</span>
             <span className="font-semibold text-slate-900 dark:text-slate-100">{filteredRequests.length}</span>
             <span>đơn xin nghỉ phép</span>
           </div>
@@ -1429,33 +1299,31 @@ export const LeaveRequests: React.FC = () => {
             </button>
           </div>
         </div>
-      </div>
 
-      {/* =========================================================================
-          SECTION 4: SUPPLEMENTARY POLICY NOTICE BANNER (Bám sát mẫu code.html)
-         ========================================================================= */}
-      <div className="rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-200/80 dark:border-slate-800 p-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="p-2 rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 shrink-0">
-            <Info className="w-5 h-5" />
-          </span>
-          <div className="flex flex-col">
-            <span className="text-[13px] text-slate-900 dark:text-slate-100 font-semibold">
-              Quy định phê duyệt đơn nghỉ phép - Trường ĐH Nguyễn Trãi (Ban hành 2024)
+        {/* Supplementary Policy Notice Footer inside Unified Card */}
+        <div className="border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/40 px-4 py-3 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="p-2 rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 shrink-0">
+              <Info className="w-4 h-4" />
             </span>
-            <span className="text-xs text-slate-500">
-              Giảng viên có lịch dạy cần hoàn tất phân công dạy thay hoặc kế hoạch dạy bù trước khi nộp đơn tối thiểu 48 giờ. Đơn trên 3 ngày cần ý kiến trực tiếp của Ban Giám hiệu.
-            </span>
+            <div className="flex flex-col">
+              <span className="text-xs text-slate-900 dark:text-slate-100 font-semibold">
+                Quy định phê duyệt đơn nghỉ phép - Trường ĐH Nguyễn Trãi (Ban hành 2024)
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Giảng viên có lịch dạy cần hoàn tất phân công dạy thay hoặc kế hoạch dạy bù trước khi nộp đơn tối thiểu 48 giờ. Đơn trên 3 ngày cần ý kiến trực tiếp của Ban Giám hiệu.
+              </span>
+            </div>
           </div>
+          <button
+            onClick={() => toast('Hệ thống đang tích hợp văn bản quy chế điện tử.', { icon: 'ℹ️' })}
+            className="inline-flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400 font-semibold hover:underline shrink-0 cursor-pointer"
+            type="button"
+          >
+            <span>Xem toàn văn Quy chế</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
-        <button
-          onClick={() => toast('Hệ thống đang tích hợp văn bản quy chế điện tử.', { icon: 'ℹ️' })}
-          className="inline-flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400 font-semibold hover:underline shrink-0 cursor-pointer"
-          type="button"
-        >
-          <span>Xem toàn văn Quy chế</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
       </div>
 
       {/* =========================================================================
@@ -1614,6 +1482,22 @@ export const LeaveRequests: React.FC = () => {
                   </span>
                 </div>
 
+                {/* Số tiết nghỉ giảng dạy (nếu nghỉ theo tiết) */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Số tiết nghỉ giảng dạy <span className="font-normal text-slate-400">(không bắt buộc)</span>:
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={20}
+                    value={createFormData.leavePeriods}
+                    onChange={(e) => setCreateFormData({ ...createFormData, leavePeriods: e.target.value })}
+                    placeholder="Nhập số tiết nếu xin nghỉ/đổi theo tiết (VD: 2 hoặc 4)"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
+                  />
+                </div>
+
                 {/* Lịch học & Ngày dạy bù (nếu là day_bu) */}
                 {createFormData.type === 'day_bu' && (
                   <div className="space-y-2 p-3 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
@@ -1643,6 +1527,62 @@ export const LeaveRequests: React.FC = () => {
                         onChange={(e) => setCreateFormData({ ...createFormData, makeupDate: e.target.value })}
                         className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-slate-900 dark:text-slate-100"
                       />
+                    </div>
+                  </div>
+                )}
+
+                {/* Thông tin Đổi ca / Giảng viên dạy thay (nếu là doi_ca) */}
+                {createFormData.type === 'doi_ca' && (
+                  <div className="space-y-2.5 p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                    <div className="font-bold text-amber-800 dark:text-amber-300">
+                      Thông tin đổi ca / phân công dạy thay:
+                    </div>
+                    <div>
+                      <label className="block text-slate-600 dark:text-slate-400 mb-1">Buổi giảng dạy liên quan:</label>
+                      <select
+                        value={createFormData.scheduleId}
+                        onChange={(e) => setCreateFormData({ ...createFormData, scheduleId: e.target.value })}
+                        className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                      >
+                        <option value="">-- Chọn buổi học cần đổi (nếu có) --</option>
+                        {schedules.map((s) => (
+                          <option key={s._id} value={s._id}>
+                            {s.subjectId?.name || 'Môn học'} - Phòng {s.roomId || 'Online'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-600 dark:text-slate-400 mb-1">Ca làm việc thay thế:</label>
+                      <select
+                        value={createFormData.substituteShiftId}
+                        onChange={(e) => setCreateFormData({ ...createFormData, substituteShiftId: e.target.value })}
+                        className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                      >
+                        <option value="">-- Chọn ca thay thế --</option>
+                        {shifts.map((sh) => (
+                          <option key={sh._id} value={sh._id}>
+                            {sh.name} ({sh.startTime} - {sh.endTime})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-600 dark:text-slate-400 mb-1">Giảng viên dạy thay:</label>
+                      <select
+                        value={createFormData.substituteTeacherId}
+                        onChange={(e) => setCreateFormData({ ...createFormData, substituteTeacherId: e.target.value })}
+                        className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                      >
+                        <option value="">-- Chọn giảng viên dạy thay --</option>
+                        {teachers
+                          .filter((t) => t._id !== currentUserId)
+                          .map((t) => (
+                            <option key={t._id} value={t._id}>
+                              {t.fullName} {t.staffCode ? `(${t.staffCode})` : ''}
+                            </option>
+                          ))}
+                      </select>
                     </div>
                   </div>
                 )}
@@ -1852,6 +1792,42 @@ export const LeaveRequests: React.FC = () => {
                     {formatDateVN(selectedRequest.startDate || selectedRequest.ngay_bat_dau)} → {formatDateVN(selectedRequest.endDate || selectedRequest.ngay_ket_thuc)}
                   </span>
                 </div>
+                {Number((selectedRequest as any).leavePeriods || 0) > 0 && (
+                  <div className="p-3 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-850/40">
+                    <span className="text-slate-400 block mb-1 font-medium">Số tiết nghỉ giảng dạy:</span>
+                    <span className="font-bold font-mono text-slate-900 dark:text-slate-100">
+                      {(selectedRequest as any).leavePeriods} tiết
+                    </span>
+                  </div>
+                )}
+                {(selectedRequest as any).substituteShiftId && (
+                  <div className="p-3 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-850/40">
+                    <span className="text-slate-400 block mb-1 font-medium">Ca làm việc thay thế:</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                      {typeof (selectedRequest as any).substituteShiftId === 'object'
+                        ? `${(selectedRequest as any).substituteShiftId?.ten_ca || (selectedRequest as any).substituteShiftId?.name} (${(selectedRequest as any).substituteShiftId?.gio_bat_dau || ''}–${(selectedRequest as any).substituteShiftId?.gio_ket_thuc || ''})`
+                        : 'Đã chọn ca thay thế'}
+                    </span>
+                  </div>
+                )}
+                {(selectedRequest as any).substituteTeacherId && (
+                  <div className="p-3 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-850/40">
+                    <span className="text-slate-400 block mb-1 font-medium">Giảng viên dạy thay:</span>
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                      {typeof (selectedRequest as any).substituteTeacherId === 'object'
+                        ? (selectedRequest as any).substituteTeacherId?.fullName || (selectedRequest as any).substituteTeacherId?.ho_ten
+                        : 'Đã phân công'}
+                    </span>
+                  </div>
+                )}
+                {(selectedRequest as any).approvedAt && (
+                  <div className="p-3 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-850/40">
+                    <span className="text-slate-400 block mb-1 font-medium">Thời gian xét duyệt:</span>
+                    <span className="font-mono text-slate-900 dark:text-slate-100">
+                      {formatDateTimeVN((selectedRequest as any).approvedAt)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Kế hoạch dạy bù nếu có */}
@@ -1898,12 +1874,11 @@ export const LeaveRequests: React.FC = () => {
                   <div>
                     {isImageAttachment(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem) ? (
                       <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black/5 dark:bg-white/5 p-2 flex flex-col items-center justify-center">
-                        <img
+                        <AnhBaoMat
                           src={getAttachmentFullUrl(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem)}
                           alt="Ảnh minh chứng nghỉ phép"
                           className="max-h-56 sm:max-h-64 w-auto object-contain rounded-lg shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
                           onClick={() => window.open(getAttachmentFullUrl(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem), '_blank')}
-                          title="Bấm để mở ảnh gốc trong tab mới"
                         />
                         <span className="text-[10px] text-slate-400 mt-1.5 italic">
                           (Bấm vào ảnh để xem kích thước gốc trong tab mới)
@@ -1980,7 +1955,9 @@ export const LeaveRequests: React.FC = () => {
                   {/* Bước 2: Cấp 1 - Trưởng Khoa / Đơn vị */}
                   {(() => {
                     const history = (selectedRequest.approvalHistory || (selectedRequest as any).lich_su_duyet || []) as any[];
-                    const step1 = history.find((h: any) => h.cap === 1) || (history.length > 0 ? history[0] : null);
+                    const step1 =
+                      history.find((h: any) => Number(h.level ?? h.cap_duyet ?? h.cap) === 1) ||
+                      (history.length > 0 ? history[0] : null);
                     const isTotalMultiStep = Number(selectedRequest.totalDays ?? (selectedRequest as any).so_ngay ?? 1) > 3;
                     
                     let statusLabel = 'Chờ Trưởng khoa duyệt';
@@ -1993,8 +1970,9 @@ export const LeaveRequests: React.FC = () => {
 
                     if (step1) {
                       approverName = step1.nguoi_duyet?.fullName || (step1.nguoi_duyet as any)?.ho_ten || step1.vai_tro || 'Trưởng khoa';
-                      actionTime = step1.thoi_gian ? formatDateTimeVN(step1.thoi_gian) : '';
-                      note = step1.ghi_chu || '';
+                      const rawTs = step1.timestamp || step1.thoi_diem || step1.thoi_gian;
+                      actionTime = rawTs ? formatDateTimeVN(rawTs) : '';
+                      note = step1.comment || step1.y_kien || step1.ghi_chu || '';
                       if (step1.hanh_dong === 'rejected') {
                         statusLabel = 'Từ chối duyệt';
                         statusBadgeClass = 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800';
@@ -2084,7 +2062,9 @@ export const LeaveRequests: React.FC = () => {
                     }
 
                     const history = (selectedRequest.approvalHistory || (selectedRequest as any).lich_su_duyet || []) as any[];
-                    const step2 = history.find((h: any) => h.cap === 2) || (history.length > 1 ? history[1] : null);
+                    const step2 =
+                      history.find((h: any) => Number(h.level ?? h.cap_duyet ?? h.cap) === 2) ||
+                      (history.length > 1 ? history[1] : null);
 
                     let statusLabel = 'Chờ BGH phê chuẩn';
                     let statusBadgeClass = 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800';
@@ -2096,8 +2076,9 @@ export const LeaveRequests: React.FC = () => {
 
                     if (step2) {
                       approverName = step2.nguoi_duyet?.fullName || (step2.nguoi_duyet as any)?.ho_ten || 'Ban Giám Hiệu';
-                      actionTime = step2.thoi_gian ? formatDateTimeVN(step2.thoi_gian) : '';
-                      note = step2.ghi_chu || '';
+                      const rawTs2 = step2.timestamp || step2.thoi_diem || step2.thoi_gian;
+                      actionTime = rawTs2 ? formatDateTimeVN(rawTs2) : '';
+                      note = step2.comment || step2.y_kien || step2.ghi_chu || '';
                       if (step2.hanh_dong === 'rejected') {
                         statusLabel = 'BGH Từ chối';
                         statusBadgeClass = 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800';
@@ -2233,7 +2214,7 @@ export const LeaveRequests: React.FC = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleCancelRequest(selectedRequest._id)}
+                      onClick={() => handleCancelRequest(selectedRequest._id, getExpectedVersion(selectedRequest))}
                       className="text-amber-600 hover:text-amber-700 border-amber-200 dark:border-amber-900 hover:bg-amber-50 dark:hover:bg-amber-950/30"
                     >
                       <RotateCcw className="w-3.5 h-3.5 mr-1" />

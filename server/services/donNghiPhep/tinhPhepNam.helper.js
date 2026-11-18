@@ -1,6 +1,6 @@
 // Tính số ngày nghỉ hợp lệ (loại trừ Chủ nhật, ngày lễ), thống kê quỹ phép năm và định dạng dữ liệu đơn từ
 const { Op } = require('sequelize');
-const { DonNghiPhep, LichSuDuyetDon, NguoiDung, PhongBan, NgayNghiLe } = require('../../models');
+const { DonNghiPhep, LichSuDuyetDon, NguoiDung, PhongBan, NgayNghiLe, CaLamViec } = require('../../models');
 const ServiceError = require('../../utils/loiNghiepVu');
 
 // Chuyển mốc thời gian sang chuỗi YYYY-MM-DD theo múi giờ Việt Nam
@@ -171,6 +171,16 @@ const leaveInclude = [
     model: NguoiDung,
     as: 'nguoi_duyet',
     attributes: ['id', 'ho_ten', 'email', 'vai_tro_chinh', 'anh_dai_dien', 'ma_can_bo'],
+  },
+  {
+    model: NguoiDung,
+    as: 'giang_vien_day_thay',
+    attributes: ['id', 'ho_ten', 'email', 'ma_can_bo'],
+  },
+  {
+    model: CaLamViec,
+    as: 'ca_thay_the',
+    attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc'],
   },
   {
     model: LichSuDuyetDon,

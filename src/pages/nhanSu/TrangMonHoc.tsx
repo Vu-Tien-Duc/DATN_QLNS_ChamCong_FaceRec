@@ -4,17 +4,15 @@ import {
   Plus,
   Search,
   Download,
-  RotateCcw,
+  RefreshCw,
   Edit3,
   Trash2,
   Eye,
   Building2,
-  Bookmark,
   CheckCircle2,
   XCircle,
   X,
   AlertTriangle,
-  GraduationCap,
   Clock,
   Sparkles,
   Layers,
@@ -25,6 +23,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DepartmentSelect } from '../../components/chung/ChonDonVi';
+import { Button } from '../../components/chung/NutBam';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { departmentApi } from '../../api/phongBan.api';
@@ -38,6 +37,7 @@ import {
 import { isAdmin, hasRole } from '../../utils/phanQuyen';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 
 export const Subjects: React.FC = () => {
   const { user } = useAuthStore();
@@ -358,144 +358,65 @@ export const Subjects: React.FC = () => {
   return (
     <div className="space-y-5" data-purpose="academic-courses-dashboard">
       {/* =========================================================================
-          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+          1. PAGE HEADER + ACTIONS
          ========================================================================= */}
       <PageHeader
-        title="Quản Lý Học Phần & Môn Học Đào Tạo"
-        subtitle="Danh mục học phần tín chỉ, số tiết lý thuyết, thực hành và phân bổ theo từng Khoa / Bộ môn chuyên trách."
-        icon={<BookOpen className="w-5 h-5 text-indigo-600" />}
-        badge="CSDL v2.5"
-        badgeVariant="indigo"
-      />
-
-      {/* =========================================================================
-          BEGIN: KpiMetricsCards (4 Cards matching code.html - Dark Mode Enabled)
-         ========================================================================= */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-purpose="kpi-metric-cards">
-        {/* Card 1: Tổng số môn học */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">TỔNG SỐ MÔN HỌC</span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-              <BookOpen className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">{kpis.total}</span>
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">học phần</span>
-            </div>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Chính quy &amp; đại trà</p>
-          </div>
-        </div>
-
-        {/* Card 2: Đang giảng dạy */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">ĐANG GIẢNG DẠY</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 tracking-tight">{kpis.active}</span>
-              <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-200/60 dark:border-emerald-800">
-                Kích hoạt
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Mở lớp trong TKB</p>
-          </div>
-        </div>
-
-        {/* Card 3: Tổng số tín chỉ */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">TỔNG SỐ TÍN CHỈ</span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-              <Bookmark className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-amber-600 dark:text-amber-400 tracking-tight">{kpis.totalCredits}</span>
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">tín chỉ</span>
-            </div>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">~{kpis.totalHours} tiết chuẩn giảng dạy</p>
-          </div>
-        </div>
-
-        {/* Card 4: Khoa / Bộ Môn */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">KHOA / BỘ MÔN</span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-              <Building2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 tracking-tight">{kpis.deptCount}</span>
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">đơn vị</span>
-            </div>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Phân bổ chuyên môn</p>
-          </div>
-        </div>
-      </section>
-
-      {/* =========================================================================
-          BEGIN: FilterAndActionsToolbar
-         ========================================================================= */}
-      <section className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-4" data-purpose="filter-and-actions">
-        {/* Top row: Header label + Action buttons */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <GraduationCap className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">Bộ Lọc &amp; Tra Cứu Môn Học</h2>
-            <span className="text-xs text-slate-400 dark:text-slate-500 font-normal">
-              • Hiển thị <b className="text-slate-700 dark:text-slate-300">{displayedSubjects.length}</b> / {totalCount || displayedSubjects.length} môn
-            </span>
-          </div>
-          <div className="flex items-center flex-wrap gap-2.5">
-            {/* Button: Làm mới */}
-            <button
+        title="Quản Lý Học Phần & Môn Học"
+        subtitle="Danh mục học phần tín chỉ, số tiết lý thuyết, thực hành theo từng Khoa / Bộ môn."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
               onClick={handleResetFilters}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 shadow-xs transition-colors cursor-pointer"
+              variant="outline"
+              size="sm"
+              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
               type="button"
             >
-              <RotateCcw className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-              <span>Làm Mới</span>
-            </button>
+              Làm mới
+            </Button>
 
-            {/* Button: Xuất Excel (.xlsx) */}
-            <button
+            <Button
               onClick={handleExportExcel}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 shadow-2xs transition-colors cursor-pointer"
+              variant="outline"
+              size="sm"
+              leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
               title="Xuất danh mục môn học ra file Excel (.xlsx)"
               type="button"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Xuất Excel (.xlsx)</span>
-            </button>
+              Xuất Excel
+            </Button>
 
-            {/* Button: Thêm Môn Học Mới */}
             {canManage && (
-              <button
+              <Button
                 onClick={openCreateModal}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-600/30 transition-all cursor-pointer"
+                variant="primary"
+                size="sm"
+                leftIcon={<Plus className="w-3.5 h-3.5" />}
                 type="button"
               >
-                <Plus className="w-4 h-4" />
-                <span>Thêm Môn Học Mới</span>
-              </button>
+                Thêm môn học
+              </Button>
             )}
           </div>
-        </div>
+        }
+      />
 
-        {/* Bottom row: Inputs Grid (Zero Horizontal Breakage) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+      {/* =========================================================================
+          2. UNIFIED WORKSPACE CARD: KPI STRIP + TOOLBAR + DATA TABLE
+         ========================================================================= */}
+      <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden flex flex-col" data-purpose="course-table-card">
+        <CompactStatsBar
+          embedded
+          items={[
+            { label: 'Tổng môn học', value: kpis.total, unit: 'môn', tone: 'neutral' },
+            { label: 'Đang giảng dạy', value: kpis.active, unit: 'môn', tone: 'success' },
+            { label: 'Tổng tín chỉ', value: kpis.totalCredits, badge: `${kpis.totalHours} tiết`, tone: 'warning' },
+            { label: 'Khoa / Bộ môn', value: kpis.deptCount, unit: 'đơn vị', tone: 'brand' },
+          ]}
+        />
+        <div className="p-3 border-b border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-2">
           {/* Text Search input */}
-          <div className="relative">
+          <div className="relative flex-1 min-w-[200px]">
             <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
               <Search className="w-4 h-4" />
             </span>
@@ -505,14 +426,14 @@ export const Subjects: React.FC = () => {
                 setSearchKeyword(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 transition-colors"
-              placeholder="Tìm theo Mã môn hoặc Tên môn..."
+              className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:border-brand-500 text-slate-800 dark:text-slate-100 placeholder-slate-400 transition-colors"
+              placeholder="Tìm theo mã môn hoặc tên môn..."
               type="text"
             />
           </div>
 
-          {/* Select: Khoa / Bộ Môn Phân Cấp Chuyên Dụng */}
-          <div className="w-full">
+          {/* Select: Khoa / Bộ Môn */}
+          <div className="w-full sm:w-56 shrink-0">
             <DepartmentSelect
               departments={departments}
               value={selectedDeptId}
@@ -528,70 +449,52 @@ export const Subjects: React.FC = () => {
           </div>
 
           {/* Select: Trạng thái */}
-          <div className="relative">
-            <select
-              value={selectedStatus}
-              onChange={(e) => {
-                setSelectedStatus(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-3 pr-8 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700 dark:text-slate-200 transition-colors"
-            >
-              <option value="">-- Tất cả trạng thái --</option>
-              <option value="active">Đang giảng dạy</option>
-              <option value="pause">Tạm ngưng</option>
-            </select>
-          </div>
+          <select
+            value={selectedStatus}
+            onChange={(e) => {
+              setSelectedStatus(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="h-9 pl-3 pr-7 text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:border-brand-500 text-slate-700 dark:text-slate-200 font-medium cursor-pointer"
+          >
+            <option value="">Tất cả trạng thái</option>
+            <option value="active">Đang giảng dạy</option>
+            <option value="pause">Tạm ngưng</option>
+          </select>
 
-          {/* Select: Số tín chỉ (Tự động nạp danh sách tín chỉ có thực trong CSDL) */}
-          <div className="relative">
-            <select
-              value={selectedCredits}
-              onChange={(e) => {
-                setSelectedCredits(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-3 pr-8 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700 dark:text-slate-200 transition-colors"
-            >
-              <option value="">-- Tất cả số tín chỉ --</option>
-              {distinctCreditsList.map((c) => (
-                <option key={c} value={c}>
-                  {c} Tín chỉ
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
+          {/* Select: Số tín chỉ */}
+          <select
+            value={selectedCredits}
+            onChange={(e) => {
+              setSelectedCredits(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="h-9 pl-3 pr-7 text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:border-brand-500 text-slate-700 dark:text-slate-200 font-medium cursor-pointer"
+          >
+            <option value="">Tất cả tín chỉ</option>
+            {distinctCreditsList.map((c) => (
+              <option key={c} value={c}>
+                {c} Tín chỉ
+              </option>
+            ))}
+          </select>
 
-      {/* =========================================================================
-          BEGIN: AcademicDataTableSection (Strict Zero-Horizontal-Scroll Table)
-         ========================================================================= */}
-      <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col" data-purpose="course-table-card">
-        {/* Table Card Header */}
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2.5">
-            <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Danh Sách Học Phần Đào Tạo</h3>
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
-              {displayedSubjects.length} / {totalCount || displayedSubjects.length} môn học
+          <div className="flex items-center gap-2 ml-auto text-xs text-slate-500 dark:text-slate-400">
+            <span className="font-medium whitespace-nowrap">
+              {displayedSubjects.length} / {totalCount || displayedSubjects.length} môn
             </span>
-          </div>
-
-          {/* Page size selector */}
-          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-medium">
-            <span>Hiển thị mỗi trang:</span>
             <select
               value={limit}
               onChange={(e) => {
                 setLimit(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg py-1 px-2.5 pr-7 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-slate-700 dark:text-slate-200"
+              className="h-9 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-lg px-2.5 focus:outline-none font-medium text-slate-700 dark:text-slate-200 cursor-pointer"
+              aria-label="Số môn mỗi trang"
             >
-              <option value="10">10</option>
-              <option value="20">20</option>
-              <option value="50">50</option>
+              <option value="10">10 / trang</option>
+              <option value="20">20 / trang</option>
+              <option value="50">50 / trang</option>
             </select>
           </div>
         </div>
@@ -609,23 +512,23 @@ export const Subjects: React.FC = () => {
               <col style={{ width: '8%' }} />
             </colgroup>
             <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                <th className="py-3.5 pl-6 pr-2" scope="col">MÃ MÔN</th>
-                <th className="py-3.5 px-3" scope="col">TÊN MÔN HỌC</th>
-                <th className="py-3.5 px-3 text-center" scope="col">SỐ TÍN CHỈ</th>
-                <th className="py-3.5 px-3 text-center" scope="col">ĐỊNH MỨC GIỜ CHUẨN</th>
-                <th className="py-3.5 px-3" scope="col">KHOA / BỘ MÔN QUẢN LÝ</th>
-                <th className="py-3.5 px-3 text-center" scope="col">TRẠNG THÁI</th>
-                <th className="py-3.5 pl-2 pr-6 text-center" scope="col">THAO TÁC</th>
+              <tr className="border-b border-slate-200/70 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/60 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <th className="py-3 pl-4 pr-2" scope="col">Mã môn</th>
+                <th className="py-3 px-3" scope="col">Tên môn học</th>
+                <th className="py-3 px-3 text-center" scope="col">Tín chỉ</th>
+                <th className="py-3 px-3 text-center" scope="col">Định mức giờ</th>
+                <th className="py-3 px-3" scope="col">Khoa / Bộ môn</th>
+                <th className="py-3 px-3 text-center" scope="col">Trạng thái</th>
+                <th className="py-3 pl-2 pr-4 text-center" scope="col">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-sm text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-xs font-medium">Đang tải danh sách môn học...</span>
+                      <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+                      <span>Đang tải danh sách môn học...</span>
                     </div>
                   </td>
                 </tr>
@@ -634,8 +537,8 @@ export const Subjects: React.FC = () => {
                   <td colSpan={7} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <BookOpen className="w-8 h-8 text-slate-300 stroke-[1.5]" />
-                      <span className="text-xs font-semibold text-slate-600">Không tìm thấy môn học nào</span>
-                      <p className="text-[11px] text-slate-400">Thử thay đổi từ khóa tìm kiếm hoặc bỏ bớt các bộ lọc</p>
+                      <span className="text-sm font-semibold text-slate-600">Không tìm thấy môn học nào</span>
+                      <p className="text-xs text-slate-400">Thử thay đổi từ khóa tìm kiếm hoặc bỏ bớt các bộ lọc</p>
                     </div>
                   </td>
                 </tr>
@@ -646,36 +549,36 @@ export const Subjects: React.FC = () => {
                   const deptName = getDepartmentName(sub.departmentId);
 
                   return (
-                    <tr key={sub._id} className="hover:bg-indigo-50/30 dark:hover:bg-slate-800/40 transition-colors group">
+                    <tr key={sub._id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group">
                       {/* Mã Môn */}
-                      <td className="py-3.5 pl-6 pr-2 font-mono font-bold text-indigo-700 dark:text-indigo-400">
+                      <td className="py-3 pl-4 pr-2 text-sm font-semibold tabular-nums text-brand-600 dark:text-brand-400">
                         {sub.code}
                       </td>
 
                       {/* Tên Môn Học + Mô tả */}
-                      <td className="py-3.5 px-3 truncate">
-                        <div className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-900 dark:group-hover:text-indigo-300 truncate">
+                      <td className="py-3 px-3 truncate leading-snug">
+                        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
                           {sub.name}
                         </div>
-                        <div className="text-[11px] text-slate-400 dark:text-slate-500 font-normal truncate mt-0.5">
+                        <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                           {sub.description || 'Không có mô tả chi tiết'}
                         </div>
                       </td>
 
                       {/* Số Tín Chỉ */}
-                      <td className="py-3.5 px-3 text-center">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800">
+                      <td className="py-3 px-3 text-center">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800 tabular-nums">
                           {credits} TC
                         </span>
                       </td>
 
                       {/* Định Mức Giờ Chuẩn */}
-                      <td className="py-3.5 px-3 text-center font-medium text-slate-600 dark:text-slate-300">
-                        {standardHours} tiết chuẩn
+                      <td className="py-3 px-3 text-center text-sm font-medium text-slate-700 dark:text-slate-300 tabular-nums">
+                        {standardHours} tiết
                       </td>
 
                       {/* Khoa / Bộ Môn Quản Lý */}
-                      <td className="py-3.5 px-3 text-slate-600 dark:text-slate-300 truncate">
+                      <td className="py-3 px-3 text-sm text-slate-700 dark:text-slate-300 truncate">
                         <div className="flex items-center gap-1.5 truncate">
                           <Building2 className="w-4 h-4 text-slate-400 dark:text-slate-500 flex-shrink-0" />
                           <span className="truncate" title={deptName}>
@@ -685,14 +588,14 @@ export const Subjects: React.FC = () => {
                       </td>
 
                       {/* Trạng Thái */}
-                      <td className="py-3.5 px-3 text-center">
+                      <td className="py-3 px-3 text-center">
                         {sub.isActive ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 whitespace-nowrap">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                             Đang giảng dạy
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800 whitespace-nowrap">
                             <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
                             Tạm ngưng
                           </span>
@@ -921,25 +824,25 @@ export const Subjects: React.FC = () => {
 
               {/* Mô tả môn học */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Mô tả học phần</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Mô tả học phần</label>
                 <textarea
                   rows={3}
                   value={formData.description || ''}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Mục tiêu môn học, đề cương, chuẩn đầu ra..."
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-slate-100"
                 ></textarea>
               </div>
 
               {/* Actions Footer */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => {
                     setIsCreateModalOpen(false);
                     setEditingSubject(null);
                   }}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                 >
                   Hủy bỏ
                 </button>
@@ -1045,13 +948,13 @@ export const Subjects: React.FC = () => {
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                   Mô tả học phần
                 </span>
-                <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
                   {viewingSubject.description || 'Không có mô tả chi tiết cho môn học này.'}
                 </p>
               </div>
 
               {/* Actions Footer */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end">
                 <button
                   type="button"
                   onClick={() => setViewingSubject(null)}
@@ -1077,20 +980,20 @@ export const Subjects: React.FC = () => {
                 <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
                   <AlertTriangle className="w-6 h-6" />
                 </div>
-                <h3 className="text-base font-bold text-slate-900">Xác Nhận Xóa Môn Học</h3>
-                <p className="text-xs text-slate-500">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Xác Nhận Xóa Môn Học</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Bạn có chắc chắn muốn xóa học phần{' '}
-                  <b className="text-slate-800 font-mono">{deletingSubject.code}</b> -{' '}
-                  <b className="text-slate-800">{deletingSubject.name}</b> khỏi hệ thống?
+                  <b className="text-slate-800 dark:text-slate-200 font-mono">{deletingSubject.code}</b> -{' '}
+                  <b className="text-slate-800 dark:text-slate-200">{deletingSubject.name}</b> khỏi hệ thống?
                 </p>
-                <p className="text-[11px] text-rose-500 bg-rose-50/50 p-2.5 rounded-xl border border-rose-100 font-medium">
+                <p className="text-[11px] text-rose-500 dark:text-rose-400 bg-rose-50/50 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-100 dark:border-rose-900/50 font-medium">
                   Hành động này sẽ không thể khôi phục và có thể ảnh hưởng đến các lớp học phần và thời khóa biểu liên quan.
                 </p>
                 <div className="pt-3 flex items-center justify-center gap-2.5">
                   <button
                     type="button"
                     onClick={() => setDeletingSubject(null)}
-                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                   >
                     Hủy bỏ
                   </button>

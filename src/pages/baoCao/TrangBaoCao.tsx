@@ -14,7 +14,6 @@ import {
   Filter,
   FileSpreadsheet,
   BarChart3,
-  Layers,
   ChevronDown,
   PieChart as PieIcon,
   ShieldAlert,
@@ -22,7 +21,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   FileText,
-  XCircle,
   HelpCircle,
 } from 'lucide-react';
 import {
@@ -45,6 +43,7 @@ import { useAuthStore } from '../../stores/useXacThucStore';
 import { Button } from '../../components/chung/NutBam';
 import { Badge } from '../../components/chung/NhanTrangThai';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 import { DepartmentSelect } from '../../components/chung/ChonDonVi';
 import * as XLSX from 'xlsx';
@@ -488,29 +487,18 @@ export const Reports: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12 animate-fade-in">
-      {/* 1. HEADER CARD: BÁO CÁO & THỐNG KÊ (Chuẩn hóa Typography & Bố cục CSDL v2.5) */}
+    <div className="space-y-4 max-w-7xl mx-auto pb-12 animate-fade-in">
+      {/* 1. PAGE HEADER + ACTIONS */}
       <PageHeader
         title="Báo Cáo & Thống Kê Chuyên Sâu"
-        subtitle="Tổng hợp tỷ lệ chuyên cần, phân tích tần suất đi muộn, thống kê nghỉ phép và hỗ trợ trích xuất báo cáo Excel 5 Sheets chuẩn hóa phục vụ Ban Giám Hiệu và các Khoa."
-        icon={<BarChart3 className="w-5 h-5 text-brand-600" />}
-        badge={`Tháng ${String(selectedMonth).padStart(2, '0')}/${selectedYear}`}
-        badgeVariant="brand"
-      />
-
-      {/* =====================================================================
-          2. FILTER CONTROL BAR (THÁNG, NĂM, KHOA / PHÒNG BAN)
-      ===================================================================== */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Chọn Tháng */}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-slate-400" />
-            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tháng:</span>
+        subtitle={`Tháng ${String(selectedMonth).padStart(2, '0')}/${selectedYear} • Tổng hợp chuyên cần, đi muộn, nghỉ phép và xuất Excel 5 Sheets.`}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="h-9 px-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold focus:outline-none focus:border-brand-500 cursor-pointer"
+              aria-label="Tháng báo cáo"
             >
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                 <option key={m} value={m}>
@@ -518,15 +506,12 @@ export const Reports: React.FC = () => {
                 </option>
               ))}
             </select>
-          </div>
 
-          {/* Chọn Năm */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Năm:</span>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="h-9 px-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold focus:outline-none focus:border-brand-500 cursor-pointer"
+              aria-label="Năm báo cáo"
             >
               {[2024, 2025, 2026, 2027].map((y) => (
                 <option key={y} value={y}>
@@ -534,155 +519,72 @@ export const Reports: React.FC = () => {
                 </option>
               ))}
             </select>
-          </div>
 
-          {/* Chọn Khoa / Bộ môn phân cấp */}
-          <div className="w-full sm:w-auto min-w-[220px] sm:min-w-[270px]">
-            <DepartmentSelect
-              departments={departments}
-              value={selectedDeptId}
-              onChange={(val) => setSelectedDeptId(val || '')}
-              placeholder="-- Chọn đơn vị trực thuộc --"
-              allLabel="-- Toàn Trường (Tất cả đơn vị) --"
-              allowAll={true}
+            <div className="w-48 sm:w-56">
+              <DepartmentSelect
+                departments={departments}
+                value={selectedDeptId}
+                onChange={(val) => setSelectedDeptId(val || '')}
+                placeholder="Chọn đơn vị..."
+                allLabel="Toàn Trường (Tất cả)"
+                allowAll={true}
+                size="sm"
+              />
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
               size="sm"
-            />
-          </div>
-        </div>
+              onClick={fetchReports}
+              disabled={isLoading}
+              leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />}
+            >
+              Làm mới
+            </Button>
 
-        {/* Action buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchReports}
-            disabled={isLoading}
-            className="flex items-center gap-1.5 text-xs"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Làm Mới</span>
-          </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => window.print()}
+              leftIcon={<Printer className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />}
+            >
+              In báo cáo
+            </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.print()}
-            className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200"
-          >
-            <Printer className="w-3.5 h-3.5 text-cyan-500" />
-            <span>In Báo Cáo</span>
-          </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleExportFullExcel}
+              disabled={isExporting || isLoading}
+              leftIcon={<FileSpreadsheet className={`w-3.5 h-3.5 ${isExporting ? 'animate-bounce' : ''}`} />}
+            >
+              {isExporting ? 'Đang xuất Excel...' : 'Xuất Excel (5 Sheets)'}
+            </Button>
+          </div>
+        }
+      />
 
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleExportFullExcel}
-            disabled={isExporting || isLoading}
-            className="bg-brand-600 hover:bg-brand-500 text-white shadow-md text-xs font-medium flex items-center gap-1.5"
-          >
-            <FileSpreadsheet className={`w-3.5 h-3.5 text-emerald-300 ${isExporting ? 'animate-bounce' : ''}`} />
-            <span>{isExporting ? 'Đang Tạo File Excel...' : 'Xuất File Excel .xlsx (5 Sheets)'}</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* =====================================================================
-          3. 4 EXECUTIVE KPI SUMMARY CARDS
-      ===================================================================== */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        {/* Card 1: Tỷ Lệ Chuyên Cần Chung */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-emerald-100 dark:border-emerald-900/40 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              Tỷ Lệ Chuyên Cần
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400">
-              {kpis.attendanceRate}%
-            </span>
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">
-              Chuẩn Đào Tạo
-            </span>
-          </div>
-          <div className="mt-2 text-xs text-slate-500">
-            {kpis.onTimeCount} ca đúng giờ / {kpis.totalShifts} tổng ca
-          </div>
-        </div>
-
-        {/* Card 2: Tổng Số Lượt Ca Hoạt Động */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Tổng Số Ca Làm / Giảng
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/50 dark:text-brand-400 flex items-center justify-center">
-              <Layers className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-slate-100">
-              {kpis.totalShifts}
-            </span>
-            <span className="text-xs text-slate-400">lượt</span>
-          </div>
-          <div className="mt-2 text-xs text-slate-500">
-            Bao gồm ca hành chính & ca giảng đường
-          </div>
-        </div>
-
-        {/* Card 3: Đi Muộn & Về Sớm */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-amber-100 dark:border-amber-900/40 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-              Đi Muộn / Về Sớm
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400 flex items-center justify-center">
-              <Clock className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400">
-              {kpis.lateCount + kpis.earlyLeaveCount}
-            </span>
-            <span className="text-xs text-slate-400">ca ({kpis.lateRate}%)</span>
-          </div>
-          <div className="mt-2 text-xs text-slate-500">
-            {kpis.lateCount} đi muộn, {kpis.earlyLeaveCount} về sớm
-          </div>
-        </div>
-
-        {/* Card 4: Vắng Mặt & Nghỉ Phép */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-rose-100 dark:border-rose-900/40 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-              Vắng & Phép Năm
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400 flex items-center justify-center">
-              <XCircle className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-rose-600 dark:text-rose-400">
-              {kpis.absentCount}
-            </span>
-            <span className="text-xs text-slate-400">vắng không phép</span>
-          </div>
-          <div className="mt-2 text-xs text-slate-500">
-            {kpis.approvedLeaveDays} ngày nghỉ phép hợp lệ đã duyệt
-          </div>
-        </div>
-      </div>
+      {/* 2. UNIFIED REPORTS CARD: KPI STRIP + CHARTS + DETAILED TABS */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
+        <CompactStatsBar
+          embedded
+          items={[
+            { label: 'Tỷ lệ chuyên cần', value: `${kpis.attendanceRate}%`, badge: `${kpis.onTimeCount}/${kpis.totalShifts} đúng giờ`, tone: 'success' },
+            { label: 'Tổng số ca', value: kpis.totalShifts, unit: 'lượt', tone: 'brand' },
+            { label: 'Đi muộn / Về sớm', value: kpis.lateCount + kpis.earlyLeaveCount, badge: `${kpis.lateRate}%`, tone: 'warning' },
+            { label: 'Vắng không phép', value: kpis.absentCount, badge: `${kpis.approvedLeaveDays}d phép`, tone: 'danger' },
+          ]}
+        />
 
       {/* =====================================================================
           4. CHARTS SECTION (WEEKLY TREND & DONUT BREAKDOWN)
       ===================================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 dark:divide-slate-800 border-b border-slate-200/80 dark:border-slate-800">
         {/* Weekly Trend Bar Chart (2 cols) */}
-        <div className="lg:col-span-2 p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="lg:col-span-2 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-brand-600 dark:text-brand-400" />
@@ -723,7 +625,7 @@ export const Reports: React.FC = () => {
         </div>
 
         {/* Donut Chart: Status Distribution (1 col) */}
-        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <PieIcon className="w-4 h-4 text-brand-600 dark:text-brand-400" />
@@ -802,7 +704,7 @@ export const Reports: React.FC = () => {
       {/* =====================================================================
           5. 3 TABBED DETAILED VIEWS
       ===================================================================== */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="overflow-hidden">
         {/* Tab Headers */}
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-xs font-semibold">
@@ -1250,6 +1152,7 @@ export const Reports: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

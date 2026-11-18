@@ -19,6 +19,7 @@ import {
   DepartmentSummary,
 } from '../../api/public_giangvien/giangVien.api';
 import { FacultyCard } from './components/TheGiangVien';
+import { Portal } from '../../components/chung/CongDichChuyen';
 
 // 1. Dữ liệu Đào tạo theo hệ (Chuẩn bố cục trang chủ Phenikaa)
 const TRAINING_PROGRAMS = [
@@ -915,50 +916,52 @@ export const FacultyDirectory: React.FC = () => {
 
       {/* Modal đọc chi tiết bài viết tin tức */}
       {selectedNews && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-          onClick={() => setSelectedNews(null)}
-        >
+        <Portal>
           <div
-            className="bg-white rounded max-w-2xl w-full overflow-hidden shadow-xl border border-slate-200"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+            onClick={() => setSelectedNews(null)}
           >
-            <div className="bg-[#002b5c] text-white px-6 py-4 flex items-center justify-between">
-              <span className="text-xs font-bold text-[#f37021] uppercase">
-                {selectedNews.category} • {selectedNews.date}
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedNews(null)}
-                className="text-white/80 hover:text-white cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-              <h3 className="text-lg font-bold text-[#002b5c]">{selectedNews.title}</h3>
-              <img
-                src={selectedNews.image}
-                alt={selectedNews.title}
-                className="w-full h-56 object-cover rounded"
-              />
-              {selectedNews.content.map((p, idx) => (
-                <p key={idx} className="text-sm text-slate-700 leading-relaxed">
-                  {p}
-                </p>
-              ))}
-            </div>
-            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSelectedNews(null)}
-                className="px-4 py-1.5 bg-[#002b5c] text-white text-xs font-semibold rounded cursor-pointer"
-              >
-                Đóng bài viết
-              </button>
+            <div
+              className="bg-white rounded-xl max-w-2xl w-full overflow-hidden shadow-xl border border-slate-200 animate-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-[#002b5c] text-white px-6 py-4 flex items-center justify-between">
+                <span className="text-xs font-bold text-[#f37021] uppercase">
+                  {selectedNews.category} • {selectedNews.date}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedNews(null)}
+                  className="text-white/80 hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                <h3 className="text-lg font-bold text-[#002b5c]">{selectedNews.title}</h3>
+                <img
+                  src={selectedNews.image}
+                  alt={selectedNews.title}
+                  className="w-full h-56 object-cover rounded"
+                />
+                {selectedNews.content.map((p, idx) => (
+                  <p key={idx} className="text-sm text-slate-700 leading-relaxed">
+                    {p}
+                  </p>
+                ))}
+              </div>
+              <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedNews(null)}
+                  className="px-4 py-1.5 bg-[#002b5c] text-white text-xs font-semibold rounded cursor-pointer"
+                >
+                  Đóng bài viết
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
     </div>
   );

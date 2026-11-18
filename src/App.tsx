@@ -112,7 +112,7 @@ export const App: React.FC = () => {
           <Route
             path="mon-hoc"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'dao_tao']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao']}>
                 <Subjects />
               </ProtectedRoute>
             }
@@ -141,7 +141,7 @@ export const App: React.FC = () => {
           <Route
             path="ca-lam-viec"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'dao_tao']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao']}>
                 <Shifts />
               </ProtectedRoute>
             }

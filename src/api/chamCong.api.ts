@@ -151,19 +151,6 @@ export interface AttendanceHistoryResult {
 
 export const attendanceApi = {
   /**
-   * Gửi frame ảnh kiểm tra tư thế đầu (detect-pose)
-   */
-  async detectPose(imageBlob: Blob): Promise<FaceDetectPoseResponse> {
-    const formData = new FormData();
-    formData.append('image', imageBlob, 'frame.jpg');
-
-    const res = await apiClient.post<FaceDetectPoseResponse>('/khuon-mat/phat-hien-tu-the', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return res.data;
-  },
-
-  /**
    * Thực hiện nhận diện khuôn mặt điểm danh (Chế độ tự động hoặc Check-in)
    */
   async checkInWithFace(
@@ -250,14 +237,6 @@ export const attendanceApi = {
   },
 
   /**
-   * Kiểm tra tình trạng sức khỏe microservice Python InsightFace
-   */
-  async getFaceHealth(): Promise<any> {
-    const res = await apiClient.get('/khuon-mat/suc-khoe');
-    return res.data;
-  },
-
-  /**
    * Lấy lịch sử các lượt chấm công gần nhất
    */
   async getRecentHistory(limit: number = 8): Promise<AttendanceHistoryItem[]> {
@@ -278,19 +257,6 @@ export const attendanceApi = {
       return [];
     } catch {
       return [];
-    }
-  },
-
-  /**
-   * Kiểm tra người dùng đã đăng ký FaceID hay chưa
-   */
-  async checkRegistrationStatus(userId?: string): Promise<{ isFaceRegistered: boolean }> {
-    try {
-      const url = userId ? `/khuon-mat/trang-thai-dang-ky/${userId}` : '/khuon-mat/trang-thai-dang-ky';
-      const res = await apiClient.get(url);
-      return { isFaceRegistered: res.data?.isFaceRegistered ?? res.data?.data?.isFaceRegistered ?? true };
-    } catch {
-      return { isFaceRegistered: true }; // Giả định true nếu server không yêu cầu bắt buộc
     }
   },
 
@@ -408,6 +374,30 @@ export const attendanceApi = {
    */
   async generateQRCode(): Promise<any> {
     const res = await apiClient.get<any>('/cham-cong/qr/tao-ma');
+    return res.data?.data || res.data;
+  },
+
+  /**
+   * Lấy thử thách Liveness ngẫu nhiên (LOOK_UP / LOOK_DOWN / TURN_LEFT / TURN_RIGHT) kèm chữ ký HMAC hạn 120s
+   */
+  async getLivenessChallenge(): Promise<{ challenge: string; challengeToken: string; expiresInSeconds: number }> {
+    const res = await apiClient.get<any>('/cham-cong/thu-thach-mat-that');
+    return res.data?.data || res.data;
+  },
+
+  /**
+   * Gửi ảnh thực hiện thử thách Liveness để máy chủ xác thực tư thế khuôn mặt
+   */
+  async verifyLivenessChallenge(
+    imageBlob: Blob,
+    challengeToken: string
+  ): Promise<{ passed: boolean; detectedPose: string; expectedChallenge: string }> {
+    const formData = new FormData();
+    formData.append('image', imageBlob, 'liveness.jpg');
+    formData.append('challengeToken', challengeToken);
+    const res = await apiClient.post<any>('/cham-cong/xac-thuc-mat-that', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return res.data?.data || res.data;
   },
 

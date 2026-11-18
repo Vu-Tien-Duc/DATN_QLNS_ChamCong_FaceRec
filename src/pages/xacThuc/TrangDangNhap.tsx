@@ -27,7 +27,7 @@ export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
 
@@ -36,70 +36,28 @@ export const Login: React.FC = () => {
 
   const demoAccounts = [
     {
-      role: 'Hiệu Trưởng',
-      name: 'GS. TS. Nguyễn Văn An',
-      email: 'hieutruong@university.edu.vn',
-      tag: 'BGH',
-      variant: 'purple' as const,
-    },
-    {
       role: 'Quản Trị IT',
-      name: 'Admin Hệ Thống',
-      email: 'admin@university.edu.vn',
-      tag: 'Admin IT',
+      name: 'Nguyễn Văn Quản Trị',
+      email: 'admin@truong.edu.vn',
+      tag: 'Admin',
       variant: 'brand' as const,
     },
     {
-      role: 'Trưởng Khoa',
-      name: 'PGS. TS. Lê Hoàng Nam',
-      email: 'truongkhoa.cntt@university.edu.vn',
-      tag: 'CNTT',
-      variant: 'info' as const,
-    },
-    {
-      role: 'Phó Khoa',
-      name: 'TS. Đặng Tiến Hưng',
-      email: 'phokhoa.cntt@university.edu.vn',
-      tag: 'Phó Khoa',
-      variant: 'info' as const,
-    },
-    {
       role: 'Giảng Viên',
-      name: 'TS. Trần Thị Bích',
-      email: 'giangvien.bich@university.edu.vn',
+      name: 'Trần Thị Giảng Viên',
+      email: 'gv01@truong.edu.vn',
       tag: 'Giảng Viên',
       variant: 'success' as const,
-    },
-    {
-      role: 'Chuyên Viên',
-      name: 'Đỗ Thu Hà',
-      email: 'nhanvien.ha@university.edu.vn',
-      tag: 'Đào Tạo',
-      variant: 'neutral' as const,
-    },
-    {
-      role: 'Kiểm Toán / KT',
-      name: 'Vũ Văn Thành',
-      email: 'nhanvien.thanh@university.edu.vn',
-      tag: 'Khảo Thí',
-      variant: 'neutral' as const,
-    },
-    {
-      role: 'Trưởng Phòng HC',
-      name: 'ThS. Nguyễn Thị Mai',
-      email: 'admin.hr@university.edu.vn',
-      tag: 'Nhân Sự',
-      variant: 'warning' as const,
     },
   ];
 
   const handleSelectDemo = async (demoEmail: string, autoSubmit = false) => {
     setEmail(demoEmail);
-    setPassword('password123');
+    setPassword('123456');
     setErrorMessage(null);
 
     if (autoSubmit) {
-      const success = await login({ email: demoEmail, password: 'password123' });
+      const success = await login({ email: demoEmail, password: '123456' }, rememberMe);
       if (success) {
         navigate(from, { replace: true });
       }
@@ -119,7 +77,7 @@ export const Login: React.FC = () => {
       return;
     }
 
-    const success = await login({ email: email.trim(), password });
+    const success = await login({ email: email.trim(), password }, rememberMe);
     if (success) {
       navigate(from, { replace: true });
     }
@@ -270,7 +228,7 @@ export const Login: React.FC = () => {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@university.edu.vn"
+                      placeholder="admin@truong.edu.vn"
                       required
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:border-brand-500 dark:focus:border-brand-500 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 transition-all"
                     />

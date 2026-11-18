@@ -4,7 +4,7 @@ import {
   Plus,
   Search,
   Download,
-  RotateCcw,
+  RefreshCw,
   Edit3,
   Trash2,
   Eye,
@@ -14,14 +14,12 @@ import {
   Sunset,
   Moon,
   Sparkles,
-  Layers,
   X,
   AlertTriangle,
   Timer,
   Calendar,
   Hourglass,
   ArrowRight,
-  SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
   FileSpreadsheet,
@@ -31,6 +29,8 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { Button } from '../../components/chung/NutBam';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import {
   shiftApi,
   ShiftItem,
@@ -72,7 +72,7 @@ function getShiftPeriodType(startTime?: string): {
       key: 'morning',
       label: 'Buổi Sáng',
       icon: Sun,
-      badgeClass: 'bg-amber-50 text-amber-700 border border-amber-200/60',
+      badgeClass: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60',
     };
   }
   const [h] = startTime.split(':').map(Number);
@@ -81,7 +81,7 @@ function getShiftPeriodType(startTime?: string): {
       key: 'morning',
       label: 'Buổi Sáng',
       icon: Sun,
-      badgeClass: 'bg-amber-50 text-amber-700 border border-amber-200/60',
+      badgeClass: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60',
     };
   }
   if (h < 17) {
@@ -89,14 +89,14 @@ function getShiftPeriodType(startTime?: string): {
       key: 'afternoon',
       label: 'Buổi Chiều',
       icon: Sunset,
-      badgeClass: 'bg-orange-50 text-orange-700 border border-orange-200/60',
+      badgeClass: 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200/60 dark:border-orange-800/60',
     };
   }
   return {
     key: 'evening',
     label: 'Buổi Tối',
     icon: Moon,
-    badgeClass: 'bg-indigo-50 text-indigo-700 border border-indigo-200/60',
+    badgeClass: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60',
   };
 }
 
@@ -409,136 +409,62 @@ export const Shifts: React.FC = () => {
   return (
     <div className="space-y-4" data-purpose="shift-configuration-dashboard">
       {/* =========================================================================
-          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+          1. PAGE HEADER + ACTIONS
          ========================================================================= */}
       <PageHeader
-        title="Quản Lý Ca Làm Việc & Khung Giờ Giảng Dạy"
-        subtitle="Cấu hình khung giờ bắt đầu, kết thúc, giới hạn đi muộn về sớm và khoảng cách cho phép chấm công theo từng ca."
-        icon={<Clock className="w-5 h-5 text-indigo-600" />}
-        badge="CSDL v2.5"
-        badgeVariant="indigo"
-      />
-
-      {/* =========================================================================
-          KPI METRICS STRIP (4 Compact Cards matching code.html)
-         ========================================================================= */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" data-purpose="kpi-metric-cards">
-        {/* Card 1: Tổng số ca */}
-        <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs flex items-center justify-between hover:shadow-sm transition-shadow">
-          <div className="flex flex-col min-w-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Tổng số ca</span>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-slate-900 leading-none">{kpis.totalShifts}</span>
-              <span className="text-xs text-slate-500">ca cấu hình</span>
-            </div>
-            <span className="text-[11px] text-slate-400 mt-1 truncate">Hành chính &amp; giảng đường</span>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0 shadow-xs">
-            <Layers className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Card 2: Đang áp dụng */}
-        <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs flex items-center justify-between hover:shadow-sm transition-shadow">
-          <div className="flex flex-col min-w-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 mb-0.5">Đang áp dụng</span>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-slate-900 leading-none">{kpis.activeShifts}</span>
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Kích hoạt
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-400 mt-1 truncate">Cho phép điểm danh thời gian thực</span>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Card 3: Ân hạn đi muộn */}
-        <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs flex items-center justify-between hover:shadow-sm transition-shadow">
-          <div className="flex flex-col min-w-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-600 mb-0.5">Ân hạn đi muộn</span>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-slate-900 leading-none">{kpis.avgGracePeriod}</span>
-              <span className="text-xs text-slate-500">phút trung bình</span>
-            </div>
-            <span className="text-[11px] text-slate-400 mt-1 truncate">Grace period trước khi tính trễ</span>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
-            <Timer className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Card 4: Khung giờ trường */}
-        <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs flex items-center justify-between hover:shadow-sm transition-shadow">
-          <div className="flex flex-col min-w-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 mb-0.5">Khung giờ trường</span>
-            <div className="flex items-baseline gap-1 font-mono text-sm">
-              <span className="text-indigo-600 font-bold">{kpis.earliestTime}</span>
-              <span className="text-slate-400 text-xs font-normal">đến</span>
-              <span className="text-indigo-600 font-bold">{kpis.latestTime}</span>
-            </div>
-            <span className="text-[11px] text-slate-400 mt-1 truncate">Mở cổng &amp; giảng đường</span>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
-            <Clock className="w-5 h-5" />
-          </div>
-        </div>
-      </section>
-
-      {/* =========================================================================
-          FILTER & QUERY CONTROL PANEL (Matching code.html)
-         ========================================================================= */}
-      <section className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-xs flex flex-col gap-3">
-        {/* Action Bar Header */}
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4 text-slate-500" />
-            <h2 className="text-sm font-bold text-slate-800">Bộ Lọc &amp; Tra Cứu Ca Làm Việc</h2>
-            <span className="text-slate-300">•</span>
-            <span className="text-xs text-slate-500 font-medium">
-              Hiển thị <strong className="text-slate-800">{filteredShifts.length}</strong> / {shifts.length} ca
-            </span>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Refresh Button */}
-            <button
+        title="Quản Lý Ca Làm Việc & Khung Giờ"
+        subtitle="Cấu hình khung giờ bắt đầu, kết thúc và giới hạn đi muộn, về sớm theo từng ca."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
               onClick={fetchShifts}
-              className="h-8 px-3 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+              variant="outline"
+              size="sm"
+              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
               type="button"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-              <span>Làm Mới</span>
-            </button>
-            {/* Export Excel Button */}
-            <button
+              Làm mới
+            </Button>
+            <Button
               onClick={handleExportExcel}
-              className="h-8 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold border border-emerald-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              variant="outline"
+              size="sm"
+              leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
               title="Xuất danh mục ca làm việc ra file Excel (.xlsx)"
               type="button"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Xuất Excel (.xlsx)</span>
-            </button>
-            {/* Add Shift Button */}
+              Xuất Excel
+            </Button>
             {canManage && (
-              <button
+              <Button
                 onClick={openCreateModal}
-                className="h-8 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm shadow-indigo-600/30 transition-all cursor-pointer"
+                variant="primary"
+                size="sm"
+                leftIcon={<Plus className="w-3.5 h-3.5" />}
                 type="button"
               >
-                <Plus className="w-4 h-4" />
-                <span>Thêm Ca Làm Mới</span>
-              </button>
+                Thêm ca làm
+              </Button>
             )}
           </div>
-        </div>
+        }
+      />
 
-        {/* Inputs & Dropdowns Row */}
-        <div className="grid grid-cols-12 gap-3 items-center">
-          {/* Text Search */}
-          <div className="col-span-12 sm:col-span-6 relative">
+      {/* =========================================================================
+          2. UNIFIED WORKSPACE CARD: KPI STRIP + TOOLBAR + DATA TABLE
+         ========================================================================= */}
+      <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs flex flex-col overflow-hidden" data-purpose="shift-table-card">
+        <CompactStatsBar
+          embedded
+          items={[
+            { label: 'Tổng số ca', value: kpis.totalShifts, unit: 'ca', tone: 'neutral' },
+            { label: 'Đang áp dụng', value: kpis.activeShifts, unit: 'ca', tone: 'success' },
+            { label: 'Ân hạn đi muộn', value: kpis.avgGracePeriod, unit: 'phút TB', tone: 'warning' },
+            { label: 'Khung giờ trường', value: `${kpis.earliestTime} – ${kpis.latestTime}`, tone: 'brand' },
+          ]}
+        />
+        <div className="p-3 border-b border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[200px]">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
               <Search className="w-4 h-4" />
             </span>
@@ -548,88 +474,66 @@ export const Shifts: React.FC = () => {
                 setSearchKeyword(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full h-9 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              className="w-full h-9 pl-9 pr-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
               placeholder="Tìm theo tên ca, khung giờ (VD: Ca Sáng, 07:00)..."
               type="search"
             />
           </div>
 
-          {/* Period Dropdown */}
-          <div className="col-span-6 sm:col-span-3 relative">
-            <select
-              value={selectedPeriod}
-              onChange={(e) => {
-                setSelectedPeriod(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full h-9 pl-3 pr-8 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-colors"
-            >
-              <option value="">-- Tất cả buổi trong ngày --</option>
-              <option value="morning">Buổi Sáng</option>
-              <option value="afternoon">Buổi Chiều</option>
-              <option value="evening">Buổi Tối</option>
-            </select>
-          </div>
+          <select
+            value={selectedPeriod}
+            onChange={(e) => {
+              setSelectedPeriod(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="h-9 pl-3 pr-7 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
+          >
+            <option value="">Tất cả buổi</option>
+            <option value="morning">Buổi Sáng</option>
+            <option value="afternoon">Buổi Chiều</option>
+            <option value="evening">Buổi Tối</option>
+          </select>
 
-          {/* Status Dropdown */}
-          <div className="col-span-6 sm:col-span-3 relative">
-            <select
-              value={selectedStatus}
-              onChange={(e) => {
-                setSelectedStatus(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full h-9 pl-3 pr-8 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-colors"
-            >
-              <option value="">-- Tất cả trạng thái --</option>
-              <option value="active">Đang áp dụng</option>
-              <option value="inactive">Tạm ngưng</option>
-            </select>
-          </div>
-        </div>
-      </section>
+          <select
+            value={selectedStatus}
+            onChange={(e) => {
+              setSelectedStatus(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="h-9 pl-3 pr-7 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
+          >
+            <option value="">Tất cả trạng thái</option>
+            <option value="active">Đang áp dụng</option>
+            <option value="inactive">Tạm ngưng</option>
+          </select>
 
-      {/* =========================================================================
-          MAIN SHIFTS DATA TABLE CONTAINER (Strict Zero-Scroll Layout)
-         ========================================================================= */}
-      <section className="bg-white rounded-2xl border border-slate-200/90 shadow-xs flex flex-col overflow-hidden" data-purpose="shift-table-card">
-        {/* Table Header Utility Title */}
-        <div className="px-4 py-3 flex items-center justify-between bg-white border-b border-slate-100 flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-800">Danh Sách Ca Làm Việc &amp; Khung Giờ</h3>
-            <span className="bg-slate-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              {filteredShifts.length} / {shifts.length} ca
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-slate-500 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
-            <span>Quy chuẩn 45 phút / tiết học</span>
-          </div>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium ml-auto whitespace-nowrap">
+            {filteredShifts.length} / {shifts.length} ca
+          </span>
         </div>
 
         {/* Table: table-fixed with Zero Horizontal Scrollbar */}
-        <div className="w-full overflow-hidden">
-          <table className="table-fixed w-full border-collapse text-left">
+        <div className="w-full overflow-x-auto">
+          <table className="table-fixed min-w-[780px] w-full border-collapse text-left">
             <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
-                <th className="w-[20%] py-2.5 pl-4 pr-2 font-semibold">Tên ca làm việc</th>
-                <th className="w-[13%] py-2.5 px-2 font-semibold">Buổi trong ngày</th>
-                <th className="w-[11%] py-2.5 px-2 text-center font-semibold">Giờ vào (Check-in)</th>
-                <th className="w-[11%] py-2.5 px-2 text-center font-semibold">Giờ ra (Check-out)</th>
-                <th className="w-[11%] py-2.5 px-2 font-semibold">Thời lượng ca</th>
-                <th className="w-[11%] py-2.5 px-2 font-semibold">Ân hạn đi muộn</th>
-                <th className="w-[13%] py-2.5 px-3 text-center font-semibold">Trạng thái</th>
-                <th className="w-[10%] py-2.5 pl-2 pr-4 text-center font-semibold">Thao tác</th>
+              <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/70 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                <th className="w-[20%] py-3 pl-4 pr-2 font-semibold">Tên ca làm việc</th>
+                <th className="w-[13%] py-3 px-2 font-semibold">Buổi trong ngày</th>
+                <th className="w-[11%] py-3 px-2 text-center font-semibold">Giờ vào (IN)</th>
+                <th className="w-[11%] py-3 px-2 text-center font-semibold">Giờ ra (OUT)</th>
+                <th className="w-[11%] py-3 px-2 font-semibold">Thời lượng ca</th>
+                <th className="w-[11%] py-3 px-2 font-semibold">Ân hạn trễ</th>
+                <th className="w-[13%] py-3 px-3 text-center font-semibold">Trạng thái</th>
+                <th className="w-[10%] py-3 pl-2 pr-4 text-center font-semibold">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-sm text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-xs font-medium">Đang tải cấu hình ca làm việc...</span>
+                      <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+                      <span>Đang tải cấu hình ca làm việc...</span>
                     </div>
                   </td>
                 </tr>
@@ -637,9 +541,9 @@ export const Shifts: React.FC = () => {
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <Clock className="w-8 h-8 text-slate-300 stroke-[1.5]" />
-                      <span className="text-xs font-semibold text-slate-600">Không tìm thấy ca làm việc nào</span>
-                      <p className="text-[11px] text-slate-400">Thử thay đổi từ khóa hoặc bộ lọc trạng thái</p>
+                      <Clock className="w-8 h-8 text-slate-300 dark:text-slate-600 stroke-[1.5]" />
+                      <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">Không tìm thấy ca làm việc nào</span>
+                      <p className="text-xs text-slate-400">Thử thay đổi từ khóa hoặc bộ lọc trạng thái</p>
                     </div>
                   </td>
                 </tr>
@@ -651,14 +555,14 @@ export const Shifts: React.FC = () => {
                   const shortId = (s._id || '').slice(-6).toUpperCase();
 
                   return (
-                    <tr key={s._id} className="hover:bg-indigo-50/30 transition-colors group">
+                    <tr key={s._id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group">
                       {/* Tên ca làm việc + ID */}
                       <td className="py-3 pl-4 pr-2 align-middle">
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-bold text-slate-900 group-hover:text-indigo-900 truncate">
+                        <div className="flex flex-col min-w-0 leading-snug">
+                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 group-hover:text-brand-600 dark:group-hover:text-brand-400 truncate">
                             {s.name}
                           </span>
-                          <span className="font-mono text-[10px] text-slate-400 tracking-wider">
+                          <span className="text-xs text-slate-400 tabular-nums">
                             ID: {shortId}
                           </span>
                         </div>
@@ -666,7 +570,7 @@ export const Shifts: React.FC = () => {
 
                       {/* Buổi trong ngày */}
                       <td className="py-3 px-2 align-middle">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${period.badgeClass}`}>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${period.badgeClass}`}>
                           <PeriodIcon className="w-3.5 h-3.5" />
                           <span>{period.label}</span>
                         </span>
@@ -674,43 +578,43 @@ export const Shifts: React.FC = () => {
 
                       {/* Giờ vào (Check-in) */}
                       <td className="py-3 px-2 align-middle text-center">
-                        <span className="inline-block px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 font-mono text-xs font-bold tracking-tight border border-emerald-200/60">
+                        <span className="inline-block px-2.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-sm font-semibold tabular-nums border border-emerald-200/60 dark:border-emerald-800/60">
                           {s.startTime}
                         </span>
                       </td>
 
                       {/* Giờ ra (Check-out) */}
                       <td className="py-3 px-2 align-middle text-center">
-                        <span className="inline-block px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-mono text-xs font-bold tracking-tight border border-indigo-200/60">
+                        <span className="inline-block px-2.5 py-0.5 rounded-md bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 text-sm font-semibold tabular-nums border border-brand-200/60 dark:border-brand-800/60">
                           {s.endTime}
                         </span>
                       </td>
 
                       {/* Thời lượng ca */}
                       <td className="py-3 px-2 align-middle">
-                        <span className="text-xs font-medium text-slate-700">{duration}</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200 tabular-nums">{duration}</span>
                       </td>
 
                       {/* Ân hạn đi muộn */}
                       <td className="py-3 px-2 align-middle">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60 font-mono text-[11px] font-semibold">
-                          <Timer className="w-3 h-3 text-amber-600" />
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60 text-xs font-medium tabular-nums">
+                          <Timer className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                           <span>{s.lateThresholdMinutes || 15} phút</span>
                         </span>
                       </td>
 
-                      {/* Trạng thái (Hỗ trợ click chuyển đổi nhanh) */}
+                      {/* Trạng thái */}
                       <td className="py-3 px-3 align-middle text-center whitespace-nowrap">
                         <button
                           type="button"
                           disabled={!canManage || togglingId === s._id}
                           onClick={() => handleToggleStatus(s)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide transition-all ${
-                            canManage ? 'cursor-pointer hover:opacity-80 active:scale-95' : 'cursor-default'
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors ${
+                            canManage ? 'cursor-pointer hover:opacity-80' : 'cursor-default'
                           } ${
                             s.isActive
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                              : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
                           } ${togglingId === s._id ? 'opacity-50 pointer-events-none' : ''}`}
                           title={canManage ? 'Nhấn để chuyển đổi trạng thái ca' : undefined}
                         >
@@ -734,7 +638,7 @@ export const Shifts: React.FC = () => {
                         <div className="flex items-center justify-center gap-1 text-slate-400">
                           <button
                             onClick={() => setViewingShift(s)}
-                            className="w-7 h-7 rounded-md hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition-colors cursor-pointer"
+                            className="w-7 h-7 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center justify-center transition-colors cursor-pointer"
                             title="Xem chi tiết"
                             type="button"
                           >
@@ -743,7 +647,7 @@ export const Shifts: React.FC = () => {
                           {canManage && (
                             <button
                               onClick={() => openEditModal(s)}
-                              className="w-7 h-7 rounded-md hover:bg-slate-100 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                              className="w-7 h-7 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center transition-colors cursor-pointer"
                               title="Chỉnh sửa ca"
                               type="button"
                             >
@@ -753,7 +657,7 @@ export const Shifts: React.FC = () => {
                           {canManage && (
                             <button
                               onClick={() => setDeletingShift(s)}
-                              className="w-7 h-7 rounded-md hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
+                              className="w-7 h-7 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400 flex items-center justify-center transition-colors cursor-pointer"
                               title="Xóa ca"
                               type="button"
                             >
@@ -771,11 +675,11 @@ export const Shifts: React.FC = () => {
         </div>
 
         {/* Table Pagination & Footer Status */}
-        <div className="px-4 py-2.5 bg-slate-50/70 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+        <div className="px-4 py-2.5 bg-slate-50/70 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
           <div className="flex items-center gap-2">
             <span>
-              Trang <strong className="text-slate-800">{currentPage}</strong> / {totalPages} (Tổng cộng{' '}
-              <strong className="text-slate-800">{filteredShifts.length}</strong> ca làm việc)
+              Trang <strong className="text-slate-800 dark:text-slate-100">{currentPage}</strong> / {totalPages} (Tổng cộng{' '}
+              <strong className="text-slate-800 dark:text-slate-100">{filteredShifts.length}</strong> ca làm việc)
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -784,8 +688,8 @@ export const Shifts: React.FC = () => {
               onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
               className={`w-7 h-7 rounded-md flex items-center justify-center border transition-colors ${
                 currentPage <= 1
-                  ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
-                  : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer'
+                  ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 cursor-not-allowed'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer'
               }`}
               type="button"
             >
@@ -802,8 +706,8 @@ export const Shifts: React.FC = () => {
               onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
               className={`w-7 h-7 rounded-md flex items-center justify-center border transition-colors ${
                 currentPage >= totalPages
-                  ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
-                  : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer'
+                  ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 cursor-not-allowed'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer'
               }`}
               type="button"
             >

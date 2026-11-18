@@ -352,7 +352,7 @@ const listDocuments = async (userId) => {
 
   return TaiLieuRag.findAll({
     where: {
-      trang_thai: 'san_sang',
+      trang_thai: { [Op.in]: ['san_sang', 'loi'] },
       [Op.or]: orConditions,
     },
     include: [{ model: NguoiDung, as: 'nguoi_tai', attributes: ['id', 'ho_ten', 'vai_tro_chinh'] }],
@@ -363,8 +363,8 @@ const listDocuments = async (userId) => {
   });
 };
 
-// Lấy chi tiết 1 tài liệu RAG kèm 3 đoạn nội dung đầu tiên
-const getDocumentById = async (documentId, user) => {
+// Lấy chi tiết 1 tài liệu RAG kèm danh sách phân đoạn nội dung
+const getDocumentById = async (documentId, user, options = {}) => {
   if (!documentId || !isValidUuid(String(documentId))) {
     throw new ServiceError('ID tài liệu không hợp lệ.', 400, 'INVALID_ID');
   }
@@ -384,11 +384,16 @@ const getDocumentById = async (documentId, user) => {
     throw new ServiceError('Bạn không có quyền truy cập tài liệu cá nhân này.', 403, 'FORBIDDEN');
   }
 
+  const requestedLimit = Number(options.limit);
+  const chunkLimit = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? Math.min(200, Math.floor(requestedLimit))
+    : 50;
+
   const previewChunks = await PhanDoanTaiLieu.findAll({
     where: { tai_lieu_id: doc.id },
     attributes: ['id', 'thu_tu', 'noi_dung_chunk', 'so_tu'],
     order: [['thu_tu', 'ASC']],
-    limit: 3,
+    limit: chunkLimit,
   });
 
   return {

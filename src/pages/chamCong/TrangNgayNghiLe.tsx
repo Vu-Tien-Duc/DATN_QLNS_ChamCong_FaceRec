@@ -6,7 +6,7 @@ import {
   Plus,
   Search,
   Download,
-  RotateCcw,
+  RefreshCw,
   Edit3,
   Trash2,
   Eye,
@@ -18,11 +18,9 @@ import {
   AlertTriangle,
   Table as TableIcon,
   LayoutGrid,
-  ShieldCheck,
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  Filter,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/useXacThucStore';
@@ -35,6 +33,8 @@ import {
 import { hasRole } from '../../utils/phanQuyen';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { Button } from '../../components/chung/NutBam';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 
 // =============================================================================
 // HELPER FUNCTIONS & FORMATTERS
@@ -441,310 +441,172 @@ export const Holidays: React.FC = () => {
   return (
     <div className="space-y-4" data-purpose="holidays-management-page">
       {/* =========================================================================
-          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+          1. PAGE HEADER + ACTIONS
          ========================================================================= */}
       <PageHeader
         title="Quản Lý Ngày Nghỉ Lễ & Sự Kiện"
-        subtitle="Quản lý danh mục ngày lễ toàn quốc, kỳ nghỉ tết truyền thống và chế độ nghỉ bù hưởng lương của cán bộ, giảng viên Đại học Nguyễn Trãi."
-        icon={<PartyPopper className="w-5 h-5 text-rose-600" />}
-        badge="CSDL v2.5"
-        badgeVariant="brand"
+        subtitle="Danh mục ngày lễ toàn quốc, kỳ nghỉ Tết và chế độ nghỉ bù hưởng lương."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={fetchHolidays}
+              variant="outline"
+              size="sm"
+              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+              type="button"
+            >
+              Làm mới
+            </Button>
+            <Button
+              onClick={handleExportCSV}
+              variant="outline"
+              size="sm"
+              leftIcon={<Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+              type="button"
+            >
+              Xuất CSV
+            </Button>
+            {canManage && (
+              <Button
+                onClick={openAddModal}
+                variant="primary"
+                size="sm"
+                leftIcon={<Plus className="w-3.5 h-3.5" />}
+                type="button"
+              >
+                Thêm ngày nghỉ
+              </Button>
+            )}
+          </div>
+        }
       />
 
       {/* =========================================================================
-          4 COMPACT KPI CARDS GRID (Matching code.html)
+          2. UNIFIED HOLIDAYS CARD: KPI STRIP + FILTER BAR + TABLE / GRID
          ========================================================================= */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5" data-purpose="kpi-metric-cards">
-        {/* Card 1: Tổng số kỳ nghỉ */}
-        <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">TỔNG SỐ KỲ NGHỈ</span>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-600 shrink-0">
-              <PartyPopper className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-1.5">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-slate-900 leading-none">{kpis.totalHolidays}</span>
-              <span className="text-xs text-slate-500 font-medium">
-                đợt nghỉ ({selectedYear === 'all' ? 'Tất cả' : `Năm ${selectedYear}`})
-              </span>
-            </div>
-            <div className="mt-1 flex items-center gap-1 text-rose-700 text-xs font-medium truncate">
-              <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Lịch chuẩn NTU</span>
-            </div>
-          </div>
+      <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden flex flex-col">
+        <CompactStatsBar
+          embedded
+          items={[
+            { label: 'Tổng kỳ nghỉ', value: kpis.totalHolidays, unit: 'đợt', tone: 'neutral' },
+            { label: 'Tổng ngày nghỉ', value: kpis.totalDays, unit: 'ngày', tone: 'warning' },
+            { label: 'Hưởng 100% lương', value: `${kpis.paidDays}/${kpis.totalDays}`, badge: `${kpis.paidPercentage}%`, tone: 'success' },
+            {
+              label: 'Kỳ nghỉ tới',
+              value: kpis.nextHoliday ? kpis.nextHoliday.name : 'Chưa có',
+              badge: kpis.nextHoliday ? `Còn ${kpis.daysUntilNext}d` : undefined,
+              tone: 'brand',
+            },
+          ]}
+        />
+
+        <div className="p-3 border-b border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+            <Search className="w-4 h-4" />
+          </span>
+          <input
+            value={searchKeyword}
+            onChange={(e) => {
+              setSearchKeyword(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full h-9 pl-9 pr-3 bg-slate-50 dark:bg-slate-800/80 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 text-xs border border-slate-200/80 dark:border-slate-700 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
+            placeholder="Tìm kỳ nghỉ lễ theo tên hoặc mô tả..."
+            type="text"
+          />
         </div>
 
-        {/* Card 2: Tổng số ngày nghỉ */}
-        <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-600">TỔNG SỐ NGÀY NGHỈ</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
-              <CalendarDays className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-1.5">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-slate-900 leading-none">{kpis.totalDays}</span>
-              <span className="text-xs text-slate-500 font-medium">ngày thực tế</span>
-            </div>
-            <div className="mt-1 text-amber-700 text-xs font-medium truncate">
-              <span>TB {kpis.avgDays} ngày / kỳ nghỉ</span>
-            </div>
-          </div>
+        <select
+          value={selectedYear}
+          onChange={(e) => {
+            setSelectedYear(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="h-9 pl-3 pr-7 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
+        >
+          <option value="all">Tất cả năm</option>
+          {availableYears.map((yr) => (
+            <option key={yr} value={yr}>
+              Năm {yr}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={selectedPaid}
+          onChange={(e) => {
+            setSelectedPaid(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="h-9 pl-3 pr-7 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
+        >
+          <option value="">Tất cả chế độ</option>
+          <option value="true">Hưởng 100% lương</option>
+          <option value="false">Không hưởng lương</option>
+        </select>
+
+        <select
+          value={selectedTiming}
+          onChange={(e) => {
+            setSelectedTiming(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="h-9 pl-3 pr-7 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
+        >
+          <option value="">Tất cả thời điểm</option>
+          <option value="ongoing">Đang diễn ra</option>
+          <option value="upcoming">Sắp diễn ra</option>
+          <option value="passed">Đã kết thúc</option>
+        </select>
+
+        <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg shrink-0 border border-slate-200/60 dark:border-slate-700/60 h-9">
+          <button
+            onClick={() => setViewMode('table')}
+            className={`h-full flex items-center gap-1 px-2.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+              viewMode === 'table'
+                ? 'bg-white dark:bg-slate-700 shadow-2xs text-brand-700 dark:text-brand-300'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+            type="button"
+          >
+            <TableIcon className="w-3.5 h-3.5" />
+            <span>Bảng</span>
+          </button>
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`h-full flex items-center gap-1 px-2.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+              viewMode === 'grid'
+                ? 'bg-white dark:bg-slate-700 shadow-2xs text-brand-700 dark:text-brand-300'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+            type="button"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span>Thẻ</span>
+          </button>
         </div>
 
-        {/* Card 3: Hưởng 100% lương */}
-        <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600">HƯỞNG 100% LƯƠNG</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-1.5">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold text-slate-900 leading-none">{kpis.paidDays}</span>
-              <span className="text-xs text-slate-500">/ {kpis.totalDays} ngày nghỉ</span>
-            </div>
-            <div className="mt-1 text-emerald-700 text-xs font-medium truncate">
-              <span>{kpis.paidPercentage}% chế độ Nhà nước</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Kỳ nghỉ tiếp theo */}
-        <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">KỲ NGHỈ TIẾP THEO</span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
-              <Clock className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-1.5">
-            <div className="text-sm text-slate-900 font-semibold truncate">
-              {kpis.nextHoliday ? kpis.nextHoliday.name : 'Chưa có lịch mới'}
-            </div>
-            <div className="mt-1 flex items-center gap-1 text-xs text-indigo-600 font-medium truncate">
-              {kpis.nextHoliday ? (
-                <span>
-                  ⏳ Còn {kpis.daysUntilNext} ngày ({formatDateShort(kpis.nextHoliday.startDate)})
-                </span>
-              ) : (
-                <span>Đã kết thúc lịch năm</span>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* =========================================================================
-          FILTER & ACTION TOOLBAR SECTION (Matching code.html)
-         ========================================================================= */}
-      <section className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs flex flex-col gap-3.5">
-        {/* Row 1: Header and Primary Action Buttons */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-rose-600" />
-            <span className="text-sm font-bold text-slate-800">Bộ Lọc &amp; Tra Cứu Kỳ Nghỉ Lễ</span>
-            <span className="text-slate-300">•</span>
-            <span className="text-xs text-slate-500 font-medium">
-              Hiển thị <strong className="text-slate-800">{filteredHolidays.length}</strong> / {holidays.length} kỳ nghỉ
-            </span>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
-            {/* Refresh Button */}
-            <button
-              onClick={fetchHolidays}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-300 shadow-xs transition-colors cursor-pointer"
-              type="button"
-            >
-              <RotateCcw className="w-4 h-4 text-slate-500" />
-              <span>Làm Mới</span>
-            </button>
-            {/* Export CSV Button */}
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-emerald-50/60 text-emerald-700 text-xs font-semibold border border-emerald-300 shadow-xs transition-colors cursor-pointer"
-              type="button"
-            >
-              <Download className="w-4 h-4 text-emerald-600" />
-              <span>Xuất Excel (.csv)</span>
-            </button>
-            {/* Add Holiday Button */}
-            {canManage && (
-              <button
-                onClick={openAddModal}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm shadow-rose-600/30 transition-all cursor-pointer"
-                type="button"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Thêm Ngày Nghỉ Lễ</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Row 2: Search Input and Dropdowns in a unified row */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5">
-          {/* Search Input */}
-          <div className="relative flex-1 min-w-0">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-              <Search className="w-4 h-4" />
-            </span>
-            <input
-              value={searchKeyword}
-              onChange={(e) => {
-                setSearchKeyword(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full h-9 pl-9 pr-3 bg-slate-50 rounded-xl text-slate-800 placeholder:text-slate-400 text-xs border border-slate-200 focus:outline-none focus:bg-white focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all"
-              placeholder="Tìm kiếm kỳ nghỉ lễ theo tên hoặc mô tả căn cứ..."
-              type="text"
-            />
-          </div>
-
-          {/* Year Selector (Nạp động các năm từ CSDL) */}
-          <div className="relative shrink-0">
-            <select
-              value={selectedYear}
-              onChange={(e) => {
-                setSelectedYear(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="h-9 pl-3 pr-8 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:bg-white focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 cursor-pointer transition-colors"
-            >
-              <option value="all">Tất cả các năm</option>
-              {availableYears.map((yr) => (
-                <option key={yr} value={yr}>
-                  Năm {yr} {yr === 2026 ? '(Chuẩn)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Mode Selector */}
-          <div className="relative shrink-0">
-            <select
-              value={selectedPaid}
-              onChange={(e) => {
-                setSelectedPaid(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="h-9 pl-3 pr-8 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:bg-white focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 cursor-pointer transition-colors"
-            >
-              <option value="">Tất cả chế độ</option>
-              <option value="true">Hưởng 100% lương</option>
-              <option value="false">Không hưởng lương</option>
-            </select>
-          </div>
-
-          {/* Period Selector */}
-          <div className="relative shrink-0">
-            <select
-              value={selectedTiming}
-              onChange={(e) => {
-                setSelectedTiming(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="h-9 pl-3 pr-8 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:bg-white focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 cursor-pointer transition-colors"
-            >
-              <option value="">Tất cả thời điểm</option>
-              <option value="ongoing">Đang diễn ra</option>
-              <option value="upcoming">Sắp diễn ra</option>
-              <option value="passed">Đã kết thúc</option>
-            </select>
-          </div>
-
-          {/* View Switcher: Bảng / Thẻ */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl shrink-0 border border-slate-200">
-            <button
-              onClick={() => setViewMode('table')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                viewMode === 'table'
-                  ? 'bg-white shadow-xs text-slate-900'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-              type="button"
-            >
-              <TableIcon className="w-3.5 h-3.5" />
-              <span>Bảng</span>
-            </button>
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                viewMode === 'grid'
-                  ? 'bg-white shadow-xs text-slate-900'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-              type="button"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Thẻ</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Active Filters Tagline */}
         {(selectedYear !== 'all' || selectedPaid !== '' || selectedTiming !== '' || searchKeyword) && (
-          <div className="flex items-center justify-between pt-1 flex-wrap gap-2 text-xs border-t border-slate-100">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-slate-400">Đang lọc theo:</span>
-              {selectedYear !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-medium">
-                  <span>Năm: {selectedYear}</span>
-                  <button
-                    onClick={() => setSelectedYear('all')}
-                    className="hover:opacity-75 cursor-pointer"
-                    type="button"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              {selectedPaid !== '' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-                  <span>Chế độ: {selectedPaid === 'true' ? '100% lương' : 'Không lương'}</span>
-                  <button
-                    onClick={() => setSelectedPaid('')}
-                    className="hover:opacity-75 cursor-pointer"
-                    type="button"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              {selectedTiming !== '' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-medium">
-                  <span>Thời điểm: {selectedTiming}</span>
-                  <button
-                    onClick={() => setSelectedTiming('')}
-                    className="hover:opacity-75 cursor-pointer"
-                    type="button"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-            </div>
-            <button
-              onClick={handleResetFilters}
-              className="text-xs text-rose-600 hover:text-rose-700 font-medium transition-colors cursor-pointer"
-              type="button"
-            >
-              Đặt lại tất cả bộ lọc
-            </button>
-          </div>
+          <button
+            onClick={handleResetFilters}
+            className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 underline cursor-pointer px-1"
+            type="button"
+          >
+            Đặt lại
+          </button>
         )}
-      </section>
+
+        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium ml-auto whitespace-nowrap">
+          {filteredHolidays.length} / {holidays.length} kỳ nghỉ
+        </span>
+      </div>
 
       {/* =========================================================================
-          VIEW MODE 1: STRICT ZERO-HORIZONTAL SCROLL TABLE CARD (Matching code.html)
+          VIEW MODE 1: TABLE VIEW
          ========================================================================= */}
       {viewMode === 'table' ? (
-        <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col">
+        <div className="flex flex-col">
           <div className="w-full overflow-hidden">
             <table className="table-fixed w-full text-left border-collapse">
               <colgroup>
@@ -757,23 +619,23 @@ export const Holidays: React.FC = () => {
                 <col style={{ width: '8%' }} />
               </colgroup>
               <thead>
-                <tr className="bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  <th className="py-3 px-3 font-semibold whitespace-nowrap">TÊN KỲ NGHỈ LỄ</th>
-                  <th className="py-3 px-3 font-semibold whitespace-nowrap">KHOẢNG THỜI GIAN</th>
-                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">SỐ NGÀY NGHỈ</th>
-                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">CHẾ ĐỘ LƯƠNG</th>
-                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">TRẠNG THÁI</th>
-                  <th className="py-3 px-3 font-semibold whitespace-nowrap">MÔ TẢ / CĂN CỨ</th>
-                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">THAO TÁC</th>
+                <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/70 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <th className="py-3 px-3 font-semibold whitespace-nowrap">Tên kỳ nghỉ lễ</th>
+                  <th className="py-3 px-3 font-semibold whitespace-nowrap">Khoảng thời gian</th>
+                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">Số ngày</th>
+                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">Chế độ lương</th>
+                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">Trạng thái</th>
+                  <th className="py-3 px-3 font-semibold whitespace-nowrap">Mô tả / Căn cứ</th>
+                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
+                    <td colSpan={7} className="py-12 text-center text-sm text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-2">
-                        <div className="w-6 h-6 border-2 border-rose-600 border-t-transparent rounded-full animate-spin"></div>
-                        <span className="text-xs font-medium">Đang tải lịch nghỉ lễ...</span>
+                        <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+                        <span>Đang tải lịch nghỉ lễ...</span>
                       </div>
                     </td>
                   </tr>
@@ -782,8 +644,8 @@ export const Holidays: React.FC = () => {
                     <td colSpan={7} className="py-12 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <PartyPopper className="w-8 h-8 text-slate-300 stroke-[1.5]" />
-                        <span className="text-xs font-semibold text-slate-600">Không tìm thấy kỳ nghỉ lễ nào</span>
-                        <p className="text-[11px] text-slate-400">Thử thay đổi năm hoặc bỏ bớt các tiêu chí lọc</p>
+                        <span className="text-sm font-semibold text-slate-600">Không tìm thấy kỳ nghỉ lễ nào</span>
+                        <p className="text-xs text-slate-400">Thử thay đổi năm hoặc bỏ bớt các tiêu chí lọc</p>
                       </div>
                     </td>
                   </tr>
@@ -795,16 +657,16 @@ export const Holidays: React.FC = () => {
                     return (
                       <tr key={h._id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group">
                         {/* Tên kỳ nghỉ lễ */}
-                        <td className="py-2.5 px-3 min-w-0">
-                          <div className="flex items-center gap-2 min-w-0">
+                        <td className="py-3 px-3 min-w-0">
+                          <div className="flex items-center gap-2.5 min-w-0">
                             <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                               <PartyPopper className="w-4 h-4" />
                             </div>
                             <div className="flex items-center gap-1.5 truncate min-w-0">
-                              <span className="text-xs font-semibold text-slate-900 dark:text-white group-hover:text-rose-600 dark:group-hover:text-rose-400 truncate">
+                              <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">
                                 {h.name || (h as any).ten_ngay_le || '--'}
                               </span>
-                              <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold font-mono shrink-0">
+                              <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium tabular-nums shrink-0">
                                 {h.year || (h as any).nam || '--'}
                               </span>
                             </div>
@@ -812,8 +674,8 @@ export const Holidays: React.FC = () => {
                         </td>
 
                         {/* Khoảng thời gian */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          <div className="flex items-center gap-1 text-slate-800 dark:text-slate-200 font-mono text-[11px] font-medium whitespace-nowrap">
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200 tabular-nums text-sm font-medium whitespace-nowrap">
                             <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             {h.startDate === h.endDate ? (
                               <span>{formatDateVN(h.startDate || (h as any).ngay_bat_dau)}</span>
@@ -828,36 +690,36 @@ export const Holidays: React.FC = () => {
                         </td>
 
                         {/* Số ngày nghỉ */}
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          <span className="inline-block px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60 text-[11px] font-semibold font-mono">
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          <span className="inline-block px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60 text-xs font-medium tabular-nums">
                             {days} ngày
                           </span>
                         </td>
 
                         {/* Chế độ lương */}
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
                           {h.isPaid ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-semibold whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-medium whitespace-nowrap">
                               <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                               <span>100% Lương</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 text-[11px] font-medium whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 text-xs font-medium whitespace-nowrap">
                               <span>Không lương</span>
                             </span>
                           )}
                         </td>
 
                         {/* Trạng thái */}
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${timing.badgeClass}`}>
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${timing.badgeClass}`}>
                             {timing.label}
                           </span>
                         </td>
 
                         {/* Mô tả / Căn cứ */}
-                        <td className="py-2.5 px-3 min-w-0">
-                          <span className="text-slate-500 dark:text-slate-400 text-xs block truncate" title={h.description || (h as any).mo_ta || 'Không có mô tả'}>
+                        <td className="py-3 px-3 min-w-0">
+                          <span className="text-slate-600 dark:text-slate-400 text-sm block truncate" title={h.description || (h as any).mo_ta || 'Không có mô tả'}>
                             {h.description || (h as any).mo_ta || 'Theo quy định'}
                           </span>
                         </td>
@@ -910,11 +772,11 @@ export const Holidays: React.FC = () => {
           </div>
 
           {/* Table Pagination Footer */}
-          <div className="flex items-center justify-between px-4 py-3 bg-slate-50/80 border-t border-slate-200 text-xs text-slate-500">
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-50/80 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
             <div>
               <span>
-                Trang <strong className="text-slate-800">{currentPage}</strong> / {totalPages} (Tổng cộng{' '}
-                <strong className="text-slate-800">{filteredHolidays.length}</strong> kỳ nghỉ lễ)
+                Trang <strong className="text-slate-800 dark:text-slate-100">{currentPage}</strong> / {totalPages} (Tổng cộng{' '}
+                <strong className="text-slate-800 dark:text-slate-100">{filteredHolidays.length}</strong> kỳ nghỉ lễ)
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -923,8 +785,8 @@ export const Holidays: React.FC = () => {
                 onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                 className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${
                   currentPage <= 1
-                    ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
-                    : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer'
+                    ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 cursor-not-allowed'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer'
                 }`}
                 type="button"
               >
@@ -941,8 +803,8 @@ export const Holidays: React.FC = () => {
                 onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                 className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${
                   currentPage >= totalPages
-                    ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
-                    : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer'
+                    ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 cursor-not-allowed'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer'
                 }`}
                 type="button"
               >
@@ -950,12 +812,9 @@ export const Holidays: React.FC = () => {
               </button>
             </div>
           </div>
-        </section>
+        </div>
       ) : (
-        /* =========================================================================
-            VIEW MODE 2: CARD GRID VIEW (Dạng Thẻ)
-           ========================================================================= */
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 bg-slate-50/40 dark:bg-slate-950/30">
           {paginatedHolidays.map((h) => {
             const days = calculateDayCount(h.startDate, h.endDate);
             const timing = getTimingStatus(h.startDate, h.endDate);
@@ -963,16 +822,16 @@ export const Holidays: React.FC = () => {
             return (
               <div
                 key={h._id}
-                className="bg-white rounded-xl border border-slate-200/90 shadow-xs hover:shadow-sm p-4 flex flex-col justify-between transition-all group"
+                className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-sm p-4 flex flex-col justify-between transition-all group"
               >
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                      <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                         <PartyPopper className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-slate-900 group-hover:text-rose-900 leading-snug">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-rose-600 dark:group-hover:text-rose-400 leading-snug">
                           {h.name}
                         </h4>
                         <span className="text-[11px] text-slate-400 font-medium">Năm học {h.year}</span>
@@ -983,41 +842,41 @@ export const Holidays: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="mt-3.5 py-2.5 px-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1.5">
+                  <div className="mt-3.5 py-2.5 px-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-400">Thời gian nghỉ:</span>
-                      <span className="font-mono font-bold text-slate-800 text-[11px]">
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200 text-[11px]">
                         {formatDateVN(h.startDate)} → {formatDateVN(h.endDate)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-400">Thời lượng:</span>
-                      <span className="font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60">
+                      <span className="font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded border border-amber-200/60 dark:border-amber-800/60">
                         {days} ngày thực tế
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-400">Chế độ:</span>
-                      <span className={`font-semibold ${h.isPaid ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      <span className={`font-semibold ${h.isPaid ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
                         {h.isPaid ? '✓ 100% Lương' : 'Không hưởng lương'}
                       </span>
                     </div>
                   </div>
 
                   {h.description && (
-                    <p className="mt-2.5 text-xs text-slate-500 line-clamp-2 italic">
+                    <p className="mt-2.5 text-xs text-slate-500 dark:text-slate-400 line-clamp-2 italic">
                       "{h.description}"
                     </p>
                   )}
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end gap-1 text-slate-400">
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-1 text-slate-400">
                   <button
                     onClick={() => {
                       setActiveHoliday(h);
                       setIsViewModalOpen(true);
                     }}
-                    className="p-1.5 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                    className="p-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition-colors cursor-pointer"
                     title="Xem chi tiết"
                     type="button"
                   >
@@ -1026,7 +885,7 @@ export const Holidays: React.FC = () => {
                   {canManage && (
                     <button
                       onClick={() => openEditModal(h)}
-                      className="p-1.5 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                      className="p-1.5 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                       title="Chỉnh sửa"
                       type="button"
                     >
@@ -1039,7 +898,7 @@ export const Holidays: React.FC = () => {
                         setActiveHoliday(h);
                         setIsDeleteModalOpen(true);
                       }}
-                      className="p-1.5 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                      className="p-1.5 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
                       title="Xóa"
                       type="button"
                     >
@@ -1050,8 +909,9 @@ export const Holidays: React.FC = () => {
               </div>
             );
           })}
-        </section>
+        </div>
       )}
+      </section>
 
       {/* =========================================================================
           MODAL: THÊM MỚI / CHỈNH SỬA KỲ NGHỈ LỄ

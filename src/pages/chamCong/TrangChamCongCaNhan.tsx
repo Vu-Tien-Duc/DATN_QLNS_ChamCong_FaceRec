@@ -14,9 +14,7 @@ import {
   Download,
   Printer,
   User,
-  Sparkles,
   Eye,
-  ShieldCheck,
   ShieldAlert,
   ArrowRight,
   X,
@@ -37,6 +35,9 @@ import { useAuthStore } from '../../stores/useXacThucStore';
 import { Button } from '../../components/chung/NutBam';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { Badge } from '../../components/chung/NhanTrangThai';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
+import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
+import { getRoleLabel } from '../../utils/phanQuyen';
 import {
   attendanceApi,
   AttendanceHistoryItem,
@@ -646,31 +647,20 @@ export const AttendanceMe: React.FC = () => {
       {/* =====================================================================
           1. HEADER CARD: NHÂN SỰ & HÀNH ĐỘNG SINH TRẮC HỌC REALTIME
       ===================================================================== */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      {/* =====================================================================
+          1. PERSONAL ATTENDANCE HEADER + QUICK PUNCH ACTIONS
+      ===================================================================== */}
+      <div className="pb-3 border-b border-slate-200/80 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 text-brand-600 dark:text-brand-400 text-xs font-semibold">
-              <Sparkles className="w-3 h-3" />
-              Sinh Trắc Học AI CSDL v2.5
-            </span>
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
+            <span>{user?.fullName || 'Cán Bộ Giảng Viên'}</span>
             {user?.staffCode && (
-              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-mono font-semibold border border-slate-200 dark:border-slate-700">
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-mono font-medium">
                 {user.staffCode}
               </span>
             )}
-            {campusDistance !== null && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
-                <MapPin className="w-3 h-3" />
-                Cách trường ~{campusDistance}m
-              </span>
-            )}
-          </div>
-
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-            {user?.fullName || 'Cán Bộ Giảng Viên'}
           </h1>
-
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
             <span>
               {typeof user?.departmentId === 'object' && user?.departmentId
                 ? (user.departmentId as any).name || 'Khoa / Đơn vị công tác'
@@ -680,32 +670,40 @@ export const AttendanceMe: React.FC = () => {
             </span>
             <span>•</span>
             <span className="text-brand-600 dark:text-brand-400 font-medium">
-              {typeof user?.role === 'string' ? user.role.toUpperCase() : 'GIẢNG VIÊN'}
+              {getRoleLabel(user?.role)}
             </span>
+            {campusDistance !== null && (
+              <>
+                <span>•</span>
+                <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                  <MapPin className="w-3 h-3" />
+                  Cách trường ~{campusDistance}m
+                </span>
+              </>
+            )}
             <span>•</span>
-            <span className="font-mono flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              {liveClock} (Hôm nay: {formatDateVN(today)})
+            <span className="font-mono">
+              {liveClock} ({formatDateVN(today)})
             </span>
           </p>
         </div>
 
         {/* Cụm nút hành động điểm danh nhanh */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             onClick={() => setScannerMode('check-in')}
-            className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-xs active:scale-95 transition-all"
+            className="h-9 inline-flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs px-3.5 rounded-full shadow-xs transition-colors cursor-pointer"
           >
-            <ScanFace className="w-4 h-4" />
-            <span>Vào Ca (FaceID)</span>
+            <ScanFace className="w-3.5 h-3.5" />
+            <span>Vào ca (FaceID)</span>
           </button>
 
           <button
             onClick={() => setScannerMode('check-out')}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-xs active:scale-95 transition-all"
+            className="h-9 inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-semibold text-xs px-3.5 rounded-full shadow-xs transition-colors cursor-pointer"
           >
-            <ScanFace className="w-4 h-4 text-cyan-400" />
-            <span>Tan Ca (FaceID)</span>
+            <ScanFace className="w-3.5 h-3.5 text-cyan-300" />
+            <span>Tan ca (FaceID)</span>
           </button>
 
           <button
@@ -713,174 +711,78 @@ export const AttendanceMe: React.FC = () => {
               setManualAction('check-in');
               setIsManualModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold active:scale-95 transition-all"
+            className="h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
             title="Điểm danh Web / GPS"
           >
-            <Laptop className="w-4 h-4 text-slate-500" />
+            <Laptop className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
             <span>Cổng Web</span>
           </button>
 
           <button
             onClick={() => setIsQrModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold active:scale-95 transition-all"
+            className="h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
             title="Quét mã QR TOTP động"
           >
-            <QrCode className="w-4 h-4 text-emerald-600" />
+            <QrCode className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span>Quét QR</span>
           </button>
         </div>
       </div>
 
       {/* =====================================================================
-          2. EXECUTIVE KPI CARDS: CHỈ SỐ CHUYÊN CẦN TRONG THÁNG
+          2. COMPACT STATS STRIP (SECONDARY)
       ===================================================================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Chuyên cần & Số ngày có mặt */}
-        <div className="card p-5 relative overflow-hidden group hover:shadow-lg transition-all duration-300 border-l-4 border-l-emerald-500">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Tỷ Lệ Chuyên Cần
-              </p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-black text-slate-800 dark:text-white">
-                  {stats.attendanceRate}%
-                </span>
-                <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                  {stats.totalAttended} / {stats.totalAttended + stats.absentCount} ngày
-                </span>
-              </div>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
-              <CheckCircle2 className="w-6 h-6" />
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-1000"
-                style={{ width: `${stats.attendanceRate}%` }}
-              />
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 flex justify-between">
-              <span>Đúng giờ: <strong>{stats.onTimeCount}</strong></span>
-              <span>Đi muộn: <strong>{stats.lateCount}</strong></span>
-            </p>
-          </div>
-        </div>
-
-        {/* Card 2: Đi muộn & Về sớm */}
-        <div className="card p-5 relative overflow-hidden group hover:shadow-lg transition-all duration-300 border-l-4 border-l-amber-500">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Đi Muộn & Về Sớm
-              </p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-black text-slate-800 dark:text-white">
-                  {stats.lateCount}
-                </span>
-                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-                  lượt muộn
-                </span>
-              </div>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
-              <Clock className="w-6 h-6" />
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Tổng trễ: <strong className="text-amber-600 font-bold">{stats.totalLateMinutes}p</strong></span>
-            <span>Về sớm: <strong className="text-orange-600 font-bold">{stats.earlyLeaveCount}</strong></span>
-          </div>
-        </div>
-
-        {/* Card 3: Tổng giờ công & Tiết dạy */}
-        <div className="card p-5 relative overflow-hidden group hover:shadow-lg transition-all duration-300 border-l-4 border-l-indigo-500">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Tổng Giờ Công Tích Lũy
-              </p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-black text-slate-800 dark:text-white">
-                  {stats.totalWorkHours}
-                </span>
-                <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
-                  giờ công
-                </span>
-              </div>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
-              <Zap className="w-6 h-6" />
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Số tiết thực dạy: <strong className="text-indigo-600 font-bold">{stats.totalTeachingPeriods} tiết</strong></span>
-            <span>Tháng {selectedMonth}/{selectedYear}</span>
-          </div>
-        </div>
-
-        {/* Card 4: Nghỉ phép & Vắng mặt */}
-        <div className="card p-5 relative overflow-hidden group hover:shadow-lg transition-all duration-300 border-l-4 border-l-rose-500">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Nghỉ Phép & Vắng Mặt
-              </p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-black text-slate-800 dark:text-white">
-                  {stats.absentCount}
-                </span>
-                <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                  buổi vắng
-                </span>
-              </div>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
-              <XCircle className="w-6 h-6" />
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Nghỉ có phép: <strong className="text-blue-600 font-bold">{stats.excusedCount}</strong></span>
-            {stats.fraudCount > 0 ? (
-              <span className="text-rose-600 font-bold flex items-center gap-1">
-                <ShieldAlert className="w-3.5 h-3.5" /> {stats.fraudCount} vi phạm
-              </span>
-            ) : (
-              <span className="text-emerald-600 font-medium flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" /> An toàn
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* =====================================================================
-          3. TOOLBAR: ĐIỀU HƯỚNG THÁNG, BỘ LỌC & CHẾ ĐỘ XEM
+          2. UNIFIED WORKSPACE CARD: KPI STRIP + TOOLBAR + BẢNG / LỊCH THÁNG
       ===================================================================== */}
-      <div className="card p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
+      <CompactStatsBar
+        embedded
+        items={[
+          {
+            label: 'Tỷ lệ chuyên cần',
+            value: `${stats.attendanceRate}%`,
+            badge: `${stats.totalAttended}/${stats.totalAttended + stats.absentCount} ngày`,
+            tone: 'success',
+          },
+          {
+            label: 'Đi muộn / Về sớm',
+            value: stats.lateCount,
+            badge: `${stats.totalLateMinutes}p trễ`,
+            tone: 'warning',
+          },
+          {
+            label: 'Giờ công tích lũy',
+            value: stats.totalWorkHours,
+            badge: `${stats.totalTeachingPeriods} tiết`,
+            tone: 'brand',
+          },
+          {
+            label: 'Vắng / Nghỉ phép',
+            value: stats.absentCount,
+            badge: `${stats.excusedCount} có phép`,
+            tone: stats.fraudCount > 0 ? 'danger' : 'neutral',
+          },
+        ]}
+      />
+      <div className="p-3 border-b border-slate-200/80 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Nhóm điều hướng tháng */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-full border border-slate-200 dark:border-slate-700 h-9">
             <button
               onClick={handlePrevMonth}
-              className="p-1.5 rounded-xl hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
+              className="w-8 h-8 rounded-full hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
               title="Tháng trước"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <div className="px-3 py-1 text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-indigo-500" />
+            <div className="px-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
               <span>Tháng {selectedMonth} / {selectedYear}</span>
             </div>
             <button
               onClick={handleNextMonth}
-              className="p-1.5 rounded-xl hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
+              className="w-8 h-8 rounded-full hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
               title="Tháng sau"
             >
               <ChevronRight className="w-4 h-4" />
@@ -889,20 +791,20 @@ export const AttendanceMe: React.FC = () => {
 
           <button
             onClick={handleResetToCurrentMonth}
-            className="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+            className="h-9 px-3 text-xs font-semibold rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
           >
             Hôm nay
           </button>
 
           {/* Ô tìm kiếm từ khóa */}
-          <div className="relative flex-1 sm:w-60 min-w-[160px]">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <div className="relative flex-1 sm:w-52 min-w-[160px]">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
               placeholder="Tìm ca, phòng, môn..."
-              className="form-input pl-9 pr-8 py-1.5 text-xs rounded-xl"
+              className="w-full h-9 pl-9 pr-8 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500"
             />
             {searchKeyword && (
               <button
@@ -916,12 +818,12 @@ export const AttendanceMe: React.FC = () => {
         </div>
 
         {/* Nhóm bộ lọc trạng thái, phương thức và chuyển đổi View Mode */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Lọc Trạng thái */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="form-input py-1.5 text-xs rounded-xl w-auto"
+            className="h-9 px-3 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
           >
             <option value="ALL">Tất cả trạng thái</option>
             <option value="on_time">Đúng giờ</option>
@@ -935,7 +837,7 @@ export const AttendanceMe: React.FC = () => {
           <select
             value={methodFilter}
             onChange={(e) => setMethodFilter(e.target.value)}
-            className="form-input py-1.5 text-xs rounded-xl w-auto hidden sm:inline-block"
+            className="h-9 px-3 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer hidden sm:inline-block"
           >
             <option value="ALL">Tất cả phương thức</option>
             <option value="FACE">FaceID</option>
@@ -945,13 +847,13 @@ export const AttendanceMe: React.FC = () => {
           </select>
 
           {/* Switcher chế độ hiển thị: Bảng vs Lịch */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-full border border-slate-200 dark:border-slate-700 h-9">
             <button
               onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`h-full px-3 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 viewMode === 'table'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               <CalendarRange className="w-3.5 h-3.5" />
@@ -959,10 +861,10 @@ export const AttendanceMe: React.FC = () => {
             </button>
             <button
               onClick={() => setViewMode('calendar')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`h-full px-3 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 viewMode === 'calendar'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               <CalendarDays className="w-3.5 h-3.5" />
@@ -970,28 +872,28 @@ export const AttendanceMe: React.FC = () => {
             </button>
           </div>
 
-          {/* Nút xuất Excel & In */}
+          {/* Nút xuất Excel & In & Làm mới */}
           <button
             onClick={handleExportExcel}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-xs font-bold transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+            className="h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
             title="Xuất bảng công cá nhân ra file Excel (.xlsx)"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span className="hidden sm:inline">Xuất Excel (.xlsx)</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden sm:inline">Xuất Excel</span>
           </button>
           <button
             onClick={handlePrint}
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+            className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
             title="In bảng công"
           >
-            <Printer className="w-4 h-4" />
+            <Printer className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={fetchMyAttendance}
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+            className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
             title="Làm mới"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-500' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-brand-500' : ''}`} />
           </button>
         </div>
       </div>
@@ -1000,7 +902,7 @@ export const AttendanceMe: React.FC = () => {
           4. VIEW MODE 1: CHẾ ĐỘ BẢNG DỮ LIỆU CHI TIẾT (TABLE VIEW)
       ===================================================================== */}
       {viewMode === 'table' && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+        <div className="w-full overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse table-auto">
               <thead className="sticky top-0 z-10">
@@ -1261,7 +1163,7 @@ export const AttendanceMe: React.FC = () => {
           5. VIEW MODE 2: CHẾ ĐỘ LỊCH THÁNG TRỰC QUAN (CALENDAR VIEW)
       ===================================================================== */}
       {viewMode === 'calendar' && (
-        <div className="card p-5 shadow-sm space-y-4">
+        <div className="p-5 space-y-4">
           {/* Tiêu đề thứ trong tuần */}
           <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-100 dark:border-slate-800">
             <div>Thứ Hai</div>
@@ -1348,6 +1250,7 @@ export const AttendanceMe: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
 
       {/* =====================================================================
           6. MODAL 1: CHI TIẾT BẢN GHI CHẤM CÔNG & NHẬT KÝ QUẸT THẺ (PUNCH LOGS)
@@ -1416,6 +1319,35 @@ export const AttendanceMe: React.FC = () => {
                   {formatTimeVN(selectedLog.checkOutTime)}
                 </p>
               </div>
+              <div>
+                <p className="text-xs text-slate-500">Số tiết thực dạy / Chốt công</p>
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-1">
+                  {(selectedLog as any).actualTeachingPeriods ?? 0} tiết •{' '}
+                  <span className={(selectedLog as any).isClosed ? 'text-emerald-600' : 'text-amber-600'}>
+                    {(selectedLog as any).isClosed ? 'Đã chốt công' : 'Chưa chốt'}
+                  </span>
+                </p>
+              </div>
+              {(selectedLog as any).overrideBy && (
+                <div>
+                  <p className="text-xs text-slate-500">Người hiệu chỉnh</p>
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-1">
+                    {typeof (selectedLog as any).overrideBy === 'object'
+                      ? (selectedLog as any).overrideBy?.fullName || (selectedLog as any).overrideBy?.ho_ten
+                      : 'Quản trị viên'}
+                  </p>
+                </div>
+              )}
+              {((selectedLog as any).leaveRequest || (selectedLog as any).leaveRequestId) && (
+                <div>
+                  <p className="text-xs text-slate-500">Đơn từ liên kết</p>
+                  <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mt-1 font-mono truncate">
+                    {(selectedLog as any).leaveRequest
+                      ? `${(selectedLog as any).leaveRequest.loai_don || 'Đơn'} (${(selectedLog as any).leaveRequest.trang_thai || ''})`
+                      : String((selectedLog as any).leaveRequestId).slice(0, 8)}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Bảng kê chi tiết các lượt quẹt thô PunchLog */}
@@ -1427,14 +1359,14 @@ export const AttendanceMe: React.FC = () => {
 
               {selectedLog.punchLogIds && selectedLog.punchLogIds.length > 0 ? (
                 <div className="space-y-2.5">
-                  {selectedLog.punchLogIds.map((p, pIdx) => (
+                  {selectedLog.punchLogIds.map((p: any, pIdx) => (
                     <div
                       key={p._id || pIdx}
-                      className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 flex items-center justify-between text-xs"
+                      className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 flex items-start justify-between gap-3 text-xs"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
                         <span
-                          className={`px-2 py-1 rounded-lg font-black uppercase text-[10px] tracking-wider ${
+                          className={`px-2 py-1 rounded-lg font-black uppercase text-[10px] tracking-wider shrink-0 ${
                             p.punchType === 'check_in'
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               : 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300'
@@ -1442,17 +1374,36 @@ export const AttendanceMe: React.FC = () => {
                         >
                           {p.punchType === 'check_in' ? 'VÀO CA' : 'TAN CA'}
                         </span>
-                        <div>
+                        <div className="min-w-0">
                           <p className="font-mono font-bold text-slate-800 dark:text-slate-200">
                             {formatTimeVN(p.punchTime)}
                           </p>
                           <p className="text-[11px] text-slate-400 mt-0.5">
                             Phương thức: {p.method || 'face_ai'} • Thiết bị: {p.deviceId || 'TERMINAL_DEFAULT'}
+                            {p.recognizedAngle ? ` • Góc mặt: ${p.recognizedAngle}` : ''}
                           </p>
+                          {(p.distanceMeters != null || p.gpsAccuracy != null || (p.latitude != null && p.longitude != null)) && (
+                            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                              {p.distanceMeters != null ? `Khoảng cách GPS: ${Math.round(p.distanceMeters)}m` : ''}
+                              {p.distanceMeters != null && p.gpsAccuracy != null ? ' • ' : ''}
+                              {p.gpsAccuracy != null ? `Sai số GPS: ±${Math.round(p.gpsAccuracy)}m` : ''}
+                              {(p.distanceMeters != null || p.gpsAccuracy != null) && p.latitude != null && p.longitude != null ? ' • ' : ''}
+                              {p.latitude != null && p.longitude != null
+                                ? `Tọa độ: ${Number(p.latitude).toFixed(5)}, ${Number(p.longitude).toFixed(5)}`
+                                : ''}
+                            </p>
+                          )}
+                          {(p.isMockLocation || p.isValid === false) && (
+                            <p className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold mt-0.5">
+                              {p.isMockLocation ? 'Cảnh báo giả lập vị trí (Mock GPS)' : ''}
+                              {p.isMockLocation && p.invalidReason ? ' • ' : ''}
+                              {p.invalidReason || (p.isValid === false ? 'Lượt quét không hợp lệ' : '')}
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      <div className="text-right flex flex-col items-end gap-1">
+                      <div className="text-right flex flex-col items-end gap-1 shrink-0">
                         {p.confidenceScore !== undefined && p.confidenceScore !== null && (
                           <span className="font-semibold text-emerald-600 dark:text-emerald-400">
                             Độ tin cậy: {Math.round(p.confidenceScore * 100)}%
@@ -1478,8 +1429,8 @@ export const AttendanceMe: React.FC = () => {
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-2">
                   Ảnh Chụp Minh Chứng Điểm Danh
                 </h4>
-                <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 max-w-xs">
-                  <img
+                <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 max-w-xs min-h-[8rem] bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                  <AnhBaoMat
                     src={resolveMediaUrl(selectedLog.capturedImage)}
                     alt="Captured Evidence"
                     className="w-full h-48 object-cover"

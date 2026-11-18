@@ -14,10 +14,15 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles, excludeRoles }) => {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, checkIdleTimeout } = useAuthStore();
   const location = useLocation();
 
-  const isAllowed = !((allowedRoles && allowedRoles.length > 0) || (excludeRoles && excludeRoles.length > 0)) ||
+  useEffect(() => {
+    checkIdleTimeout();
+  }, [location.pathname, checkIdleTimeout]);
+
+  const isAllowed =
+    !((allowedRoles && allowedRoles.length > 0) || (excludeRoles && excludeRoles.length > 0)) ||
     hasRole(user, allowedRoles, excludeRoles);
 
   useEffect(() => {
@@ -30,7 +35,6 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
     return <Navigate to="/dang-nhap" state={{ from: location }} replace />;
   }
 
-  // Kiểm tra quyền truy cập theo vai trò nếu có yêu cầu
   if (!isAllowed) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-4">
@@ -52,38 +56,34 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
                 : `Tài khoản của bạn (${user?.fullName} - ${getRoleLabel(user?.role)}) không có quyền truy cập vào phân hệ này. Vui lòng liên hệ Ban Giám Hiệu hoặc Quản trị viên để được cấp quyền.`}
             </p>
 
-              <div className="pt-2 flex items-center justify-center gap-2">
-                {user?.role && String(user.role).toLowerCase().includes('admin') ? (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => (window.location.href = '/quan-ly-cham-cong')}
-                  >
-                    Đến Quản Lý Điểm Danh
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    leftIcon={<ArrowLeft className="w-4 h-4" />}
-                    onClick={() => window.history.back()}
-                  >
-                    Quay Lại
-                  </Button>
-                )}
+            <div className="pt-2 flex items-center justify-center gap-2">
+              {user?.role && String(user.role).toLowerCase().includes('admin') ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => (window.location.href = '/quan-ly-cham-cong')}
+                >
+                  Đến Quản Lý Điểm Danh
+                </Button>
+              ) : (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => (window.location.href = '/')}
+                  leftIcon={<ArrowLeft className="w-4 h-4" />}
+                  onClick={() => window.history.back()}
                 >
-                  Trang Chủ
+                  Quay Lại
                 </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      );
-    }
+              )}
+              <Button variant="outline" size="sm" onClick={() => (window.location.href = '/')}>
+                Trang Chủ
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return <>{children}</>;
 };

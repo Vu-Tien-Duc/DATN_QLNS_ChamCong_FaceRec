@@ -7,6 +7,7 @@ const { Op } = require('sequelize');
 
 const {
   NguoiDung,
+  HoSoCanBo,
   PhongBan,
   VaiTroNguoiDung,
   MauKhuonMat,
@@ -121,10 +122,21 @@ const generateRefreshToken = (user, existingFamily = null) => {
   return { tokenString, tokenFamily };
 };
 
-// Chuẩn hóa thông tin người dùng trả về client (ẩn mật khẩu băm, kèm trạng thái Face ID)
+// Chuẩn hóa thông tin người dùng trả về client (ẩn mật khẩu băm, gộp hồ sơ cán bộ và trạng thái Face ID)
 const formatUserResponse = (userInstance, faceTemplate) => {
-  const userObj = userInstance.toJSON ? userInstance.toJSON() : { ...userInstance };
-  delete userObj.mat_khau_ma_hoa;
+  const raw = userInstance.toJSON ? userInstance.toJSON() : { ...userInstance };
+  delete raw.mat_khau_ma_hoa;
+  const profile = raw.ho_so && typeof raw.ho_so === 'object' ? { ...raw.ho_so } : {};
+  delete profile.id;
+  delete profile.nguoi_dung_id;
+  delete profile.tao_luc;
+  delete profile.cap_nhat_luc;
+
+  const userObj = {
+    ...profile,
+    ...raw,
+    tham_nien_nam: userInstance.ho_so?.tham_nien_nam ?? 0,
+  };
 
   const isRegistered = Boolean(faceTemplate);
   const roleVal = normalizeRole(userObj.vai_tro_chinh);
@@ -134,6 +146,12 @@ const formatUserResponse = (userInstance, faceTemplate) => {
   userObj._id = userObj.id;
   userObj.da_dang_ky_face = isRegistered;
   userObj.ngay_dang_ky_face = isRegistered ? (faceTemplate?.ngay_dang_ky || null) : null;
+  userObj.so_luong_mau = isRegistered ? (faceTemplate?.so_luong_mau || 0) : 0;
+  userObj.mo_hinh_ai = isRegistered ? (faceTemplate?.mo_hinh_ai || 'buffalo_s') : null;
+  userObj.so_chieu_vector = isRegistered ? (faceTemplate?.so_chieu_vector || 512) : null;
+  userObj.mac_dinh = isRegistered ? Boolean(faceTemplate?.mac_dinh ?? true) : false;
+  userObj.trang_thai_khuon_mat = isRegistered ? (faceTemplate?.trang_thai || 'hoat_dong') : null;
+  userObj.anh_khuon_mat = isRegistered ? (faceTemplate?.anh_dai_dien || null) : null;
   userObj.isFaceRegistered = isRegistered;
   userObj.faceRegisteredAt = userObj.ngay_dang_ky_face;
 
@@ -153,6 +171,7 @@ const formatUserResponse = (userInstance, faceTemplate) => {
   userObj.departmentId = userObj.don_vi_chinh_id;
   userObj.departmentName = deptName;
   userObj.avatar = userObj.anh_dai_dien;
+  userObj.facePhoto = userObj.anh_khuon_mat;
 
   return userObj;
 };
@@ -178,6 +197,10 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
         model: PhongBan,
         as: 'don_vi_chinh',
         attributes: ['id', 'ten_phong_ban', 'loai_don_vi', 'vi_do', 'kinh_do', 'ban_kinh_met'],
+      },
+      {
+        model: HoSoCanBo,
+        as: 'ho_so',
       },
       {
         model: VaiTroNguoiDung,
@@ -235,7 +258,7 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   try {
     faceTemplate = await MauKhuonMat.findOne({
       where: { nguoi_dung_id: user.id, mac_dinh: true },
-      attributes: ['ngay_dang_ky', 'so_luong_mau'],
+      attributes: ['ngay_dang_ky', 'so_luong_mau', 'anh_dai_dien', 'mo_hinh_ai', 'so_chieu_vector', 'mac_dinh', 'trang_thai'],
     });
   } catch (_) {}
 
@@ -473,6 +496,10 @@ const getMe = async (userId) => {
         attributes: ['id', 'ten_phong_ban', 'loai_don_vi', 'vi_do', 'kinh_do', 'ban_kinh_met'],
       },
       {
+        model: HoSoCanBo,
+        as: 'ho_so',
+      },
+      {
         model: VaiTroNguoiDung,
         as: 'danh_sach_vai_tro',
         attributes: ['ma_vai_tro', 'don_vi_id', 'pham_vi', 'tu_ngay', 'den_ngay'],
@@ -486,7 +513,7 @@ const getMe = async (userId) => {
 
   const template = await MauKhuonMat.findOne({
     where: { nguoi_dung_id: user.id, mac_dinh: true },
-    attributes: ['ngay_dang_ky', 'so_luong_mau'],
+    attributes: ['ngay_dang_ky', 'so_luong_mau', 'anh_dai_dien', 'mo_hinh_ai', 'so_chieu_vector', 'mac_dinh', 'trang_thai'],
   });
 
   return formatUserResponse(user, template);

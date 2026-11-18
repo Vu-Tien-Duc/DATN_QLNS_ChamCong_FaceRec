@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Users,
   Calendar,
   Clock,
   CheckCircle2,
@@ -25,7 +24,6 @@ import {
   Building2,
   PlayCircle,
   FilePlus,
-  AlertTriangle,
   Camera,
   FileSpreadsheet,
 } from 'lucide-react';
@@ -38,6 +36,7 @@ import { Button } from '../../components/chung/NutBam';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import {
   attendanceApi,
   AttendanceHistoryItem,
@@ -277,6 +276,7 @@ export const AttendanceManage: React.FC = () => {
   const [userList, setUserList] = useState<UserProfile[]>([]);
 
   // Bộ lọc
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
   const [searchKeyword, setSearchKeyword] = useState<string>('');
   const [selectedDeptId, setSelectedDeptId] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
@@ -673,455 +673,304 @@ export const AttendanceManage: React.FC = () => {
   return (
     <div className="flex flex-col w-full space-y-4 pb-12 animate-fade-in">
       {/* =====================================================================
-          PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
+          1. PAGE HEADER + ACTION BUTTONS
       ===================================================================== */}
       <PageHeader
-        title="Quản Lý Chấm Công & Điểm Danh Toàn Trường"
-        subtitle="Theo dõi trực tiếp nhật ký quẹt thẻ Face ID 512D, đối soát GPS Geofence, cảnh báo gian lận và tự động tổng hợp công nhật."
-        icon={<Clock className="w-5 h-5 text-brand-600" />}
-        badge="InsightFace 512D"
-        badgeVariant="brand"
-      />
-
-      {/* =====================================================================
-          1. TOP STATS ROW (4 KPI METRIC CARDS) - MATCHING CODE.HTML
-      ===================================================================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        {/* Card 1: Tổng lượt chấm */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold">
-              Tổng Lượt Chấm
-            </span>
-            <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-              <Users className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1">
-              <span className="text-[22px] font-bold text-slate-900 dark:text-slate-100 leading-tight font-mono">
-                {stats.total}
-              </span>
-              <span className="text-[12px] text-slate-400">lượt</span>
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1 truncate font-mono">
-              <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
-              {dateRangePreset === 'all'
-                ? 'Toàn bộ dữ liệu hệ thống'
-                : `Khoảng: ${resolvedFrom} → ${resolvedTo}`}
-            </p>
-          </div>
-        </div>
-
-        {/* Card 2: Đúng Giờ */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 uppercase tracking-wider font-semibold">
-              Đúng Giờ
-            </span>
-            <div className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-[22px] font-bold text-slate-900 dark:text-slate-100 leading-tight font-mono">
-                {stats.onTime}
-              </span>
-              <span className="px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 text-[10px] font-semibold">
-                {stats.onTimeRate}%
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-              Tỷ lệ chuyên cần toàn trường đạt chuẩn
-            </p>
-          </div>
-        </div>
-
-        {/* Card 3: Đi Muộn / Sớm */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] text-amber-600 dark:text-amber-400 uppercase tracking-wider font-semibold">
-              Đi Muộn / Sớm
-            </span>
-            <div className="w-8 h-8 rounded-full bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-              <Clock className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1">
-              <span className="text-[22px] font-bold text-amber-600 dark:text-amber-400 leading-tight font-mono">
-                {stats.late + stats.early}
-              </span>
-              <span className="text-[12px] text-slate-400">ca</span>
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-              Tổng trễ: <span className="font-semibold text-amber-600 dark:text-amber-400 font-mono">{formatMinutes(stats.totalLateMinutes)}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Card 4: Vắng & Cảnh Báo */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] text-rose-600 dark:text-rose-400 uppercase tracking-wider font-semibold">
-              Vắng &amp; Cảnh Báo
-            </span>
-            <div className="w-8 h-8 rounded-full bg-rose-50 dark:bg-rose-950/50 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-[22px] font-bold text-rose-600 dark:text-rose-400 leading-tight font-mono">
-                {stats.absent}
-              </span>
-              <span className="text-[12px] text-slate-400">vắng</span>
-              {stats.fraudCount > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 text-[10px] font-bold animate-pulse">
-                  {stats.fraudCount} nghi vấn
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-              {stats.excused} ca nghỉ có phép hợp lệ
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* =====================================================================
-          2. FILTER & ACTION CARD - MATCHING CODE.HTML
-      ===================================================================== */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3.5">
-        {/* Top Sub-header & Action Buttons (Aligned) */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950/50 dark:text-brand-400 flex items-center justify-center shrink-0">
-              <Filter className="w-4 h-4" />
-            </div>
-            <div className="flex items-center gap-2 whitespace-nowrap min-w-0 shrink-0">
-              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-                Bộ Lọc &amp; Tra Cứu Chấm Công
-              </h2>
-              <span className="text-slate-300 dark:text-slate-700 select-none">•</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                <b>{filteredRecords.length}</b> lượt hiển thị
-              </span>
-            </div>
-          </div>
-
-          {/* Action Buttons Group (Single row, aligned height h-9) */}
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 shrink-0">
-            <button
+        title="Nhật Ký Điểm Danh Toàn Trường"
+        subtitle="Theo dõi nhật ký điểm danh, đối soát ca làm việc và tổng hợp công nhật."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
               onClick={fetchAttendanceList}
               disabled={isLoading}
               type="button"
-              className="h-9 flex items-center gap-1.5 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors text-xs font-medium shrink-0 disabled:opacity-50"
+              variant="outline"
+              size="sm"
+              leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />}
+              title="Làm mới dữ liệu"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Làm Mới</span>
-            </button>
+              Làm mới
+            </Button>
 
-            <button
+            <Button
               onClick={handleExportExcel}
               type="button"
-              className="h-9 flex items-center gap-1.5 px-3 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 transition-colors text-xs font-bold shrink-0 cursor-pointer shadow-2xs"
+              variant="outline"
+              size="sm"
+              leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
               title="Xuất dữ liệu điểm danh ra file Excel (.xlsx)"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Xuất Excel (.xlsx)</span>
-            </button>
+              Xuất Excel
+            </Button>
 
             {hasRole(user, ['admin', 'bgh']) && (
-              <button
+              <Button
                 onClick={() => {
                   setCronResult(null);
                   setIsAbsentCronModalOpen(true);
                 }}
                 type="button"
-                className="h-9 flex items-center gap-1.5 px-3 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 transition-colors text-xs font-medium shrink-0"
+                variant="outline"
+                size="sm"
+                leftIcon={<PlayCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
               >
-                <PlayCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                <span>Quét Vắng Tự Động</span>
-              </button>
+                Quét vắng
+              </Button>
             )}
 
             {hasRole(user, ['admin', 'bgh', 'truong_khoa', 'pho_khoa']) && (
-              <button
+              <Button
                 onClick={() => setIsManualPunchModalOpen(true)}
                 type="button"
-                className="h-9 flex items-center gap-1.5 px-3.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white transition-colors text-xs font-semibold shadow-xs shrink-0"
+                variant="primary"
+                size="sm"
+                leftIcon={<FilePlus className="w-3.5 h-3.5" />}
               >
-                <FilePlus className="w-3.5 h-3.5" />
-                <span>Điểm Danh Bổ Sung</span>
-              </button>
+                Điểm danh bổ sung
+              </Button>
             )}
           </div>
-        </div>
+        }
+      />
 
-        {/* Search Input & Quick Date Pills (Standardized height & alignment) */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3">
-          {/* Search Input */}
-          <div className="relative flex-1 min-w-0">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              placeholder="Tìm kiếm cán bộ (Họ tên, Mã CB, Email, Ca giảng dạy)..."
-              className="w-full h-10 pl-9 pr-8 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-xs sm:text-sm focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
-            />
-            {searchKeyword && (
-              <button
-                onClick={() => setSearchKeyword('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-1"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+      {/* =====================================================================
+          2. UNIFIED ATTENDANCE WORKSPACE: KPI STRIP + TOOLBAR + DATA TABLE
+      ===================================================================== */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden flex flex-col w-full">
+        <CompactStatsBar
+          embedded
+          items={[
+            { label: 'Tổng lượt chấm', value: stats.total, unit: 'lượt', tone: 'brand' },
+            { label: 'Đúng giờ', value: stats.onTime, badge: `${stats.onTimeRate}%`, tone: 'success' },
+            { label: 'Đi muộn / sớm', value: stats.late + stats.early, unit: 'ca', tone: 'warning' },
+            {
+              label: 'Vắng mặt',
+              value: stats.absent,
+              badge: stats.fraudCount > 0 ? `${stats.fraudCount} nghi vấn` : undefined,
+              tone: 'danger',
+            },
+          ]}
+        />
+        {/* Compact 1-Row Table Toolbar */}
+        <div className="p-3 border-b border-slate-200/70 dark:border-slate-800 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                placeholder="Tìm theo họ tên, mã CB, email, ca học..."
+                className="w-full h-9 pl-9 pr-7 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-xs focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-colors"
+              />
+              {searchKeyword && (
+                <button
+                  type="button"
+                  onClick={() => setSearchKeyword('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
-          {/* Quick Filter Pills */}
-          <div className="flex items-center h-10 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg shrink-0 border border-slate-200/60 dark:border-slate-700/60 text-xs">
-            <button
-              onClick={() => setDateRangePreset('all')}
-              type="button"
-              className={`h-full px-3 rounded-md font-semibold transition-all flex items-center justify-center ${
-                dateRangePreset === 'all'
-                  ? 'bg-brand-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              Tất Cả
-            </button>
-            <button
-              onClick={() => setDateRangePreset('today')}
-              type="button"
-              className={`h-full px-3 rounded-md font-medium transition-all flex items-center justify-center ${
-                dateRangePreset === 'today'
-                  ? 'bg-brand-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              Hôm Nay
-            </button>
-            <button
-              onClick={() => setDateRangePreset('yesterday')}
-              type="button"
-              className={`h-full px-3 rounded-md font-medium transition-all flex items-center justify-center ${
-                dateRangePreset === 'yesterday'
-                  ? 'bg-brand-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              Hôm Qua
-            </button>
-            <button
-              onClick={() => setDateRangePreset('week')}
-              type="button"
-              className={`h-full px-3 rounded-md font-medium transition-all flex items-center justify-center ${
-                dateRangePreset === 'week'
-                  ? 'bg-brand-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              Tuần Này
-            </button>
-            <button
-              onClick={() => setDateRangePreset('month')}
-              type="button"
-              className={`h-full px-3 rounded-md font-medium transition-all flex items-center justify-center ${
-                dateRangePreset === 'month'
-                  ? 'bg-brand-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              Tháng Này
-            </button>
-            <button
-              onClick={() => setDateRangePreset('custom')}
-              type="button"
-              className={`h-full px-3 rounded-md font-medium transition-all flex items-center justify-center gap-1 ${
-                dateRangePreset === 'custom'
-                  ? 'bg-brand-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              <span>Tùy Chọn</span>
-              <Calendar className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Dropdown Filters & Suspect Alert Checkbox (Aligned 4-column grid, matching h-10 controls) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-end">
-          {/* Khoa / Phòng Ban Phân Cấp */}
-          <div className="flex flex-col space-y-1">
-            <label className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold truncate">
-              Khoa / Phòng Ban
-            </label>
-            <div className="w-full">
-              <DepartmentSelect
-                departments={departments}
-                value={selectedDeptId}
-                onChange={(deptId) => {
-                  setSelectedDeptId(deptId);
+            {/* Quick Date Preset */}
+            <div className="relative h-9">
+              <select
+                value={dateRangePreset}
+                onChange={(e) => {
+                  setDateRangePreset(e.target.value as any);
                   setCurrentPage(1);
                 }}
-                allowAll={true}
-                allLabel="-- Tất cả Khoa / Đơn vị --"
-                placeholder="Chọn Khoa / Đơn vị..."
-                size="md"
-              />
+                className="h-9 appearance-none pl-3 pr-7 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium outline-none focus:border-brand-500 cursor-pointer"
+                aria-label="Khoảng thời gian"
+              >
+                <option value="all">Tất cả ngày</option>
+                <option value="today">Hôm nay</option>
+                <option value="yesterday">Hôm qua</option>
+                <option value="week">Tuần này</option>
+                <option value="month">Tháng này</option>
+                <option value="custom">Tùy chọn ngày...</option>
+              </select>
+              <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
-          </div>
 
-          {/* Trạng Thái Điểm Danh */}
-          <div className="flex flex-col space-y-1">
-            <label className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold truncate">
-              Trạng Thái Điểm Danh
-            </label>
-            <div className="relative h-10">
+            {/* Quick Status Select */}
+            <div className="relative h-9">
               <select
                 value={selectedStatus}
                 onChange={(e) => {
                   setSelectedStatus(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full h-10 appearance-none px-3 pr-8 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs outline-none focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-brand-500/20 cursor-pointer"
+                className="h-9 appearance-none pl-3 pr-7 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium outline-none focus:border-brand-500 cursor-pointer"
+                aria-label="Trạng thái điểm danh"
               >
-                <option value="">-- Tất cả trạng thái --</option>
+                <option value="">Tất cả trạng thái</option>
                 <option value="on_time">Đúng giờ</option>
                 <option value="late">Đi muộn</option>
                 <option value="early_leave">Về sớm</option>
                 <option value="excused_absence">Nghỉ có phép</option>
                 <option value="absent">Vắng mặt</option>
               </select>
-              <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
-          </div>
-
-          {/* Phương Thức Quét Thẻ */}
-          <div className="flex flex-col space-y-1">
-            <label className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold truncate">
-              Phương Thức Quét Thẻ
-            </label>
-            <div className="relative h-10">
-              <select
-                value={selectedMethod}
-                onChange={(e) => {
-                  setSelectedMethod(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full h-10 appearance-none px-3 pr-8 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs outline-none focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-brand-500/20 cursor-pointer"
-              >
-                <option value="">-- Tất cả phương thức --</option>
-                <option value="face_ai">Face ID AI (Kiosk Camera)</option>
-                <option value="system_auto">Hệ thống Tự động / Cổng</option>
-                <option value="qr_code">Mã QR Động TOTP</option>
-                <option value="GPS">Mobile GPS Geofence</option>
-                <option value="MANUAL">Cổng Web / Thủ công</option>
-                <option value="ADMIN_OVERRIDE">Quản trị Điều chỉnh</option>
-              </select>
-              <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
-          </div>
-
-          {/* Checkbox Nghi Vấn Gian Lận */}
-          <div className="flex flex-col space-y-1">
-            <span className="invisible text-[11px] leading-tight select-none">Placeholder</span>
-            <label
-              htmlFor="fraud-filter"
-              className="flex items-center justify-center h-10 px-3.5 rounded-lg bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 hover:bg-rose-100/50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer select-none"
-            >
-              <input
-                id="fraud-filter"
-                type="checkbox"
-                checked={onlyFraud}
-                onChange={(e) => {
-                  setOnlyFraud(e.target.checked);
-                  setCurrentPage(1);
-                }}
-                className="w-4 h-4 rounded text-rose-600 focus:ring-0 cursor-pointer accent-rose-600"
-              />
-              <span className="ml-2.5 flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-400 font-semibold cursor-pointer truncate">
-                <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
-                <span className="truncate">Chỉ xem nghi vấn gian lận</span>
-              </span>
-            </label>
-          </div>
-        </div>
-
-        {/* Custom Date Pickers nếu chọn dateRangePreset === 'custom' */}
-        {dateRangePreset === 'custom' && (
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-3 text-xs animate-fade-in">
-            <span className="text-slate-500 font-medium">Khoảng thời gian:</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-mono"
-              />
-              <span className="text-slate-400">đến</span>
-              <input
-                type="date"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-mono"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setCurrentPage(1);
-                fetchAttendanceList();
-              }}
-              className="text-xs py-1"
-            >
-              Áp Dụng Lọc
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* =====================================================================
-          3. ATTENDANCE TABLE SECTION (MATCHING CODE.HTML ZERO-SCROLL LAYOUT)
-      ===================================================================== */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col w-full">
-        {/* Table Titlebar */}
-        <div className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/60 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800">
-          <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-brand-600 dark:text-brand-400" />
-            <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-              Nhật Ký Điểm Danh Toàn Trường
-            </h2>
-            <span className="px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 text-[11px] font-semibold">
-              {filteredRecords.length} / {totalCount} bản ghi
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>Hiển thị mỗi trang:</span>
-            <div className="relative">
-              <select
-                value={limit}
-                onChange={(e) => {
-                  setLimit(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="appearance-none bg-white dark:bg-slate-800 pl-3 pr-7 py-1 rounded-md text-slate-800 dark:text-slate-200 font-medium text-xs border border-slate-200 dark:border-slate-700 outline-none cursor-pointer shadow-xs"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
               <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
+
+            {/* Advanced Filters Toggle */}
+            {(() => {
+              const extraCount = (selectedDeptId ? 1 : 0) + (selectedMethod ? 1 : 0) + (onlyFraud ? 1 : 0);
+              const isOpen = showAdvancedFilters || dateRangePreset === 'custom';
+              return (
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters((prev) => !prev)}
+                  className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-lg border text-xs font-medium transition-colors ${
+                    isOpen || extraCount > 0
+                      ? 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-950/50 dark:text-brand-300 dark:border-brand-800'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/70'
+                  }`}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>Bộ lọc</span>
+                  {extraCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-brand-600 text-white text-[10px] font-semibold">
+                      {extraCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
+
+            {/* Right: Record Count & Page Size */}
+            <div className="flex items-center gap-2 ml-auto text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-medium whitespace-nowrap">
+                {filteredRecords.length} / {totalCount} bản ghi
+              </span>
+              <div className="relative">
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    setLimit(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="h-9 appearance-none bg-slate-50 dark:bg-slate-800 pl-2.5 pr-6 rounded-lg text-slate-700 dark:text-slate-200 font-medium text-xs border border-slate-200/80 dark:border-slate-700 outline-none cursor-pointer"
+                  aria-label="Số bản ghi mỗi trang"
+                >
+                  <option value={10}>10 / trang</option>
+                  <option value={20}>20 / trang</option>
+                  <option value={50}>50 / trang</option>
+                  <option value={100}>100 / trang</option>
+                </select>
+                <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
           </div>
+
+          {/* Expandable Secondary Filters */}
+          {(showAdvancedFilters || dateRangePreset === 'custom') && (
+            <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2.5 text-xs animate-fade-in">
+              <div className="w-full sm:w-56">
+                <DepartmentSelect
+                  departments={departments}
+                  value={selectedDeptId}
+                  onChange={(deptId) => {
+                    setSelectedDeptId(deptId);
+                    setCurrentPage(1);
+                  }}
+                  allowAll={true}
+                  allLabel="-- Tất cả Khoa / Đơn vị --"
+                  placeholder="Chọn Khoa / Đơn vị..."
+                  size="sm"
+                />
+              </div>
+
+              <div className="relative w-full sm:w-48">
+                <select
+                  value={selectedMethod}
+                  onChange={(e) => {
+                    setSelectedMethod(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full h-9 appearance-none px-3 pr-7 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs outline-none focus:border-brand-500 cursor-pointer"
+                >
+                  <option value="">-- Tất cả phương thức --</option>
+                  <option value="face_ai">Face ID AI</option>
+                  <option value="system_auto">Hệ thống Tự động</option>
+                  <option value="qr_code">Mã QR Động</option>
+                  <option value="GPS">Mobile GPS</option>
+                  <option value="MANUAL">Thủ công</option>
+                  <option value="ADMIN_OVERRIDE">Quản trị Điều chỉnh</option>
+                </select>
+                <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
+              <label
+                htmlFor="fraud-filter"
+                className="h-9 inline-flex items-center gap-2 px-3 rounded-lg border border-slate-200/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer select-none"
+              >
+                <input
+                  id="fraud-filter"
+                  type="checkbox"
+                  checked={onlyFraud}
+                  onChange={(e) => {
+                    setOnlyFraud(e.target.checked);
+                    setCurrentPage(1);
+                  }}
+                  className="w-3.5 h-3.5 rounded text-rose-600 focus:ring-0 cursor-pointer accent-rose-600"
+                />
+                <ShieldAlert className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
+                <span className="text-slate-700 dark:text-slate-200 font-medium">Nghi vấn gian lận</span>
+              </label>
+
+              {dateRangePreset === 'custom' && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    className="h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-mono text-xs"
+                  />
+                  <span className="text-slate-400">→</span>
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    className="h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-mono text-xs"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCurrentPage(1);
+                      fetchAttendanceList();
+                    }}
+                    className="h-9 text-xs"
+                  >
+                    Áp dụng
+                  </Button>
+                </div>
+              )}
+
+              {(selectedDeptId || selectedStatus || selectedMethod || onlyFraud || dateRangePreset !== 'all' || searchKeyword) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchKeyword('');
+                    setSelectedDeptId('');
+                    setSelectedStatus('');
+                    setSelectedMethod('');
+                    setOnlyFraud(false);
+                    setDateRangePreset('all');
+                    setCurrentPage(1);
+                  }}
+                  className="h-9 px-2.5 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 underline ml-auto"
+                >
+                  Đặt lại bộ lọc
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Fixed Width Zero-Scroll Table */}
@@ -1138,28 +987,28 @@ export const AttendanceManage: React.FC = () => {
               <col className="w-[8%]" />
             </colgroup>
             <thead>
-              <tr className="bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-200/60 dark:border-slate-800 font-semibold">
-                <th className="py-2.5 px-2.5 font-semibold truncate">Cán Bộ / Giảng Viên</th>
-                <th className="py-2.5 px-2.5 font-semibold truncate">Ngày &amp; Ca Học</th>
-                <th className="py-2.5 px-2.5 font-semibold truncate">Giờ Vào (IN)</th>
-                <th className="py-2.5 px-2.5 font-semibold truncate">Giờ Ra (OUT)</th>
-                <th className="py-2.5 px-2.5 font-semibold truncate">Thời Lượng</th>
-                <th className="py-2.5 px-2.5 font-semibold truncate">Trạng Thái</th>
-                <th className="py-2.5 px-2.5 font-semibold truncate">Minh Chứng</th>
-                <th className="py-2.5 px-2.5 text-center font-semibold truncate">Thao Tác</th>
+              <tr className="bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider border-b border-slate-200/70 dark:border-slate-800 font-semibold">
+                <th className="py-3 px-3 font-semibold truncate">Cán Bộ / Giảng Viên</th>
+                <th className="py-3 px-3 font-semibold truncate">Ngày &amp; Ca Học</th>
+                <th className="py-3 px-3 font-semibold truncate">Giờ Vào (IN)</th>
+                <th className="py-3 px-3 font-semibold truncate">Giờ Ra (OUT)</th>
+                <th className="py-3 px-3 font-semibold truncate">Thời Lượng</th>
+                <th className="py-3 px-3 font-semibold truncate">Trạng Thái</th>
+                <th className="py-3 px-3 font-semibold truncate">Minh Chứng</th>
+                <th className="py-3 px-3 text-center font-semibold truncate">Thao Tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-sm text-slate-400">
                     <RefreshCw className="w-6 h-6 mx-auto animate-spin mb-2 text-brand-600" />
                     Đang tải nhật ký điểm danh toàn trường từ cơ sở dữ liệu...
                   </td>
                 </tr>
               ) : filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-sm text-slate-400">
                     <AlertCircle className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
                     Không tìm thấy bản ghi chấm công nào phù hợp với bộ lọc.
                   </td>
@@ -1186,9 +1035,6 @@ export const AttendanceManage: React.FC = () => {
                     item.evidencePhoto ||
                     (item.punchLogIds && item.punchLogIds[0]?.evidenceImage);
 
-                  // 2 chữ cái đại diện tên
-                  const initials = getUserInitials(item.userId?.fullName);
-
                   return (
                     <tr
                       key={item._id}
@@ -1197,24 +1043,24 @@ export const AttendanceManage: React.FC = () => {
                       }`}
                     >
                       {/* Cột 1: Cán bộ / Giảng viên (18%) */}
-                      <td className="py-2.5 px-2.5">
-                        <div className="flex items-center gap-1.5 min-w-0">
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <UserAvatar
                             name={item.userId?.fullName}
                             avatarUrl={item.userId?.avatar}
                             staffCode={item.userId?.staffCode || item.userId?._id}
-                            size="xs"
+                            size="sm"
                             shape="rounded"
                           />
-                          <div className="flex flex-col min-w-0 leading-tight">
+                          <div className="flex flex-col min-w-0 leading-snug">
                             <span
-                              className="text-[13px] text-slate-900 dark:text-slate-100 truncate font-semibold"
+                              className="text-sm text-slate-900 dark:text-slate-100 truncate font-semibold"
                               title={item.userId?.fullName || 'Chưa định danh'}
                             >
                               {item.userId?.fullName || 'Chưa định danh'}
                             </span>
-                            <div className="flex items-center gap-1 text-[11px] font-mono text-slate-500 truncate">
-                              <span className="font-medium text-brand-600 dark:text-brand-400">
+                            <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 truncate">
+                              <span className="font-medium text-brand-600 dark:text-brand-400 tabular-nums">
                                 {item.userId?.staffCode || '--'}
                               </span>
                               <span>•</span>
@@ -1225,37 +1071,37 @@ export const AttendanceManage: React.FC = () => {
                       </td>
 
                       {/* Cột 2: Ngày & Ca Học (14%) */}
-                      <td className="py-2.5 px-2.5">
-                        <div className="flex flex-col leading-tight">
-                          <span className="text-[12px] font-medium text-slate-900 dark:text-slate-100 truncate">
+                      <td className="py-3 px-3">
+                        <div className="flex flex-col leading-snug">
+                          <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
                             {formatDateVN(item.workDate)}
                           </span>
-                          <span className="text-[11px] text-brand-600 dark:text-brand-400 font-medium truncate">
+                          <span className="text-xs text-brand-600 dark:text-brand-400 font-medium truncate">
                             {item.shiftId?.name || 'Ca Hành Chính'}
                           </span>
                         </div>
                       </td>
 
                       {/* Cột 3: Giờ Vào (IN) (14%) */}
-                      <td className="py-2.5 px-2.5">
-                        <div className="flex flex-col gap-0.5 items-start leading-tight">
-                          <div className="flex items-center gap-1">
+                      <td className="py-3 px-3">
+                        <div className="flex flex-col gap-1 items-start leading-snug">
+                          <div className="flex items-center gap-1.5">
                             <span
-                              className={`font-mono text-[12px] font-bold ${
+                              className={`tabular-nums text-sm font-semibold ${
                                 item.checkInTime
                                   ? 'text-slate-900 dark:text-slate-100'
-                                  : 'text-slate-400'
+                                  : 'text-slate-400 font-normal'
                               }`}
                             >
                               {formatTimeVN(item.checkInTime)}
                             </span>
                             {item.lateMinutes && item.lateMinutes > 0 ? (
-                              <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-bold text-[10px] font-mono">
+                              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-semibold text-xs tabular-nums">
                                 +{item.lateMinutes}p
                               </span>
                             ) : null}
                           </div>
-                          <span className="inline-flex items-center gap-1 px-1 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium">
                             <MethodIcon className="w-3 h-3" />
                             {methodObj.label}
                           </span>
@@ -1263,19 +1109,19 @@ export const AttendanceManage: React.FC = () => {
                       </td>
 
                       {/* Cột 4: Giờ Ra (OUT) (11%) */}
-                      <td className="py-2.5 px-2.5 whitespace-nowrap">
-                        <div className="flex items-center gap-1">
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
                           <span
-                            className={`font-mono text-[12px] whitespace-nowrap ${
+                            className={`tabular-nums text-sm whitespace-nowrap ${
                               item.checkOutTime
-                                ? 'font-bold text-slate-900 dark:text-slate-100'
+                                ? 'font-semibold text-slate-900 dark:text-slate-100'
                                 : 'text-slate-400'
                             }`}
                           >
                             {formatTimeVN(item.checkOutTime)}
                           </span>
                           {item.earlyExitMinutes && item.earlyExitMinutes > 0 ? (
-                            <span className="px-1 py-0.2 rounded bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 font-bold text-[10px] font-mono">
+                            <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 font-semibold text-xs tabular-nums">
                               -{item.earlyExitMinutes}p
                             </span>
                           ) : null}
@@ -1283,8 +1129,8 @@ export const AttendanceManage: React.FC = () => {
                       </td>
 
                       {/* Cột 5: Thời Lượng (10%) */}
-                      <td className="py-2.5 px-2.5">
-                        <span className="text-[12px] text-slate-800 dark:text-slate-200 font-medium">
+                      <td className="py-3 px-3">
+                        <span className="text-sm text-slate-800 dark:text-slate-200 font-medium tabular-nums">
                           {item.workHours
                             ? `${item.workHours} giờ`
                             : formatMinutes(item.workDurationMinutes)}
@@ -1292,9 +1138,9 @@ export const AttendanceManage: React.FC = () => {
                       </td>
 
                       {/* Cột 6: Trạng Thái (12%) */}
-                      <td className="py-2.5 px-2.5">
+                      <td className="py-3 px-3">
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap border ${statusObj.badgeCls}`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap border ${statusObj.badgeCls}`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${statusObj.dotColor}`} />
                           {statusObj.label}
@@ -1302,7 +1148,7 @@ export const AttendanceManage: React.FC = () => {
                       </td>
 
                       {/* Cột 7: Minh Chứng (13%) */}
-                      <td className="py-2.5 px-2.5">
+                      <td className="py-3 px-3">
                         {snapshot && !brokenEvidence[item._id] ? (
                           <div className="flex items-center gap-1.5 min-w-0">
                             <div
@@ -1319,36 +1165,36 @@ export const AttendanceManage: React.FC = () => {
                                 }}
                               />
                             </div>
-                            <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold truncate">
-                              <CheckCircle2 className="w-3 h-3 shrink-0" />
+                            <span className="inline-flex items-center gap-0.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium truncate">
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                               Match
                             </span>
                           </div>
                         ) : item.status === 'excused_absence' ? (
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 truncate">
+                          <span className="text-xs font-medium px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 truncate">
                             #NP-Đã duyệt
                           </span>
                         ) : item.method === 'GPS' || item.method === 'gps_mobile' ? (
-                          <span className="text-[11px] font-mono text-slate-400 truncate">
-                            Định Vị GPS
+                          <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                            Định vị GPS
                           </span>
                         ) : item.method === 'RFID' || item.method === 'CARD' ? (
-                          <span className="text-[11px] font-mono text-slate-400 truncate">
-                            Quẹt Cổng
+                          <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                            Quẹt cổng
                           </span>
                         ) : (
-                          <span className="text-[11px] font-mono text-slate-400 truncate">
+                          <span className="text-sm text-slate-400 truncate">
                             --
                           </span>
                         )}
                       </td>
 
                       {/* Cột 8: Thao Tác (8%) */}
-                      <td className="py-2.5 px-2.5 text-center">
-                        <div className="inline-flex items-center justify-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                      <td className="py-3 px-3 text-center">
+                        <div className="inline-flex items-center justify-center gap-1">
                           <button
                             onClick={() => setSelectedDetailLog(item)}
-                            className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-brand-600 transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-brand-600 transition-colors"
                             title="Xem chi tiết"
                             type="button"
                           >
@@ -1357,7 +1203,7 @@ export const AttendanceManage: React.FC = () => {
                           {hasRole(user, ['admin', 'bgh', 'truong_khoa', 'pho_khoa']) && (
                             <button
                               onClick={() => handleOpenAdjustModal(item)}
-                              className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-indigo-600 transition-colors"
+                              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-brand-600 transition-colors"
                               title="Duyệt bù / Hiệu chỉnh"
                               type="button"
                             >
@@ -1374,9 +1220,9 @@ export const AttendanceManage: React.FC = () => {
           </table>
         </div>
 
-        {/* Table Pagination Footer - Matching code.html */}
-        <div className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/50 dark:bg-slate-800/30 border-t border-slate-200/60 dark:border-slate-800">
-          <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+        {/* Table Pagination Footer */}
+        <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/50 dark:bg-slate-800/30 border-t border-slate-200/70 dark:border-slate-800">
+          <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
             Trang <span className="font-semibold text-slate-900 dark:text-slate-100">{currentPage}</span> / {totalPages}{' '}
             (Tổng cộng <span className="font-semibold text-slate-900 dark:text-slate-100">{totalCount}</span> bản ghi)
           </span>
@@ -1532,15 +1378,122 @@ export const AttendanceManage: React.FC = () => {
                     </span>
                   ) : null}
                 </div>
+
+                <div className="p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-400 block mb-1">Số giờ công / Số tiết / Chốt công:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {selectedDetailLog.workHours !== undefined
+                      ? `${selectedDetailLog.workHours}h (${selectedDetailLog.workDurationMinutes ?? 0}p)`
+                      : `${selectedDetailLog.workDurationMinutes ?? 0}p`}{' '}
+                    • {(selectedDetailLog as any).actualTeachingPeriods ?? 0} tiết •{' '}
+                    <span className={(selectedDetailLog as any).isClosed ? 'text-emerald-600' : 'text-amber-600'}>
+                      {(selectedDetailLog as any).isClosed ? 'Đã chốt công' : 'Chưa chốt'}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-400 block mb-1">Người hiệu chỉnh thủ công:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {(selectedDetailLog as any).overrideBy
+                      ? typeof (selectedDetailLog as any).overrideBy === 'object'
+                        ? (selectedDetailLog as any).overrideBy?.fullName ||
+                          (selectedDetailLog as any).overrideBy?.ho_ten ||
+                          'Quản trị viên'
+                        : 'Quản trị viên'
+                      : 'Chấm công tự động'}
+                  </span>
+                </div>
+                {((selectedDetailLog as any).leaveRequest || (selectedDetailLog as any).leaveRequestId) && (
+                  <div className="col-span-2 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20">
+                    <span className="text-slate-400 block mb-0.5">Đơn từ liên kết (Nghỉ phép / Công tác):</span>
+                    <span className="font-mono font-semibold text-indigo-700 dark:text-indigo-300">
+                      {(selectedDetailLog as any).leaveRequest
+                        ? `${(selectedDetailLog as any).leaveRequest.loai_don || 'Đơn'} • ${(selectedDetailLog as any).leaveRequest.trang_thai || ''}`
+                        : `Mã đơn: ${(selectedDetailLog as any).leaveRequestId}`}
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* Cảnh báo an ninh nếu có */}
-              {selectedDetailLog.isFraud && (
-                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
-                  <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+              {/* Chi tiết các lượt quẹt thô */}
+              {Array.isArray((selectedDetailLog as any).punches) && (selectedDetailLog as any).punches.length > 0 && (
+                <div className="space-y-2 text-xs">
+                  <label className="block font-bold uppercase tracking-wider text-slate-500">
+                    Lượt Quẹt Sinh Trắc Học ({(selectedDetailLog as any).punches.length} lượt)
+                  </label>
+                  <div className="space-y-2">
+                    {(selectedDetailLog as any).punches.map((p: any, idx: number) => (
+                      <div
+                        key={p._id || idx}
+                        className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-start justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-800 dark:text-slate-200">
+                            {p.punchType === 'check_in' ? 'Vào ca' : 'Tan ca'} • {formatTimeVN(p.punchTime)}
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            Phương thức: {p.method || 'face_ai'} • Thiết bị: {p.deviceId || '—'}
+                            {p.recognizedAngle ? ` • Góc mặt: ${p.recognizedAngle}` : ''}
+                          </div>
+                          {(p.distanceMeters != null || p.gpsAccuracy != null || (p.latitude != null && p.longitude != null)) && (
+                            <div className="text-[11px] text-slate-500 mt-0.5 font-mono">
+                              {p.distanceMeters != null ? `Khoảng cách: ${Math.round(p.distanceMeters)}m` : ''}
+                              {p.distanceMeters != null && p.gpsAccuracy != null ? ' • ' : ''}
+                              {p.gpsAccuracy != null ? `Sai số GPS: ±${Math.round(p.gpsAccuracy)}m` : ''}
+                              {(p.distanceMeters != null || p.gpsAccuracy != null) && p.latitude != null && p.longitude != null ? ' • ' : ''}
+                              {p.latitude != null && p.longitude != null
+                                ? `GPS: ${Number(p.latitude).toFixed(5)}, ${Number(p.longitude).toFixed(5)}`
+                                : ''}
+                            </div>
+                          )}
+                          {(p.isMockLocation || p.isValid === false) && (
+                            <div className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold mt-0.5">
+                              {p.isMockLocation ? 'Giả lập vị trí GPS' : ''}
+                              {p.isMockLocation && p.invalidReason ? ' • ' : ''}
+                              {p.invalidReason || ''}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0 space-y-0.5">
+                          {p.confidenceScore != null && (
+                            <div className="font-semibold text-emerald-600 dark:text-emerald-400">
+                              AI: {Math.round(p.confidenceScore * 100)}%
+                            </div>
+                          )}
+                          {p.livenessScore != null && (
+                            <div className="text-[11px] text-slate-500">
+                              Mặt thật: {Math.round(p.livenessScore * 100)}%
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Cảnh báo an ninh hoặc lý do ghi đè thủ công */}
+              {(selectedDetailLog.isFraud || ((selectedDetailLog as any).overrideBy && selectedDetailLog.fraudReason)) && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                    selectedDetailLog.isFraud
+                      ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300'
+                      : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300'
+                  }`}
+                >
+                  <ShieldAlert
+                    className={`w-4 h-4 shrink-0 mt-0.5 ${
+                      selectedDetailLog.isFraud ? 'text-rose-600' : 'text-amber-600'
+                    }`}
+                  />
                   <div>
-                    <div className="font-bold">Cảnh Báo Gian Lận / Vi Phạm An Ninh</div>
-                    <div>{selectedDetailLog.fraudReason || 'Phát hiện vị trí chấm công ngoài bán kính cho phép.'}</div>
+                    <div className="font-bold">
+                      {selectedDetailLog.isFraud ? 'Cảnh Báo Gian Lận / Vi Phạm An Ninh' : 'Lý Do Hiệu Chỉnh / Ghi Đè Công'}
+                    </div>
+                    <div>
+                      {selectedDetailLog.fraudReason || 'Phát hiện vị trí chấm công ngoài bán kính cho phép.'}
+                    </div>
                   </div>
                 </div>
               )}

@@ -22,19 +22,20 @@ import {
   Code2,
   Copy,
   Check,
-  Sparkles,
   Info,
   ShieldAlert,
   FileSpreadsheet,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { BangDieuKhienAiVaHangDoi } from './components/BangDieuKhienAiVaHangDoi';
+import { QuanLyAiVaTaiLieuRag } from './components/QuanLyAiVaTaiLieuRag';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { Button } from '../../components/chung/NutBam';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { Badge } from '../../components/chung/NhanTrangThai';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import {
   systemConfigApi,
   SystemConfigItem,
@@ -125,6 +126,74 @@ const GROUP_METAS: Record<string, GroupMeta> = {
   },
 };
 
+const HIDDEN_dedicated_AI_KEYS = new Set([
+  'AI_DEFAULT_PROVIDER',
+  'GEMINI_API_KEY',
+  'GEMINI_MODEL',
+  'GROQ_API_KEY',
+  'GROQ_MODEL',
+  'DEEPSEEK_API_KEY',
+  'DEEPSEEK_MODEL',
+]);
+
+const CONFIG_TITLE_MAP: Record<string, string> = {
+  HOC_KY: 'Cấu Hình Học Kỳ Hiện Hành',
+  DINH_MUC_GIO_CHUAN: 'Định Mức Giờ Chuẩn Giảng Dạy',
+  HE_SO_QUY_DOI_GIO: 'Hệ Số Quy Đổi Giờ Chuẩn',
+  GEOFENCE_TRUONG: 'Tọa Độ Geofence Khuôn Viên Trường',
+  CAMPUS_GEOFENCE: 'Tọa Độ Tâm & Bán Kính Khuôn Viên',
+  CAMPUS_GPS_RADIUS_METERS: 'Bán Kính GPS Khuôn Viên (Mét)',
+  DANH_SACH_PHONG_HOC: 'Danh Mục Tọa Độ Phòng Học',
+  LUONG_CO_SO: 'Mức Lương Cơ Sở Nhà Nước',
+  TY_LE_BAO_HIEM: 'Tỷ Lệ Trích Đóng Bảo Hiểm (NLĐ)',
+  DON_GIA_GIO: 'Đơn Giá Tiết Dạy Vượt Giờ',
+  DON_GIA_GIO_VUOT: 'Đơn Giá Tiết Dạy Vượt Định Mức',
+  TY_LE_UU_DAI: 'Tỷ Lệ Phụ Cấp Ưu Đãi Nghề',
+  GIAM_TRU: 'Mức Giảm Trừ Gia Cảnh Thuế TNCN',
+  BIEU_THUE_5_BAC: 'Biểu Thuế Lũy Tiến Từng Phần (5 Bậc)',
+  CHUC_VU: 'Hệ Số Phụ Cấp Chức Vụ & Giảm Định Mức',
+  NGUONG_AI: 'Tham Số Mô Hình Nhận Diện Khuôn Mặt',
+  FACE_SIMILARITY_THRESHOLD: 'Ngưỡng Tương Đồng Khuôn Mặt (Cosine)',
+  MARGIN_TOP1_TOP2: 'Biên Độ Chênh Lệch Top-1 / Top-2',
+  COOLDOWN_QUET_GIAY: 'Thời Gian Chờ Giữa 2 Lượt Quét',
+  DEFAULT_LATE_THRESHOLD_MINUTES: 'Ngưỡng Đi Muộn Mặc Định',
+  QUY_TAC_DIEM_DANH: 'Quy Tắc Cửa Sổ Check-in & Tính Công',
+  RETENTION_ANH_NAM: 'Thời Hạn Lưu Trữ Ảnh Minh Chứng',
+  RETENTION_METADATA_NAM: 'Thời Hạn Lưu Trữ Nhật Ký Hệ Thống',
+  CRON_LAST_RUN: 'Trạng Thái Tiến Trình Tự Động (Cron)',
+  SYSTEM_MAINTENANCE_MODE: 'Chế Độ Bảo Trì Hệ Thống',
+};
+
+const SUBFIELD_LABEL_MAP: Record<string, string> = {
+  nam_hoc: 'Năm học',
+  hoc_ky: 'Học kỳ',
+  ngay_bat_dau: 'Ngày bắt đầu',
+  so_tuan: 'Số tuần học',
+  ten_co_so: 'Tên cơ sở',
+  name: 'Tên cơ sở',
+  lat: 'Vĩ độ (Lat)',
+  lng: 'Kinh độ (Lng)',
+  ban_kinh_met: 'Bán kính (mét)',
+  radiusMeters: 'Bán kính (mét)',
+  ban_than: 'Giảm trừ bản thân (VNĐ)',
+  phu_thuoc: 'Người phụ thuộc (VNĐ)',
+  bhxh: 'BHXH (tỷ lệ)',
+  bhyt: 'BHYT (tỷ lệ)',
+  bhtn: 'BHTN (tỷ lệ)',
+  giang_vien: 'Giảng viên (tỷ lệ)',
+  hanh_chinh: 'Hành chính (tỷ lệ)',
+  mo_hinh: 'Mô hình AI',
+  so_chieu: 'Số chiều Vector',
+  cosine_min: 'Ngưỡng Cosine tối thiểu',
+  liveness_min: 'Ngưỡng Liveness tối thiểu',
+  cua_so_checkin_truoc_phut: 'Check-in sớm trước ca (phút)',
+  ty_le_du_gio: 'Tỷ lệ tính đủ công',
+  ty_le_nua_gio: 'Tỷ lệ tính nửa công',
+  lam_tron_tiet: 'Quy tắc làm tròn tiết',
+  thoi_gian_chay: 'Thời điểm chạy gần nhất',
+  trang_thai: 'Trạng thái',
+};
+
 function formatCurrencyVN(val?: number): string {
   if (val === undefined || val === null || isNaN(val)) return '--';
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
@@ -197,9 +266,13 @@ export const Settings: React.FC = () => {
 
   const filteredConfigs = useMemo(() => {
     return configs.filter((c) => {
+      const upperKey = String(c.key || '').toUpperCase();
+      if (HIDDEN_dedicated_AI_KEYS.has(upperKey)) return false;
+
       // Group filter
       if (selectedGroup !== 'ALL') {
-        const groupNorm = (c.group || 'SYSTEM').toUpperCase();
+        const rawGroup = (c.group || 'HE_THONG').toUpperCase();
+        const groupNorm = rawGroup === 'SYSTEM' ? 'HE_THONG' : rawGroup;
         if (groupNorm !== selectedGroup) return false;
       }
 
@@ -207,9 +280,10 @@ export const Settings: React.FC = () => {
       if (searchKeyword.trim()) {
         const kw = searchKeyword.toLowerCase().trim();
         const matchKey = (c.key || '').toLowerCase().includes(kw);
+        const matchTitle = (CONFIG_TITLE_MAP[upperKey] || '').toLowerCase().includes(kw);
         const matchDesc = (c.description || '').toLowerCase().includes(kw);
         const matchVal = JSON.stringify(c.value || '').toLowerCase().includes(kw);
-        if (!matchKey && !matchDesc && !matchVal) return false;
+        if (!matchKey && !matchTitle && !matchDesc && !matchVal) return false;
       }
 
       return true;
@@ -218,21 +292,29 @@ export const Settings: React.FC = () => {
 
   // KPIs
   const kpis = useMemo(() => {
-    const totalCount = configs.length;
-    let baseSalary = 2530000;
+    const visibleConfigs = configs.filter((c) => !HIDDEN_dedicated_AI_KEYS.has(String(c.key || '').toUpperCase()));
+    const totalCount = visibleConfigs.length;
+    let baseSalary = 2340000;
     let gpsRadius = 150;
     let aiModel = 'buffalo_s';
     let cosineMin = 0.45;
 
     configs.forEach((c) => {
-      if (c.key === 'LUONG_CO_SO') {
-        if (typeof c.value === 'number') baseSalary = c.value;
-      } else if (c.key === 'GEOFENCE_TRUONG') {
-        if (c.value?.radiusMeters) gpsRadius = c.value.radiusMeters;
-        else if (c.value?.ban_kinh_met) gpsRadius = c.value.ban_kinh_met;
-      } else if (c.key === 'NGUONG_AI') {
-        if (c.value?.model) aiModel = c.value.model;
-        if (c.value?.minCosine) cosineMin = c.value.minCosine;
+      const numVal = Number(c.value);
+      if (c.key === 'LUONG_CO_SO' && Number.isFinite(numVal) && numVal > 0) {
+        baseSalary = numVal;
+      } else if (c.key === 'GEOFENCE_TRUONG' || c.key === 'CAMPUS_GEOFENCE') {
+        if (c.value?.radiusMeters) gpsRadius = Number(c.value.radiusMeters);
+        else if (c.value?.ban_kinh_met) gpsRadius = Number(c.value.ban_kinh_met);
+      } else if (c.key === 'CAMPUS_GPS_RADIUS_METERS' && Number.isFinite(numVal) && numVal > 0) {
+        gpsRadius = numVal;
+      } else if (c.key === 'NGUONG_AI' && c.value && typeof c.value === 'object') {
+        if (c.value.mo_hinh || c.value.model) aiModel = c.value.mo_hinh || c.value.model;
+        if (c.value.cosine_min !== undefined || c.value.minCosine !== undefined) {
+          cosineMin = Number(c.value.cosine_min ?? c.value.minCosine);
+        }
+      } else if (c.key === 'FACE_SIMILARITY_THRESHOLD' && Number.isFinite(numVal) && numVal > 0) {
+        cosineMin = numVal;
       }
     });
 
@@ -433,10 +515,18 @@ export const Settings: React.FC = () => {
       );
     }
 
-    // 2. Number đơn giản
-    if (typeof currentVal === 'number') {
+    // 2. Number hoặc chuỗi số đơn giản
+    const isNumericString =
+      typeof currentVal === 'string' &&
+      currentVal.trim() !== '' &&
+      !Number.isNaN(Number(currentVal)) &&
+      /^-?\d+(\.\d+)?$/.test(currentVal.trim());
+
+    if (typeof currentVal === 'number' || isNumericString) {
+      const numericVal = typeof currentVal === 'number' ? currentVal : Number(currentVal);
       let unit = '';
-      if (config.key.includes('LUONG') || config.key.includes('GIO')) unit = 'VNĐ';
+      if (config.key.includes('LUONG') || config.key.includes('GIO') && !config.key.includes('CHUAN')) unit = 'VNĐ';
+      else if (config.key.includes('CHUAN')) unit = 'tiết';
       else if (config.key.includes('RADIUS') || config.key.includes('MET')) unit = 'mét';
       else if (config.key.includes('PHUT') || config.key.includes('MINUTES')) unit = 'phút';
       else if (config.key.includes('GIAY')) unit = 'giây';
@@ -448,7 +538,7 @@ export const Settings: React.FC = () => {
             <input
               type="number"
               step={config.key.includes('THRESHOLD') || config.key.includes('MARGIN') ? '0.01' : '1'}
-              value={currentVal}
+              value={numericVal}
               onChange={(e) => handleValueChange(config.key, parseFloat(e.target.value) || 0)}
               className="w-full px-3.5 py-2 text-sm font-semibold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
             />
@@ -460,7 +550,7 @@ export const Settings: React.FC = () => {
           </div>
           {unit === 'VNĐ' && (
             <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold pl-1">
-              ≈ {formatCurrencyVN(currentVal)}
+              ≈ {formatCurrencyVN(numericVal)}
             </p>
           )}
         </div>
@@ -479,12 +569,77 @@ export const Settings: React.FC = () => {
       );
     }
 
-    // 4. Object hoặc Array phức tạp (HOC_KY, GEOFENCE_TRUONG, BIEU_THUE_5_BAC, v.v.)
+    // 4. Object phẳng (HOC_KY, GIAM_TRU, TY_LE_BAO_HIEM, TY_LE_UU_DAI, NGUONG_AI, QUY_TAC_DIEM_DANH, GEOFENCE_TRUONG)
+    if (
+      currentVal &&
+      typeof currentVal === 'object' &&
+      !Array.isArray(currentVal) &&
+      Object.values(currentVal).every((v) => v === null || typeof v !== 'object')
+    ) {
+      const entries = Object.entries(currentVal);
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {entries.map(([subKey, subVal]) => {
+            const label = SUBFIELD_LABEL_MAP[subKey] || subKey;
+            const isNum = typeof subVal === 'number';
+            return (
+              <div key={subKey} className={entries.length === 1 || String(subVal ?? '').length > 24 ? 'sm:col-span-2' : ''}>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1 truncate">
+                  {label}
+                </label>
+                <input
+                  type={isNum ? 'number' : 'text'}
+                  step={isNum ? 'any' : undefined}
+                  value={String(subVal ?? '')}
+                  onChange={(e) => {
+                    const nextVal = isNum ? (e.target.value === '' ? 0 : Number(e.target.value)) : e.target.value;
+                    handleValueChange(config.key, {
+                      ...currentVal,
+                      [subKey]: nextVal,
+                    });
+                  }}
+                  className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                />
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // 5. Array hoặc Object đa tầng (BIEU_THUE_5_BAC, CHUC_VU, DANH_SACH_PHONG_HOC, HE_SO_QUY_DOI_GIO)
     return (
       <div className="space-y-2">
-        <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs overflow-x-auto max-h-32 border border-slate-800">
-          <pre className="whitespace-pre-wrap">{JSON.stringify(currentVal, null, 2)}</pre>
-        </div>
+        {Array.isArray(currentVal) && currentVal.length > 0 && typeof currentVal[0] === 'object' ? (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-x-auto max-h-36">
+            <table className="w-full text-[11px] text-left">
+              <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                <tr>
+                  {Object.keys(currentVal[0]).map((col) => (
+                    <th key={col} className="px-2 py-1 font-semibold whitespace-nowrap">
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {currentVal.map((row: any, rIdx: number) => (
+                  <tr key={rIdx} className="bg-white dark:bg-slate-900">
+                    {Object.keys(currentVal[0]).map((col) => (
+                      <td key={col} className="px-2 py-1 font-mono text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                        {typeof row[col] === 'object' ? JSON.stringify(row[col]) : String(row[col] ?? '—')}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 font-mono text-xs overflow-x-auto max-h-32 border border-slate-200 dark:border-slate-700">
+            <pre className="whitespace-pre-wrap">{JSON.stringify(currentVal, null, 2)}</pre>
+          </div>
+        )}
         <Button
           type="button"
           size="sm"
@@ -492,8 +647,8 @@ export const Settings: React.FC = () => {
           onClick={() => openJsonEditor(config)}
           className="w-full text-xs flex items-center justify-center gap-1.5 border-dashed"
         >
-          <Code2 className="w-3.5 h-3.5 text-indigo-500" />
-          <span>Mở Trình Soạn Thảo Chi Tiết (JSON Editor)</span>
+          <Edit3 className="w-3.5 h-3.5 text-indigo-500" />
+          <span>Chỉnh Sửa Bảng Tham Số Chi Tiết</span>
         </Button>
       </div>
     );
@@ -504,105 +659,25 @@ export const Settings: React.FC = () => {
   // =============================================================================
 
   return (
-    <div className="space-y-6">
-      {/* 1. HEADER SECTION (Chuẩn hóa Typography & Bố cục CSDL v2.5) */}
+    <div className="space-y-4">
+      {/* 1. HEADER SECTION */}
       <PageHeader
-        title="Cấu Hình Tham Số Hệ Thống Tập Trung"
-        subtitle="Quản trị toàn bộ tham số vận hành: Ngưỡng AI, Geofence GPS, Lương cơ sở 2.53tr, Thuế TNCN và Thời hạn lưu trữ."
-        icon={<SettingsIcon className="w-5 h-5 text-indigo-600" />}
-        badge="CSDL v2.5"
-        badgeVariant="indigo"
+        title="Cấu Hình Tham Số Hệ Thống"
+        subtitle="Tham số vận hành: Ngưỡng AI, Geofence GPS, Lương cơ sở, Thuế TNCN và lưu trữ."
       />
 
-      {/* 2. BỘ 4 THẺ KPI CẤU HÌNH TỔNG QUAN */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Tổng tham số */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-indigo-400 dark:hover:border-indigo-600 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Tổng Số Tham Số
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-              <Layers className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-slate-900 dark:text-white">
-              {kpis.totalCount}
-            </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">/ 19 tham số quy định</span>
-          </div>
-          <div className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Đồng bộ 100% CSDL v2.5</span>
-          </div>
-        </div>
-
-        {/* KPI 2: Mức lương cơ sở */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-amber-400 dark:hover:border-amber-600 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Lương Cơ Sở Nội Bộ
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-              <DollarSign className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-amber-600 dark:text-amber-400">
-              {formatCurrencyVN(kpis.baseSalary)}
-            </span>
-          </div>
-          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            Khóa: <code className="font-mono text-amber-700 dark:text-amber-300">LUONG_CO_SO</code>
-          </div>
-        </div>
-
-        {/* KPI 3: Ngưỡng AI InsightFace */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-purple-400 dark:hover:border-purple-600 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Ngưỡng AI Khớp Mặt
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center">
-              <Cpu className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-purple-600 dark:text-purple-400">
-              {kpis.cosineMin}
-            </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Cosine min (512-dim)</span>
-          </div>
-          <div className="mt-2 text-xs text-purple-600 dark:text-purple-400 font-medium">
-            Mô hình: {kpis.aiModel} (FAR = 0.00%)
-          </div>
-        </div>
-
-        {/* KPI 4: Geofence GPS Trụ sở chính */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-emerald-400 dark:hover:border-emerald-600 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Bán Kính Geofence GPS
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <MapPin className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-              {kpis.gpsRadius} m
-            </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Trụ sở chính DNT</span>
-          </div>
-          <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-            Thuật toán Haversine Formula
-          </div>
-        </div>
-      </div>
-
-      {/* 3. TABS PHÂN NHÓM & BỘ LỌC TÌM KIẾM */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+      {/* 2. UNIFIED SETTINGS CARD: KPI STRIP + BỘ LỌC + TAB NHÓM + LƯỚI THAM SỐ */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
+        <CompactStatsBar
+          embedded
+          items={[
+            { label: 'Tổng tham số', value: kpis.totalCount, unit: '/ 19 quy định', tone: 'neutral' },
+            { label: 'Lương cơ sở', value: formatCurrencyVN(kpis.baseSalary), tone: 'warning' },
+            { label: 'Ngưỡng AI', value: kpis.cosineMin, badge: kpis.aiModel, tone: 'brand' },
+            { label: 'Geofence GPS', value: `${kpis.gpsRadius} m`, unit: 'Haversine', tone: 'success' },
+          ]}
+        />
+        <div className="p-4 border-b border-slate-200/80 dark:border-slate-800 space-y-3">
         {/* Search Bar & Action Buttons */}
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           <div className="relative flex-1">
@@ -675,10 +750,12 @@ export const Settings: React.FC = () => {
           </div>
         </div>
 
-        {/* Group Tabs & Info */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {Object.entries(GROUP_METAS).map(([groupKey, meta]) => {
+        {/* Group Tabs & Info (Có thanh kéo ngang rõ ràng) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2.5 pt-0.5">
+          {Object.entries(GROUP_METAS)
+            .filter(([groupKey]) => groupKey !== 'SYSTEM')
+            .map(([groupKey, meta]) => {
             const Icon = meta.icon;
             const isSelected = selectedGroup === groupKey;
 
@@ -686,13 +763,13 @@ export const Settings: React.FC = () => {
               <button
                 key={groupKey}
                 onClick={() => setSelectedGroup(groupKey)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
                   isSelected
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
+                <Icon className="w-3.5 h-3.5 shrink-0" />
                 <span>{meta.label}</span>
               </button>
             );
@@ -707,7 +784,7 @@ export const Settings: React.FC = () => {
 
       {/* 4. CONFIG CARDS GRID */}
       {isLoading ? (
-        <div className="bg-white dark:bg-slate-900 p-12 rounded-2xl border border-slate-200 dark:border-slate-800 text-center">
+        <div className="p-12 text-center">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 mb-3 animate-spin">
             <RefreshCw className="w-6 h-6" />
           </div>
@@ -716,7 +793,7 @@ export const Settings: React.FC = () => {
           </p>
         </div>
       ) : filteredConfigs.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 p-12 rounded-2xl border border-slate-200 dark:border-slate-800 text-center">
+        <div className="p-12 text-center">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 mb-3">
             <SettingsIcon className="w-6 h-6" />
           </div>
@@ -728,7 +805,7 @@ export const Settings: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="p-4 bg-slate-50/40 dark:bg-slate-950/30 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredConfigs.map((config) => {
             const groupNorm = (config.group || 'SYSTEM').toUpperCase();
             const meta = GROUP_METAS[groupNorm] || GROUP_METAS.SYSTEM;
@@ -754,13 +831,18 @@ export const Settings: React.FC = () => {
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${meta.bgColor} ${meta.color}`}>
                         <Icon className="w-4 h-4" />
                       </div>
-                      <div>
-                        <h3 className="font-mono font-bold text-sm text-slate-900 dark:text-white truncate max-w-[190px]">
-                          {config.key}
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-sm text-slate-900 dark:text-white truncate max-w-[220px]">
+                          {CONFIG_TITLE_MAP[String(config.key || '').toUpperCase()] || config.key}
                         </h3>
-                        <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full border ${meta.bgColor} ${meta.color} ${meta.borderColor}`}>
-                          {meta.label}
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <code className="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded">
+                            {config.key}
+                          </code>
+                          <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full border ${meta.bgColor} ${meta.color} ${meta.borderColor}`}>
+                            {meta.label}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -810,9 +892,13 @@ export const Settings: React.FC = () => {
           })}
         </div>
       )}
+      </div>
 
-      {/* Bảng điều khiển Vector Index AI, Hàng đợi BullMQ & Tọa độ khuôn viên */}
-      <BangDieuKhienAiVaHangDoi />
+      {/* Bảng điều khiển Vector Index AI, Hàng đợi BullMQ & Tọa độ khuôn viên (Hiển thị theo đúng nhóm lọc) */}
+      <BangDieuKhienAiVaHangDoi selectedGroup={selectedGroup} />
+
+      {/* Cấu hình liên kết Model AI (API Key) & Quản lý Kho Tài Liệu RAG (Chỉ hiển thị ở Tất Cả hoặc nhóm AI) */}
+      {(selectedGroup === 'ALL' || selectedGroup === 'AI') && <QuanLyAiVaTaiLieuRag />}
 
       {/* ============================================================================= */}
       {/* 5. MODAL: TRÌNH SOẠN THẢO JSON CHI TIẾT */}

@@ -1,9 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  DollarSign,
-  TrendingUp,
-  BookOpen,
-  Scale,
   Calendar,
   ChevronLeft,
   ChevronRight,
@@ -36,6 +32,7 @@ import { departmentApi } from '../../api/phongBan.api';
 import * as XLSX from 'xlsx';
 import { DepartmentSelect, DepartmentItem } from '../../components/chung/ChonDonVi';
 import { Portal } from '../../components/chung/CongDichChuyen';
+import { Button } from '../../components/chung/NutBam';
 import {
   payrollApi,
   PayrollRecord,
@@ -45,6 +42,7 @@ import {
 import { hasRole, isAdmin } from '../../utils/phanQuyen';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import { ModalKhoiTaoLuong, ModalMoKhoaLuong } from './components/ModalKhoiTaoVaMoKhoaLuong';
 
 // =============================================================================
@@ -120,10 +118,52 @@ function getTaxAmount(p?: PayrollRecord | null): number {
   return pit.taxAmount ?? pit.tien_thue ?? 0;
 }
 
+const ALLOWANCE_LABELS: Record<string, string> = {
+  CHUC_VU: 'Phụ cấp chức vụ lãnh đạo',
+  THAM_NIEN: 'Phụ cấp thâm niên nghề giáo',
+  UU_DAI_NGHE: 'Phụ cấp ưu đãi nhà giáo',
+  TRACH_NHIEM: 'Phụ cấp trách nhiệm',
+  DOC_HAI: 'Phụ cấp độc hại',
+  KHAC: 'Phụ cấp khác',
+};
+
+function getAllowanceRows(p?: PayrollRecord | null): Array<{ label: string; amount: number }> {
+  if (!p) return [];
+  const rawList = p.allowances || [];
+  if (rawList.length > 0) {
+    return rawList.map((item) => {
+      const code = String(item.loai_phu_cap || 'KHAC').toUpperCase();
+      const baseLabel = ALLOWANCE_LABELS[code] || item.loai_phu_cap || 'Phụ cấp';
+      const rate = Number(item.he_so_hoac_ty_le || 0);
+      const label = rate > 0 ? `${baseLabel} (${rate})` : baseLabel;
+      return { label, amount: Number(item.so_tien || 0) };
+    });
+  }
+  return [
+    { label: 'Phụ cấp chức vụ lãnh đạo', amount: Number(p.positionAllowance || 0) },
+    { label: 'Phụ cấp thâm niên nghề giáo', amount: Number(p.seniorityAllowance || 0) },
+    { label: 'Phụ cấp ưu đãi nhà giáo (30%)', amount: Number(p.vocationalAllowance || 0) },
+  ];
+}
+
+function getDeductionRows(p?: PayrollRecord | null): Array<{ label: string; amount: number }> {
+  if (!p) return [];
+  const rawList = p.deductions || [];
+  return rawList.map((item) => ({
+    label: item.ly_do || 'Khoản giảm trừ lương',
+    amount: Number(item.so_tien || 0),
+  }));
+}
+
 const STATUS_CONFIG: Record<
   string,
   { label: string; badgeCls: string; dotColor: string }
 > = {
+  nhap: {
+    label: 'Bản Nháp',
+    badgeCls: 'bg-slate-100 text-slate-700 border border-slate-200',
+    dotColor: 'bg-amber-500',
+  },
   du_thao: {
     label: 'Dự Thảo',
     badgeCls: 'bg-slate-100 text-slate-700 border border-slate-200',
@@ -135,7 +175,7 @@ const STATUS_CONFIG: Record<
     dotColor: 'bg-amber-500',
   },
   da_duyet: {
-    label: 'Đã Duyệt',
+    label: 'Đã Duyệt / Khóa',
     badgeCls: 'bg-blue-50 text-blue-700 border border-blue-200',
     dotColor: 'bg-blue-500',
   },
@@ -143,6 +183,11 @@ const STATUS_CONFIG: Record<
     label: 'Đã Khóa Sổ',
     badgeCls: 'bg-purple-50 text-purple-700 border border-purple-200',
     dotColor: 'bg-purple-500',
+  },
+  da_chi_tra: {
+    label: 'Đã Chi Trả',
+    badgeCls: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    dotColor: 'bg-emerald-500',
   },
   da_thanh_toan: {
     label: 'Đã Chi Trả',
@@ -479,303 +524,213 @@ export const Payroll: React.FC = () => {
           PAGE HEADER (Chuẩn hóa Typography & Bố cục CSDL v2.5)
          ========================================================================= */}
       <PageHeader
-        title="Quản Lý Bảng Lương & Phiếu Lương Cán Bộ"
-        subtitle="Tính lương tự động, phụ cấp chức vụ, thâm niên nhà giáo, thù lao vượt giờ giảng dạy và khấu trừ thuế TNCN lũy tiến theo Nghị Định 73/2024/NĐ-CP."
-        icon={<CreditCard className="w-5 h-5 text-emerald-600" />}
-        badge="Nghị Định 73/2024/NĐ-CP"
-        badgeVariant="emerald"
+        title="Bảng Lương & Phiếu Lương Cán Bộ"
+        subtitle="Lương cơ sở 2.340.000đ (NĐ 73/2024/NĐ-CP) • Thù lao vượt giờ & thuế TNCN lũy tiến."
         actions={
-          <>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 font-medium shadow-xs">
-              <span className="text-slate-400 font-mono text-[11px]">Lương cơ sở:</span>
-              <span className="font-mono font-bold text-slate-900 dark:text-slate-100">2.340.000 đ</span>
-            </div>
-            {summary?.isLocked ? (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-semibold shadow-xs">
-                <Lock className="w-3.5 h-3.5" />
-                <span>Đã Khóa Sổ</span>
-              </div>
-            ) : (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-semibold shadow-xs">
-                <FileText className="w-3.5 h-3.5" />
-                <span>Sổ Dự Thảo</span>
-              </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border text-xs font-semibold ${
+                summary?.isLocked
+                  ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                  : 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200/80 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+              }`}
+            >
+              {summary?.isLocked ? <Lock className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+              <span>{summary?.isLocked ? 'Đã khóa sổ' : 'Sổ dự thảo'}</span>
+            </span>
+
+            {activeTab === 'all-payrolls' && (
+              <>
+                <Button
+                  onClick={handleExportExcel}
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+                  title="Xuất bảng lương toàn trường ra file Excel (.xlsx)"
+                  type="button"
+                >
+                  Xuất Excel
+                </Button>
+
+                {canLockOrUnlock && (
+                  <Button
+                    onClick={handleToggleLockPayroll}
+                    variant="outline"
+                    size="sm"
+                    leftIcon={summary?.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                    type="button"
+                  >
+                    {summary?.isLocked ? 'Mở khóa sổ' : 'Khóa sổ'}
+                  </Button>
+                )}
+
+                {canGeneratePayroll && (
+                  <Button
+                    onClick={() => setIsGenerateModalOpen(true)}
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<Play className="w-3.5 h-3.5" />}
+                    type="button"
+                  >
+                    Khởi tạo lương
+                  </Button>
+                )}
+              </>
             )}
-          </>
+          </div>
         }
       />
 
       {/* =========================================================================
-          NAVIGATION TABS (Matching code.html)
+          UNIFIED PAYROLL WORKSPACE CARD (KPI STRIP + TABS + TOOLBAR + TABLE)
          ========================================================================= */}
-      <div className="flex items-center gap-2">
-        {canManagePayroll && (
-          <button
-            onClick={() => setActiveTab('all-payrolls')}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'all-payrolls'
-                ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-indigo-200 dark:border-indigo-800'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700 border border-transparent'
-            }`}
-            type="button"
-          >
-            <CreditCard className="w-4 h-4" />
-            <span>Bảng Lương Toàn Trường / Khoa</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono text-[10px] font-bold border border-indigo-200/60 dark:border-indigo-800">
-              {payrolls.length}
-            </span>
-          </button>
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden flex flex-col">
+        <CompactStatsBar
+          embedded
+          items={[
+            { label: 'Thực chi (NET)', value: formatVND(totalNet), badge: `${payrolls.length} CB`, tone: 'success' },
+            { label: 'Tổng GROSS', value: formatVND(totalGross), badge: `T${selectedMonth}/${selectedYear}`, tone: 'brand' },
+            { label: 'Vượt giờ dạy', value: formatVND(totalOvertime), unit: '120k/tiết', tone: 'warning' },
+            { label: 'Thuế & BHXH', value: formatVND(totalDeductions), tone: 'neutral' },
+          ]}
+        />
+        {canManagePayroll && !isSystemAdmin && (
+          <div className="px-3 pt-2.5 pb-2 border-b border-slate-200/80 dark:border-slate-800 flex items-center gap-1.5 bg-slate-50/50 dark:bg-slate-850/40">
+            <button
+              onClick={() => setActiveTab('all-payrolls')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+                activeTab === 'all-payrolls'
+                  ? 'bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-700'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              type="button"
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>Bảng lương toàn trường</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-white/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[10px]">
+                {payrolls.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('my-payroll')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+                activeTab === 'my-payroll'
+                  ? 'bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-700'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              type="button"
+            >
+              <Receipt className="w-3.5 h-3.5" />
+              <span>Phiếu lương cá nhân</span>
+            </button>
+          </div>
         )}
 
-        {!isSystemAdmin && (
-          <button
-            onClick={() => setActiveTab('my-payroll')}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'my-payroll'
-                ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-indigo-200 dark:border-indigo-800'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700 border border-transparent'
-            }`}
-            type="button"
-          >
-            <Receipt className="w-4 h-4" />
-            <span>Phiếu Lương Cá Nhân Của Tôi</span>
-          </button>
-        )}
-      </div>
-
       {/* =========================================================================
-          4 COMPACT FINANCIAL KPI CARDS (Dark Mode Enabled)
-         ========================================================================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* Card 1: NET Salary */}
-        <div className="relative bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 dark:border-slate-800 hover:shadow-sm transition-shadow">
-          <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500"></div>
-          <div className="flex items-center justify-between pl-2">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500 dark:text-slate-400">
-              Quỹ Lương Thực Chi (NET)
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/70 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-              <DollarSign className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="pl-2 mt-2 flex items-baseline justify-between">
-            <div className="font-mono text-lg font-bold text-emerald-700 dark:text-emerald-400">
-              {formatVND(totalNet)}
-            </div>
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
-              {payrolls.length} cán bộ
-            </span>
-          </div>
-        </div>
-
-        {/* Card 2: GROSS Income */}
-        <div className="relative bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 dark:border-slate-800 hover:shadow-sm transition-shadow">
-          <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-600"></div>
-          <div className="flex items-center justify-between pl-2">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500 dark:text-slate-400">
-              Tổng Thu Nhập GROSS
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/70 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="pl-2 mt-2 flex items-baseline justify-between">
-            <div className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
-              {formatVND(totalGross)}
-            </div>
-            <span className="font-mono text-[11px] text-indigo-600 dark:text-indigo-400 font-bold">
-              T{selectedMonth}/{selectedYear}
-            </span>
-          </div>
-        </div>
-
-        {/* Card 3: Overtime Remuneration */}
-        <div className="relative bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 dark:border-slate-800 hover:shadow-sm transition-shadow">
-          <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></div>
-          <div className="flex items-center justify-between pl-2">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500 dark:text-slate-400">
-              Thù Lao Vượt Giờ Dạy
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/70 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-              <BookOpen className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="pl-2 mt-2 flex items-baseline justify-between">
-            <div className="font-mono text-lg font-bold text-amber-700 dark:text-amber-400">
-              {formatVND(totalOvertime)}
-            </div>
-            <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 font-normal">
-              120k đ/tiết
-            </span>
-          </div>
-        </div>
-
-        {/* Card 4: Taxes & Insurance Deductions */}
-        <div className="relative bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-xs overflow-hidden flex flex-col justify-between border border-slate-200/90 dark:border-slate-800 hover:shadow-sm transition-shadow">
-          <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-500"></div>
-          <div className="flex items-center justify-between pl-2">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500 dark:text-slate-400">
-              Thuế TNCN &amp; BHXH (10.5%)
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/70 flex items-center justify-center text-purple-600 dark:text-purple-400 shrink-0">
-              <Scale className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="pl-2 mt-2 flex items-baseline justify-between">
-            <div className="font-mono text-lg font-bold text-purple-700 dark:text-purple-400">
-              {formatVND(totalDeductions)}
-            </div>
-            <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500 font-normal">
-              BH: {formatVND(summary?.totalInsurance || 0)}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* =========================================================================
-          TAB 1: BẢNG LƯƠNG TOÀN TRƯỜNG / KHOA (Matching code.html)
+          TAB 1: BẢNG LƯƠNG TOÀN TRƯỜNG / KHOA (PRIMARY)
          ========================================================================= */}
       {activeTab === 'all-payrolls' && (
-        <div className="space-y-4">
-          {/* Filter & Action Toolbar */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl p-3 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-            {/* Left Filters */}
-            <div className="flex items-center gap-2 flex-wrap flex-1">
-              {/* Month Navigator */}
-              <div className="flex items-center bg-slate-50 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 h-8">
-                <button
-                  onClick={handlePrevMonth}
-                  className="w-6 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                  type="button"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <div className="px-2 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                  <span>
-                    Tháng {selectedMonth} / {selectedYear}
-                  </span>
-                </div>
-                <button
-                  onClick={handleNextMonth}
-                  className="w-6 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                  type="button"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-
+        <div className="flex flex-col">
+          {/* Compact 1-Row Filter Toolbar */}
+          <div className="p-3 border-b border-slate-200/70 dark:border-slate-800 flex items-center gap-2 flex-wrap">
+            {/* Month Navigator */}
+            <div className="flex items-center bg-slate-50 dark:bg-slate-800 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700 h-9">
               <button
-                onClick={handleCurrentMonth}
-                className="px-2.5 h-8 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer"
+                onClick={handlePrevMonth}
+                className="w-7 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
                 type="button"
               >
-                Tháng Hiện Tại
+                <ChevronLeft className="w-4 h-4" />
               </button>
-
-              {/* Personnel Search Input */}
-              <div className="relative w-56 min-w-[180px]">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-                  <Search className="w-3.5 h-3.5" />
+              <div className="px-2 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 whitespace-nowrap">
+                <Calendar className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+                <span>
+                  T{selectedMonth}/{selectedYear}
                 </span>
-                <input
-                  value={searchKeyword}
-                  onChange={(e) => {
-                    setSearchKeyword(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full h-8 pl-8 pr-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-800 dark:text-slate-100 text-xs placeholder:text-slate-400 border border-slate-200 dark:border-slate-700 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-indigo-500 transition-all"
-                  placeholder="Tìm tên, mã nhân viên..."
-                  type="text"
-                />
               </div>
-
-              {/* Faculty / Department Select Dropdown Phân Cấp */}
-              <div className="w-56">
-                <DepartmentSelect
-                  departments={departments}
-                  value={selectedDepartment}
-                  onChange={(deptId) => {
-                    setSelectedDepartment(deptId);
-                    setCurrentPage(1);
-                  }}
-                  allowAll={true}
-                  allLabel="Tất cả đơn vị / khoa"
-                  placeholder="Chọn đơn vị / khoa..."
-                  size="sm"
-                />
-              </div>
-
-              {/* Status Select Dropdown */}
-              <div className="relative">
-                <select
-                  value={selectedStatus}
-                  onChange={(e) => {
-                    setSelectedStatus(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="h-8 pl-2.5 pr-7 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-700 dark:text-slate-200 text-xs font-medium appearance-none border border-slate-200 dark:border-slate-700 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                >
-                  <option value="ALL">Tất cả trạng thái</option>
-                  <option value="du_thao">Dự thảo</option>
-                  <option value="da_khoa">Đã khóa sổ</option>
-                  <option value="da_thanh_toan">Đã chi trả</option>
-                </select>
-              </div>
-
-              {/* Refresh Button */}
               <button
-                onClick={fetchData}
-                className="w-8 h-8 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors cursor-pointer"
-                title="Làm mới dữ liệu"
+                onClick={handleNextMonth}
+                className="w-7 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
                 type="button"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Right Action Group */}
-            <div className="flex items-center gap-2 shrink-0">
-              {canGeneratePayroll && (
-                <button
-                  onClick={() => setIsGenerateModalOpen(true)}
-                  className="h-8 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                  type="button"
-                >
-                  <Play className="w-3.5 h-3.5" />
-                  <span>Khởi Tạo Lương</span>
-                </button>
-              )}
+            <button
+              onClick={handleCurrentMonth}
+              className="px-2.5 h-9 rounded-lg bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer"
+              type="button"
+            >
+              Tháng này
+            </button>
 
-              {canLockOrUnlock && (
-                <button
-                  onClick={handleToggleLockPayroll}
-                  className={`h-8 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border ${
-                    summary?.isLocked
-                      ? 'bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
-                      : 'bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-                  }`}
-                  type="button"
-                >
-                  {summary?.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                  <span>{summary?.isLocked ? 'Mở Khóa Sổ' : 'Khóa Sổ'}</span>
-                </button>
-              )}
-
-              <button
-                onClick={handleExportExcel}
-                className="h-8 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-colors border border-emerald-200 dark:border-emerald-800 cursor-pointer shadow-2xs"
-                title="Xuất bảng lương toàn trường ra file Excel (.xlsx)"
-                type="button"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Xuất Excel (.xlsx)</span>
-              </button>
+            {/* Personnel Search Input */}
+            <div className="relative flex-1 min-w-[180px]">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <Search className="w-3.5 h-3.5" />
+              </span>
+              <input
+                value={searchKeyword}
+                onChange={(e) => {
+                  setSearchKeyword(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full h-9 pl-8 pr-2 bg-slate-50 dark:bg-slate-800/80 rounded-lg text-slate-800 dark:text-slate-100 text-xs placeholder:text-slate-400 border border-slate-200/80 dark:border-slate-700 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
+                placeholder="Tìm tên, mã nhân viên..."
+                type="text"
+              />
             </div>
+
+            {/* Faculty / Department Select Dropdown Phân Cấp */}
+            <div className="w-full sm:w-52 shrink-0">
+              <DepartmentSelect
+                departments={departments}
+                value={selectedDepartment}
+                onChange={(deptId) => {
+                  setSelectedDepartment(deptId);
+                  setCurrentPage(1);
+                }}
+                allowAll={true}
+                allLabel="Tất cả đơn vị / khoa"
+                placeholder="Chọn đơn vị / khoa..."
+                size="sm"
+              />
+            </div>
+
+            {/* Status Select Dropdown */}
+            <div className="relative shrink-0">
+              <select
+                value={selectedStatus}
+                onChange={(e) => {
+                  setSelectedStatus(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-9 pl-3 pr-7 bg-slate-50 dark:bg-slate-800/80 rounded-lg text-slate-700 dark:text-slate-200 text-xs font-medium appearance-none border border-slate-200/80 dark:border-slate-700 focus:outline-none focus:border-brand-500 cursor-pointer"
+              >
+                <option value="ALL">Tất cả trạng thái</option>
+                <option value="nhap">Bản nháp</option>
+                <option value="cho_duyet">Chờ duyệt</option>
+                <option value="da_duyet">Đã duyệt / Khóa sổ</option>
+                <option value="da_chi_tra">Đã chi trả</option>
+              </select>
+              <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Refresh Button */}
+            <button
+              onClick={fetchData}
+              className="w-9 h-9 rounded-lg bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors cursor-pointer shrink-0"
+              title="Làm mới dữ liệu"
+              type="button"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
           </div>
 
-          {/* Main Data Table Container (Strict Zero-Horizontal-Scroll 10 Cột) */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col">
+          {/* Main Data Table Container */}
+          <div className="flex flex-col">
             <div className="w-full overflow-hidden">
               <table className="w-full table-fixed text-left border-collapse">
                 <colgroup>
@@ -791,26 +746,26 @@ export const Payroll: React.FC = () => {
                   <col style={{ width: '5%' }} />
                 </colgroup>
                 <thead>
-                  <tr className="bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-wider select-none border-b border-slate-200 dark:border-slate-800">
-                    <th className="py-2.5 px-2 text-center">#</th>
-                    <th className="py-2.5 px-2.5 truncate">Cán Bộ / Giảng Viên</th>
-                    <th className="py-2.5 px-2.5 truncate">Lương Chính (Hệ Số)</th>
-                    <th className="py-2.5 px-2.5 truncate">Tổng Phụ Cấp</th>
-                    <th className="py-2.5 px-2.5 truncate">Vượt Giờ Giảng Dạy</th>
-                    <th className="py-2.5 px-2.5 truncate">Thu Nhập Gross</th>
-                    <th className="py-2.5 px-2.5 truncate">Bảo Hiểm &amp; Thuế</th>
-                    <th className="py-2.5 px-2.5 truncate">Thực Lĩnh (Net)</th>
-                    <th className="py-2.5 px-2 text-center truncate">Trạng Thái</th>
-                    <th className="py-2.5 px-2 text-center">Chi Tiết</th>
+                  <tr className="bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider select-none border-b border-slate-200/70 dark:border-slate-800">
+                    <th className="py-3 px-2 text-center">#</th>
+                    <th className="py-3 px-3 truncate">Cán bộ / Giảng viên</th>
+                    <th className="py-3 px-3 truncate">Lương chính (HS)</th>
+                    <th className="py-3 px-3 truncate">Tổng phụ cấp</th>
+                    <th className="py-3 px-3 truncate">Vượt giờ dạy</th>
+                    <th className="py-3 px-3 truncate">Thu nhập Gross</th>
+                    <th className="py-3 px-3 truncate">Bảo hiểm &amp; Thuế</th>
+                    <th className="py-3 px-3 truncate">Thực lĩnh (Net)</th>
+                    <th className="py-3 px-2 text-center truncate">Trạng thái</th>
+                    <th className="py-3 px-2 text-center">Chi tiết</th>
                   </tr>
                 </thead>
-                <tbody className="text-xs divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={10} className="py-12 text-center text-slate-400">
+                      <td colSpan={10} className="py-12 text-center text-sm text-slate-400">
                         <div className="flex flex-col items-center justify-center gap-2">
-                          <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                          <span className="text-xs font-medium">Đang tải bảng lương...</span>
+                          <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+                          <span>Đang tải bảng lương...</span>
                         </div>
                       </td>
                     </tr>
@@ -819,11 +774,11 @@ export const Payroll: React.FC = () => {
                       <td colSpan={10} className="py-12 text-center text-slate-400">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <FileText className="w-8 h-8 text-slate-300 stroke-[1.5]" />
-                          <span className="text-xs font-semibold text-slate-600">
+                          <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
                             Không có dữ liệu bảng lương trong Tháng {selectedMonth}/{selectedYear}
                           </span>
-                          <p className="text-[11px] text-slate-400">
-                            Hãy nhấn nút "Khởi Tạo Lương" để hệ thống tự động tính toán bảng lương cho tháng này.
+                          <p className="text-xs text-slate-400">
+                            Hãy nhấn nút &quot;Khởi tạo lương&quot; để hệ thống tự động tính toán bảng lương cho tháng này.
                           </p>
                         </div>
                       </td>
@@ -840,38 +795,35 @@ export const Payroll: React.FC = () => {
                       const tax = getTaxAmount(p);
                       const overtimePay = p.teachingHours?.overQuotaRemuneration || 0;
                       const overtimeHours = p.teachingHours?.overQuotaHours || 0;
-                      const allowancesTotal =
-                        (p.positionAllowance || 0) +
-                        (p.seniorityAllowance || 0) +
-                        (p.vocationalAllowance || 0);
+                      const allowancesTotal = getAllowanceRows(p).reduce((sum, item) => sum + item.amount, 0);
                       const statusInfo = STATUS_CONFIG[p.status] || STATUS_CONFIG.du_thao;
 
                       return (
                         <tr
                           key={p._id}
-                          className="hover:bg-indigo-50/20 dark:hover:bg-slate-800/40 transition-colors whitespace-nowrap group"
+                          className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors whitespace-nowrap group"
                         >
                           {/* STT */}
-                          <td className="py-2.5 px-2 text-center font-mono text-slate-400">
+                          <td className="py-3 px-2 text-center text-sm tabular-nums text-slate-400">
                             {stt}
                           </td>
 
                           {/* Cán Bộ / Giảng Viên */}
-                          <td className="py-2.5 px-2.5 truncate">
-                            <div className="flex items-center gap-2 min-w-0">
+                          <td className="py-3 px-3 truncate">
+                            <div className="flex items-center gap-2.5 min-w-0">
                               <UserAvatar
                                 user={u}
                                 name={u.fullName}
                                 avatarUrl={(u as any).avatar}
                                 staffCode={u.staffCode || u._id}
-                                size="xs"
+                                size="sm"
                                 shape="rounded"
                               />
-                              <div className="min-w-0 truncate">
-                                <span className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-900 dark:group-hover:text-indigo-300 truncate block">
+                              <div className="min-w-0 truncate leading-snug">
+                                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate block">
                                   {u.fullName || '—'}
                                 </span>
-                                <span className="font-mono text-[10px] text-slate-400 block truncate">
+                                <span className="text-xs text-slate-500 dark:text-slate-400 block truncate">
                                   {u.staffCode || '—'} • {deptName}
                                 </span>
                               </div>
@@ -879,45 +831,45 @@ export const Payroll: React.FC = () => {
                           </td>
 
                           {/* Lương Chính (Hệ Số) */}
-                          <td className="py-2.5 px-2.5 truncate font-mono text-slate-800">
-                            <span className="font-bold">{formatVND(p.primarySalary)}</span>
-                            <span className="text-slate-400 text-[11px] font-normal ml-1">
+                          <td className="py-3 px-3 truncate tabular-nums text-slate-800 dark:text-slate-200">
+                            <span className="text-sm font-semibold">{formatVND(p.primarySalary)}</span>
+                            <span className="text-slate-400 text-xs font-normal ml-1">
                               ({p.salaryCoefficient || 2.34})
                             </span>
                           </td>
 
                           {/* Tổng Phụ Cấp */}
-                          <td className="py-2.5 px-2.5 truncate font-mono font-bold text-slate-800">
+                          <td className="py-3 px-3 truncate text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-200">
                             {formatVND(allowancesTotal)}
                           </td>
 
                           {/* Vượt Giờ Giảng Dạy */}
-                          <td className="py-2.5 px-2.5 truncate font-mono font-bold text-amber-700">
-                            +{formatVND(overtimePay)}
-                            <span className="text-slate-400 text-[10px] font-normal ml-1">
+                          <td className="py-3 px-3 truncate tabular-nums text-amber-700 dark:text-amber-400">
+                            <span className="text-sm font-semibold">+{formatVND(overtimePay)}</span>
+                            <span className="text-slate-400 text-xs font-normal ml-1">
                               ({overtimeHours}h)
                             </span>
                           </td>
 
                           {/* Thu Nhập Gross */}
-                          <td className="py-2.5 px-2.5 truncate font-mono font-bold text-slate-900">
+                          <td className="py-3 px-3 truncate text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                             {formatVND(p.grossIncome)}
                           </td>
 
                           {/* Bảo Hiểm & Thuế */}
-                          <td className="py-2.5 px-2.5 truncate font-mono text-[11px] text-slate-500">
+                          <td className="py-3 px-3 truncate text-xs tabular-nums text-slate-500 dark:text-slate-400">
                             BH: {formatVND(ins.total)} | Thuế: {formatVND(tax)}
                           </td>
 
                           {/* Thực Lĩnh (Net) */}
-                          <td className="py-2.5 px-2.5 truncate font-mono font-bold text-emerald-700 text-xs">
+                          <td className="py-3 px-3 truncate text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
                             {formatVND(p.netSalary)}
                           </td>
 
                           {/* Trạng Thái */}
-                          <td className="py-2.5 px-2 text-center truncate">
+                          <td className="py-3 px-2 text-center truncate">
                             <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusInfo.badgeCls}`}
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.badgeCls}`}
                             >
                               <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dotColor}`}></span>
                               <span>{statusInfo.label}</span>
@@ -991,27 +943,27 @@ export const Payroll: React.FC = () => {
           TAB 2: PHIẾU LƯƠNG CÁ NHÂN CỦA TÔI (Matching code.html)
          ========================================================================= */}
       {activeTab === 'my-payroll' && (
-        <div className="space-y-4">
+        <div className="flex flex-col">
           {/* Month selector for My Payroll */}
-          <div className="bg-white rounded-2xl p-3 border border-slate-200/90 shadow-xs flex items-center justify-between flex-wrap gap-2">
+          <div className="p-3 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <div className="flex items-center bg-slate-50 rounded-xl p-0.5 border border-slate-200 h-8">
+              <div className="flex items-center bg-slate-50 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 h-8">
                 <button
                   onClick={handlePrevMonth}
-                  className="w-6 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 hover:bg-white transition-colors cursor-pointer"
+                  className="w-6 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
                   type="button"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <div className="px-2 font-mono text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                <div className="px-2 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>
                     Tháng {selectedMonth} / {selectedYear}
                   </span>
                 </div>
                 <button
                   onClick={handleNextMonth}
-                  className="w-6 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 hover:bg-white transition-colors cursor-pointer"
+                  className="w-6 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
                   type="button"
                 >
                   <ChevronRight className="w-4 h-4" />
@@ -1020,7 +972,7 @@ export const Payroll: React.FC = () => {
 
               <button
                 onClick={handleCurrentMonth}
-                className="px-2.5 h-8 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium transition-colors border border-slate-200 cursor-pointer"
+                className="px-2.5 h-8 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer"
                 type="button"
               >
                 Tháng Hiện Tại
@@ -1031,16 +983,16 @@ export const Payroll: React.FC = () => {
               {myPayroll && (
                 <button
                   onClick={() => window.print()}
-                  className="h-8 px-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 flex items-center gap-1.5 text-xs text-slate-700 font-semibold transition-colors cursor-pointer shadow-xs"
+                  className="h-8 px-3 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200 font-semibold transition-colors cursor-pointer shadow-xs"
                   type="button"
                 >
-                  <Printer className="w-3.5 h-3.5 text-slate-500" />
+                  <Printer className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                   <span>In Phiếu Lương</span>
                 </button>
               )}
               <button
                 onClick={fetchData}
-                className="h-8 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex items-center gap-1.5 text-xs text-slate-700 font-semibold transition-colors cursor-pointer"
+                className="h-8 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200 font-semibold transition-colors cursor-pointer"
                 type="button"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -1050,31 +1002,31 @@ export const Payroll: React.FC = () => {
           </div>
 
           {isLoading ? (
-            <div className="bg-white rounded-2xl p-12 border border-slate-200/90 text-center text-slate-400">
+            <div className="p-12 text-center text-slate-400">
               <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
               <span className="text-xs">Đang tải phiếu lương cá nhân...</span>
             </div>
           ) : !myPayroll ? (
-            <div className="bg-white rounded-2xl p-12 border border-slate-200/90 text-center text-slate-400">
-              <Receipt className="w-10 h-10 text-slate-300 stroke-[1.5] mx-auto mb-2" />
-              <h3 className="text-sm font-bold text-slate-700">Chưa có phiếu lương</h3>
+            <div className="p-12 text-center text-slate-400">
+              <Receipt className="w-10 h-10 text-slate-300 dark:text-slate-600 stroke-[1.5] mx-auto mb-2" />
+              <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Chưa có phiếu lương</h3>
               <p className="text-xs text-slate-400 mt-1">
                 Phiếu lương Tháng {selectedMonth}/{selectedYear} của bạn chưa được tính toán hoặc chưa ban hành.
               </p>
             </div>
           ) : (
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-xs max-w-3xl mx-auto space-y-6">
+            <div className="p-6 max-w-3xl mx-auto w-full space-y-6">
               {/* Header phiếu lương */}
-              <div className="text-center pb-4 border-b border-slate-200">
+              <div className="text-center pb-4 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center justify-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center">
                     NTU
                   </div>
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">
                     ĐẠI HỌC NGUYỄN TRÃI - PHIẾU LƯƠNG CÁ NHÂN
                   </h3>
                 </div>
-                <p className="text-xs text-slate-500 font-mono mt-1">
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1">
                   Kỳ thanh toán: Tháng {myPayroll.month} / Năm {myPayroll.year}
                 </p>
                 <div className="mt-2">
@@ -1089,14 +1041,14 @@ export const Payroll: React.FC = () => {
               </div>
 
               {/* Thông tin nhân viên */}
-              <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-100">
+              <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
                 <div>
                   <span className="text-slate-400 block mb-0.5">Họ và tên cán bộ:</span>
-                  <span className="font-bold text-slate-800 text-sm">{myPayroll.userId?.fullName}</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-100 text-sm">{myPayroll.userId?.fullName}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5">Mã cán bộ / Email:</span>
-                  <span className="font-mono text-slate-700">
+                  <span className="font-mono text-slate-700 dark:text-slate-300">
                     {myPayroll.userId?.staffCode || '—'} • {myPayroll.userId?.email}
                   </span>
                 </div>
@@ -1106,41 +1058,35 @@ export const Payroll: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5">Mức lương cơ sở:</span>
-                  <span className="font-mono font-bold text-slate-800">{formatVND(myPayroll.baseSalary || 2340000)}</span>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{formatVND(myPayroll.baseSalary || 2340000)}</span>
                 </div>
               </div>
 
               {/* Chi tiết các khoản thu nhập & khấu trừ */}
               <div className="space-y-3 text-xs">
-                <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b pb-1">
+                <div className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider text-[11px] border-b border-slate-200 dark:border-slate-800 pb-1">
                   1. Các Khoản Thu Nhập
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-600">Lương chính theo hệ số:</span>
+                <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                  <span className="text-slate-600 dark:text-slate-400">Lương chính theo hệ số:</span>
                   <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(myPayroll.primarySalary)}</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-600">Phụ cấp chức vụ:</span>
-                  <span className="font-mono font-bold text-slate-900">{formatVND(myPayroll.positionAllowance)}</span>
+                {getAllowanceRows(myPayroll).map((item, idx) => (
+                  <div key={idx} className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                    <span className="text-slate-600 dark:text-slate-400">{item.label}:</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(item.amount)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                  <span className="text-slate-600 dark:text-slate-400">Thù lao vượt giờ giảng dạy ({myPayroll.teachingHours?.overQuotaHours || 0} giờ):</span>
+                  <span className="font-mono font-bold text-amber-700 dark:text-amber-400">+{formatVND(myPayroll.teachingHours?.overQuotaRemuneration)}</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-600">Phụ cấp thâm niên nghề:</span>
-                  <span className="font-mono font-bold text-slate-900">{formatVND(myPayroll.seniorityAllowance)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-600">Phụ cấp ưu đãi giảng dạy:</span>
-                  <span className="font-mono font-bold text-slate-900">{formatVND(myPayroll.vocationalAllowance)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-600">Thù lao vượt giờ giảng dạy ({myPayroll.teachingHours?.overQuotaHours || 0} giờ):</span>
-                  <span className="font-mono font-bold text-amber-700">+{formatVND(myPayroll.teachingHours?.overQuotaRemuneration)}</span>
-                </div>
-                <div className="flex justify-between py-1.5 bg-slate-50 px-2 rounded-lg font-bold">
-                  <span className="text-slate-800">TỔNG THU NHẬP GROSS:</span>
-                  <span className="font-mono text-indigo-700">{formatVND(myPayroll.grossIncome)}</span>
+                <div className="flex justify-between py-1.5 bg-slate-50 dark:bg-slate-800/60 px-2 rounded-lg font-bold">
+                  <span className="text-slate-800 dark:text-slate-200">TỔNG THU NHẬP GROSS:</span>
+                  <span className="font-mono text-indigo-700 dark:text-indigo-400">{formatVND(myPayroll.grossIncome)}</span>
                 </div>
 
-                <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b pb-1 pt-2">
+                <div className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider text-[11px] border-b border-slate-200 dark:border-slate-800 pb-1 pt-2">
                   2. Các Khoản Giảm Trừ
                 </div>
                 {(() => {
@@ -1148,30 +1094,38 @@ export const Payroll: React.FC = () => {
                   const tax = getTaxAmount(myPayroll);
                   return (
                     <>
-                      <div className="flex justify-between py-1 border-b border-slate-50">
-                        <span className="text-slate-600">Bảo hiểm xã hội (BHXH 8%):</span>
-                        <span className="font-mono font-bold text-rose-600">-{formatVND(ins.bhxh)}</span>
+                      <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                        <span className="text-slate-600 dark:text-slate-400">Bảo hiểm xã hội (BHXH 8%):</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(ins.bhxh)}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-50">
-                        <span className="text-slate-600">Bảo hiểm y tế (BHYT 1.5%):</span>
-                        <span className="font-mono font-bold text-rose-600">-{formatVND(ins.bhyt)}</span>
+                      <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                        <span className="text-slate-600 dark:text-slate-400">Bảo hiểm y tế (BHYT 1.5%):</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(ins.bhyt)}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-50">
-                        <span className="text-slate-600">Bảo hiểm thất nghiệp (BHTN 1%):</span>
-                        <span className="font-mono font-bold text-rose-600">-{formatVND(ins.bhtn)}</span>
+                      <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                        <span className="text-slate-600 dark:text-slate-400">Bảo hiểm thất nghiệp (BHTN 1%):</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(ins.bhtn)}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-50">
-                        <span className="text-slate-600">Thuế thu nhập cá nhân (Thuế TNCN):</span>
-                        <span className="font-mono font-bold text-rose-600">-{formatVND(tax)}</span>
+                      <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                        <span className="text-slate-600 dark:text-slate-400">Thuế thu nhập cá nhân (Thuế TNCN):</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(tax)}</span>
                       </div>
+                      {getDeductionRows(myPayroll).map((item, idx) => (
+                        <div key={idx} className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                          <span className="text-slate-600 dark:text-slate-400">
+                            {item.label} <span className="text-[11px] text-slate-500 dark:text-slate-400">(đã trừ vào lương chính)</span>:
+                          </span>
+                          <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(item.amount)}</span>
+                        </div>
+                      ))}
                     </>
                   );
                 })()}
 
                 {/* Tổng thực lĩnh */}
-                <div className="pt-3 border-t-2 border-slate-200 flex items-center justify-between text-sm bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/60">
-                  <span className="font-bold text-slate-800 uppercase">THỰC LĨNH CHUYỂN KHOẢN (NET):</span>
-                  <span className="font-mono font-bold text-emerald-700 text-lg">
+                <div className="pt-3 border-t-2 border-slate-200 dark:border-slate-700 flex items-center justify-between text-sm bg-emerald-50/70 dark:bg-emerald-950/30 p-3 rounded-xl border border-emerald-200/60 dark:border-emerald-800/60">
+                  <span className="font-bold text-slate-800 dark:text-slate-100 uppercase">THỰC LĨNH CHUYỂN KHOẢN (NET):</span>
+                  <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 text-lg">
                     {formatVND(myPayroll.netSalary)}
                   </span>
                 </div>
@@ -1180,6 +1134,7 @@ export const Payroll: React.FC = () => {
           )}
         </div>
       )}
+      </div>
 
       {/* =========================================================================
           MODAL: XEM CHI TIẾT PHIẾU LƯƠNG CỦA CÁN BỘ (Matching code.html)
@@ -1245,6 +1200,55 @@ export const Payroll: React.FC = () => {
                 </div>
               </div>
 
+              {/* Kỳ công, giờ giảng & thông tin lập/duyệt */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3.5 rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800 text-[11px]">
+                <div>
+                  <span className="text-slate-400 block">Ngày công (Thực tế / Chuẩn)</span>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                    {(selectedPayrollDetail as any).actualWorkDays ?? (selectedPayrollDetail as any).so_cong_thuc_te ?? 0} /{' '}
+                    {(selectedPayrollDetail as any).standardWorkDays ?? (selectedPayrollDetail as any).so_cong_chuan ?? 22} ngày
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Giờ giảng (Thực dạy / Nghĩa vụ)</span>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                    {selectedPayrollDetail.teachingHours?.accumulatedStandardHours ?? (selectedPayrollDetail as any).so_tiet_thuc_day ?? 0} /{' '}
+                    {selectedPayrollDetail.teachingHours?.adjustedQuota ?? selectedPayrollDetail.teachingHours?.baseQuota ?? (selectedPayrollDetail as any).so_tiet_nghia_vu ?? 0} tiết
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Người lập phiếu</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
+                    {(selectedPayrollDetail as any).createdByUser?.fullName ||
+                      (selectedPayrollDetail as any).createdByUser?.ho_ten ||
+                      'Phòng Kế toán'}
+                  </span>
+                </div>
+                {((selectedPayrollDetail as any).approvedByUser || (selectedPayrollDetail as any).approvedAt) && (
+                  <div className="col-span-2 sm:col-span-3 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-2">
+                    <span className="text-slate-500">
+                      Người duyệt:{' '}
+                      <strong className="text-slate-800 dark:text-slate-200">
+                        {(selectedPayrollDetail as any).approvedByUser?.fullName ||
+                          (selectedPayrollDetail as any).approvedByUser?.ho_ten ||
+                          'Ban Giám Hiệu'}
+                      </strong>
+                    </span>
+                    {(selectedPayrollDetail as any).approvedAt && (
+                      <span className="font-mono text-slate-500">
+                        {new Date((selectedPayrollDetail as any).approvedAt).toLocaleString('vi-VN')}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {selectedPayrollDetail.notes && (
+                  <div className="col-span-2 sm:col-span-3 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 text-slate-600 dark:text-slate-300">
+                    <span className="text-slate-400">Ghi chú: </span>
+                    <span>{selectedPayrollDetail.notes}</span>
+                  </div>
+                )}
+              </div>
+
               {/* Thu nhập */}
               <div className="space-y-2">
                 <div className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider text-[11px] border-b border-slate-200 dark:border-slate-800 pb-1">
@@ -1255,21 +1259,16 @@ export const Payroll: React.FC = () => {
                     <span className="text-slate-600 dark:text-slate-400">Lương chính (Hệ số: {selectedPayrollDetail.salaryCoefficient}):</span>
                     <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(selectedPayrollDetail.primarySalary)}</span>
                   </div>
-                  <div className="flex justify-between py-1.5">
-                    <span className="text-slate-600 dark:text-slate-400">Phụ cấp chức vụ lãnh đạo:</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(selectedPayrollDetail.positionAllowance)}</span>
-                  </div>
-                  <div className="flex justify-between py-1.5">
-                    <span className="text-slate-600 dark:text-slate-400">Phụ cấp thâm niên nghề giáo:</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(selectedPayrollDetail.seniorityAllowance)}</span>
-                  </div>
-                  <div className="flex justify-between py-1.5">
-                    <span className="text-slate-600 dark:text-slate-400">Phụ cấp ưu đãi nhà giáo (30%):</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(selectedPayrollDetail.vocationalAllowance)}</span>
-                  </div>
+                  {getAllowanceRows(selectedPayrollDetail).map((item, idx) => (
+                    <div key={idx} className="flex justify-between py-1.5">
+                      <span className="text-slate-600 dark:text-slate-400">{item.label}:</span>
+                      <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatVND(item.amount)}</span>
+                    </div>
+                  ))}
                   <div className="flex justify-between py-1.5">
                     <span className="text-slate-600 dark:text-slate-400">
-                      Vượt giờ giảng dạy ({selectedPayrollDetail.teachingHours?.overQuotaHours || 0} giờ × 120.000 đ):
+                      Vượt giờ giảng dạy ({selectedPayrollDetail.teachingHours?.overQuotaHours || 0} giờ ×{' '}
+                      {formatVND(selectedPayrollDetail.teachingHours?.hourlyRate || (selectedPayrollDetail as any).don_gia_tiet_vuot || 120000)}):
                     </span>
                     <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
                       +{formatVND(selectedPayrollDetail.teachingHours?.overQuotaRemuneration)}
@@ -1308,6 +1307,14 @@ export const Payroll: React.FC = () => {
                         <span className="text-slate-600 dark:text-slate-400">Thuế thu nhập cá nhân (Thuế TNCN lũy tiến 5 bậc):</span>
                         <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(tax)}</span>
                       </div>
+                      {getDeductionRows(selectedPayrollDetail).map((item, idx) => (
+                        <div key={idx} className="flex justify-between py-1.5">
+                          <span className="text-slate-600 dark:text-slate-400">
+                            {item.label} <span className="text-[11px] text-slate-500 dark:text-slate-400">(đã trừ vào lương chính)</span>:
+                          </span>
+                          <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatVND(item.amount)}</span>
+                        </div>
+                      ))}
                     </div>
                   );
                 })()}

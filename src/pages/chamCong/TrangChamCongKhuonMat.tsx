@@ -29,6 +29,7 @@ import { useAuthStore } from '../../stores/useXacThucStore';
 import { cameraManager } from '../../utils/quanLyCamera';
 import { FaceAttendanceScannerModal } from '../../components/sinhTracHoc/ModalQuetChamCong';
 import { FaceRegistrationModal } from '../../components/sinhTracHoc/ModalDangKyKhuonMat';
+import { PageHeader } from '../../components/chung/TieuDeTrang';
 
 export const FaceAttendance: React.FC = () => {
   const { user: authUser } = useAuthStore();
@@ -378,84 +379,78 @@ export const FaceAttendance: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-12 animate-fade-in">
       {/* =====================================================================
-          1. HEADER CARD: TIÊU ĐỀ CHUẨN CARD TRẮNG/DARK & THANH CÔNG CỤ TINH TẾ
+          1. HEADER CARD: TIÊU ĐỀ CHUẨN PAGEHEADER & THANH CÔNG CỤ TINH TẾ
       ===================================================================== */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            Điểm Danh Khuôn Mặt
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800">
-              AI FaceID
-            </span>
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Nhận diện sinh trắc học 512 chiều thời gian thực, tự động ghi nhận lượt quẹt thẻ và kiểm soát ca làm việc.
-          </p>
-        </div>
+      <PageHeader
+        title="Điểm Danh Khuôn Mặt"
+        subtitle="Nhận diện sinh trắc học 512 chiều thời gian thực, tự động ghi nhận lượt quẹt thẻ và kiểm soát ca làm việc."
+        icon={<ScanFace className="w-5 h-5" />}
+        badge="AI FaceID"
+        badgeVariant="brand"
+        actions={
+          <>
+            {/* Nút Bật/Tắt Tự Động Quét */}
+            <button
+              type="button"
+              onClick={() => setIsAutoScan(!isAutoScan)}
+              className={`h-9 flex items-center gap-1.5 px-3.5 rounded-full border text-xs font-semibold transition-all cursor-pointer ${
+                isAutoScan
+                  ? 'border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+              }`}
+              title="Bật hoặc tắt chế độ tự động quét khuôn mặt mỗi 2 giây"
+            >
+              <span className={`w-2 h-2 rounded-full ${isAutoScan ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+              <Zap className="w-3.5 h-3.5" />
+              <span>Tự động quét: {isAutoScan ? 'BẬT' : 'TẮT'}</span>
+            </button>
 
-        {/* Thanh công cụ phụ: Âm thanh, Tự động quét & Trình quét HUD */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Nút Bật/Tắt Tự Động Quét */}
-          <button
-            type="button"
-            onClick={() => setIsAutoScan(!isAutoScan)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-              isAutoScan
-                ? 'border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
-                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
-            }`}
-            title="Bật hoặc tắt chế độ tự động quét khuôn mặt mỗi 2 giây"
-          >
-            <span className={`w-2 h-2 rounded-full ${isAutoScan ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-            <Zap className="w-3.5 h-3.5" />
-            <span>Tự động quét: {isAutoScan ? 'BẬT' : 'TẮT'}</span>
-          </button>
+            {/* Nút Âm Thanh */}
+            <button
+              type="button"
+              onClick={() => {
+                const nextMuted = !isMuted;
+                setIsMuted(nextMuted);
+                audioFeedback.setMuted(nextMuted);
+              }}
+              className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              title={isMuted ? 'Bật âm thanh phản hồi' : 'Tắt âm thanh phản hồi'}
+            >
+              {isMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-400" /> : <Volume2 className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />}
+            </button>
 
-          {/* Nút Âm Thanh */}
-          <button
-            type="button"
-            onClick={() => {
-              const nextMuted = !isMuted;
-              setIsMuted(nextMuted);
-              audioFeedback.setMuted(nextMuted);
-            }}
-            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-50 transition-colors cursor-pointer"
-            title={isMuted ? 'Bật âm thanh phản hồi' : 'Tắt âm thanh phản hồi'}
-          >
-            {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-brand-600" />}
-          </button>
-
-          {/* Nút Mở Trình Quét HUD Toàn Màn Hình */}
-          <button
-            type="button"
-            onClick={() => {
-              stopCamera();
-              setIsScannerModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-brand-500 hover:text-brand-600 text-xs font-semibold transition-all cursor-pointer"
-            title="Mở trình quét AI Face ID toàn màn hình với hiệu ứng Laser"
-          >
-            <Maximize2 className="w-3.5 h-3.5 text-brand-600" />
-            <span>Trình Quét HUD</span>
-          </button>
-
-          {/* Nút Đăng Ký 5 Góc (Chỉ Admin / BGH) */}
-          {['admin', 'bgh'].includes(authUser?.role || '') && (
+            {/* Nút Mở Trình Quét HUD Toàn Màn Hình */}
             <button
               type="button"
               onClick={() => {
                 stopCamera();
-                setIsEnrollModalOpen(true);
+                setIsScannerModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
-              title="Đăng ký mẫu khuôn mặt 5 góc"
+              className="h-9 flex items-center gap-1.5 px-3.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-xs font-semibold transition-all cursor-pointer"
+              title="Mở trình quét AI Face ID toàn màn hình với hiệu ứng Laser"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Đăng Ký 5 Góc</span>
+              <Maximize2 className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+              <span>Trình Quét HUD</span>
             </button>
-          )}
-        </div>
-      </div>
+
+            {/* Nút Đăng Ký 5 Góc (Chỉ Admin / BGH) */}
+            {['admin', 'bgh'].includes(authUser?.role || '') && (
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  setIsEnrollModalOpen(true);
+                }}
+                className="h-9 flex items-center gap-1.5 px-3.5 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                title="Đăng ký mẫu khuôn mặt 5 góc"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Đăng Ký 5 Góc</span>
+              </button>
+            )}
+          </>
+        }
+      />
 
       {/* =====================================================================
           2. MAIN WORKSPACE: CAMERA ĐIỂM DANH (TRÁI) & KẾT QUẢ / LỊCH SỬ (PHẢI)
