@@ -15,6 +15,7 @@ export function formatTimeVN(dateStr?: string | Date | null): string {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    timeZone: 'Asia/Ho_Chi_Minh',
   });
 }
 
@@ -22,14 +23,24 @@ export function formatDateVN(dateStr?: string | Date | null): string {
   if (!dateStr) return '--/--/----';
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return String(dateStr);
-  return d.toLocaleDateString('vi-VN');
+  return d.toLocaleDateString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
 }
 
 export function formatDateTimeVN(dateStr?: string | Date | null): string {
   if (!dateStr) return '--';
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return String(dateStr);
-  return `${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ${d.toLocaleDateString('vi-VN')}`;
+  const timePart = d.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
+  const datePart = d.toLocaleDateString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
+  return `${timePart} ${datePart}`;
 }
 
 export function getInitials(fullName?: string | null): string {

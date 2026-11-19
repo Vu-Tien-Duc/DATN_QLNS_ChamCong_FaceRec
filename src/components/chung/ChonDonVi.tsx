@@ -14,12 +14,18 @@ import { normalizeRoleKey } from '../../utils/phanQuyen';
 import { Portal } from './CongDichChuyen';
 
 export interface DepartmentItem {
+  id?: string;
   _id: string;
-  name: string;
+  ten_phong_ban?: string;
+  /** @deprecated Dùng ten_phong_ban */
+  name?: string;
   code?: string;
-  type?: string;
   loai_don_vi?: string;
-  parentId?: string | { _id: string; name: string } | null;
+  /** @deprecated Dùng loai_don_vi */
+  type?: string;
+  don_vi_cha_id?: string | { id?: string; _id?: string; ten_phong_ban?: string; name?: string } | null;
+  /** @deprecated Dùng don_vi_cha_id */
+  parentId?: string | { _id: string; name?: string; ten_phong_ban?: string } | null;
   [key: string]: any;
 }
 
@@ -199,7 +205,17 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
     const allPhong = departments.filter((d) => getDeptCategory(d) === 'phong_ban');
     const allBgh = departments.filter((d) => getDeptCategory(d) === 'bgh');
 
-    const isNhanVien = r === 'nhan_vien' || r === 'chuyen_vien';
+    const isNhanVien = [
+      'nhan_vien',
+      'chuyen_vien',
+      'tccb',
+      'ke_toan',
+      'dao_tao',
+      'kiem_toan',
+      'truong_phong',
+      'pho_phong',
+      'quan_ly_xe',
+    ].includes(r);
     const isGiangVien = r === 'giang_vien';
     const isTruongKhoa = r === 'truong_khoa' || r === 'pho_khoa';
     const isTruongBoMon = r === 'truong_bo_mon' || r === 'pho_bo_mon';

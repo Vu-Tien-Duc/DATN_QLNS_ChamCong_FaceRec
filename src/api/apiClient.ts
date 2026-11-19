@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { normalizeBackendData, normalizeFrontendPayload, normalizeQueryParams } from '../utils/chuanHoaDuLieu';
+import { normalizeBackendData } from '../utils/chuanHoaDuLieu';
 
 // Định nghĩa kiểu phản hồi chuẩn từ Backend CSDL v2.5
 export interface ApiResponse<T = any> {
@@ -24,12 +24,6 @@ apiClient.interceptors.request.use(
     const token = sessionStorage.getItem('token') || sessionStorage.getItem('accessToken') || localStorage.getItem('token') || localStorage.getItem('accessToken');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
-    }
-    if (config.data && !(config.data instanceof FormData)) {
-      config.data = normalizeFrontendPayload(config.data);
-    }
-    if (config.params) {
-      config.params = normalizeQueryParams(config.params);
     }
     return config;
   },

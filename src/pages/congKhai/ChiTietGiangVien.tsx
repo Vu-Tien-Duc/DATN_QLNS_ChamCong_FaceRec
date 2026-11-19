@@ -185,10 +185,7 @@ export const FacultyDetail: React.FC = () => {
                     Phòng Làm Việc
                   </span>
                   <span className="font-medium text-slate-700">
-                    {(faculty.phong_lam_viec || 'Tòa nhà A1, ĐH Nguyễn Trãi (NTU)').replace(
-                      'ĐH Phenikaa',
-                      'ĐH Nguyễn Trãi (NTU)'
-                    )}
+                    {faculty.phong_lam_viec || 'Tòa nhà A1, ĐH Nguyễn Trãi (NTU)'}
                   </span>
                 </div>
               </div>

@@ -7,8 +7,16 @@ const {
   PhongBan,
   CaLamViec,
   LichTrinh,
+  MonHoc,
   DonNghiPhep,
 } = require('../../models');
+
+const SCHEDULE_WITH_SUBJECT_INCLUDE = {
+  model: LichTrinh,
+  as: 'lich_trinh',
+  attributes: ['id', 'phong_hoc', 'mon_hoc_id', 'thu_trong_tuan', 'tiet_bat_dau', 'so_tiet', 'gio_bat_dau', 'gio_ket_thuc'],
+  include: [{ model: MonHoc, as: 'mon_hoc', attributes: ['id', 'ten_mon', 'ma_mon'] }],
+};
 const { getDeanScopedUserIds, isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
 const { ServiceError, buildAttendanceDateFilter } = require('../../utils/thoiGianChamCong.utils');
@@ -25,7 +33,7 @@ const getAttendanceSummaryByUser = async (userId, startDate, endDate) => {
     where,
     include: [
       { model: CaLamViec, as: 'ca', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc'] },
-      { model: LichTrinh, as: 'lich_trinh', attributes: ['id', 'phong_hoc', 'thu_trong_tuan'] },
+      SCHEDULE_WITH_SUBJECT_INCLUDE,
     ],
     order: [
       ['thoi_gian_vao', 'DESC'],
@@ -152,7 +160,7 @@ const getAttendanceHistory = async (params = {}) => {
         ],
       },
       { model: CaLamViec, as: 'ca', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc'] },
-      { model: LichTrinh, as: 'lich_trinh', attributes: ['id', 'phong_hoc', 'mon_hoc_id'] },
+      SCHEDULE_WITH_SUBJECT_INCLUDE,
       { model: NguoiDung, as: 'nguoi_ghi_de', attributes: ['id', 'ho_ten', 'ma_can_bo'] },
       { model: DonNghiPhep, as: 'don_tu', attributes: ['id', 'loai_don', 'ngay_bat_dau', 'ngay_ket_thuc', 'trang_thai'] },
       punchInclude,
@@ -300,7 +308,7 @@ const getAttendanceById = async ({ id, currentUser }) => {
         ],
       },
       { model: CaLamViec, as: 'ca', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc', 'nguong_di_muon_phut'] },
-      { model: LichTrinh, as: 'lich_trinh', attributes: ['id', 'phong_hoc', 'mon_hoc_id', 'thu_trong_tuan', 'tiet_bat_dau', 'so_tiet'] },
+      SCHEDULE_WITH_SUBJECT_INCLUDE,
       { model: NguoiDung, as: 'nguoi_ghi_de', attributes: ['id', 'ho_ten', 'ma_can_bo'] },
       { model: DonNghiPhep, as: 'don_tu', attributes: ['id', 'loai_don', 'ngay_bat_dau', 'ngay_ket_thuc', 'trang_thai'] },
       {

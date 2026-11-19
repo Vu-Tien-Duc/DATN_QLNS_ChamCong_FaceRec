@@ -68,7 +68,17 @@ export interface FacultyListResponse {
 export const publicFacultyApi = {
   // Lấy danh bạ giảng viên (hỗ trợ phân trang, tìm kiếm từ khóa, lọc theo khoa và học vị)
   getList: async (params?: FacultyQueryParams): Promise<FacultyListResponse> => {
-    const res = await apiClient.get<FacultyListResponse>('/cong-khai/giang-vien', { params });
+    let queryParams: Record<string, any> | undefined;
+    if (params) {
+      const { search, page, limit, ...rest } = params;
+      queryParams = {
+        ...rest,
+        ...(search !== undefined ? { tim_kiem: search } : {}),
+        ...(page !== undefined ? { trang: page } : {}),
+        ...(limit !== undefined ? { gioi_han: limit } : {}),
+      };
+    }
+    const res = await apiClient.get<FacultyListResponse>('/cong-khai/giang-vien', { params: queryParams });
     return res.data;
   },
 

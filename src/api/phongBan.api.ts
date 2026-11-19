@@ -15,26 +15,18 @@ export interface DepartmentPaginatedResponse {
   };
 }
 
-const mapDepartmentPayload = (payload: CreateDepartmentPayload | UpdateDepartmentPayload) => {
-  const { name, type, ...rest } = payload as any;
-  const out: Record<string, any> = { ...rest };
-  if (name !== undefined) out.ten_phong_ban = name;
-  if (type !== undefined) out.loai_don_vi = type;
-  return out;
-};
-
 export const departmentApi = {
   /**
    * 1. Lấy danh sách phẳng toàn bộ Khoa / Bộ môn / Phòng ban (cay=false)
    */
   getDepartmentsFlat: async (params?: {
-    type?: string;
-    parentId?: string;
+    loai_don_vi?: string;
+    don_vi_cha_id?: string;
   }): Promise<ApiResponse<DepartmentItem[]>> => {
     const res = await apiClient.get<ApiResponse<DepartmentItem[]>>('/phong-ban', {
       params: {
-        loai_don_vi: params?.type,
-        don_vi_cha_id: params?.parentId,
+        loai_don_vi: params?.loai_don_vi,
+        don_vi_cha_id: params?.don_vi_cha_id,
         cay: 'false',
       },
     });
@@ -45,7 +37,9 @@ export const departmentApi = {
    * 2. Lấy sơ đồ cây phân cấp Khoa -> Bộ môn và Phòng ban
    */
   getDepartmentsTree: async (): Promise<ApiResponse<DepartmentItem[]>> => {
-    const res = await apiClient.get<ApiResponse<DepartmentItem[]>>('/phong-ban/cay');
+    const res = await apiClient.get<ApiResponse<DepartmentItem[]>>('/phong-ban/cay', {
+      params: { cay: 'true' },
+    });
     return res.data;
   },
 
@@ -63,7 +57,7 @@ export const departmentApi = {
   createDepartment: async (
     payload: CreateDepartmentPayload
   ): Promise<ApiResponse<DepartmentItem>> => {
-    const res = await apiClient.post<ApiResponse<DepartmentItem>>('/phong-ban', mapDepartmentPayload(payload));
+    const res = await apiClient.post<ApiResponse<DepartmentItem>>('/phong-ban', payload);
     return res.data;
   },
 
@@ -74,7 +68,7 @@ export const departmentApi = {
     id: string,
     payload: UpdateDepartmentPayload
   ): Promise<ApiResponse<DepartmentItem>> => {
-    const res = await apiClient.put<ApiResponse<DepartmentItem>>(`/phong-ban/${id}`, mapDepartmentPayload(payload));
+    const res = await apiClient.put<ApiResponse<DepartmentItem>>(`/phong-ban/${id}`, payload);
     return res.data;
   },
 

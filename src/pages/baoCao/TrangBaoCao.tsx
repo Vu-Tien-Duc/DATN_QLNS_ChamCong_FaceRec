@@ -72,10 +72,10 @@ const COLORS = {
 // Helper chuẩn nhận diện và loại trừ tài khoản Quản trị hệ thống IT & Lãnh đạo BGH khỏi báo cáo
 const isSystemAdminUser = (u: any): boolean => {
   if (!u) return false;
-  const role = String(u.role || u.user?.role || u.user?.primaryRole || u.vai_tro_chinh || '').toLowerCase();
-  const code = String(u.staffCode || u.user?.staffCode || u.employeeId || u.ma_can_bo || '').toUpperCase();
-  const email = String(u.email || u.user?.email || '').toLowerCase();
-  const name = String(u.fullName || u.user?.fullName || u.ho_ten || '').toLowerCase();
+  const role = String(u.vai_tro_chinh || '').toLowerCase();
+  const code = String(u.ma_can_bo || '').toUpperCase();
+  const email = String(u.email || '').toLowerCase();
+  const name = String(u.ho_ten || '').toLowerCase();
   return (
     role === 'admin' ||
     role === 'bgh' ||
@@ -151,22 +151,23 @@ export const Reports: React.FC = () => {
       const fromStr = `${selectedYear}-${pad(selectedMonth)}-01`;
       const toStr = `${selectedYear}-${pad(selectedMonth)}-${pad(lastDay)}`;
 
+      const deptParam = selectedDeptId && selectedDeptId !== 'ALL' ? selectedDeptId : undefined;
       const [summaryRes, monthlyRes, exportRes] = await Promise.all([
         reportApi.getAttendanceReport({
-          departmentId: selectedDeptId || undefined,
-          from: fromStr,
-          to: toStr,
+          don_vi_id: deptParam,
+          tu_ngay: fromStr,
+          den_ngay: toStr,
         }).catch(() => null),
         reportApi.getMonthlyReport({
-          month: selectedMonth,
-          year: selectedYear,
-          departmentId: selectedDeptId || undefined,
-          limit: 200,
+          thang: selectedMonth,
+          nam: selectedYear,
+          don_vi_id: deptParam,
+          gioi_han: 200,
         }).catch(() => null),
         reportApi.getExportReportData({
-          month: selectedMonth,
-          year: selectedYear,
-          departmentId: selectedDeptId || undefined,
+          thang: selectedMonth,
+          nam: selectedYear,
+          don_vi_id: deptParam,
         }).catch(() => null),
       ]);
 
@@ -251,7 +252,7 @@ export const Reports: React.FC = () => {
     return summaryData.weeklyTrend.map((w) => ({
       name: w.label,
       subLabel: w.subLabel,
-      'Tỷ Lệ Đúng Giờ (%)': w.rate,
+      'Tỷ Lệ Chuyên Cần (%)': w.rate,
       'Đi Muộn (%)': w.lateRate || 0,
       'Tổng Số Lượt': w.total,
     }));
@@ -259,33 +260,33 @@ export const Reports: React.FC = () => {
 
   // Filtered staff list (loại bỏ hoàn toàn tài khoản Admin kỹ thuật khỏi thống kê chuyên cần)
   const filteredStaffList = useMemo(() => {
-    const rawList = monthlyData?.report || exportData?.staffStats || [];
+    const rawList = monthlyData?.report || exportData?.thong_ke_nhan_su || [];
     const nonAdminList = rawList.filter((item: any) => !isSystemAdminUser(item));
     if (!tableSearchKeyword.trim()) return nonAdminList;
     const kw = tableSearchKeyword.toLowerCase();
     return nonAdminList.filter((item: any) => {
-      const name = (item.fullName || item.user?.fullName || '').toLowerCase();
-      const email = (item.email || item.user?.email || '').toLowerCase();
-      const code = (item.staffCode || item.user?.staffCode || item.employeeId || '').toLowerCase();
-      const dept = (item.departmentName || item.user?.departmentName || '').toLowerCase();
+      const name = (item.ho_ten || '').toLowerCase();
+      const email = (item.email || '').toLowerCase();
+      const code = (item.ma_can_bo || '').toLowerCase();
+      const dept = (item.ten_phong_ban || '').toLowerCase();
       return name.includes(kw) || email.includes(kw) || code.includes(kw) || dept.includes(kw);
     });
   }, [monthlyData, exportData, tableSearchKeyword]);
 
   // Department Comparison Data (loại trừ Admin kỹ thuật)
   const departmentStats = useMemo(() => {
-    const rawStaff = exportData?.staffStats || [];
+    const rawStaff = exportData?.thong_ke_nhan_su || [];
     const staff = rawStaff.filter((s: any) => !isSystemAdminUser(s));
     const deptMap: Record<string, { totalShifts: number; onTime: number; late: number; count: number }> = {};
 
     staff.forEach((s) => {
-      const dName = s.departmentName || 'Chưa phân bổ';
+      const dName = s.ten_phong_ban || 'Chưa phân bổ';
       if (!deptMap[dName]) {
         deptMap[dName] = { totalShifts: 0, onTime: 0, late: 0, count: 0 };
       }
-      deptMap[dName].totalShifts += s.totalShifts || 0;
-      deptMap[dName].onTime += (s.onTime || 0) + (s.excused || 0);
-      deptMap[dName].late += (s.late || 0) + (s.early || 0);
+      deptMap[dName].totalShifts += s.tong_so_ca || 0;
+      deptMap[dName].onTime += (s.so_lan_dung_gio || 0) + (s.so_lan_co_phep || 0);
+      deptMap[dName].late += (s.so_lan_di_muon || 0) + (s.so_lan_ve_som || 0);
       deptMap[dName].count += 1;
     });
 
@@ -313,7 +314,7 @@ export const Reports: React.FC = () => {
 
     setIsExporting(true);
     try {
-      const { overview, attendanceLogs, leaveRequests, staffStats, dailyStats } = exportData;
+      const { tong_quan, nhat_ky_cham_cong, don_nghi_phep, thong_ke_nhan_su, thong_ke_theo_ngay } = exportData;
 
       // 1. SHEET 1: BÁO CÁO TỔNG QUAN
       const overviewRows = [
@@ -321,38 +322,38 @@ export const Reports: React.FC = () => {
         ['Ứng dụng thị giác máy tính xây dựng hệ thống chấm công nhân sự - Đại Học Nguyễn Trãi (NTU)'],
         [],
         ['CHỈ TIÊU BÁO CÁO', 'GIÁ TRỊ'],
-        ['Kỳ báo cáo', overview.period || `Tháng ${selectedMonth}/${selectedYear}`],
-        ['Đơn vị áp dụng', overview.department || 'Toàn Trường'],
-        ['Tổng số nhân sự theo dõi', overview.totalUsers],
-        ['Tổng số lượt ca làm việc / giảng dạy', overview.totalShifts],
-        ['Số ca đúng giờ', overview.onTimeCount],
-        ['Số ca đi muộn', overview.lateCount],
-        ['Số ca về sớm', overview.earlyLeaveCount],
-        ['Số ca vắng mặt không phép', overview.absentCount],
-        ['Số ca nghỉ có phép hợp lệ', overview.excusedAbsenceCount],
-        ['Tỷ lệ chuyên cần chung (%)', `${overview.overallAttendanceRate}%`],
-        ['Tổng số ngày nghỉ phép đã duyệt', `${overview.approvedLeaveDays} ngày`],
-        ['Thời điểm trích xuất dữ liệu', overview.exportedAt || new Date().toLocaleString('vi-VN')],
+        ['Kỳ báo cáo', tong_quan.ky_bao_cao || `Tháng ${selectedMonth}/${selectedYear}`],
+        ['Đơn vị áp dụng', tong_quan.don_vi || 'Toàn Trường'],
+        ['Tổng số nhân sự theo dõi', tong_quan.tong_so_nhan_su],
+        ['Tổng số lượt ca làm việc / giảng dạy', tong_quan.tong_so_ca],
+        ['Số ca đúng giờ', tong_quan.so_lan_dung_gio],
+        ['Số ca đi muộn', tong_quan.so_lan_di_muon],
+        ['Số ca về sớm', tong_quan.so_lan_ve_som],
+        ['Số ca vắng mặt không phép', tong_quan.so_lan_vang_mat],
+        ['Số ca nghỉ có phép hợp lệ', tong_quan.so_lan_co_phep],
+        ['Tỷ lệ chuyên cần chung (%)', `${tong_quan.ty_le_chuyen_can}%`],
+        ['Tổng số ngày nghỉ phép đã duyệt', `${tong_quan.so_ngay_nghi_phep_da_duyet} ngày`],
+        ['Thời điểm trích xuất dữ liệu', tong_quan.thoi_diem_xuat || new Date().toLocaleString('vi-VN')],
       ];
       const wsOverview = XLSX.utils.aoa_to_sheet(overviewRows);
       wsOverview['!cols'] = [{ wch: 38 }, { wch: 32 }];
 
       // 2. SHEET 2: BẢNG TỔNG HỢP CÔNG THEO NHÂN SỰ (Loại trừ Admin kỹ thuật)
-      const cleanStaff = (staffStats || []).filter((s: any) => !isSystemAdminUser(s));
+      const cleanStaff = (thong_ke_nhan_su || []).filter((s: any) => !isSystemAdminUser(s));
       const staffRows = cleanStaff.map((s: any, idx: number) => ({
         'STT': idx + 1,
-        'Mã Cán Bộ': s.employeeId || '',
-        'Họ Và Tên': s.fullName || '',
+        'Mã Cán Bộ': s.ma_can_bo || '',
+        'Họ Và Tên': s.ho_ten || '',
         'Email': s.email || '',
-        'Khoa / Đơn Vị': s.departmentName || '',
-        'Chức Vụ / Vai Trò': s.role || '',
-        'Tổng Số Ca': s.totalShifts || 0,
-        'Đúng Giờ': s.onTime || 0,
-        'Đi Muộn': s.late || 0,
-        'Về Sớm': s.early || 0,
-        'Vắng Mặt': s.absent || 0,
-        'Nghỉ Phép': s.excused || 0,
-        'Tỷ Lệ Chuyên Cần (%)': `${s.attendanceRate || 0}%`,
+        'Khoa / Đơn Vị': s.ten_phong_ban || '',
+        'Chức Vụ / Vai Trò': s.vai_tro_chinh || '',
+        'Tổng Số Ca': s.tong_so_ca || 0,
+        'Đúng Giờ': s.so_lan_dung_gio || 0,
+        'Đi Muộn': s.so_lan_di_muon || 0,
+        'Về Sớm': s.so_lan_ve_som || 0,
+        'Vắng Mặt': s.so_lan_vang_mat || 0,
+        'Nghỉ Phép': s.so_lan_co_phep || 0,
+        'Tỷ Lệ Chuyên Cần (%)': `${s.ty_le_chuyen_can || 0}%`,
       }));
       const wsStaff = XLSX.utils.json_to_sheet(staffRows);
       wsStaff['!cols'] = [
@@ -372,22 +373,22 @@ export const Reports: React.FC = () => {
       ];
 
       // 3. SHEET 3: CHI TIẾT NHẬT KÝ ĐIỂM DANH FACE ID
-      const logsRows = (attendanceLogs || []).map((l: any, idx: number) => ({
+      const logsRows = (nhat_ky_cham_cong || []).map((l: any, idx: number) => ({
         'STT': l.stt || idx + 1,
-        'Mã Cán Bộ': l.employeeId || '',
-        'Họ Và Tên': l.fullName || '',
-        'Khoa / Đơn Vị': l.departmentName || '',
-        'Ngày': l.date || '',
-        'Thứ': l.weekday || '',
-        'Ca Làm Việc': l.shiftName || '',
-        'Khung Giờ Chuẩn': l.scheduledTime || '',
-        'Giờ Check-in': l.checkInTime || '',
-        'Giờ Check-out': l.checkOutTime || '',
-        'Trạng Thái': l.status || '',
-        'Độ Lệch Phút': l.lateEarlyMinutes || 0,
-        'Phương Thức': l.method || '',
-        'Tọa Độ GPS': l.gpsCoordinates || '',
-        'Ghi Chú': l.notes || '',
+        'Mã Cán Bộ': l.ma_can_bo || '',
+        'Họ Và Tên': l.ho_ten || '',
+        'Khoa / Đơn Vị': l.ten_phong_ban || '',
+        'Ngày': l.ngay || '',
+        'Thứ': l.thu || '',
+        'Ca Làm Việc': l.ten_ca || '',
+        'Khung Giờ Chuẩn': l.khung_gio_chuan || '',
+        'Giờ Check-in': l.thoi_gian_vao || '',
+        'Giờ Check-out': l.thoi_gian_ra || '',
+        'Trạng Thái': l.trang_thai || '',
+        'Độ Lệch Phút': l.so_phut_lech || 0,
+        'Phương Thức': l.phuong_thuc || '',
+        'Tọa Độ GPS': l.toa_do_gps || '',
+        'Ghi Chú': l.ghi_chu || '',
       }));
       const wsLogs = XLSX.utils.json_to_sheet(logsRows);
       wsLogs['!cols'] = [
@@ -409,19 +410,19 @@ export const Reports: React.FC = () => {
       ];
 
       // 4. SHEET 4: CHI TIẾT ĐƠN NGHỈ PHÉP VÀ DẠY BÙ
-      const leavesRows = (leaveRequests || []).map((r: any, idx: number) => ({
+      const leavesRows = (don_nghi_phep || []).map((r: any, idx: number) => ({
         'STT': r.stt || idx + 1,
-        'Mã Đơn': r.requestId || '',
-        'Họ Và Tên': r.fullName || '',
-        'Khoa / Đơn Vị': r.departmentName || '',
-        'Loại Đơn': r.leaveType || '',
-        'Từ Ngày': r.startDate || '',
-        'Đến Ngày': r.endDate || '',
-        'Số Ngày': r.numberOfDays || 0,
-        'Lý Do': r.reason || '',
-        'Trạng Thái': r.status || '',
-        'Người Phê Duyệt': r.approver || '',
-        'Ghi Chú Phê Duyệt': r.approvalNote || '',
+        'Mã Đơn': r.ma_don || '',
+        'Họ Và Tên': r.ho_ten || '',
+        'Khoa / Đơn Vị': r.ten_phong_ban || '',
+        'Loại Đơn': r.loai_don || '',
+        'Từ Ngày': r.ngay_bat_dau || '',
+        'Đến Ngày': r.ngay_ket_thuc || '',
+        'Số Ngày': r.so_ngay || 0,
+        'Lý Do': r.ly_do || '',
+        'Trạng Thái': r.trang_thai || '',
+        'Người Phê Duyệt': r.nguoi_duyet || '',
+        'Ghi Chú Phê Duyệt': r.ghi_chu_duyet || '',
       }));
       const wsLeaves = XLSX.utils.json_to_sheet(leavesRows);
       wsLeaves['!cols'] = [
@@ -440,17 +441,17 @@ export const Reports: React.FC = () => {
       ];
 
       // 5. SHEET 5: THỐNG KÊ CHUYÊN CẦN THEO TỪNG NGÀY TRONG THÁNG
-      const dailyRows = (dailyStats || []).map((d: any, idx: number) => ({
+      const dailyRows = (thong_ke_theo_ngay || []).map((d: any, idx: number) => ({
         'STT': d.stt || idx + 1,
-        'Ngày': d.date || '',
-        'Thứ': d.weekday || '',
-        'Tổng Ca': d.totalShifts || 0,
-        'Đúng Giờ': d.onTime || 0,
-        'Đi Muộn': d.late || 0,
-        'Về Sớm': d.early || 0,
-        'Vắng Mặt': d.absent || 0,
-        'Nghỉ Phép': d.excused || 0,
-        'Tỷ Lệ Đạt (%)': `${d.attendanceRate || 0}%`,
+        'Ngày': d.ngay || '',
+        'Thứ': d.thu || '',
+        'Tổng Ca': d.tong_so_ca || 0,
+        'Đúng Giờ': d.so_lan_dung_gio || 0,
+        'Đi Muộn': d.so_lan_di_muon || 0,
+        'Về Sớm': d.so_lan_ve_som || 0,
+        'Vắng Mặt': d.so_lan_vang_mat || 0,
+        'Nghỉ Phép': d.so_lan_co_phep || 0,
+        'Tỷ Lệ Đạt (%)': `${d.ty_le_chuyen_can || 0}%`,
       }));
       const wsDaily = XLSX.utils.json_to_sheet(dailyRows);
       wsDaily['!cols'] = [
@@ -487,7 +488,7 @@ export const Reports: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 max-w-7xl mx-auto pb-12 animate-fade-in">
+    <div className="w-full space-y-4 pb-12 animate-fade-in">
       {/* 1. PAGE HEADER + ACTIONS */}
       <PageHeader
         title="Báo Cáo & Thống Kê Chuyên Sâu"
@@ -523,8 +524,8 @@ export const Reports: React.FC = () => {
             <div className="w-48 sm:w-56">
               <DepartmentSelect
                 departments={departments}
-                value={selectedDeptId}
-                onChange={(val) => setSelectedDeptId(val || '')}
+                value={selectedDeptId || 'ALL'}
+                onChange={(val) => setSelectedDeptId(!val || val === 'ALL' ? '' : val)}
                 placeholder="Chọn đơn vị..."
                 allLabel="Toàn Trường (Tất cả)"
                 allowAll={true}
@@ -567,22 +568,28 @@ export const Reports: React.FC = () => {
         }
       />
 
-      {/* 2. UNIFIED REPORTS CARD: KPI STRIP + CHARTS + DETAILED TABS */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
-        <CompactStatsBar
-          embedded
-          items={[
-            { label: 'Tỷ lệ chuyên cần', value: `${kpis.attendanceRate}%`, badge: `${kpis.onTimeCount}/${kpis.totalShifts} đúng giờ`, tone: 'success' },
-            { label: 'Tổng số ca', value: kpis.totalShifts, unit: 'lượt', tone: 'brand' },
-            { label: 'Đi muộn / Về sớm', value: kpis.lateCount + kpis.earlyLeaveCount, badge: `${kpis.lateRate}%`, tone: 'warning' },
-            { label: 'Vắng không phép', value: kpis.absentCount, badge: `${kpis.approvedLeaveDays}d phép`, tone: 'danger' },
-          ]}
-        />
+      {/* 2. FLUX SEPARATE STATS ROW */}
+      <CompactStatsBar
+        items={[
+          {
+            label: 'Tỷ lệ chuyên cần',
+            value: `${kpis.attendanceRate}%`,
+            badge: `${kpis.onTimeCount}/${kpis.totalShifts} đúng giờ`,
+            progress: Number(kpis.attendanceRate) || 0,
+            tone: 'success',
+          },
+          { label: 'Tổng số ca', value: kpis.totalShifts, unit: 'lượt', subtext: 'Trong kỳ báo cáo', tone: 'brand' },
+          { label: 'Đi muộn / Về sớm', value: kpis.lateCount + kpis.earlyLeaveCount, badge: `${kpis.lateRate}%`, subtext: 'Cần lưu ý kỷ luật', tone: 'warning' },
+          { label: 'Vắng không phép', value: kpis.absentCount, badge: `${kpis.approvedLeaveDays}d phép`, subtext: 'Không có đơn duyệt', tone: 'danger' },
+        ]}
+      />
 
-      {/* =====================================================================
-          4. CHARTS SECTION (WEEKLY TREND & DONUT BREAKDOWN)
-      ===================================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 dark:divide-slate-800 border-b border-slate-200/80 dark:border-slate-800">
+      {/* 3. MAIN REPORTS CARD: CHARTS + DETAILED TABS (FLUX STYLE) */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+        {/* =====================================================================
+            4. CHARTS SECTION (WEEKLY TREND & DONUT BREAKDOWN)
+        ===================================================================== */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-slate-800 border-b border-slate-100 dark:border-slate-800">
         {/* Weekly Trend Bar Chart (2 cols) */}
         <div className="lg:col-span-2 p-5 space-y-4">
           <div className="flex items-center justify-between">
@@ -742,14 +749,23 @@ export const Reports: React.FC = () => {
 
           {activeTab === 'staff-summary' && (
             <div className="relative w-64">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={tableSearchKeyword}
                 onChange={(e) => setTableSearchKeyword(e.target.value)}
                 placeholder="Tìm cán bộ trong bảng..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:outline-none"
+                className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-colors"
               />
+              {tableSearchKeyword && (
+                <button
+                  type="button"
+                  onClick={() => setTableSearchKeyword('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-0.5"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -789,25 +805,26 @@ export const Reports: React.FC = () => {
                   </tr>
                 ) : (
                   filteredStaffList.map((item: any, idx: number) => {
-                    const fullName = item.fullName || item.user?.fullName || 'Cán bộ';
-                    const staffCode = item.staffCode || item.user?.staffCode || item.employeeId || '--';
-                    const email = item.email || item.user?.email || '';
-                    const departmentName = item.departmentName || item.user?.departmentName || 'Chưa phân bổ';
-                    const avatarUrl = item.avatar || item.user?.avatar || null;
+                    const fullName = item.ho_ten || 'Cán bộ';
+                    const staffCode = item.ma_can_bo || '--';
+                    const email = item.email || '';
+                    const departmentName = item.ten_phong_ban || 'Chưa phân bổ';
+                    const avatarUrl = item.anh_dai_dien || null;
 
-                    const totalShifts = Number(item.totalShifts ?? item.totalWorkingDays ?? 0);
-                    const onTime = Number(item.onTime ?? item.onTimeCount ?? 0);
-                    const late = Number(item.late ?? item.lateCount ?? 0);
-                    const early = Number(item.early ?? item.earlyLeaveCount ?? 0);
-                    const excused = Number(item.excused ?? item.excusedCount ?? 0);
-                    const absent = Number(item.absent ?? item.absentCount ?? 0);
+                    const totalShifts = Number(item.tong_so_ca ?? 0);
+                    const onTime = Number(item.so_lan_dung_gio ?? 0);
+                    const late = Number(item.so_lan_di_muon ?? 0);
+                    const early = Number(item.so_lan_ve_som ?? 0);
+                    const excused = Number(item.so_lan_co_phep ?? 0);
+                    const absent = Number(item.so_lan_vang_mat ?? 0);
 
                     const hasShifts = totalShifts > 0;
                     const calculatedRate = hasShifts ? Math.round(((onTime + excused) / totalShifts) * 100) : 0;
-                    const rate = item.attendanceRate !== undefined && hasShifts ? Number(item.attendanceRate) : calculatedRate;
+                    const rawRate = item.ty_le_chuyen_can;
+                    const rate = rawRate !== undefined && hasShifts ? Number(rawRate) : calculatedRate;
 
                     return (
-                      <tr key={item.userId || item.user?.id || item.employeeId || idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                      <tr key={item.nguoi_dung_id || idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
                         {/* Cán bộ kèm Avatar nhận diện */}
                         <td className="py-2.5 px-4">
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -816,7 +833,7 @@ export const Reports: React.FC = () => {
                               avatarUrl={avatarUrl}
                               staffCode={staffCode}
                               size="sm"
-                              shape="rounded"
+                              shape="circle"
                             />
                             <div className="min-w-0">
                               <div className="font-bold text-slate-900 dark:text-slate-100 truncate" title={fullName}>
@@ -1024,20 +1041,26 @@ export const Reports: React.FC = () => {
                       <th className="py-2.5 px-3">Vai Trò</th>
                       <th className="py-2.5 px-3 text-center">Tổng Ca</th>
                       <th className="py-2.5 px-3 text-center">Đúng Giờ</th>
+                      <th className="py-2.5 px-3 text-center">Muộn</th>
+                      <th className="py-2.5 px-3 text-center">Về Sớm</th>
+                      <th className="py-2.5 px-3 text-center">Vắng</th>
                       <th className="py-2.5 px-3 text-center">Tỷ Lệ %</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {(exportData?.staffStats || []).filter((s: any) => !isSystemAdminUser(s)).slice(0, 15).map((s: any, sIdx: number) => (
+                    {(exportData?.thong_ke_nhan_su || []).filter((s: any) => !isSystemAdminUser(s)).slice(0, 15).map((s: any, sIdx: number) => (
                       <tr key={s.stt || sIdx}>
                         <td className="py-2 px-3">{sIdx + 1}</td>
-                        <td className="py-2 px-3 font-mono">{s.employeeId}</td>
-                        <td className="py-2 px-3 font-semibold">{s.fullName}</td>
-                        <td className="py-2 px-3">{s.departmentName}</td>
-                        <td className="py-2 px-3">{s.role}</td>
-                        <td className="py-2 px-3 text-center">{s.totalShifts}</td>
-                        <td className="py-2 px-3 text-center text-emerald-600 font-bold">{s.onTime}</td>
-                        <td className="py-2 px-3 text-center font-bold">{s.attendanceRate}%</td>
+                        <td className="py-2 px-3 font-mono">{s.ma_can_bo}</td>
+                        <td className="py-2 px-3 font-semibold">{s.ho_ten}</td>
+                        <td className="py-2 px-3">{s.ten_phong_ban}</td>
+                        <td className="py-2 px-3">{s.vai_tro_chinh}</td>
+                        <td className="py-2 px-3 text-center">{s.tong_so_ca}</td>
+                        <td className="py-2 px-3 text-center text-emerald-600 font-bold">{s.so_lan_dung_gio}</td>
+                        <td className="py-2 px-3 text-center text-amber-600 font-bold">{s.so_lan_di_muon ?? 0}</td>
+                        <td className="py-2 px-3 text-center text-orange-600 font-bold">{s.so_lan_ve_som ?? 0}</td>
+                        <td className="py-2 px-3 text-center text-rose-600 font-bold">{s.so_lan_vang_mat ?? 0}</td>
+                        <td className="py-2 px-3 text-center font-bold">{s.ty_le_chuyen_can}%</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1055,20 +1078,22 @@ export const Reports: React.FC = () => {
                       <th className="py-2.5 px-3">Check-in</th>
                       <th className="py-2.5 px-3">Check-out</th>
                       <th className="py-2.5 px-3">Trạng Thái</th>
+                      <th className="py-2.5 px-3">Chi Tiết</th>
                       <th className="py-2.5 px-3">Phương Thức</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {(exportData?.attendanceLogs || []).slice(0, 15).map((l: any) => (
+                    {(exportData?.nhat_ky_cham_cong || []).slice(0, 15).map((l: any) => (
                       <tr key={l.stt}>
                         <td className="py-2 px-3">{l.stt}</td>
-                        <td className="py-2 px-3 font-semibold">{l.fullName}</td>
-                        <td className="py-2 px-3">{l.date}</td>
-                        <td className="py-2 px-3">{l.shiftName}</td>
-                        <td className="py-2 px-3 font-mono">{l.checkInTime}</td>
-                        <td className="py-2 px-3 font-mono">{l.checkOutTime}</td>
-                        <td className="py-2 px-3 font-bold">{l.status}</td>
-                        <td className="py-2 px-3">{l.method}</td>
+                        <td className="py-2 px-3 font-semibold">{l.ho_ten}</td>
+                        <td className="py-2 px-3">{l.ngay}</td>
+                        <td className="py-2 px-3">{l.ten_ca}</td>
+                        <td className="py-2 px-3 font-mono">{l.thoi_gian_vao}</td>
+                        <td className="py-2 px-3 font-mono">{l.thoi_gian_ra}</td>
+                        <td className="py-2 px-3 font-bold">{l.trang_thai}</td>
+                        <td className="py-2 px-3 text-slate-500">{l.so_phut_lech || l.ghi_chu || '—'}</td>
+                        <td className="py-2 px-3">{l.phuong_thuc}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1086,20 +1111,24 @@ export const Reports: React.FC = () => {
                       <th className="py-2.5 px-3">Từ Ngày</th>
                       <th className="py-2.5 px-3">Đến Ngày</th>
                       <th className="py-2.5 px-3 text-center">Số Ngày</th>
+                      <th className="py-2.5 px-3">Lý Do</th>
+                      <th className="py-2.5 px-3">Người Duyệt</th>
                       <th className="py-2.5 px-3">Trạng Thái</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {(exportData?.leaveRequests || []).slice(0, 15).map((r: any) => (
+                    {(exportData?.don_nghi_phep || []).slice(0, 15).map((r: any) => (
                       <tr key={r.stt}>
                         <td className="py-2 px-3">{r.stt}</td>
-                        <td className="py-2 px-3 font-mono">{r.requestId}</td>
-                        <td className="py-2 px-3 font-semibold">{r.fullName}</td>
-                        <td className="py-2 px-3">{r.leaveType}</td>
-                        <td className="py-2 px-3">{r.startDate}</td>
-                        <td className="py-2 px-3">{r.endDate}</td>
-                        <td className="py-2 px-3 text-center font-bold">{r.numberOfDays}</td>
-                        <td className="py-2 px-3 font-bold text-emerald-600">{r.status}</td>
+                        <td className="py-2 px-3 font-mono">{r.ma_don}</td>
+                        <td className="py-2 px-3 font-semibold">{r.ho_ten}</td>
+                        <td className="py-2 px-3">{r.loai_don}</td>
+                        <td className="py-2 px-3">{r.ngay_bat_dau}</td>
+                        <td className="py-2 px-3">{r.ngay_ket_thuc}</td>
+                        <td className="py-2 px-3 text-center font-bold">{r.so_ngay}</td>
+                        <td className="py-2 px-3 max-w-[180px] truncate" title={r.ly_do || ''}>{r.ly_do || '—'}</td>
+                        <td className="py-2 px-3">{r.nguoi_duyet || '—'}</td>
+                        <td className="py-2 px-3 font-bold text-emerald-600">{r.trang_thai}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1116,21 +1145,23 @@ export const Reports: React.FC = () => {
                       <th className="py-2.5 px-3 text-center">Tổng Ca</th>
                       <th className="py-2.5 px-3 text-center text-emerald-600">Đúng Giờ</th>
                       <th className="py-2.5 px-3 text-center text-amber-600">Đi Muộn</th>
+                      <th className="py-2.5 px-3 text-center text-orange-600">Về Sớm</th>
                       <th className="py-2.5 px-3 text-center text-rose-600">Vắng</th>
                       <th className="py-2.5 px-3 text-center font-bold">Tỷ Lệ %</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {(exportData?.dailyStats || []).slice(0, 15).map((d: any) => (
+                    {(exportData?.thong_ke_theo_ngay || []).slice(0, 15).map((d: any) => (
                       <tr key={d.stt}>
                         <td className="py-2 px-3">{d.stt}</td>
-                        <td className="py-2 px-3 font-mono">{d.date}</td>
-                        <td className="py-2 px-3">{d.weekday}</td>
-                        <td className="py-2 px-3 text-center">{d.totalShifts}</td>
-                        <td className="py-2 px-3 text-center text-emerald-600 font-bold">{d.onTime}</td>
-                        <td className="py-2 px-3 text-center text-amber-600 font-bold">{d.late}</td>
-                        <td className="py-2 px-3 text-center text-rose-600 font-bold">{d.absent}</td>
-                        <td className="py-2 px-3 text-center font-bold">{d.attendanceRate}%</td>
+                        <td className="py-2 px-3 font-mono">{d.ngay}</td>
+                        <td className="py-2 px-3">{d.thu}</td>
+                        <td className="py-2 px-3 text-center">{d.tong_so_ca}</td>
+                        <td className="py-2 px-3 text-center text-emerald-600 font-bold">{d.so_lan_dung_gio}</td>
+                        <td className="py-2 px-3 text-center text-amber-600 font-bold">{d.so_lan_di_muon}</td>
+                        <td className="py-2 px-3 text-center text-orange-600 font-bold">{d.so_lan_ve_som ?? 0}</td>
+                        <td className="py-2 px-3 text-center text-rose-600 font-bold">{d.so_lan_vang_mat}</td>
+                        <td className="py-2 px-3 text-center font-bold">{d.ty_le_chuyen_can}%</td>
                       </tr>
                     ))}
                   </tbody>

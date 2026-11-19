@@ -180,8 +180,8 @@ const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong,
     if (request.loai_don === 'nghi_phep') {
       const startDate = new Date(request.ngay_bat_dau);
       const endDate = new Date(request.ngay_ket_thuc);
-      const startYear = startDate.getFullYear();
-      const endYear = endDate.getFullYear();
+      const startYear = Number(getVietnamDateKey(startDate).slice(0, 4));
+      const endYear = Number(getVietnamDateKey(endDate).slice(0, 4));
       const isHalfDay = Number(request.so_ngay) === 0.5;
       const holidaySet = await getHolidayDateSet(startDate, endDate, { transaction });
 

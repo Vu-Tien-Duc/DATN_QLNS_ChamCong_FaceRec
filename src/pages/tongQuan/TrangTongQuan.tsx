@@ -28,6 +28,8 @@ import {
   Award,
   BookOpen,
   FileSpreadsheet,
+  Users,
+  DollarSign,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DepartmentSelect, DepartmentItem } from '../../components/chung/ChonDonVi';
@@ -36,6 +38,7 @@ import { Button } from '../../components/chung/NutBam';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/useXacThucStore';
+import { canPersonalCheckIn } from '../../utils/phanQuyen';
 import { apiClient, extractArray } from '../../api/apiClient';
 import { attendanceApi, AttendanceHistoryItem } from '../../api/chamCong.api';
 import { leaveRequestApi, LeaveRequestData } from '../../api/donNghiPhep.api';
@@ -44,7 +47,7 @@ import { scheduleApi } from '../../api/lichTrinh.api';
 import { useSocketEvent, useSocketStatus } from '../../api/socket';
 import { FaceAttendanceScannerModal } from '../../components/sinhTracHoc/ModalQuetChamCong';
 import { ScheduleItem } from '../../types/index';
-import { getRoleLabel } from '../../utils/phanQuyen';
+import { getRoleLabel, hasRole } from '../../utils/phanQuyen';
 import { formatVND, formatTimeVN, getInitials } from '../../utils/dinhDang';
 
 // =============================================================================
@@ -112,6 +115,7 @@ export const Dashboard: React.FC = () => {
   const [pendingLeaveList, setPendingLeaveList] = useState<LeaveRequestData[]>([]);
   const [payrollNetSalary, setPayrollNetSalary] = useState<number>(0);
   const [payrollStatus, setPayrollStatus] = useState<string>('Dự thảo');
+  const [campusInfo, setCampusInfo] = useState<{ name: string; radiusMeters: number } | null>(null);
 
   // Today schedules & events
   const [todaySchedules, setTodaySchedules] = useState<ScheduleItem[]>([]);
@@ -121,8 +125,9 @@ export const Dashboard: React.FC = () => {
     Array<{ day: string; dateStr: string; present: number; late: number; excused: number; absent: number }>
   >([]);
 
-  // Live recent punches
+  // Live recent punches & today punches
   const [recentPunches, setRecentPunches] = useState<AttendanceHistoryItem[]>([]);
+  const [todayAttendanceRecords, setTodayAttendanceRecords] = useState<AttendanceHistoryItem[]>([]);
   const [tableFilter, setTableFilter] = useState<'ALL' | 'face_ai' | 'GPS'>('ALL');
   const [searchPunchKeyword, setSearchPunchKeyword] = useState<string>('');
 
@@ -164,28 +169,43 @@ export const Dashboard: React.FC = () => {
       const currentMonth = now.getMonth() + 1;
       const currentYear = now.getFullYear();
 
-      // 1. Tải danh sách nhân sự & đơn vị
-      const [usersRes, deptsRes] = await Promise.all([
-        apiClient.get('/nguoi-dung?gioi_han=100').catch(() => ({ data: { data: [] } })),
+      const canViewUsers = hasRole(user, ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']);
+      const canViewLeaves = !hasRole(user, ['kiem_toan']);
+      const canViewPayrollSummary = hasRole(user, ['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']);
+
+      // 1. Tải danh sách nhân sự (theo phân quyền) & đơn vị & cấu hình khuôn viên
+      const [usersRes, deptsRes, campusRes] = await Promise.all([
+        canViewUsers
+          ? apiClient.get('/nguoi-dung?gioi_han=100').catch(() => ({ data: { data: [] } }))
+          : Promise.resolve({ data: { data: [] } }),
         apiClient.get('/phong-ban?cay=false').catch(() => ({ data: { data: [] } })),
+        attendanceApi.getCampusConfig().catch(() => null),
       ]);
       const usersList = extractArray(usersRes.data);
       const deptsList = extractArray(deptsRes.data);
+      const totalUsersCount = Number((usersRes.data?.data as any)?.pagination?.total ?? usersList.length ?? 0);
       setAllUsersList(usersList);
       setDepartments(deptsList as DepartmentItem[]);
-      setTotalStaff(usersList.length || 0);
+      setTotalStaff(totalUsersCount);
       setTotalDepartments(deptsList.length || 0);
+      if (campusRes) {
+        setCampusInfo({
+          name: campusRes.name || 'Cơ sở chính Trường Đại học Nguyễn Trãi',
+          radiusMeters: Number(campusRes.radiusMeters ?? 150),
+        });
+      }
 
       // 2. Tải dữ liệu chấm công hôm nay
       const todayRes = await attendanceApi
         .getAttendanceHistory({
-          from: todayDateIso,
-          to: todayDateIso,
-          limit: 100,
+          tu_ngay: todayDateIso,
+          den_ngay: todayDateIso,
+          gioi_han: 200,
         })
-        .catch(() => ({ records: [], pagination: { total: 0, page: 1, limit: 100, totalPages: 1 } }));
+        .catch(() => ({ records: [], pagination: { total: 0, page: 1, limit: 200, totalPages: 1 } }));
 
       const todayRecords = todayRes.records || [];
+      setTodayAttendanceRecords(todayRecords);
       let onTime = 0;
       let late = 0;
       let early = 0;
@@ -201,7 +221,7 @@ export const Dashboard: React.FC = () => {
       });
 
       const present = onTime + late + early;
-      const totalExpected = usersList.length > 0 ? usersList.length : present + absent || 1;
+      const totalExpected = totalUsersCount > 0 ? totalUsersCount : present + absent || 1;
       const calculatedRate = totalExpected > 0 ? Math.round((present / totalExpected) * 100) : 0;
 
       setTodayAttendanceStats({
@@ -215,29 +235,43 @@ export const Dashboard: React.FC = () => {
       });
 
       // 3. Tải đơn nghỉ phép chờ duyệt
-      const leaveRes = await leaveRequestApi
-        .getLeaveRequests({ status: 'cho_duyet', limit: 5 })
-        .catch(() => ({ requests: [], total: 0 }));
-      const requests = leaveRes.requests || leaveRes.data || [];
-      setPendingLeaveCount(leaveRes.total || requests.length || 0);
-      setPendingLeaveList(requests.slice(0, 3));
+      if (canViewLeaves) {
+        const leaveRes = await leaveRequestApi
+          .getLeaveRequests({ trang_thai: 'pending' })
+          .catch(() => ({ data: [] }));
+        const requests = Array.isArray(leaveRes?.data)
+          ? leaveRes.data
+          : Array.isArray(leaveRes?.requests)
+            ? leaveRes.requests
+            : [];
+        setPendingLeaveCount(requests.length);
+        setPendingLeaveList(requests.slice(0, 3));
+      } else {
+        setPendingLeaveCount(0);
+        setPendingLeaveList([]);
+      }
 
       // 4. Tải quỹ lương tháng hiện tại
-      const payrollRes = await payrollApi
-        .getPayrollSummary(currentMonth, currentYear)
-        .catch(() => ({ totalNetSalary: 0, isLocked: false }));
-      setPayrollNetSalary(payrollRes.totalNetSalary || 0);
-      setPayrollStatus(payrollRes.isLocked ? 'Đã khóa sổ' : 'Dự thảo v1');
+      if (canViewPayrollSummary) {
+        const payrollRes = await payrollApi
+          .getPayrollSummary(currentMonth, currentYear)
+          .catch(() => ({ totalNetSalary: 0, isLocked: false }));
+        setPayrollNetSalary(payrollRes.totalNetSalary || 0);
+        setPayrollStatus(payrollRes.isLocked ? 'Đã khóa sổ' : 'Dự thảo');
+      } else {
+        setPayrollNetSalary(0);
+        setPayrollStatus('Không áp dụng');
+      }
 
       // 5. Tải lịch sử quét sinh trắc học gần nhất
       const recentRes = await attendanceApi
-        .getAttendanceHistory({ limit: 12 })
+        .getAttendanceHistory({ gioi_han: 12 })
         .catch(() => ({ records: [] }));
       setRecentPunches(recentRes.records || []);
 
       // 6. Tải lịch trình / thời khóa biểu hôm nay
       const schedRes = await scheduleApi
-        .getTodaySchedules({ date: todayDateIso })
+        .getTodaySchedules({ ngay: todayDateIso })
         .catch(() => ({ data: [] }));
       setTodaySchedules(extractArray<ScheduleItem>(schedRes.data || []));
 
@@ -255,19 +289,19 @@ export const Dashboard: React.FC = () => {
 
       const sevenDaysRes = await attendanceApi
         .getAttendanceHistory({
-          from: past7Days[0].dateStr,
-          to: past7Days[past7Days.length - 1].dateStr,
-          limit: 300,
+          tu_ngay: past7Days[0].dateStr,
+          den_ngay: past7Days[past7Days.length - 1].dateStr,
+          gioi_han: 300,
         })
         .catch(() => ({ records: [] }));
 
       const sevenDaysRecords = sevenDaysRes.records || [];
       const trend = past7Days.map((item) => {
-        const dayLogs = sevenDaysRecords.filter((r) => r.workDate === item.dateStr);
-        const pCount = dayLogs.filter((r) => r.status === 'on_time').length;
-        const lCount = dayLogs.filter((r) => r.status === 'late' || r.status === 'early_leave').length;
-        const eCount = dayLogs.filter((r) => r.status === 'excused_absence').length;
-        const aCount = dayLogs.filter((r) => r.status === 'absent').length;
+        const dayLogs = sevenDaysRecords.filter((r) => r.ngay_cong === item.dateStr);
+        const pCount = dayLogs.filter((r) => r.trang_thai === 'on_time').length;
+        const lCount = dayLogs.filter((r) => r.trang_thai === 'late' || r.trang_thai === 'early_leave').length;
+        const eCount = dayLogs.filter((r) => r.trang_thai === 'excused_absence').length;
+        const aCount = dayLogs.filter((r) => r.trang_thai === 'absent').length;
         return {
           day: item.day,
           dateStr: item.dateStr,
@@ -285,7 +319,7 @@ export const Dashboard: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [todayDateIso]);
+  }, [todayDateIso, user]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -295,12 +329,21 @@ export const Dashboard: React.FC = () => {
   // REALTIME SOCKET.IO LISTENERS (< 100ms UI UPDATE)
   // ===========================================================================
   useSocketEvent('attendance:new-punch', (punchData: any) => {
+    const isCheckOut =
+      punchData?.punchType === 'check_out' ||
+      punchData?.action === 'check_out' ||
+      punchData?.action === 'check-out';
+    const punchUserName = punchData?.userName || punchData?.user?.fullName || 'Cán bộ';
     toast.success(
-      `Điểm danh: ${punchData?.user?.fullName || punchData?.fullName || 'Cán bộ'} vừa quét ${
-        punchData?.action === 'check-out' ? 'tan ca' : 'vào ca'
+      `Điểm danh: ${punchUserName} vừa quét ${
+        isCheckOut ? 'tan ca' : 'vào ca'
       }!`,
       { icon: '⚡' }
     );
+    fetchDashboardData();
+  });
+
+  useSocketEvent('attendance:update', () => {
     fetchDashboardData();
   });
 
@@ -331,21 +374,22 @@ export const Dashboard: React.FC = () => {
 
   // Helper lấy ID đơn vị của nhân sự
   const getEmpDepartmentId = (u: any): string => {
-    const raw = u.departmentId || u.don_vi_chinh_id || u.don_vi_id;
-    if (!raw) return '';
-    if (typeof raw === 'object') return String(raw._id || raw.id || '');
-    return String(raw);
+    if (u.don_vi_chinh_id) return String(u.don_vi_chinh_id);
+    if (u.don_vi_chinh && typeof u.don_vi_chinh === 'object') return String(u.don_vi_chinh.id || '');
+    return '';
   };
 
   // Helper lấy tên hiển thị đơn vị chính xác
   const getEmpDepartmentName = (u: any): string => {
-    if (u.departmentName && String(u.departmentName).trim()) return String(u.departmentName).trim();
+    if (u.ten_phong_ban && String(u.ten_phong_ban).trim()) return String(u.ten_phong_ban).trim();
+    if (u.don_vi_chinh && typeof u.don_vi_chinh === 'object' && u.don_vi_chinh.ten_phong_ban) {
+      return String(u.don_vi_chinh.ten_phong_ban);
+    }
     const deptId = getEmpDepartmentId(u);
     if (deptId && departments.length > 0) {
-      const found = departments.find((d) => String(d._id) === deptId);
-      if (found) return found.name || (found as any).ten_phong_ban || 'Văn phòng / Ban';
+      const found = departments.find((d) => String(d.id || d._id) === deptId);
+      if (found) return found.ten_phong_ban || 'Văn phòng / Ban';
     }
-    if (typeof u.departmentId === 'object' && u.departmentId?.name) return String(u.departmentId.name);
     return 'Văn phòng / Ban';
   };
 
@@ -354,39 +398,36 @@ export const Dashboard: React.FC = () => {
     if (departmentFilter === 'ALL') return allUsersList;
     return allUsersList.filter((u) => {
       const uDeptId = getEmpDepartmentId(u);
-      const selectedDept = departments.find((d) => String(d._id) === String(departmentFilter));
+      const selectedDept = departments.find((d) => String(d.id || d._id) === String(departmentFilter));
       const isBghFilter = selectedDept
-        ? String(selectedDept.type || selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
-          String(selectedDept.name || '').toLowerCase().includes('giám hiệu')
+        ? String(selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
+          String(selectedDept.ten_phong_ban || '').toLowerCase().includes('giám hiệu')
         : false;
 
       if (isBghFilter) {
-        return String(u.role || '').toLowerCase().includes('bgh') || uDeptId === departmentFilter;
+        return String(u.vai_tro_chinh || '').toLowerCase().includes('bgh') || uDeptId === departmentFilter;
       }
 
       // 1. Trực tiếp
       if (uDeptId === departmentFilter) return true;
 
       // 2. Cha (Khoa -> Bộ môn)
-      const uDept = departments.find((d) => String(d._id) === uDeptId);
-      const uParentId = uDept?.parentId
-        ? typeof uDept.parentId === 'object' && uDept.parentId !== null && '_id' in uDept.parentId
-          ? String((uDept.parentId as any)._id)
-          : String(uDept.parentId)
+      const uDept = departments.find((d) => String(d.id || d._id) === uDeptId);
+      const uParentId = uDept?.don_vi_cha_id
+        ? typeof uDept.don_vi_cha_id === 'object' && uDept.don_vi_cha_id !== null
+          ? String((uDept.don_vi_cha_id as any).id || (uDept.don_vi_cha_id as any)._id || '')
+          : String(uDept.don_vi_cha_id)
         : '';
       if (uParentId && uParentId === departmentFilter) return true;
 
       // 3. Roles
-      if (Array.isArray(u.roles)) {
-        return u.roles.some((r: any) => {
-          const rDept = r.departmentId || r.don_vi_id;
-          if (!rDept) return false;
-          const rId = typeof rDept === 'object' && rDept !== null && '_id' in rDept ? String(rDept._id) : String(rDept);
-          return rId === departmentFilter;
-        });
-      }
-
-      return false;
+      const roleList = Array.isArray(u.danh_sach_vai_tro) ? u.danh_sach_vai_tro : [];
+      return roleList.some((r: any) => {
+        const rDept = r.don_vi_id;
+        if (!rDept) return false;
+        const rId = typeof rDept === 'object' && rDept !== null ? String(rDept.id || rDept._id || '') : String(rDept);
+        return rId === departmentFilter;
+      });
     });
   }, [allUsersList, departmentFilter, departments]);
 
@@ -401,40 +442,46 @@ export const Dashboard: React.FC = () => {
       const dateStr = now.toLocaleDateString('vi-VN');
 
       const dataRows = filteredUsersList.map((emp, i) => {
-        const empId = String(emp._id || emp.id);
+        const empId = String(emp.id || emp._id);
         const deptName = getEmpDepartmentName(emp);
 
         // Tìm kiếm log chấm công hôm nay của cán bộ này
-        const punchLog = recentPunches.find((p) => {
-          const pUserId = typeof p.userId === 'object' ? String((p.userId as any)?._id || (p.userId as any)?.id) : String(p.userId);
-          return pUserId === empId;
+        const punchLog: any = todayAttendanceRecords.find((p: any) => {
+          const pUserId = p.nguoi_dung_id || p.nguoi_dung?.id;
+          return String(pUserId || '') === empId;
         });
 
-        const hasIn = Boolean(punchLog?.checkInTime);
-        const hasOut = Boolean(punchLog?.checkOutTime);
-        const checkInFormatted = hasIn ? formatTimeVN(punchLog?.checkInTime) : '--:--:--';
-        const checkOutFormatted = hasOut ? formatTimeVN(punchLog?.checkOutTime) : '--:--:--';
-        const statusMeta = punchLog ? STATUS_CONFIGS[punchLog.status] || { label: 'Có mặt' } : { label: 'Chưa check-in' };
+        const hasIn = Boolean(punchLog?.thoi_gian_vao);
+        const hasOut = Boolean(punchLog?.thoi_gian_ra);
+        const checkInFormatted = hasIn ? formatTimeVN(punchLog?.thoi_gian_vao) : '--:--:--';
+        const checkOutFormatted = hasOut ? formatTimeVN(punchLog?.thoi_gian_ra) : '--:--:--';
+        const statusMeta = punchLog ? STATUS_CONFIGS[punchLog.trang_thai] || { label: 'Có mặt' } : { label: 'Chưa check-in' };
 
+        const firstPunch = punchLog?.luot_quet?.[0];
+        const rawMethod = String(firstPunch?.phuong_thuc || '').toLowerCase();
         const methodStr = punchLog
-          ? punchLog.method?.toLowerCase().includes('gps')
+          ? rawMethod.includes('gps')
             ? 'Mobile GPS'
-            : 'Face AI Kiosk'
+            : rawMethod.includes('qr')
+              ? 'Mã QR động'
+              : rawMethod.includes('thu_cong') || rawMethod.includes('manual')
+                ? 'Thủ công (Admin)'
+                : 'Face AI Kiosk'
           : '--';
 
         return {
           'STT': i + 1,
-          'Mã Cán Bộ': emp.staffCode || emp.ma_can_bo || '--',
-          'Họ Và Tên': emp.fullName || '--',
+          'Mã Cán Bộ': emp.ma_can_bo || '--',
+          'Họ Và Tên': emp.ho_ten || '--',
           'Khoa / Bộ Môn': deptName,
-          'Chức Vụ': emp.position || emp.chuc_vu || 'Giảng viên',
+          'Chức Vụ': emp.chuc_vu || 'Giảng viên',
           'Ngày Điểm Danh': dateStr,
           'Giờ Check-in': checkInFormatted,
           'Giờ Check-out': checkOutFormatted,
           'Trạng Thái Sáng Nay': hasIn ? statusMeta.label : 'Chưa đến',
           'Phương Thức Xác Thực': methodStr,
-          'Độ Tin Cậy AI': punchLog?.punchLogIds?.[0]?.confidenceScore ? `${punchLog.punchLogIds[0].confidenceScore.toFixed(2)} cos` : '--',
-          'Face ID': emp.isFaceRegistered ? 'Đã kích hoạt' : 'Chưa đăng ký',
+          'Độ Tin Cậy AI': firstPunch?.do_tin_cay_ai ? `${Number(firstPunch.do_tin_cay_ai).toFixed(2)} cos` : '--',
+          'Face ID': emp.da_dang_ky_face ? 'Đã kích hoạt' : 'Chưa đăng ký',
         };
       });
 
@@ -468,12 +515,10 @@ export const Dashboard: React.FC = () => {
 
   // Filtered live punch list
   const filteredPunches = useMemo(() => {
-    return recentPunches.filter((item) => {
-      const isGps = Boolean(item.method?.toLowerCase().includes('gps'));
-      const isFace = Boolean(
-        item.method?.toLowerCase().includes('face') ||
-          (Boolean(item.checkInTime) && !isGps)
-      );
+    return recentPunches.filter((item: any) => {
+      const rawMethod = String(item.luot_quet?.[0]?.phuong_thuc || '').toLowerCase();
+      const isGps = rawMethod.includes('gps');
+      const isFace = rawMethod.includes('face') || (!rawMethod && Boolean(item.thoi_gian_vao));
 
       // Filter by device type
       if (tableFilter === 'face_ai' && !isFace) return false;
@@ -481,24 +526,24 @@ export const Dashboard: React.FC = () => {
 
       // Filter by Department
       if (departmentFilter !== 'ALL') {
-        const userObj = typeof item.userId === 'object' ? item.userId : null;
+        const userObj = item.nguoi_dung;
         if (userObj) {
           const deptId = getEmpDepartmentId(userObj);
-          const selectedDept = departments.find((d) => String(d._id) === String(departmentFilter));
+          const selectedDept = departments.find((d) => String(d.id || d._id) === String(departmentFilter));
           const isBghFilter = selectedDept
-            ? String(selectedDept.type || selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
-              String(selectedDept.name || '').toLowerCase().includes('giám hiệu')
+            ? String(selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
+              String(selectedDept.ten_phong_ban || '').toLowerCase().includes('giám hiệu')
             : false;
           if (isBghFilter) {
-            const isUserBgh = String((userObj as any).role || '').toLowerCase().includes('bgh') || deptId === departmentFilter;
+            const isUserBgh = String(userObj.vai_tro_chinh || '').toLowerCase().includes('bgh') || deptId === departmentFilter;
             if (!isUserBgh) return false;
           } else {
             const matchesDirect = deptId === departmentFilter;
-            const uDept = departments.find((d) => String(d._id) === deptId);
-            const uParentId = uDept?.parentId
-              ? typeof uDept.parentId === 'object' && uDept.parentId !== null && '_id' in uDept.parentId
-                ? String((uDept.parentId as any)._id)
-                : String(uDept.parentId)
+            const uDept = departments.find((d) => String(d.id || d._id) === deptId);
+            const uParentId = uDept?.don_vi_cha_id
+              ? typeof uDept.don_vi_cha_id === 'object' && uDept.don_vi_cha_id !== null
+                ? String((uDept.don_vi_cha_id as any).id || (uDept.don_vi_cha_id as any)._id || '')
+                : String(uDept.don_vi_cha_id)
               : '';
             const matchesParent = Boolean(uParentId && uParentId === departmentFilter);
             if (!matchesDirect && !matchesParent) return false;
@@ -509,10 +554,10 @@ export const Dashboard: React.FC = () => {
       // Filter by keyword
       if (searchPunchKeyword.trim()) {
         const kw = searchPunchKeyword.toLowerCase().trim();
-        const userObj = typeof item.userId === 'object' ? item.userId : null;
-        const name = (userObj?.fullName || '').toLowerCase();
-        const code = (userObj?.staffCode || '').toLowerCase();
-        const dept = (userObj?.departmentId?.name || '').toLowerCase();
+        const userObj = item.nguoi_dung;
+        const name = (userObj?.ho_ten || '').toLowerCase();
+        const code = (userObj?.ma_can_bo || '').toLowerCase();
+        const dept = (userObj?.don_vi_chinh?.ten_phong_ban || '').toLowerCase();
         if (!name.includes(kw) && !code.includes(kw) && !dept.includes(kw)) return false;
       }
 
@@ -591,36 +636,125 @@ export const Dashboard: React.FC = () => {
       />
 
       {/* =====================================================================
-          2. COMPACT STATS STRIP (SECONDARY)
+          FLUX HERO CARD: GOOD MORNING BANNER + 4 EMBEDDED METRICS
       ===================================================================== */}
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-blue-600 p-6 sm:p-7 text-white shadow-md shadow-indigo-500/15">
+        <div className="relative z-10 flex flex-col justify-between gap-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-[11px] font-semibold text-indigo-100 mb-2">
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Hệ thống Nhân sự & Điểm danh Thông minh NTU</span>
+              </div>
+              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">
+                {(() => {
+                  const hour = new Date().getHours();
+                  if (hour < 12) return 'Chào buổi sáng';
+                  if (hour < 18) return 'Chào buổi chiều';
+                  return 'Chào buổi tối';
+                })()}
+                , {user?.ho_ten || 'Quý Thầy/Cô'}!
+              </h1>
+              <p className="text-xs sm:text-sm text-indigo-100/90 mt-1">
+                {currentDateStr} • {currentTimeStr} — Chúc Thầy/Cô một ngày làm việc và giảng dạy hiệu quả.
+              </p>
+            </div>
+
+            {canPersonalCheckIn(user) && (
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setScannerMode('check-in')}
+                  type="button"
+                  className="h-9 px-4 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 text-xs font-bold shadow-sm inline-flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5 shrink-0" />
+                  <span>Điểm danh Face ID</span>
+                </button>
+                <button
+                  onClick={() => navigate('/don-nghi-phep')}
+                  type="button"
+                  className="h-9 px-4 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/25 backdrop-blur-sm text-xs font-semibold inline-flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <FilePlus className="w-3.5 h-3.5 shrink-0" />
+                  <span>Nộp đơn phép</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 4 Metric Cards inside Hero Banner (Flux Style) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 pt-2">
+            <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5">
+              <div className="flex items-center justify-between text-xs font-medium text-indigo-100">
+                <span>Tổng nhân sự</span>
+                <Users className="w-4 h-4 text-indigo-200" />
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
+                  {totalStaff}
+                </div>
+                <div className="text-[11px] text-indigo-200 mt-1">
+                  {totalDepartments} khoa & phòng ban
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5">
+              <div className="flex items-center justify-between text-xs font-medium text-indigo-100">
+                <span>Tỷ lệ đi làm</span>
+                <Clock className="w-4 h-4 text-emerald-300" />
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-emerald-300">
+                  {todayAttendanceStats.rate}%
+                </div>
+                <div className="text-[11px] text-indigo-200 mt-1">
+                  {todayAttendanceStats.onTime} đúng giờ • {todayAttendanceStats.late} muộn
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5">
+              <div className="flex items-center justify-between text-xs font-medium text-indigo-100">
+                <span>Đơn chờ duyệt</span>
+                <FileText className="w-4 h-4 text-amber-300" />
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-amber-300">
+                  {String(pendingLeaveCount).padStart(2, '0')}
+                </div>
+                <div className="text-[11px] text-indigo-200 mt-1">
+                  Cần trưởng đơn vị duyệt
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5">
+              <div className="flex items-center justify-between text-xs font-medium text-indigo-100">
+                <span>Quỹ lương T{new Date().getMonth() + 1}</span>
+                <DollarSign className="w-4 h-4 text-indigo-200" />
+              </div>
+              <div className="mt-2">
+                <div className="text-xl sm:text-2xl font-black font-mono tracking-tight truncate">
+                  {payrollNetSalary > 0 ? formatVND(payrollNetSalary) : '0 đ'}
+                </div>
+                <div className="text-[11px] text-indigo-200 mt-1 truncate">
+                  Trạng thái: {payrollStatus}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Decorative background glow */}
+        <div className="pointer-events-none absolute -right-16 -top-16 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+        <div className="pointer-events-none absolute -left-16 -bottom-16 h-64 w-64 rounded-full bg-indigo-900/30 blur-2xl" />
+      </section>
+
       {/* =====================================================================
           2. UNIFIED OVERVIEW TOP CARD: KPI STRIP + CHARTS
       ===================================================================== */}
-      <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
-        <CompactStatsBar
-          embedded
-          items={[
-            { label: 'Tổng nhân sự', value: totalStaff, badge: `${totalDepartments} đơn vị`, tone: 'neutral' },
-            {
-              label: 'Điểm danh hôm nay',
-              value: `${todayAttendanceStats.rate}%`,
-              badge: `${todayAttendanceStats.onTime} đúng giờ • ${todayAttendanceStats.late} muộn`,
-              tone: 'success',
-            },
-            {
-              label: 'Đơn chờ duyệt',
-              value: String(pendingLeaveCount).padStart(2, '0'),
-              unit: 'đơn',
-              tone: pendingLeaveCount > 0 ? 'warning' : 'neutral',
-            },
-            {
-              label: `Quỹ lương T${new Date().getMonth() + 1}`,
-              value: payrollNetSalary > 0 ? formatVND(payrollNetSalary) : '0 đ',
-              badge: payrollNetSalary > 0 ? payrollStatus : undefined,
-              tone: 'brand',
-            },
-          ]}
-        />
+      <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
 
       {/* =====================================================================
           3. ANALYTICS & CHARTS (60% / 40% - 12 COLUMNS GRID)
@@ -644,7 +778,13 @@ export const Dashboard: React.FC = () => {
 
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  Học kỳ 1 (2026-2027)
+                  {(() => {
+                    const m = new Date().getMonth() + 1;
+                    const y = new Date().getFullYear();
+                    const academicStart = m >= 8 ? y : y - 1;
+                    const hk = m >= 8 ? 'Học kỳ 1' : m <= 5 ? 'Học kỳ 2' : 'Học kỳ Hè';
+                    return `${hk} (${academicStart}-${academicStart + 1})`;
+                  })()}
                 </span>
                 <span className="px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center gap-1 border border-indigo-200 dark:border-indigo-800">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
@@ -674,68 +814,78 @@ export const Dashboard: React.FC = () => {
             </div>
 
             {/* SVG Grouped / Stacked Bar Chart */}
-            <div className="w-full h-64 relative mt-2">
-              <svg className="w-full h-full" fill="none" preserveAspectRatio="none" viewBox="0 0 650 240">
-                {/* Horizontal Gridlines */}
-                <line className="text-slate-200 dark:text-slate-800" stroke="currentColor" strokeDasharray="3 3" strokeWidth="1" x1="40" x2="630" y1="20" y2="20" />
-                <text fill="#94A3B8" fontFamily="Inter" fontSize="10" textAnchor="end" x="30" y="24">16</text>
-                <line className="text-slate-200 dark:text-slate-800" stroke="currentColor" strokeDasharray="3 3" strokeWidth="1" x1="40" x2="630" y1="75" y2="75" />
-                <text fill="#94A3B8" fontFamily="Inter" fontSize="10" textAnchor="end" x="30" y="79">12</text>
-                <line className="text-slate-200 dark:text-slate-800" stroke="currentColor" strokeDasharray="3 3" strokeWidth="1" x1="40" x2="630" y1="130" y2="130" />
-                <text fill="#94A3B8" fontFamily="Inter" fontSize="10" textAnchor="end" x="30" y="134">8</text>
-                <line className="text-slate-200 dark:text-slate-800" stroke="currentColor" strokeDasharray="3 3" strokeWidth="1" x1="40" x2="630" y1="185" y2="185" />
-                <text fill="#94A3B8" fontFamily="Inter" fontSize="10" textAnchor="end" x="30" y="189">4</text>
-                <line className="text-slate-300 dark:text-slate-700" stroke="currentColor" strokeWidth="1" x1="40" x2="630" y1="210" y2="210" />
+            {(() => {
+              const maxDayTotal = Math.max(
+                4,
+                ...weeklyTrendData.map((d) => d.present + d.late + d.excused)
+              );
+              const yAxisTop = Math.ceil(maxDayTotal / 4) * 4;
+              const chartHeight = 190;
+              return (
+                <div className="w-full h-64 relative mt-2">
+                  <svg className="w-full h-full" fill="none" preserveAspectRatio="none" viewBox="0 0 650 240">
+                    {/* Horizontal Gridlines */}
+                    <line className="text-slate-200 dark:text-slate-800" stroke="currentColor" strokeDasharray="3 3" strokeWidth="1" x1="40" x2="630" y1="20" y2="20" />
+                    <text fill="#94A3B8" fontFamily="Inter" fontSize="10" textAnchor="end" x="30" y="24">{yAxisTop}</text>
+                    <line className="text-slate-200 dark:text-slate-800" stroke="currentColor" strokeDasharray="3 3" strokeWidth="1" x1="40" x2="630" y1="67.5" y2="67.5" />
+                    <text fill="#94A3B8" fontFamily="Inter" fontSize="10" textAnchor="end" x="30" y="71.5">{Math.round((yAxisTop * 3) / 4)}</text>
+                    <line className="text-slate-200 dark:text-slate-800" stroke="currentColor" strokeDasharray="3 3" strokeWidth="1" x1="40" x2="630" y1="115" y2="115" />
+                    <text fill="#94A3B8" fontFamily="Inter" fontSize="10" textAnchor="end" x="30" y="119">{Math.round(yAxisTop / 2)}</text>
+                    <line className="text-slate-200 dark:text-slate-800" stroke="currentColor" strokeDasharray="3 3" strokeWidth="1" x1="40" x2="630" y1="162.5" y2="162.5" />
+                    <text fill="#94A3B8" fontFamily="Inter" fontSize="10" textAnchor="end" x="30" y="166.5">{Math.round(yAxisTop / 4)}</text>
+                    <line className="text-slate-300 dark:text-slate-700" stroke="currentColor" strokeWidth="1" x1="40" x2="630" y1="210" y2="210" />
 
-                {/* Bars for 6 days + Today (100% REAL) */}
-                {weeklyTrendData.map((dItem, idx) => {
-                  const xOffset = 65 + idx * 80;
-                  const isToday = idx === 6;
+                    {/* Bars for 6 days + Today (100% REAL) */}
+                    {weeklyTrendData.map((dItem, idx) => {
+                      const xOffset = 65 + idx * 80;
+                      const isToday = idx === 6;
 
-                  const hPresent = Math.min(150, dItem.present * 12);
-                  const yPresent = 210 - hPresent;
+                      const hPresent = (dItem.present / yAxisTop) * chartHeight;
+                      const yPresent = 210 - hPresent;
 
-                  const hLate = Math.min(40, dItem.late * 10);
-                  const yLate = yPresent - hLate;
+                      const hLate = (dItem.late / yAxisTop) * chartHeight;
+                      const yLate = yPresent - hLate;
 
-                  const hExcused = Math.min(30, dItem.excused * 10);
-                  const yExcused = yLate - hExcused;
+                      const hExcused = (dItem.excused / yAxisTop) * chartHeight;
+                      const yExcused = yLate - hExcused;
 
-                  return (
-                    <g key={idx} transform={`translate(${xOffset}, 0)`}>
-                      {isToday && (
-                        <rect className="fill-brand-50 dark:fill-brand-950/50" height="204" opacity="0.8" rx="8" width="40" x="-6" y="10" />
-                      )}
-                      {hPresent > 0 && <rect fill="rgb(var(--brand-600))" height={hPresent} rx="4" width="28" x="0" y={yPresent} />}
-                      {hLate > 0 && <rect fill="#64748B" height={hLate} rx="2" width="28" x="0" y={yLate} />}
-                      {hExcused > 0 && <rect fill="rgb(var(--brand-400))" height={hExcused} rx="2" width="28" x="0" y={yExcused} />}
-                      <text
-                        fill={isToday ? 'rgb(var(--brand-600))' : '#64748B'}
-                        fontFamily="Inter"
-                        fontSize="11"
-                        fontWeight={isToday ? '700' : '500'}
-                        textAnchor="middle"
-                        x="14"
-                        y="226"
-                      >
-                        {dItem.day}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
+                      return (
+                        <g key={idx} transform={`translate(${xOffset}, 0)`}>
+                          {isToday && (
+                            <rect className="fill-brand-50 dark:fill-brand-950/50" height="204" opacity="0.8" rx="8" width="40" x="-6" y="10" />
+                          )}
+                          {hPresent > 0 && <rect fill="rgb(var(--brand-600))" height={hPresent} rx="4" width="28" x="0" y={yPresent} />}
+                          {hLate > 0 && <rect fill="#64748B" height={hLate} rx="2" width="28" x="0" y={yLate} />}
+                          {hExcused > 0 && <rect fill="rgb(var(--brand-400))" height={hExcused} rx="2" width="28" x="0" y={yExcused} />}
+                          <text
+                            fill={isToday ? 'rgb(var(--brand-600))' : '#64748B'}
+                            fontFamily="Inter"
+                            fontSize="11"
+                            fontWeight={isToday ? '700' : '500'}
+                            textAnchor="middle"
+                            x="14"
+                            y="226"
+                          >
+                            {dItem.day}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="mt-5 pt-3 bg-slate-50 dark:bg-slate-800/60 px-4 py-2.5 rounded-xl flex items-center justify-between border border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span className="text-xs text-slate-700 dark:text-slate-300">
-                Hiệu suất chấm công bình quân tuần đạt{' '}
+                Tỷ lệ điểm danh hôm nay đạt{' '}
                 <strong className="font-bold text-indigo-600 dark:text-indigo-400">
-                  {todayAttendanceStats.rate || 94.2}%
+                  {todayAttendanceStats.rate}%
                 </strong>{' '}
-                (tăng +2.1% so với tuần trước).
+                ({todayAttendanceStats.present} lượt có mặt • {todayAttendanceStats.late + todayAttendanceStats.earlyLeave} muộn/sớm).
               </span>
             </div>
             <button
@@ -879,7 +1029,8 @@ export const Dashboard: React.FC = () => {
             <div className="flex flex-col text-xs">
               <span className="font-bold text-slate-900 dark:text-white">Thông báo Geofence GPS di động</span>
               <span className="text-slate-500 dark:text-slate-400 mt-0.5">
-                Hệ thống tự động kích hoạt kiểm tra bán kính 150m quanh cơ sở Hà Đông. Các điểm danh GPS chuẩn xác được gán nhãn ngay lập tức.
+                Hệ thống tự động kích hoạt kiểm tra bán kính {campusInfo?.radiusMeters ?? 150}m quanh{' '}
+                {campusInfo?.name || 'Trường Đại học Nguyễn Trãi'}. Các điểm danh GPS chuẩn xác được gán nhãn ngay lập tức.
               </span>
             </div>
           </div>
@@ -965,41 +1116,38 @@ export const Dashboard: React.FC = () => {
                 Chưa có lượt điểm danh nào phù hợp với bộ lọc hiện tại.
               </div>
             ) : (
-              filteredPunches.map((item, idx) => {
-                const statusInfo = STATUS_CONFIGS[item.status] || STATUS_CONFIGS.on_time;
-                const userObj = typeof item.userId === 'object' ? item.userId : null;
-                const deptName = userObj?.departmentId?.name || 'Ban Giám Hiệu';
-                const shiftName =
-                  typeof item.shiftId === 'object'
-                    ? item.shiftId?.name
-                    : 'Ca Hành Chính';
-                const conf = item.punchLogIds?.[0]?.confidenceScore;
-                const hasCheckedIn = Boolean(item.checkInTime);
-                const hasCheckedOut = Boolean(item.checkOutTime);
-                const isAbsent = item.status === 'absent' || (!hasCheckedIn && !hasCheckedOut);
-                const roleLabel = getRoleLabel(userObj?.role);
+              filteredPunches.map((item: any, idx) => {
+                const statusInfo = STATUS_CONFIGS[item.trang_thai] || STATUS_CONFIGS.on_time;
+                const userObj = item.nguoi_dung;
+                const deptName = userObj?.don_vi_chinh?.ten_phong_ban || 'Ban Giám Hiệu';
+                const shiftName = item.ca?.ten_ca || 'Ca Hành Chính';
+                const conf = item.luot_quet?.[0]?.do_tin_cay_ai;
+                const hasCheckedIn = Boolean(item.thoi_gian_vao);
+                const hasCheckedOut = Boolean(item.thoi_gian_ra);
+                const isAbsent = item.trang_thai === 'absent' || (!hasCheckedIn && !hasCheckedOut);
+                const roleLabel = getRoleLabel(userObj?.vai_tro_chinh);
 
                 return (
-                  <div key={item._id || idx} className="py-3 flex flex-col gap-2">
+                  <div key={item.id || idx} className="py-3 flex flex-col gap-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                          {userObj?.avatar ? (
+                          {userObj?.anh_dai_dien ? (
                             <img
-                              src={userObj.avatar}
+                              src={userObj.anh_dai_dien}
                               alt="Avatar"
                               className="w-full h-full rounded-full object-cover"
                             />
                           ) : (
-                            getInitials(userObj?.fullName)
+                            getInitials(userObj?.ho_ten)
                           )}
                         </div>
                         <div className="flex flex-col min-w-0">
                           <span className="font-bold text-slate-900 dark:text-white truncate text-xs">
-                            {userObj?.fullName || 'Cán bộ'}
+                            {userObj?.ho_ten || 'Cán bộ'}
                           </span>
                           <span className="text-[10px] font-mono text-slate-400 truncate">
-                            {userObj?.staffCode || 'NTU-CB'} • {roleLabel}
+                            {userObj?.ma_can_bo || 'NTU-CB'} • {roleLabel}
                           </span>
                         </div>
                       </div>
@@ -1021,10 +1169,10 @@ export const Dashboard: React.FC = () => {
                     <div className="flex items-center justify-between text-xs font-mono pt-1">
                       <div className="flex items-center gap-3">
                         <span className={hasCheckedIn ? 'font-bold text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}>
-                          Vào: {hasCheckedIn ? formatTimeVN(item.checkInTime) : '--:--:--'}
+                          Vào: {hasCheckedIn ? formatTimeVN(item.thoi_gian_vao) : '--:--:--'}
                         </span>
                         <span className={hasCheckedOut ? 'font-medium text-slate-700 dark:text-slate-300' : 'text-slate-400'}>
-                          Ra: {hasCheckedOut ? formatTimeVN(item.checkOutTime) : '--:--:--'}
+                          Ra: {hasCheckedOut ? formatTimeVN(item.thoi_gian_ra) : '--:--:--'}
                         </span>
                       </div>
                       <button
@@ -1072,42 +1220,42 @@ export const Dashboard: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredPunches.map((item, idx) => {
-                    const statusInfo = STATUS_CONFIGS[item.status] || STATUS_CONFIGS.on_time;
-                    const userObj = typeof item.userId === 'object' ? item.userId : null;
-                    const deptName = userObj?.departmentId?.name || 'Ban Giám Hiệu';
-                    const shiftName =
-                      typeof item.shiftId === 'object'
-                        ? item.shiftId?.name
-                        : 'Ca Hành Chính';
-                    const conf = item.punchLogIds?.[0]?.confidenceScore;
-                    const hasCheckedIn = Boolean(item.checkInTime);
-                    const hasCheckedOut = Boolean(item.checkOutTime);
-                    const isAbsent = item.status === 'absent' || (!hasCheckedIn && !hasCheckedOut);
-                    const roleLabel = getRoleLabel(userObj?.role);
+                  filteredPunches.map((item: any, idx) => {
+                    const statusInfo = STATUS_CONFIGS[item.trang_thai] || STATUS_CONFIGS.on_time;
+                    const userObj = item.nguoi_dung;
+                    const deptName = userObj?.don_vi_chinh?.ten_phong_ban || 'Ban Giám Hiệu';
+                    const shiftName = item.ca?.ten_ca || 'Ca Hành Chính';
+                    const firstPunch = item.luot_quet?.[0];
+                    const conf = firstPunch?.do_tin_cay_ai;
+                    const distMeters = firstPunch?.khoang_cach_met;
+                    const rawMethod = String(firstPunch?.phuong_thuc || '').toLowerCase();
+                    const hasCheckedIn = Boolean(item.thoi_gian_vao);
+                    const hasCheckedOut = Boolean(item.thoi_gian_ra);
+                    const isAbsent = item.trang_thai === 'absent' || (!hasCheckedIn && !hasCheckedOut);
+                    const roleLabel = getRoleLabel(userObj?.vai_tro_chinh);
 
                     return (
-                      <tr key={item._id || idx} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                      <tr key={item.id || idx} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
                         {/* Cán bộ (Thu nhỏ khoảng không gian gọn gàng) */}
                         <td className="py-2.5 px-2.5 sm:px-3 overflow-hidden">
                           <div className="flex items-center gap-2 min-w-0">
                             <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0 shadow-xs">
-                              {userObj?.avatar ? (
+                              {userObj?.anh_dai_dien ? (
                                 <img
-                                  src={userObj.avatar}
+                                  src={userObj.anh_dai_dien}
                                   alt="Avatar"
                                   className="w-full h-full rounded-full object-cover"
                                 />
                               ) : (
-                                getInitials(userObj?.fullName)
+                                getInitials(userObj?.ho_ten)
                               )}
                             </div>
                             <div className="flex flex-col min-w-0 overflow-hidden">
-                              <span className="font-bold text-slate-900 dark:text-white truncate text-xs block" title={userObj?.fullName || 'Cán bộ'}>
-                                {userObj?.fullName || 'Cán bộ'}
+                              <span className="font-bold text-slate-900 dark:text-white truncate text-xs block" title={userObj?.ho_ten || 'Cán bộ'}>
+                                {userObj?.ho_ten || 'Cán bộ'}
                               </span>
                               <span className="text-[10px] font-mono text-slate-400 truncate block">
-                                {userObj?.staffCode || 'NTU'} • {roleLabel}
+                                {userObj?.ma_can_bo || 'NTU'} • {roleLabel}
                               </span>
                             </div>
                           </div>
@@ -1133,13 +1281,13 @@ export const Dashboard: React.FC = () => {
                             <div className="flex items-center gap-1 truncate">
                               <span className="text-[10px] font-bold text-slate-400 uppercase w-5 shrink-0">Vào</span>
                               <span className={hasCheckedIn ? 'font-bold text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}>
-                                {hasCheckedIn ? formatTimeVN(item.checkInTime) : '--:--:--'}
+                                {hasCheckedIn ? formatTimeVN(item.thoi_gian_vao) : '--:--:--'}
                               </span>
                             </div>
                             <div className="flex items-center gap-1 truncate mt-0.5">
                               <span className="text-[10px] font-bold text-slate-400 uppercase w-5 shrink-0">Ra</span>
                               <span className={hasCheckedOut ? 'font-medium text-slate-700 dark:text-slate-300' : 'text-slate-400'}>
-                                {hasCheckedOut ? formatTimeVN(item.checkOutTime) : '--:--:--'}
+                                {hasCheckedOut ? formatTimeVN(item.thoi_gian_ra) : '--:--:--'}
                               </span>
                             </div>
                           </div>
@@ -1157,10 +1305,25 @@ export const Dashboard: React.FC = () => {
                         <td className="py-2.5 px-2 overflow-hidden">
                           {isAbsent ? (
                             <span className="text-slate-400 dark:text-slate-500 text-[11px] font-mono">—</span>
-                          ) : item.method?.toLowerCase().includes('gps') ? (
-                            <div className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 truncate" title="Mobile GPS (142m Geofence)">
+                          ) : rawMethod.includes('gps') ? (
+                            <div
+                              className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 truncate"
+                              title={distMeters != null ? `Mobile GPS (${Math.round(Number(distMeters))}m)` : 'Mobile GPS'}
+                            >
                               <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span className="truncate">GPS (142m)</span>
+                              <span className="truncate">
+                                {distMeters != null ? `GPS (${Math.round(Number(distMeters))}m)` : 'Mobile GPS'}
+                              </span>
+                            </div>
+                          ) : rawMethod.includes('qr') ? (
+                            <div className="flex items-center gap-1 text-[11px] font-medium text-sky-600 dark:text-sky-400 truncate" title="Mã QR động">
+                              <ScanFace className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                              <span className="truncate">QR Động</span>
+                            </div>
+                          ) : rawMethod.includes('thu_cong') || rawMethod.includes('manual') ? (
+                            <div className="flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate" title="Thủ công (Admin)">
+                              <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <span className="truncate">Thủ công</span>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 truncate" title={`Face AI Kiosk${conf ? ` (${conf.toFixed(2)} cos)` : ''}`}>
@@ -1220,24 +1383,26 @@ export const Dashboard: React.FC = () => {
                 </h3>
               </div>
               <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-full">
-                {todaySchedules.length > 0 ? `${todaySchedules.length} Lịch trình` : '2 Sự kiện'}
+                {todaySchedules.length} Lịch trình
               </span>
             </div>
 
             <div className="flex flex-col gap-3">
               {todaySchedules.length > 0 ? (
-                todaySchedules.slice(0, 3).map((sched, sIdx) => {
-                  const subjectName = typeof sched.subjectId === 'object' ? sched.subjectId?.name : 'Lập Trình Web & AI';
-                  const shiftName = typeof sched.shiftId === 'object' ? sched.shiftId?.name : 'Ca Sáng';
+                todaySchedules.slice(0, 3).map((sched: any, sIdx) => {
+                  const subjectName = sched.mon_hoc?.ten_mon || 'Lập Trình Web & AI';
+                  const shiftName = sched.ca?.ten_ca || 'Ca Sáng';
 
                   return (
                     <div
-                      key={sched._id || sIdx}
+                      key={sched.id || sIdx}
                       className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex items-start justify-between gap-3"
                     >
                       <div className="flex items-start gap-3">
                         <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex flex-col items-center justify-center shrink-0 shadow-sm">
-                          <span className="text-[10px] font-bold uppercase tracking-wider">OCT</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider">
+                            Th{new Date().getMonth() + 1}
+                          </span>
                           <span className="text-base font-extrabold leading-tight">
                             {new Date().getDate()}
                           </span>
@@ -1309,16 +1474,14 @@ export const Dashboard: React.FC = () => {
 
             <div className="flex flex-col gap-2.5">
               {pendingLeaveList.length > 0 ? (
-                pendingLeaveList.map((reqItem) => {
-                  const staffName =
-                    typeof reqItem.userId === 'object' ? reqItem.userId?.fullName : 'Cán bộ';
-                  const staffCode =
-                    typeof reqItem.userId === 'object' ? reqItem.userId?.staffCode : 'NTU';
-                  const isApproving = isApprovingId === reqItem._id;
+                pendingLeaveList.map((reqItem: any) => {
+                  const staffName = reqItem.nguoi_dung?.ho_ten || 'Cán bộ';
+                  const staffCode = reqItem.nguoi_dung?.ma_can_bo || 'NTU';
+                  const isApproving = isApprovingId === (reqItem.id || reqItem._id);
 
                   return (
                     <div
-                      key={reqItem._id}
+                      key={reqItem.id || reqItem._id}
                       className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3"
                     >
                       <div className="flex flex-col min-w-0">

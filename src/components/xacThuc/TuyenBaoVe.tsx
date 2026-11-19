@@ -45,19 +45,19 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
             </div>
 
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-              {user?.role && String(user.role).toLowerCase().includes('admin')
+              {user?.vai_tro_chinh && String(user.vai_tro_chinh).toLowerCase().includes('admin')
                 ? 'Phân Hệ Không Dành Cho Quản Trị Viên'
                 : 'Bạn Không Có Quyền Truy Cập Chức Năng Này'}
             </h3>
 
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {user?.role && String(user.role).toLowerCase().includes('admin')
-                ? `Tài khoản Quản trị viên (${user?.fullName}) phụ trách quản trị và giám sát hệ thống, không áp dụng dữ liệu cá nhân này. Vui lòng chuyển sang phân hệ Quản lý tương ứng.`
-                : `Tài khoản của bạn (${user?.fullName} - ${getRoleLabel(user?.role)}) không có quyền truy cập vào phân hệ này. Vui lòng liên hệ Ban Giám Hiệu hoặc Quản trị viên để được cấp quyền.`}
+              {user?.vai_tro_chinh && String(user.vai_tro_chinh).toLowerCase().includes('admin')
+                ? `Tài khoản Quản trị viên (${user?.ho_ten}) phụ trách quản trị và giám sát hệ thống, không áp dụng dữ liệu cá nhân này. Vui lòng chuyển sang phân hệ Quản lý tương ứng.`
+                : `Tài khoản của bạn (${user?.ho_ten} - ${getRoleLabel(user?.vai_tro_chinh)}) không có quyền truy cập vào phân hệ này. Vui lòng liên hệ Ban Giám Hiệu hoặc Quản trị viên để được cấp quyền.`}
             </p>
 
             <div className="pt-2 flex items-center justify-center gap-2">
-              {user?.role && String(user.role).toLowerCase().includes('admin') ? (
+              {user?.vai_tro_chinh && String(user.vai_tro_chinh).toLowerCase().includes('admin') ? (
                 <Button
                   variant="primary"
                   size="sm"

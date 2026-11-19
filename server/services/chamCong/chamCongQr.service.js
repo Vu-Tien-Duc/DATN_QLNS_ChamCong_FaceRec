@@ -201,16 +201,16 @@ const processScanQRCode = async ({
     } catch (_) {}
 
     return {
-      type: 'check_in',
+      loai_quet: 'check_in',
       message: isFraud
         ? `Quét QR Check-in thành công có cảnh báo: ${fraudReason}`
         : 'Quét mã QR Check-in thành công.',
-      status: calculatedStatus,
-      checkInTime: now,
-      isFraud,
-      fraudReason,
-      attendanceLog: savedAttendance,
-      punchLog,
+      trang_thai: calculatedStatus,
+      thoi_gian_vao: now,
+      gian_lan: isFraud,
+      ly_do_gian_lan: fraudReason,
+      nhat_ky_cham_cong: savedAttendance,
+      luot_quet: punchLog,
     };
   }
 
@@ -285,18 +285,18 @@ const processScanQRCode = async ({
   } catch (_) {}
 
   return {
-    type: 'check_out',
+    loai_quet: 'check_out',
     message: isFraud
       ? `Quét QR Check-out thành công có cảnh báo: ${fraudReason}`
       : 'Quét mã QR Check-out thành công.',
-    status: finalStatus,
-    checkOutTime: now,
-    workHours: savedAttendance.so_gio_cong,
-    earlyMinutes: savedAttendance.ve_som_phut,
-    isFraud,
-    fraudReason,
-    attendanceLog: savedAttendance,
-    punchLog,
+    trang_thai: finalStatus,
+    thoi_gian_ra: now,
+    so_gio_cong: savedAttendance.so_gio_cong,
+    ve_som_phut: savedAttendance.ve_som_phut,
+    gian_lan: isFraud,
+    ly_do_gian_lan: fraudReason,
+    nhat_ky_cham_cong: savedAttendance,
+    luot_quet: punchLog,
   };
 };
 

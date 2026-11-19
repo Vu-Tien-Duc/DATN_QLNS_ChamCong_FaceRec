@@ -267,8 +267,8 @@ const createLeaveRequestDomain = async ({
 
       if (canonicalType === 'nghi_phep') {
         const quota = user.ho_so?.han_muc_phep_nam !== undefined ? Number(user.ho_so.han_muc_phep_nam) : 12;
-        const startYear = start.getFullYear();
-        const endYear = end.getFullYear();
+        const startYear = Number(startKey.slice(0, 4));
+        const endYear = Number(endKey.slice(0, 4));
 
         for (let targetYear = startYear; targetYear <= endYear; targetYear += 1) {
           const yearStart = new Date(targetYear, 0, 1);

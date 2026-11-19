@@ -76,11 +76,18 @@ export const App: React.FC = () => {
           <Route index element={<Dashboard />} />
 
           {/* Chấm công & Sinh trắc học */}
-          <Route path="diem-danh-khuon-mat" element={<FaceAttendance />} />
+          <Route
+            path="diem-danh-khuon-mat"
+            element={
+              <ProtectedRoute excludeRoles={['kiem_toan']}>
+                <FaceAttendance />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="cham-cong-ca-nhan"
             element={
-              <ProtectedRoute excludeRoles={['admin']}>
+              <ProtectedRoute excludeRoles={['admin', 'kiem_toan']}>
                 <AttendanceMe />
               </ProtectedRoute>
             }
@@ -88,7 +95,7 @@ export const App: React.FC = () => {
           <Route
             path="quan-ly-cham-cong"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb', 'ke_toan', 'kiem_toan']}>
                 <AttendanceManage />
               </ProtectedRoute>
             }
@@ -96,7 +103,14 @@ export const App: React.FC = () => {
 
           {/* Hồ sơ, Đơn từ & Lịch trình */}
           <Route path="ho-so" element={<Profile />} />
-          <Route path="don-nghi-phep" element={<LeaveRequests />} />
+          <Route
+            path="don-nghi-phep"
+            element={
+              <ProtectedRoute excludeRoles={['kiem_toan']}>
+                <LeaveRequests />
+              </ProtectedRoute>
+            }
+          />
           <Route path="lich-trinh" element={<Schedules />} />
 
           {/* Nhân sự & Tổ chức */}
@@ -119,7 +133,14 @@ export const App: React.FC = () => {
           />
 
           {/* Tài chính Lương & Báo cáo */}
-          <Route path="phieu-luong" element={<Payroll />} />
+          <Route
+            path="phieu-luong"
+            element={
+              <ProtectedRoute excludeRoles={['kiem_toan']}>
+                <Payroll />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="bao-cao"
             element={

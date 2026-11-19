@@ -155,7 +155,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isLoading: false,
         });
 
-        const displayName = user.fullName || user.ho_ten || 'Quý Thầy/Cô';
+        const displayName = user.ho_ten || 'Quý Thầy/Cô';
         toast.success(`Chào mừng ${displayName} đăng nhập thành công!`);
         return true;
       } else {
@@ -211,8 +211,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   switchDemoRole: async (role: UserRoleLegacy) => {
     const roleEmails: Partial<Record<UserRoleLegacy, string>> = {
-      admin: 'admin@truong.edu.vn',
-      giang_vien: 'gv01@truong.edu.vn',
+      admin: 'admin@ntu.edu.vn',
+      bgh: 'hieutruong@ntu.edu.vn',
+      truong_khoa: 'truongkhoa.cntt@ntu.edu.vn',
+      giang_vien: 'ducvt.gv@ntu.edu.vn',
+      tccb: 'tccb@ntu.edu.vn',
+      ke_toan: 'ketoan@ntu.edu.vn',
     };
 
     const targetEmail = roleEmails[role];
@@ -226,53 +230,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const roleProfiles: Partial<Record<UserRoleLegacy, Partial<UserProfile>>> = {
       bgh: {
-        fullName: 'GS. TS. Nguyễn Văn An',
-        email: 'hieutruong@university.edu.vn',
-        role: 'bgh',
-        departmentName: 'Ban Giám Hiệu',
-        roles: [{ role: 'bgh', scope: 'toan_truong' }],
+        ho_ten: 'PGS.TS. Nguyễn Văn Hiệu',
+        email: 'hieutruong@ntu.edu.vn',
+        vai_tro_chinh: 'bgh',
+        ten_phong_ban: 'Ban Giám Hiệu',
+        danh_sach_vai_tro: [{ ma_vai_tro: 'bgh', pham_vi: 'toan_truong' }],
       },
       admin: {
-        fullName: 'Quản Trị Viên Hệ Thống (Admin)',
-        email: 'admin@university.edu.vn',
-        role: 'admin',
-        departmentName: 'Phòng Quản Trị Công Nghệ',
-        roles: [{ role: 'admin', scope: 'toan_truong' }],
+        ho_ten: 'Quản trị viên Hệ thống',
+        email: 'admin@ntu.edu.vn',
+        vai_tro_chinh: 'admin',
+        ten_phong_ban: 'Ban Giám Hiệu',
+        danh_sach_vai_tro: [{ ma_vai_tro: 'admin', pham_vi: 'toan_truong' }],
       },
       truong_khoa: {
-        fullName: 'PGS. TS. Lê Hoàng Nam',
-        email: 'truongkhoa.cntt@university.edu.vn',
-        role: 'truong_khoa',
-        departmentName: 'Khoa Công Nghệ Thông Tin & CĐS',
-        roles: [{ role: 'truong_khoa', scope: 'khoa' }],
+        ho_ten: 'TS. Trần Minh Tuấn',
+        email: 'truongkhoa.cntt@ntu.edu.vn',
+        vai_tro_chinh: 'truong_khoa',
+        ten_phong_ban: 'Khoa Công nghệ Thông tin',
+        danh_sach_vai_tro: [{ ma_vai_tro: 'truong_khoa', pham_vi: 'khoa' }],
       },
       giang_vien: {
-        fullName: 'TS. Trần Thị Bích',
-        email: 'giangvien.bich@university.edu.vn',
-        role: 'giang_vien',
-        departmentName: 'Khoa Công Nghệ Thông Tin & CĐS',
-        roles: [{ role: 'giang_vien', scope: 'bo_mon' }],
+        ho_ten: 'ThS. Vũ Tiến Đức',
+        email: 'ducvt.gv@ntu.edu.vn',
+        vai_tro_chinh: 'giang_vien',
+        ten_phong_ban: 'Khoa Công nghệ Thông tin',
+        danh_sach_vai_tro: [{ ma_vai_tro: 'giang_vien', pham_vi: 'khoa' }],
       },
-      nhan_vien: {
-        fullName: 'Đỗ Thu Hà',
-        email: 'nhanvien.ha@university.edu.vn',
-        role: 'nhan_vien',
-        departmentName: 'Phòng Đào Tạo',
-        roles: [{ role: 'nhan_vien', scope: 'phong_ban' }],
+      tccb: {
+        ho_ten: 'Lê Thị Hương',
+        email: 'tccb@ntu.edu.vn',
+        vai_tro_chinh: 'tccb',
+        ten_phong_ban: 'Phòng Tổ chức Cán bộ',
+        danh_sach_vai_tro: [{ ma_vai_tro: 'tccb', pham_vi: 'toan_truong' }],
       },
       ke_toan: {
-        fullName: 'ThS. Nguyễn Thị Mai',
-        email: 'admin.hr@university.edu.vn',
-        role: 'ke_toan',
-        departmentName: 'Phòng Hành Chính - Tổng Hợp',
-        roles: [{ role: 'ke_toan', scope: 'toan_truong' }],
-      },
-      pho_khoa: {
-        fullName: 'TS. Đặng Tiến Hưng',
-        email: 'phokhoa.cntt@university.edu.vn',
-        role: 'pho_khoa',
-        departmentName: 'Khoa Công Nghệ Thông Tin & CĐS',
-        roles: [{ role: 'pho_khoa', scope: 'khoa' }],
+        ho_ten: 'Phạm Thu Hà',
+        email: 'ketoan@ntu.edu.vn',
+        vai_tro_chinh: 'ke_toan',
+        ten_phong_ban: 'Phòng Kế toán - Tài chính',
+        danh_sach_vai_tro: [{ ma_vai_tro: 'ke_toan', pham_vi: 'toan_truong' }],
       },
     };
 

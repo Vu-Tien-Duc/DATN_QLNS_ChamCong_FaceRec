@@ -110,19 +110,19 @@ const processFaceAttendance = async ({
 
     return {
       success: true,
-      matched: true,
-      userId,
-      user: {
+      khop_khuon_mat: true,
+      nguoi_dung_id: userId,
+      nguoi_dung: {
         id: userId,
-        fullName: user.ho_ten,
+        ho_ten: user.ho_ten,
         email: user.email,
-        role: user.vai_tro_chinh,
-        avatar: user.anh_dai_dien,
-        staffCode: user.ma_can_bo || '',
-        department: departmentName,
+        vai_tro_chinh: user.vai_tro_chinh,
+        anh_dai_dien: user.anh_dai_dien,
+        ma_can_bo: user.ma_can_bo || '',
+        ten_phong_ban: departmentName,
       },
-      similarity: aiResult.similarity,
-      confidence: aiResult.confidence,
+      do_tuong_dong: aiResult.similarity,
+      do_tin_cay: aiResult.confidence,
       message: `Đã nhận diện: ${user.ho_ten}`,
     };
   }
@@ -289,22 +289,22 @@ const processFaceAttendance = async ({
 
     return {
       success: true,
-      action: queueResponse.queued ? 'QUEUED' : queueResponse.result?.action || actionType,
-      queued: queueResponse.queued,
-      jobId: queueResponse.jobId,
+      hanh_dong: queueResponse.queued ? 'QUEUED' : queueResponse.result?.action || actionType,
+      da_vao_hang_doi: queueResponse.queued,
+      ma_cong_viec: queueResponse.jobId,
       message: queueResponse.message,
-      user: {
+      nguoi_dung: {
         id: userId,
-        fullName: user.ho_ten,
-        staffCode: user.ma_can_bo,
-        role: user.vai_tro_chinh,
-        avatar: user.anh_dai_dien,
+        ho_ten: user.ho_ten,
+        ma_can_bo: user.ma_can_bo,
+        vai_tro_chinh: user.vai_tro_chinh,
+        anh_dai_dien: user.anh_dai_dien,
       },
-      similarity: aiResult.similarity,
-      livenessScore: aiResult.liveness_score,
-      isFraud: geoCheck.isFraud,
-      fraudReason: geoCheck.fraudReason,
-      result: queueResponse.result,
+      do_tin_cay_ai: aiResult.similarity,
+      diem_mat_that: aiResult.liveness_score,
+      gian_lan: geoCheck.isFraud,
+      ly_do_gian_lan: geoCheck.fraudReason,
+      ket_qua: queueResponse.result,
     };
   }
 
@@ -503,19 +503,19 @@ const processFaceAttendance = async ({
     const { emitNewPunch, emitAttendanceUpdate, emitFraudAlert } = require('../../config/socket');
     emitNewPunch({
       id: attendanceRecord.id,
-      userId,
-      userName: user.ho_ten || 'Cán bộ',
-      staffCode: user.ma_can_bo,
-      avatar: user.anh_dai_dien,
-      departmentId: user.don_vi_chinh_id,
-      punchType: actionType,
-      method: 'face_ai',
-      punchTime: new Date(),
-      status: attendanceRecord.trang_thai,
-      confidenceScore: aiResult.similarity,
-      isFraud: geoCheck.isFraud,
-      fraudReason: geoCheck.fraudReason,
-      evidenceUrl: storedEvidencePath,
+      nguoi_dung_id: userId,
+      ho_ten: user.ho_ten || 'Cán bộ',
+      ma_can_bo: user.ma_can_bo,
+      anh_dai_dien: user.anh_dai_dien,
+      don_vi_chinh_id: user.don_vi_chinh_id,
+      loai_quet: actionType,
+      phuong_thuc: 'face_ai',
+      thoi_gian_quet: new Date(),
+      trang_thai: attendanceRecord.trang_thai,
+      do_tin_cay_ai: aiResult.similarity,
+      gian_lan: geoCheck.isFraud,
+      ly_do_gian_lan: geoCheck.fraudReason,
+      anh_minh_chung: storedEvidencePath,
     });
     emitAttendanceUpdate({
       ...(attendanceRecord.toJSON ? attendanceRecord.toJSON() : attendanceRecord),
@@ -545,10 +545,6 @@ const processFaceAttendance = async ({
     ly_do_gian_lan: geoCheck.fraudReason,
     diem_tin_cay: aiResult.similarity,
     diem_nguoi_that: aiResult.liveness_score,
-    similarity: aiResult.similarity,
-    livenessScore: aiResult.liveness_score,
-    isFraud: geoCheck.isFraud,
-    fraudReason: geoCheck.fraudReason,
     record: attendanceRecord,
   };
 };

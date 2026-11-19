@@ -46,18 +46,19 @@ export interface DetectPoseResponse {
 export interface RegistrationStatusResponse {
   success: boolean;
   data: {
-    userId: string;
-    fullName: string;
+    nguoi_dung_id: string;
+    ho_ten: string;
     email: string;
-    isFaceRegistered: boolean;
-    faceRegisteredAt?: string | null;
-    facePhoto?: string | null;
-    sampleAngles?: string[];
-    sampleCount?: number;
-    embeddingModel?: string;
-    vectorDimension?: number | null;
-    isDefaultFace?: boolean;
-    faceStatus?: string | null;
+    ma_can_bo?: string;
+    da_dang_ky_face: boolean;
+    ngay_dang_ky?: string | null;
+    anh_dai_dien?: string | null;
+    cac_goc_chup?: string[];
+    so_luong_mau?: number;
+    mo_hinh_ai?: string;
+    so_chieu_vector?: number | null;
+    mac_dinh?: boolean;
+    trang_thai_khuon_mat?: string | null;
   };
 }
 
@@ -65,12 +66,13 @@ export interface EnrollResponse {
   success: boolean;
   message: string;
   data?: {
-    userId: string;
-    fullName: string;
-    sampleAngles: string[];
-    sampleCount: number;
-    facePhoto?: string;
-    templateId?: string;
+    nguoi_dung_id: string;
+    ho_ten: string;
+    email?: string;
+    da_dang_ky_face?: boolean;
+    cac_goc_chup: string[];
+    so_luong_mau: number;
+    mau_khuon_mat_id?: string;
   };
 }
 
@@ -143,19 +145,19 @@ export const faceApi = {
    */
   async testRecognition(imageBlob: Blob): Promise<{
     success: boolean;
-    matched: boolean;
+    khop_khuon_mat: boolean;
     message: string;
-    similarity?: number;
-    confidence?: number;
-    userId?: string;
-    user?: {
-      _id: string;
-      fullName: string;
+    do_tuong_dong?: number;
+    do_tin_cay?: number;
+    nguoi_dung_id?: string;
+    nguoi_dung?: {
+      id: string;
+      ho_ten: string;
       email: string;
-      role: string;
-      avatar?: string;
-      staffCode?: string;
-      department?: string;
+      vai_tro_chinh: string;
+      anh_dai_dien?: string;
+      ma_can_bo?: string;
+      ten_phong_ban?: string;
     };
     errorCode?: string;
   }> {

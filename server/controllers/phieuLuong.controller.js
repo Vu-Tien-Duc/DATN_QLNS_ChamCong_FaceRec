@@ -133,7 +133,7 @@ const getPayrollById = async (req, res, next) => {
 // GET /api/phieu-luong/cua-toi - Xem phiếu lương của chính mình
 const getMyPayroll = async (req, res, next) => {
   try {
-    const role = String(req.user?.role || req.user?.primaryRole || '').toLowerCase();
+    const role = String(req.user?.vai_tro_chinh || '').toLowerCase();
     if (role === 'admin') {
       return sendError(
         res,

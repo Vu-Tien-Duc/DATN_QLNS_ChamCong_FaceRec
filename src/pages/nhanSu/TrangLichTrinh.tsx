@@ -42,6 +42,8 @@ import { Button } from '../../components/chung/NutBam';
 import { hasRole } from '../../utils/phanQuyen';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
+import { ThanhPhanTrang } from '../../components/chung/ThanhPhanTrang';
 import { ModalNgoaiLeLichTrinh } from './components/ModalNgoaiLeLichTrinh';
 
 // =============================================================================
@@ -53,7 +55,35 @@ export type ScheduleExceptionStatus = 'nghi' | 'day_bu' | 'doi_ca' | 'huy';
 export type ViewMode = 'matrix' | 'lecturer' | 'table' | 'calendar';
 
 interface ScheduleItem {
+  id?: string;
   _id: string;
+  nguoi_dung_id?: string;
+  nguoi_dung?: {
+    id?: string;
+    _id?: string;
+    ho_ten?: string;
+    email?: string;
+    ma_can_bo?: string;
+    don_vi_chinh?: any;
+    vai_tro_chinh?: string;
+  } | string;
+  ca_id?: string;
+  ca?: {
+    id?: string;
+    _id?: string;
+    ten_ca?: string;
+    gio_bat_dau?: string;
+    gio_ket_thuc?: string;
+    nguong_di_muon_phut?: number;
+  } | string;
+  mon_hoc_id?: string;
+  mon_hoc?: {
+    id?: string;
+    _id?: string;
+    ten_mon?: string;
+    ma_mon?: string;
+    so_tin_chi?: number;
+  } | string;
   userId?: {
     _id: string;
     fullName?: string;
@@ -231,22 +261,22 @@ function resolveSubject(
   let target: any = null;
 
   if (typeof subjectRaw === 'object' && subjectRaw !== null) {
-    if (subjectRaw.name || subjectRaw.ten_mon) {
+    if (subjectRaw.ten_mon || subjectRaw.name) {
       target = subjectRaw;
     } else {
-      const sId = subjectRaw._id || subjectRaw.id;
+      const sId = subjectRaw.id || subjectRaw._id;
       if (sId) {
-        target = subjectList.find((s) => String(s._id) === String(sId));
+        target = subjectList.find((s) => String(s.id || s._id) === String(sId));
       }
     }
   } else if (typeof subjectRaw === 'string') {
-    target = subjectList.find((s) => String(s._id) === String(subjectRaw));
+    target = subjectList.find((s) => String(s.id || s._id) === String(subjectRaw));
   }
 
   if (!target) return null;
-  const name = target.name || target.ten_mon || '';
-  const code = target.code || target.ma_mon || '';
-  const credits = target.credits || target.so_tin_chi;
+  const name = target.ten_mon || target.name || '';
+  const code = target.ma_mon || target.code || '';
+  const credits = target.so_tin_chi ?? target.credits;
 
   if (!name && !code) return null;
   return { name, code, credits };
@@ -274,50 +304,99 @@ function calculateEndDateFromWeeks(startDateStr: string, weekNumbers: number[]):
   return `${y}-${m}-${day}`;
 }
 
+function formatWeeksSummary(weeks?: number[]): string {
+  if (!Array.isArray(weeks) || weeks.length === 0) return 'Chưa thiết lập';
+  const sorted = [...new Set(weeks.map(Number).filter((n) => n >= 1 && n <= 53))].sort((a, b) => a - b);
+  if (sorted.length === 0) return 'Chưa thiết lập';
+  const ranges: string[] = [];
+  let start = sorted[0];
+  let end = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === end + 1) {
+      end = sorted[i];
+    } else {
+      ranges.push(start === end ? `${start}` : `${start}-${end}`);
+      start = sorted[i];
+      end = sorted[i];
+    }
+  }
+  ranges.push(start === end ? `${start}` : `${start}-${end}`);
+  return ranges.join(', ');
+}
+
+function parseWeeksInput(input: string): number[] {
+  const result = new Set<number>();
+  for (const part of input.split(',')) {
+    const token = part.trim();
+    if (!token) continue;
+    const rangeMatch = token.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (rangeMatch) {
+      const a = Math.max(1, Math.min(53, Number(rangeMatch[1])));
+      const b = Math.max(1, Math.min(53, Number(rangeMatch[2])));
+      const [lo, hi] = a <= b ? [a, b] : [b, a];
+      for (let w = lo; w <= hi; w++) result.add(w);
+    } else if (/^\d+$/.test(token)) {
+      const n = Number(token);
+      if (n >= 1 && n <= 53) result.add(n);
+    }
+  }
+  return Array.from(result).sort((a, b) => a - b);
+}
+
 function matchScheduleToShift(item: ScheduleItem, shift: ShiftItem): boolean {
   // 1. Direct shiftId match (Bắt buộc phải ưu tiên tuyệt đối nếu có shiftId)
-  const itemShiftId = typeof item.shiftId === 'object' ? item.shiftId?._id : item.shiftId;
-  if (itemShiftId) {
-    return String(itemShiftId) === String(shift._id);
+  const itemShiftId = typeof item.ca === 'object' && item.ca?.id
+    ? item.ca.id
+    : typeof item.shiftId === 'object'
+    ? (item.shiftId as any)?.id || (item.shiftId as any)?._id
+    : item.shiftId;
+  const shiftIdVal = (shift as any).id || shift._id;
+  if (itemShiftId && shiftIdVal) {
+    return String(itemShiftId) === String(shiftIdVal);
   }
 
   // 2. Name & Time Matching (Chỉ dùng khi item KHÔNG có shiftId)
-  const shiftNameLower = (shift.name || '').toLowerCase();
-  const sStart = item.startTime || '07:00';
+  const shiftNameLower = (shift.name || (shift as any).ten_ca || '').toLowerCase();
+  const sStart = item.gio_bat_dau || item.startTime || '07:00';
+  const sEnd = item.gio_ket_thuc || item.endTime;
   const startHour = parseInt(sStart.split(':')[0], 10) || 7;
+  const shiftStartTime = (shift as any).gio_bat_dau || shift.startTime;
+  const shiftEndTime = (shift as any).gio_ket_thuc || shift.endTime;
 
-  if (item.startTime === shift.startTime && item.endTime === shift.endTime) return true;
+  if (sStart === shiftStartTime && sEnd === shiftEndTime) return true;
 
   // Administrative shift: 08:00 to 17:00
   if (shiftNameLower.includes('hành chính') || shiftNameLower.includes('hanh chinh')) {
-    if (startHour === 8 && item.endTime === '17:00') return true;
+    if (startHour === 8 && sEnd === '17:00') return true;
     return false;
   }
 
   // Evening shift (ưu tiên xét ca tối trước)
   if (shiftNameLower.includes('tối') || shiftNameLower.includes('toi')) {
     if (startHour >= 17) return true;
-    if (item.startPeriod && item.startPeriod >= 9) return true;
+    const startPeriodVal = item.tiet_bat_dau || item.startPeriod;
+    if (startPeriodVal && startPeriodVal >= 9) return true;
     return false;
   }
 
   // Afternoon shift
   if (shiftNameLower.includes('chiều') || shiftNameLower.includes('chieu')) {
     if (startHour >= 12 && startHour < 17) return true;
-    if (item.startPeriod && item.startPeriod >= 5 && item.startPeriod <= 8) return true;
+    const startPeriodVal = item.tiet_bat_dau || item.startPeriod;
+    if (startPeriodVal && startPeriodVal >= 5 && startPeriodVal <= 8) return true;
     return false;
   }
 
   // Morning shift
   if (shiftNameLower.includes('sáng') || shiftNameLower.includes('sang')) {
     if (startHour < 12 && startHour !== 8) return true;
-    if (item.startPeriod && item.startPeriod <= 4 && startHour < 12) return true;
+    const startPeriodVal = item.tiet_bat_dau || item.startPeriod;
+    if (startPeriodVal && startPeriodVal <= 4 && startHour < 12) return true;
     return false;
   }
 
   return false;
 }
-
 
 interface ScheduleActiveStatus {
   active: boolean;
@@ -331,24 +410,49 @@ function isScheduleActiveOnDate(
   targetIsoDate: string,
   targetWeekday: number
 ): ScheduleActiveStatus {
-  // 1. Nếu là Lịch Dạy Bù (DAY_BU): Chỉ xuất hiện đúng vào ngày bù
-  if (item.scheduleType === 'day_bu') {
-    const makeupIso = item.makeupDate ? toIsoDateString(new Date(item.makeupDate)) : '';
+  const exceptions = item.ngoai_le || item.exceptions || [];
+
+  // 1. Ngoại lệ dạy bù vào đúng ngày targetIsoDate
+  const makeupExc = exceptions.find((e: any) => {
+    if (e.trang_thai !== 'day_bu' && e.status !== 'day_bu') return false;
+    const mDate = e.ngay_day_bu || e.makeupDate;
+    return mDate ? toIsoDateString(new Date(mDate)) === targetIsoDate : false;
+  });
+  if (makeupExc) {
+    return { active: true, isMakeup: true, exceptionReason: makeupExc.ly_do || makeupExc.reason || 'Dạy bù' };
+  }
+
+  // 2. Nếu là Lịch Dạy Bù (day_bu): Chỉ xuất hiện đúng vào ngày bù hoặc khoảng [startDate, endDate]
+  const sType = item.loai_lich || item.scheduleType;
+  if (sType === 'day_bu') {
+    const makeupDateVal = item.ngay_day_bu || item.makeupDate;
+    const makeupIso = makeupDateVal ? toIsoDateString(new Date(makeupDateVal)) : '';
     if (makeupIso && makeupIso === targetIsoDate) {
+      return { active: true, isMakeup: true };
+    }
+    const startIsoOnly = (item.ngay_bat_dau || item.startDate)
+      ? toIsoDateString(new Date(item.ngay_bat_dau || item.startDate!))
+      : '';
+    const itemWeekdayOnly = item.thu_trong_tuan ?? item.weekday ?? 1;
+    if (!makeupIso && startIsoOnly === targetIsoDate && itemWeekdayOnly === targetWeekday) {
       return { active: true, isMakeup: true };
     }
     return { active: false };
   }
 
-  // 2. Lịch Chính Khóa: Thứ trong tuần phải khớp
-  const itemWeekday = item.weekday ?? item.thu_trong_tuan ?? 1;
+  // 3. Lịch Chính Khóa: Thứ trong tuần phải khớp
+  const itemWeekday = item.thu_trong_tuan ?? item.weekday ?? 1;
   if (itemWeekday !== targetWeekday) {
     return { active: false };
   }
 
-  // 3. Kiểm tra khoảng ngày hiệu lực [startDate, endDate]
-  const startIso = item.startDate ? toIsoDateString(new Date(item.startDate)) : '';
-  const endIso = item.endDate ? toIsoDateString(new Date(item.endDate)) : '';
+  // 4. Kiểm tra khoảng ngày hiệu lực [startDate, endDate]
+  const startIso = (item.ngay_bat_dau || item.startDate)
+    ? toIsoDateString(new Date(item.ngay_bat_dau || item.startDate!))
+    : '';
+  const endIso = (item.ngay_ket_thuc || item.endDate)
+    ? toIsoDateString(new Date(item.ngay_ket_thuc || item.endDate!))
+    : '';
 
   if (startIso && targetIsoDate < startIso) {
     return { active: false };
@@ -357,18 +461,30 @@ function isScheduleActiveOnDate(
     return { active: false };
   }
 
-  // 4. Kiểm tra ngoại lệ (Báo nghỉ) vào ngày targetIsoDate
-  const exceptions = item.exceptions || item.ngoai_le || [];
+  // 5. Kiểm tra danh sách tuần học (nếu có)
+  const weekNums = Array.isArray(item.danh_sach_tuan || item.weekNumbers)
+    ? (item.danh_sach_tuan || item.weekNumbers)!
+    : [];
+  if (startIso && weekNums.length > 0) {
+    const diffMs = new Date(targetIsoDate).getTime() - new Date(startIso).getTime();
+    const weekNumber = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1;
+    if (!weekNums.includes(weekNumber)) {
+      return { active: false };
+    }
+  }
+
+  // 6. Kiểm tra ngoại lệ (Báo nghỉ / Hủy) vào ngày targetIsoDate
   const exc = exceptions.find((e: any) => {
-    const eDate = e.date ? toIsoDateString(new Date(e.date)) : '';
+    const eDate = e.ngay || e.date ? toIsoDateString(new Date(e.ngay || e.date)) : '';
     return eDate === targetIsoDate;
   });
 
-  if (exc && (exc.status === 'nghi' || exc.status === 'huy')) {
+  const excStatus = exc?.trang_thai || exc?.status;
+  if (exc && (excStatus === 'nghi' || excStatus === 'huy')) {
     return {
-      active: true,
+      active: false,
       isException: true,
-      exceptionReason: exc.reason || 'Báo nghỉ',
+      exceptionReason: exc.ly_do || exc.reason || 'Báo nghỉ',
     };
   }
 
@@ -382,7 +498,7 @@ function isScheduleActiveOnDate(
 export const Schedules: React.FC = () => {
   const { user } = useAuthStore();
   const isAdminOrDean = useMemo(() => {
-    return hasRole(user, ['admin', 'bgh', 'truongkhoa', 'phokhoa', 'daotao']);
+    return hasRole(user, ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao']);
   }, [user]);
 
   // 1. View Mode: 'matrix' (Thời khóa biểu tuần) | 'lecturer' (Theo giảng viên) | 'table' (Dạng bảng) | 'calendar' (Lịch tháng)
@@ -457,12 +573,18 @@ export const Schedules: React.FC = () => {
     scheduleType: 'chinh_khoa' as ScheduleType,
     makeupDate: '',
     weekNumbers: Array.from({ length: 15 }, (_, i) => i + 1),
-    academicYear: '2026-2027',
-    semester: 1,
+    academicYear: (() => {
+      const m = new Date().getMonth() + 1;
+      const y = new Date().getFullYear();
+      const startY = m >= 8 ? y : y - 1;
+      return `${startY}-${startY + 1}`;
+    })(),
+    semester: new Date().getMonth() + 1 >= 8 ? 1 : 2,
     latitude: 20.9752,
     longitude: 105.7628,
     radiusMeters: 100,
   });
+  const [weeksInput, setWeeksInput] = useState<string>('1-15');
   const [formSubmitting, setFormSubmitting] = useState<boolean>(false);
   const [conflictError, setConflictError] = useState<string | null>(null);
 
@@ -482,7 +604,7 @@ export const Schedules: React.FC = () => {
   const loadSchedules = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await scheduleApi.getSchedules({ limit: 1000 });
+      const res = await scheduleApi.getSchedules({ gioi_han: 1000 });
       const list = extractArray<ScheduleItem>(res);
       setSchedules(list);
     } catch (err: any) {
@@ -496,10 +618,11 @@ export const Schedules: React.FC = () => {
 
   const loadMeta = useCallback(async () => {
     try {
+      const canFetchUsers = hasRole(user, ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']);
       const [shiftsRes, subjectsRes, usersRes, deptsRes] = await Promise.all([
         scheduleApi.getShifts().catch(() => ({ data: [] })),
         scheduleApi.getSubjects().catch(() => ({ data: [] })),
-        scheduleApi.getUsers({ limit: 200 }).catch(() => ({ data: [] })),
+        canFetchUsers ? scheduleApi.getUsers({ gioi_han: 100 }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
         apiClient.get('/phong-ban').catch(() => ({ data: [] })),
       ]);
 
@@ -517,7 +640,7 @@ export const Schedules: React.FC = () => {
     } catch (err) {
       console.error('Error fetching meta:', err);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     loadMeta();
@@ -683,6 +806,25 @@ export const Schedules: React.FC = () => {
     departments,
     getUserDepartmentName,
   ]);
+
+  const scheduleStats = useMemo(() => {
+    const total = filteredSchedules.length;
+    const makeupCount = filteredSchedules.filter((s) => s.scheduleType === 'day_bu').length;
+    const regularCount = total - makeupCount;
+    const lecturerIds = new Set(
+      filteredSchedules
+        .map((s) => (typeof s.userId === 'object' ? s.userId?._id : s.userId))
+        .filter(Boolean)
+    );
+    const regularRate = total > 0 ? Math.round((regularCount / total) * 100) : 0;
+    return {
+      total,
+      regularCount,
+      makeupCount,
+      lecturerCount: lecturerIds.size,
+      regularRate,
+    };
+  }, [filteredSchedules]);
 
   const hasActiveFilters =
     (selectedShiftFilter && selectedShiftFilter !== 'all') ||
@@ -858,6 +1000,7 @@ export const Schedules: React.FC = () => {
       longitude: 105.7628,
       radiusMeters: 100,
     });
+    setWeeksInput(formatWeeksSummary(defaultWeeks));
     setIsFormModalOpen(true);
   };
 
@@ -900,6 +1043,7 @@ export const Schedules: React.FC = () => {
       longitude: item.longitude ?? item.kinh_do ?? 105.7628,
       radiusMeters: item.radiusMeters ?? item.ban_kinh_met ?? 100,
     });
+    setWeeksInput(formatWeeksSummary(editWeeks));
     setIsDetailModalOpen(false);
     setIsFormModalOpen(true);
   };
@@ -952,29 +1096,35 @@ export const Schedules: React.FC = () => {
       return;
     }
 
+    const parsedWeeks = parseWeeksInput(weeksInput);
+    if (parsedWeeks.length === 0) {
+      toast.error('Vui lòng nhập tuần học hợp lệ (VD: 1-15 hoặc 1-7, 9-16)');
+      return;
+    }
+
     setFormSubmitting(true);
     try {
       const payload: any = {
-        userId: formData.userId,
-        shiftId: formData.shiftId || undefined,
-        subjectId: formData.subjectId || undefined,
-        roomId: formData.roomId.trim(),
-        weekday: Number(formData.weekday),
-        startPeriod: Number(formData.startPeriod),
-        periodCount: Number(formData.periodCount),
-        startTime: formData.startTime,
-        endTime: formData.endTime,
-        startDate: formData.startDate,
-        endDate: formData.endDate,
-        isRecurring: formData.isRecurring,
-        scheduleType: formData.scheduleType,
-        makeupDate: formData.makeupDate || undefined,
-        weekNumbers: formData.weekNumbers,
-        academicYear: formData.academicYear,
-        semester: Number(formData.semester),
-        latitude: Number(formData.latitude),
-        longitude: Number(formData.longitude),
-        radiusMeters: Number(formData.radiusMeters),
+        nguoi_dung_id: formData.userId,
+        ca_id: formData.shiftId || undefined,
+        mon_hoc_id: formData.subjectId || undefined,
+        phong_hoc: formData.roomId.trim(),
+        thu_trong_tuan: Number(formData.weekday),
+        tiet_bat_dau: Number(formData.startPeriod),
+        so_tiet: Number(formData.periodCount),
+        gio_bat_dau: formData.startTime,
+        gio_ket_thuc: formData.endTime,
+        ngay_bat_dau: formData.startDate,
+        ngay_ket_thuc: formData.endDate,
+        lap_lai_hang_tuan: formData.isRecurring,
+        loai_lich: formData.scheduleType,
+        ngay_day_bu: formData.makeupDate || undefined,
+        danh_sach_tuan: parsedWeeks,
+        nam_hoc: formData.academicYear,
+        hoc_ky: Number(formData.semester),
+        vi_do: Number(formData.latitude),
+        kinh_do: Number(formData.longitude),
+        ban_kinh_met: Number(formData.radiusMeters),
       };
 
       if (isEditing && selectedSchedule) {
@@ -1023,10 +1173,10 @@ export const Schedules: React.FC = () => {
     setExceptionSubmitting(true);
     try {
       await scheduleApi.addException(selectedSchedule._id, {
-        date: exceptionData.date,
-        status: exceptionData.status,
-        reason: exceptionData.reason || 'Báo nghỉ / bù từ giao diện lịch trình',
-        makeupDate: String(exceptionData.status).toLowerCase() === 'day_bu' ? exceptionData.makeupDate : undefined,
+        ngay: exceptionData.date,
+        trang_thai: exceptionData.status,
+        ly_do: exceptionData.reason || 'Báo nghỉ / bù từ giao diện lịch trình',
+        ngay_day_bu: String(exceptionData.status).toLowerCase() === 'day_bu' ? exceptionData.makeupDate : undefined,
       });
 
       toast.success('Ghi nhận ngoại lệ buổi học thành công');
@@ -1328,7 +1478,7 @@ export const Schedules: React.FC = () => {
                                 const subName = subInfo?.name;
                                 const subCode = subInfo?.code;
                                 const lec = typeof item.userId === 'object' ? item.userId : null;
-                                const teacherName = lec?.fullName || 'Vũ Tiến Đức';
+                                const teacherName = lec?.fullName || 'Chưa phân công';
                                 const deptName = getUserDepartmentName(lec);
                                 const roomName = item.roomId || 'Phòng học';
                                 const dateStatus = isScheduleActiveOnDate(item, day.isoDate, day.weekday);
@@ -1418,9 +1568,20 @@ export const Schedules: React.FC = () => {
                                       <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold text-[10px] tracking-tight shrink-0 whitespace-nowrap">
                                         {item.startTime} - {item.endTime}
                                       </span>
-                                      <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold whitespace-nowrap shrink-0 ${cardStyle.badgeColor}`}>
-                                        {item.scheduleType === 'day_bu' ? 'Dạy bù' : 'Cả kỳ'}
-                                      </span>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        {Array.isArray(item.exceptions) && item.exceptions.length > 0 && (
+                                          <span className="px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 text-[9px] font-bold">
+                                            {item.exceptions.length} NL
+                                          </span>
+                                        )}
+                                        <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold whitespace-nowrap shrink-0 ${cardStyle.badgeColor}`}>
+                                          {item.scheduleType === 'day_bu'
+                                            ? 'Dạy bù'
+                                            : Array.isArray(item.weekNumbers) && item.weekNumbers.length > 0
+                                              ? `T${formatWeeksSummary(item.weekNumbers)}`
+                                              : 'Cả kỳ'}
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
                                 );
@@ -1607,8 +1768,16 @@ export const Schedules: React.FC = () => {
                                     </div>
                                     <div className="flex items-center justify-between text-[9px] mt-1 text-slate-400 font-mono">
                                       <span>{item.startTime} - {item.endTime}</span>
-                                      <span className="font-sans font-bold text-blue-600">{shName}</span>
+                                      <span className="font-sans font-bold text-blue-600 truncate">
+                                        {shName}
+                                        {Array.isArray(item.exceptions) && item.exceptions.length > 0 ? ` • ${item.exceptions.length} NL` : ''}
+                                      </span>
                                     </div>
+                                    {Array.isArray(item.weekNumbers) && item.weekNumbers.length > 0 && (
+                                      <div className="text-[9px] text-slate-400 font-mono truncate mt-0.5">
+                                        Tuần: {formatWeeksSummary(item.weekNumbers)}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })
@@ -1687,7 +1856,7 @@ export const Schedules: React.FC = () => {
                 const subInfo = resolveSubject(item.subjectId, subjects);
                 const lec = typeof item.userId === 'object' ? item.userId : null;
                 const sh = typeof item.shiftId === 'object' ? item.shiftId : null;
-                const teacherName = lec?.fullName || 'Vũ Tiến Đức';
+                const teacherName = lec?.fullName || 'Chưa phân công';
                 const deptName = getUserDepartmentName(lec);
                 const roomName = item.roomId || 'Phòng học';
                 const subName = subInfo?.name || 'Phân công công tác chung';
@@ -1738,6 +1907,11 @@ export const Schedules: React.FC = () => {
                         <Clock className="w-3 h-3 text-slate-400 shrink-0" />
                         {item.startTime} - {item.endTime}
                       </div>
+                      {Array.isArray(item.weekNumbers) && item.weekNumbers.length > 0 && (
+                        <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                          Tuần: {formatWeeksSummary(item.weekNumbers)}
+                        </div>
+                      )}
                     </td>
 
                     {/* Shift */}
@@ -1757,15 +1931,22 @@ export const Schedules: React.FC = () => {
 
                     {/* Type */}
                     <td className="p-3.5 text-center">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          item.scheduleType === 'day_bu'
-                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300'
-                            : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300'
-                        }`}
-                      >
-                        {item.scheduleType === 'day_bu' ? 'Dạy bù' : 'Chính khóa'}
-                      </span>
+                      <div className="flex flex-col items-center gap-1">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            item.scheduleType === 'day_bu'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300'
+                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300'
+                          }`}
+                        >
+                          {item.scheduleType === 'day_bu' ? 'Dạy bù' : 'Chính khóa'}
+                        </span>
+                        {Array.isArray(item.exceptions) && item.exceptions.length > 0 && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                            {item.exceptions.length} ngoại lệ
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Action buttons */}
@@ -1808,46 +1989,19 @@ export const Schedules: React.FC = () => {
       </div>
 
       {/* Pagination Footer */}
-      <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400">
-        <div className="flex items-center gap-2">
-          <span>Hiển thị</span>
-          <select
-            value={tablePageSize}
-            onChange={(e) => {
-              setTablePageSize(Number(e.target.value));
-              setTablePage(1);
-            }}
-            className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold"
-          >
-            <option value={10}>10</option>
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-          </select>
-          <span>/ trang • Tổng số <strong>{filteredSchedules.length}</strong> bản ghi</span>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            disabled={tablePage <= 1}
-            onClick={() => setTablePage((p) => Math.max(1, p - 1))}
-            className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            Trước
-          </button>
-          <span className="px-2 font-bold text-slate-800 dark:text-slate-200">
-            Trang {tablePage} / {totalPages}
-          </span>
-          <button
-            type="button"
-            disabled={tablePage >= totalPages}
-            onClick={() => setTablePage((p) => Math.min(totalPages, p + 1))}
-            className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            Sau
-          </button>
-        </div>
-      </div>
+      <ThanhPhanTrang
+        currentPage={tablePage}
+        totalPages={totalPages}
+        totalItems={filteredSchedules.length}
+        pageSize={tablePageSize}
+        pageSizeOptions={[10, 25, 50]}
+        itemLabel="lịch phân công"
+        onPageChange={setTablePage}
+        onPageSizeChange={(newSize) => {
+          setTablePageSize(newSize);
+          setTablePage(1);
+        }}
+      />
     </div>
   );
 
@@ -2017,11 +2171,47 @@ export const Schedules: React.FC = () => {
       />
 
       {/* =========================================================================
+          KPI SUMMARY CARDS
+         ========================================================================= */}
+      <CompactStatsBar
+        items={[
+          {
+            label: 'Tổng lịch giảng dạy',
+            value: scheduleStats.total,
+            unit: 'lịch',
+            subtext: hasActiveFilters ? 'Theo bộ lọc hiện tại' : 'Toàn học kỳ',
+            tone: 'neutral',
+          },
+          {
+            label: 'Lịch chính khóa',
+            value: scheduleStats.regularCount,
+            badge: `${scheduleStats.regularRate}%`,
+            progress: scheduleStats.regularRate,
+            tone: 'brand',
+          },
+          {
+            label: 'Lịch dạy bù',
+            value: scheduleStats.makeupCount,
+            unit: 'buổi',
+            subtext: 'Bù lịch nghỉ / đổi ca',
+            tone: 'warning',
+          },
+          {
+            label: 'Giảng viên phụ trách',
+            value: scheduleStats.lecturerCount,
+            unit: 'GV',
+            subtext: 'Đang có lịch phân công',
+            tone: 'success',
+          },
+        ]}
+      />
+
+      {/* =========================================================================
           UNIFIED SCHEDULE WORKSPACE CARD (TABS + FILTERS + WEEK/DAY NAV + VIEW)
          ========================================================================= */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
         {/* Hàng 1: Chế độ xem + Điều hướng tuần + Độ rộng */}
-        <div className="p-3 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
+        <div className="p-3.5 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/70 dark:border-slate-700/70">
             <button
               type="button"
@@ -2402,19 +2592,19 @@ export const Schedules: React.FC = () => {
 
           {/* Filter 4: TÌM KIẾM TỪ KHÓA (Môn học, Giảng viên, Phòng) */}
           <div className="relative min-w-[200px] flex-1 max-w-xs">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
               placeholder="Tìm môn học, phòng, cán bộ..."
-              className="w-full pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-850 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+              className="w-full h-9 pl-9 pr-8 text-xs rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none transition-all"
             />
             {searchKeyword && (
               <button
                 type="button"
                 onClick={() => setSearchKeyword('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -2499,7 +2689,7 @@ export const Schedules: React.FC = () => {
       {isFormModalOpen && (
         <Portal>
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 w-full max-w-2xl overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 w-full max-w-2xl overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div>
@@ -2881,6 +3071,57 @@ export const Schedules: React.FC = () => {
                 </div>
               </div>
 
+              {/* Tuần học áp dụng */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    {(() => {
+                      const activeWeeks = parseWeeksInput(weeksInput);
+                      const displayWeeks = activeWeeks.length > 0 ? activeWeeks : formData.weekNumbers;
+                      return `Tuần học áp dụng (${displayWeeks.length} tuần: ${formatWeeksSummary(displayWeeks)})`;
+                    })()}
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const weeks15 = Array.from({ length: 15 }, (_, i) => i + 1);
+                        setFormData({ ...formData, weekNumbers: weeks15 });
+                        setWeeksInput('1-15');
+                      }}
+                      className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-50 hover:text-blue-600"
+                    >
+                      1–15 tuần
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const weeks18 = Array.from({ length: 18 }, (_, i) => i + 1);
+                        setFormData({ ...formData, weekNumbers: weeks18 });
+                        setWeeksInput('1-18');
+                      }}
+                      className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-50 hover:text-blue-600"
+                    >
+                      1–18 tuần
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  value={weeksInput}
+                  onChange={(e) => setWeeksInput(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseWeeksInput(weeksInput);
+                    if (parsed.length > 0) {
+                      setFormData({ ...formData, weekNumbers: parsed });
+                      setWeeksInput(formatWeeksSummary(parsed));
+                    }
+                  }}
+                  placeholder="VD: 1-15 hoặc 1-7, 9-16"
+                  className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                />
+              </div>
+
               {/* Footer Buttons */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button
@@ -2928,7 +3169,7 @@ export const Schedules: React.FC = () => {
       return (
         <Portal>
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 animate-in zoom-in-95 duration-200">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 animate-in zoom-in-95 duration-200">
               {/* Header */}
               <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between bg-slate-50/60 dark:bg-slate-900/60">
                 <div className="space-y-1.5 pr-4">
@@ -2982,7 +3223,7 @@ export const Schedules: React.FC = () => {
                     <div className="space-y-1.5 pl-6 text-slate-600 dark:text-slate-300">
                       <div className="flex justify-between">
                         <span className="text-slate-400">Họ và tên:</span>
-                        <span className="font-bold text-slate-900 dark:text-slate-100">{lec?.fullName || 'Vũ Tiến Đức'}</span>
+                        <span className="font-bold text-slate-900 dark:text-slate-100">{lec?.fullName || 'Chưa phân công'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Mã cán bộ:</span>
@@ -3040,7 +3281,7 @@ export const Schedules: React.FC = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Số tín chỉ:</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{subInfo?.credits ? `${subInfo.credits} Tín chỉ` : '3 Tín chỉ'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{subInfo?.credits ? `${subInfo.credits} Tín chỉ` : '—'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Tọa độ GPS Geofence:</span>
@@ -3080,6 +3321,24 @@ export const Schedules: React.FC = () => {
                         </strong>
                       </div>
                     )}
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-400">Tuần học áp dụng: </span>
+                      <strong className="text-slate-800 dark:text-slate-200 font-mono">
+                        {formatWeeksSummary(selectedSchedule.weekNumbers)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Ngày tạo: </span>
+                      <strong className="text-slate-800 dark:text-slate-200 font-mono">
+                        {(selectedSchedule as any).createdAt ? new Date((selectedSchedule as any).createdAt).toLocaleString('vi-VN') : '—'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Cập nhật gần nhất: </span>
+                      <strong className="text-slate-800 dark:text-slate-200 font-mono">
+                        {(selectedSchedule as any).updatedAt ? new Date((selectedSchedule as any).updatedAt).toLocaleString('vi-VN') : '—'}
+                      </strong>
+                    </div>
                   </div>
                 </div>
 
@@ -3092,7 +3351,7 @@ export const Schedules: React.FC = () => {
                     </div>
                     <div className="space-y-1.5 pl-6">
                       {exceptions.map((ex: any, idx: number) => (
-                        <div key={idx} className="text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between">
+                        <div key={idx} className="text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2 flex-wrap">
                           <span>
                             Ngày {formatDateFull(ex.date)}:{' '}
                             <strong>
@@ -3106,8 +3365,14 @@ export const Schedules: React.FC = () => {
                                       ? 'Hủy buổi'
                                       : ex.status}
                             </strong>{' '}
+                            {ex.makeupDate ? `→ Bù ngày ${formatDateFull(ex.makeupDate)} ` : ''}
                             {ex.reason ? `(${ex.reason})` : ''}
                           </span>
+                          {ex.createdAt && (
+                            <span className="text-[10px] font-mono text-amber-700/80 dark:text-amber-300/80">
+                              Ghi nhận: {new Date(ex.createdAt).toLocaleDateString('vi-VN')}
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>

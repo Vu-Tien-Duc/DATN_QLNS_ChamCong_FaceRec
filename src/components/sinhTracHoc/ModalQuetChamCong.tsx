@@ -176,22 +176,22 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
         if (isCancelled) return;
 
         if (res.success) {
-          if (res.data.isFaceRegistered === false) {
+          if (res.data.da_dang_ky_face === false) {
             setIsNotRegistered(true);
             setErrorMsg('Tài khoản của bạn chưa được đăng ký mẫu khuôn mặt trong hệ thống.');
             setCheckingRegistration(false);
             return;
-          } else if (authUser && !authUser.isFaceRegistered) {
-            // Tự động đồng bộ cờ isFaceRegistered vào Zustand Store
+          } else if (authUser && !authUser.da_dang_ky_face) {
+            // Tự động đồng bộ cờ da_dang_ky_face vào Zustand Store
             useAuthStore.getState().setUser({
               ...authUser,
-              isFaceRegistered: true,
+              da_dang_ky_face: true,
             });
           }
         }
       } catch (err: any) {
         if (isCancelled) return;
-        if (!authUser?.isFaceRegistered) {
+        if (!authUser?.da_dang_ky_face) {
           setIsNotRegistered(true);
           setErrorMsg('Tài khoản của bạn chưa đăng ký khuôn mặt trong hệ thống.');
           setCheckingRegistration(false);
@@ -215,7 +215,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       isCancelled = true;
       stopCamera();
     };
-  }, [isOpen, activeMode, authUser?._id, authUser?.isFaceRegistered]);
+  }, [isOpen, activeMode, authUser?.id, authUser?.da_dang_ky_face]);
 
   // Khởi động Camera
   const startCamera = async () => {
@@ -307,7 +307,31 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       const blob = pendingBlobRef.current || (await captureHighQualityBlob());
       if (!blob) throw new Error('Không tìm thấy dữ liệu ảnh để hoàn tất.');
 
-      const coords = { lat: 21.028511, lng: 105.854167 };
+      let coords: { lat: number; lng: number } | null = null;
+      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              timeout: 2500,
+              enableHighAccuracy: true,
+              maximumAge: 60000,
+            });
+          });
+          coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        } catch {
+          // Fallback sang cấu hình khuôn viên trường
+        }
+      }
+      if (!coords) {
+        try {
+          const cfg = await attendanceApi.getCampusConfig();
+          if (typeof cfg?.lat === 'number' && typeof cfg?.lng === 'number') {
+            coords = { lat: cfg.lat, lng: cfg.lng };
+          }
+        } catch {
+          coords = { lat: 20.9752, lng: 105.7628 };
+        }
+      }
       const isCheckIn = activeMode === 'check-in';
 
       let res: any;
@@ -708,7 +732,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
     ctx.textAlign = 'center';
     const modeText = isCheckIn ? 'CHECK-IN' : 'CHECK-OUT';
     const badgeText = isFaceMismatch
-      ? `⚠️ KHÔNG KHỚP: ${authUser?.fullName ? authUser.fullName.toUpperCase() : 'CHỦ TÀI KHOẢN'}`
+      ? `⚠️ KHÔNG KHỚP: ${authUser?.ho_ten ? authUser.ho_ten.toUpperCase() : 'CHỦ TÀI KHOẢN'}`
       : `🎯 ${modeText} • ${lastPoseInfoRef.current.text}`;
     ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + 19);
 
@@ -744,37 +768,34 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       pendingBlobRef.current = blob;
       const snapshotUrl = URL.createObjectURL(blob);
 
-      // Gọi endpoint xác thực khuôn mặt
-      const formData = new FormData();
-      formData.append('image', blob, 'attendance.jpg');
-      if (authUser?._id) {
-        formData.append('employee_id', authUser._id);
-      }
-
       const isCheckIn = activeMode === 'check-in';
-      const endpoint = isCheckIn
-        ? `/face/checkin?verify_only=true&threshold=0.68&check_liveness=false${authUser?._id ? `&employee_id=${authUser._id}` : ''}`
-        : `/face/checkout?verify_only=true&threshold=0.68&check_liveness=false${authUser?._id ? `&employee_id=${authUser._id}` : ''}`;
 
       let verifySuccess = false;
       let finalMessage = '';
       let resultData: any = null;
 
       try {
-        const res = await faceApi.detectPose(blob);
-        if (res && res.face_detected) {
-          // Khuôn mặt hợp lệ
+        const res = await attendanceApi.checkInWithFace(blob, {
+          verifyOnly: true,
+          actionType: isCheckIn ? 'check_in' : 'check_out',
+          deviceId: 'MODAL_SCANNER_01',
+        });
+        if (res && res.success && res.user) {
           verifySuccess = true;
-          finalMessage = `Đã nhận diện: ${authUser?.fullName || 'Cán bộ'}`;
-          resultData = { user: authUser };
+          finalMessage = res.message || `Đã nhận diện: ${res.user.ho_ten || 'Cán bộ'}`;
+          resultData = res;
           setIsFaceMismatch(false);
           setMismatchMessage('');
         } else {
-          throw new Error('Chưa phát hiện rõ khuôn mặt');
+          throw new Error(res?.message || 'Không nhận diện được khuôn mặt trùng khớp.');
         }
       } catch (err: any) {
         setIsFaceMismatch(true);
-        setMismatchMessage('Khuôn mặt không khớp với khuôn mặt đã đăng ký của tài khoản này! Vui lòng đúng chủ tài khoản điểm danh.');
+        setMismatchMessage(
+          err?.response?.data?.message ||
+            err?.message ||
+            'Khuôn mặt không khớp với dữ liệu sinh trắc học đã đăng ký!'
+        );
         throw err;
       }
 
@@ -809,7 +830,9 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
         const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 
         const resolvedUser = resultData?.user || authUser || {};
-        const roleDisplay = extractRoleName(resolvedUser.role || (resolvedUser.roles && resolvedUser.roles[0]?.role));
+        const roleDisplay = extractRoleName(
+          resolvedUser.vai_tro_chinh || (resolvedUser.danh_sach_vai_tro && resolvedUser.danh_sach_vai_tro[0]?.ma_vai_tro)
+        );
 
         // Nhả webcam khi đã xác thực
         stopCamera();
@@ -818,10 +841,10 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
           action: activeMode,
           snapshotUrl,
           user: {
-            fullName: resolvedUser.fullName || 'Cán bộ',
+            fullName: resolvedUser.ho_ten || 'Cán bộ',
             email: resolvedUser.email,
-            avatar: resolvedUser.avatar || resolvedUser.facePhoto,
-            department: resolvedUser.departmentName || resolvedUser.department?.name || 'Vận hành',
+            avatar: resolvedUser.anh_dai_dien || resolvedUser.anh_khuon_mat,
+            department: resolvedUser.ten_phong_ban || resolvedUser.don_vi_chinh?.ten_phong_ban || 'Vận hành',
             role: roleDisplay,
           },
           timeStr,
@@ -848,7 +871,10 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
 
   return (
     <Portal>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+      <div
+        data-camera-modal="true"
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200"
+      >
       {/* ══════════════════════════════════════════════════════════════
           POPUP XÁC NHẬN THÔNG TIN & ROLE KÈM FRAME ẢNH & ĐẾM NGƯỢC 15S
          ══════════════════════════════════════════════════════════════ */}
@@ -1086,7 +1112,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
               <div className="space-y-1.5 max-w-sm">
                 <h3 className="text-base font-black text-white">Chưa có dữ liệu Face ID</h3>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Tài khoản của bạn ({authUser?.fullName}) chưa được đăng ký mẫu khuôn mặt 5 góc trên hệ thống.
+                  Tài khoản của bạn ({authUser?.ho_ten}) chưa được đăng ký mẫu khuôn mặt 5 góc trên hệ thống.
                 </p>
                 {isSuperAdmin(authUser) ? (
                   <p className="text-[11px] text-cyan-200 font-medium bg-cyan-500/10 p-2 rounded-xl border border-cyan-500/20">

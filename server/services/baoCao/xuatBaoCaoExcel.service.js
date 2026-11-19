@@ -206,21 +206,21 @@ const generateExportReportData = async ({
 
     return {
       stt: index + 1,
-      employeeId: userObj.id ? String(userObj.id).slice(-6).toUpperCase() : '',
-      fullName: userObj.ho_ten || 'Cán bộ',
-      departmentName: deptName,
-      date: formatDateVN(workDate),
-      weekday: getWeekdayVN(workDate),
-      shiftName: shiftObj.ten_ca || 'Ca làm việc',
-      scheduledTime: `${shiftStart} - ${shiftEnd}`,
-      checkInTime: formatTimeVN(checkIn),
-      checkOutTime: formatTimeVN(checkOut),
-      status: getStatusLabel(log.trang_thai),
-      statusCode: log.trang_thai,
-      lateEarlyMinutes,
-      method: getMethodLabel(method),
-      gpsCoordinates: gpsCoords,
-      notes: note,
+      ma_can_bo: userObj.id ? String(userObj.id).slice(-6).toUpperCase() : '',
+      ho_ten: userObj.ho_ten || 'Cán bộ',
+      ten_phong_ban: deptName,
+      ngay: formatDateVN(workDate),
+      thu: getWeekdayVN(workDate),
+      ten_ca: shiftObj.ten_ca || 'Ca làm việc',
+      khung_gio_chuan: `${shiftStart} - ${shiftEnd}`,
+      thoi_gian_vao: formatTimeVN(checkIn),
+      thoi_gian_ra: formatTimeVN(checkOut),
+      trang_thai: getStatusLabel(log.trang_thai),
+      ma_trang_thai: log.trang_thai,
+      so_phut_lech: lateEarlyMinutes,
+      phuong_thuc: getMethodLabel(method),
+      toa_do_gps: gpsCoords,
+      ghi_chu: note,
     };
   });
 
@@ -243,18 +243,18 @@ const generateExportReportData = async ({
 
     return {
       stt: index + 1,
-      requestId: req.id ? String(req.id).slice(-6).toUpperCase() : '',
-      fullName: userObj.ho_ten || 'Cán bộ',
-      departmentName: deptName,
-      leaveType: getLeaveTypeLabel(req.loai_don),
-      startDate: formatDateVN(req.ngay_bat_dau),
-      endDate: formatDateVN(req.ngay_ket_thuc),
-      numberOfDays: numDays,
-      reason: req.ly_do || '',
-      status: getLeaveStatusLabel(req.trang_thai),
-      statusCode: req.trang_thai,
-      approver: approverObj.ho_ten || '--',
-      approvalNote: approvalInfo,
+      ma_don: req.id ? String(req.id).slice(-6).toUpperCase() : '',
+      ho_ten: userObj.ho_ten || 'Cán bộ',
+      ten_phong_ban: deptName,
+      loai_don: getLeaveTypeLabel(req.loai_don),
+      ngay_bat_dau: formatDateVN(req.ngay_bat_dau),
+      ngay_ket_thuc: formatDateVN(req.ngay_ket_thuc),
+      so_ngay: numDays,
+      ly_do: req.ly_do || '',
+      trang_thai: getLeaveStatusLabel(req.trang_thai),
+      ma_trang_thai: req.trang_thai,
+      nguoi_duyet: approverObj.ho_ten || '--',
+      ghi_chu_duyet: approvalInfo,
     };
   });
 
@@ -274,18 +274,18 @@ const generateExportReportData = async ({
 
     return {
       stt: index + 1,
-      employeeId: String(user.id).slice(-6).toUpperCase(),
-      fullName: user.ho_ten,
+      ma_can_bo: String(user.id).slice(-6).toUpperCase(),
+      ho_ten: user.ho_ten,
       email: user.email,
-      departmentName: deptName,
-      role: getRoleLabel(user.vai_tro_chinh),
-      totalShifts,
-      onTime,
-      late,
-      early,
-      absent,
-      excused,
-      attendanceRate: rate,
+      ten_phong_ban: deptName,
+      vai_tro_chinh: getRoleLabel(user.vai_tro_chinh),
+      tong_so_ca: totalShifts,
+      so_lan_dung_gio: onTime,
+      so_lan_di_muon: late,
+      so_lan_ve_som: early,
+      so_lan_vang_mat: absent,
+      so_lan_co_phep: excused,
+      ty_le_chuyen_can: rate,
     };
   });
 
@@ -296,14 +296,14 @@ const generateExportReportData = async ({
     const dateKey = `${String(vnCursor.getUTCDate()).padStart(2, '0')}/${String(vnCursor.getUTCMonth() + 1).padStart(2, '0')}/${vnCursor.getUTCFullYear()}`;
     if (!dailyStatsMap[dateKey]) {
       dailyStatsMap[dateKey] = {
-        date: dateKey,
-        weekday: getWeekdayVN(currentCursor),
-        totalShifts: 0,
-        onTime: 0,
-        late: 0,
-        early: 0,
-        absent: 0,
-        excused: 0,
+        ngay: dateKey,
+        thu: getWeekdayVN(currentCursor),
+        tong_so_ca: 0,
+        so_lan_dung_gio: 0,
+        so_lan_di_muon: 0,
+        so_lan_ve_som: 0,
+        so_lan_vang_mat: 0,
+        so_lan_co_phep: 0,
       };
     }
     currentCursor.setUTCDate(currentCursor.getUTCDate() + 1);
@@ -314,29 +314,29 @@ const generateExportReportData = async ({
     const dateKey = formatDateVN(workDate);
     if (!dailyStatsMap[dateKey]) {
       dailyStatsMap[dateKey] = {
-        date: dateKey,
-        weekday: getWeekdayVN(workDate),
-        totalShifts: 0,
-        onTime: 0,
-        late: 0,
-        early: 0,
-        absent: 0,
-        excused: 0,
+        ngay: dateKey,
+        thu: getWeekdayVN(workDate),
+        tong_so_ca: 0,
+        so_lan_dung_gio: 0,
+        so_lan_di_muon: 0,
+        so_lan_ve_som: 0,
+        so_lan_vang_mat: 0,
+        so_lan_co_phep: 0,
       };
     }
 
-    dailyStatsMap[dateKey].totalShifts += 1;
-    if (log.trang_thai === 'on_time') dailyStatsMap[dateKey].onTime += 1;
-    else if (log.trang_thai === 'late') dailyStatsMap[dateKey].late += 1;
-    else if (log.trang_thai === 'early_leave') dailyStatsMap[dateKey].early += 1;
-    else if (log.trang_thai === 'absent') dailyStatsMap[dateKey].absent += 1;
-    else if (log.trang_thai === 'excused_absence') dailyStatsMap[dateKey].excused += 1;
+    dailyStatsMap[dateKey].tong_so_ca += 1;
+    if (log.trang_thai === 'on_time') dailyStatsMap[dateKey].so_lan_dung_gio += 1;
+    else if (log.trang_thai === 'late') dailyStatsMap[dateKey].so_lan_di_muon += 1;
+    else if (log.trang_thai === 'early_leave') dailyStatsMap[dateKey].so_lan_ve_som += 1;
+    else if (log.trang_thai === 'absent') dailyStatsMap[dateKey].so_lan_vang_mat += 1;
+    else if (log.trang_thai === 'excused_absence') dailyStatsMap[dateKey].so_lan_co_phep += 1;
   });
 
   const dailyStatsList = Object.values(dailyStatsMap).map((d, index) => {
-    const valid = d.onTime + d.excused;
-    const rate = d.totalShifts > 0 ? Math.round((valid / d.totalShifts) * 100) : 0;
-    return { stt: index + 1, ...d, attendanceRate: rate };
+    const valid = d.so_lan_dung_gio + d.so_lan_co_phep;
+    const rate = d.tong_so_ca > 0 ? Math.round((valid / d.tong_so_ca) * 100) : 0;
+    return { stt: index + 1, ...d, ty_le_chuyen_can: rate };
   });
 
   const totalShifts = attendanceLogs.length;
@@ -379,24 +379,24 @@ const generateExportReportData = async ({
   }
 
   return {
-    overview: {
-      period: periodLabel,
-      department: departmentLabel,
-      totalUsers: users.length,
-      totalShifts,
-      onTimeCount,
-      lateCount,
-      earlyLeaveCount,
-      absentCount,
-      excusedAbsenceCount,
-      overallAttendanceRate,
-      approvedLeaveDays,
-      exportedAt: `${formatDateVN(new Date())} ${formatTimeVN(new Date())}`,
+    tong_quan: {
+      ky_bao_cao: periodLabel,
+      don_vi: departmentLabel,
+      tong_so_nhan_su: users.length,
+      tong_so_ca: totalShifts,
+      so_lan_dung_gio: onTimeCount,
+      so_lan_di_muon: lateCount,
+      so_lan_ve_som: earlyLeaveCount,
+      so_lan_vang_mat: absentCount,
+      so_lan_co_phep: excusedAbsenceCount,
+      ty_le_chuyen_can: overallAttendanceRate,
+      so_ngay_nghi_phep_da_duyet: approvedLeaveDays,
+      thoi_diem_xuat: `${formatDateVN(new Date())} ${formatTimeVN(new Date())}`,
     },
-    attendanceLogs: attendanceDetailList.map(sanitizeExcelRow),
-    leaveRequests: leaveDetailList.map(sanitizeExcelRow),
-    staffStats: staffStatsList.map(sanitizeExcelRow),
-    dailyStats: dailyStatsList,
+    nhat_ky_cham_cong: attendanceDetailList.map(sanitizeExcelRow),
+    don_nghi_phep: leaveDetailList.map(sanitizeExcelRow),
+    thong_ke_nhan_su: staffStatsList.map(sanitizeExcelRow),
+    thong_ke_theo_ngay: dailyStatsList,
   };
 };
 

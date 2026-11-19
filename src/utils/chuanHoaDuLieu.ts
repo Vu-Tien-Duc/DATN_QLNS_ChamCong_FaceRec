@@ -18,11 +18,17 @@ export function normalizeBackendData<T = any>(data: any): T {
   if (typeof data === 'object' && !(data instanceof Date) && !(data instanceof FormData) && !(data instanceof Blob)) {
     const copy: Record<string, any> = { ...data };
 
-    // 0a. Đồng bộ khóa chính id <-> _id cho toàn bộ bản ghi SQL Server / Sequelize
+    // 0a. Đồng bộ khóa chính id <-> _id và dấu thời gian cho toàn bộ bản ghi SQL Server / Sequelize
     if ('id' in copy && copy.id !== undefined && copy.id !== null && !('_id' in copy)) {
       copy._id = copy.id;
     } else if ('_id' in copy && copy._id !== undefined && copy._id !== null && !('id' in copy)) {
       copy.id = copy._id;
+    }
+    if ('tao_luc' in copy && copy.tao_luc !== undefined && !('createdAt' in copy)) {
+      copy.createdAt = copy.tao_luc;
+    }
+    if ('cap_nhat_luc' in copy && copy.cap_nhat_luc !== undefined && !('updatedAt' in copy)) {
+      copy.updatedAt = copy.cap_nhat_luc;
     }
 
     // 0. Chuẩn hóa Auth, Face Registration, Upload, Payroll Summary (Pure Vietnamese -> Frontend compat)
@@ -94,12 +100,15 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.vectorDimension = copy.so_chieu_vector !== undefined ? copy.so_chieu_vector : copy.vectorDimension;
       copy.isDefaultFace = copy.mac_dinh !== undefined ? Boolean(copy.mac_dinh) : copy.isDefaultFace;
       copy.faceStatus = copy.trang_thai_khuon_mat || copy.faceStatus || null;
+      if (copy.anh_khuon_mat !== undefined && !('facePhoto' in copy)) copy.facePhoto = copy.anh_khuon_mat;
+      if (copy.so_luong_mau !== undefined && copy.sampleCount === undefined) copy.sampleCount = copy.so_luong_mau;
       copy.lastLoginAt = copy.lan_dang_nhap_cuoi || copy.lastLoginAt || null;
       copy.passwordChangedAt = copy.doi_mat_khau_luc || copy.passwordChangedAt || null;
       copy.avatar = copy.anh_dai_dien || copy.avatar || null;
       copy.anh_dai_dien = copy.avatar;
       copy.academicRank = copy.hoc_ham || copy.academicRank || 'khong';
       copy.hoc_ham = copy.academicRank;
+      copy.position = copy.chuc_vu || copy.position || '';
       copy.degree = copy.hoc_vi || copy.degree || 'cu_nhan';
       copy.hoc_vi = copy.degree;
       copy.staffType = copy.loai_nhan_su || copy.staffType || 'giang_vien';
@@ -140,6 +149,21 @@ export function normalizeBackendData<T = any>(data: any): T {
       }
       if (copy.ho_so && typeof copy.ho_so === 'object') {
         copy.profile = copy.ho_so;
+      }
+    }
+
+    // 1.1. Chuẩn hóa Vai trò phân quyền (VaiTroNguoiDung)
+    if ('ma_vai_tro' in copy && 'pham_vi' in copy) {
+      copy.role = copy.ma_vai_tro || copy.role || '';
+      copy.scope = copy.pham_vi || copy.scope || 'toan_truong';
+      copy.isAuthorized = copy.duoc_uy_quyen !== undefined ? Boolean(copy.duoc_uy_quyen) : Boolean(copy.isAuthorized);
+      copy.startDate = copy.tu_ngay || copy.startDate || null;
+      copy.endDate = copy.den_ngay || copy.endDate || null;
+      if (copy.don_vi && typeof copy.don_vi === 'object' && !('department' in copy)) {
+        copy.department = copy.don_vi;
+      }
+      if (copy.don_vi_id !== undefined && copy.departmentId === undefined) {
+        copy.departmentId = copy.don_vi_id;
       }
     }
 
@@ -265,6 +289,21 @@ export function normalizeBackendData<T = any>(data: any): T {
       if (Array.isArray(copy.tuan_hoc) && !('weeks' in copy)) {
         copy.weeks = copy.tuan_hoc.map((w: any) => (typeof w === 'object' ? w.tuan_thu : w));
       }
+      if (!Array.isArray(copy.weekNumbers)) {
+        if (Array.isArray(copy.danh_sach_tuan)) {
+          copy.weekNumbers = copy.danh_sach_tuan;
+        } else if (Array.isArray(copy.weeks)) {
+          copy.weekNumbers = copy.weeks;
+        }
+      }
+    }
+
+    // 5.1. Chuẩn hóa Ngoại lệ lịch trình (NgoaiLeLichTrinh)
+    if ('lich_trinh_id' in copy && 'ngay' in copy) {
+      copy.date = copy.ngay || copy.date || '';
+      copy.status = copy.trang_thai || copy.status || 'nghi';
+      copy.reason = copy.ly_do ?? copy.reason ?? '';
+      copy.makeupDate = copy.ngay_day_bu || copy.makeupDate || null;
     }
 
     // 6. Chuẩn hóa Đối tượng Đơn nghỉ phép (LeaveRequest)
@@ -279,7 +318,9 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.ngay_bat_dau = copy.startDate;
       copy.endDate = copy.ngay_ket_thuc || copy.endDate || '';
       copy.ngay_ket_thuc = copy.endDate;
-      copy.isHalfDay = copy.nua_ngay !== undefined ? Boolean(copy.nua_ngay) : copy.isHalfDay;
+      copy.isHalfDay = copy.nua_ngay !== undefined
+        ? Boolean(copy.nua_ngay)
+        : (Number(copy.so_ngay ?? copy.totalDays) === 0.5 ? true : copy.isHalfDay);
       copy.totalDays = copy.so_ngay !== undefined ? copy.so_ngay : copy.totalDays;
       copy.so_ngay = copy.totalDays;
       copy.userId = copy.nguoi_dung && typeof copy.nguoi_dung === 'object'
@@ -308,6 +349,7 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.updatedAt = copy.cap_nhat_luc || copy.updatedAt || null;
       if (copy.nguoi_dung && !('user' in copy)) copy.user = copy.nguoi_dung;
       if (copy.nguoi_duyet && !('approver' in copy)) copy.approver = copy.nguoi_duyet;
+      if (copy.lich_trinh && !('schedule' in copy)) copy.schedule = copy.lich_trinh;
       if (Array.isArray(copy.lich_su_duyet) && !('approvalHistory' in copy)) copy.approvalHistory = copy.lich_su_duyet;
       if (copy.cap_duyet_hien_tai !== undefined && copy.currentApprovalLevel === undefined) copy.currentApprovalLevel = copy.cap_duyet_hien_tai;
       if (copy.so_cap_duyet !== undefined && copy.totalApprovalLevels === undefined) copy.totalApprovalLevels = copy.so_cap_duyet;
@@ -378,6 +420,7 @@ export function normalizeBackendData<T = any>(data: any): T {
       copy.actualTeachingPeriods = copy.so_tiet_thuc_day !== undefined ? copy.so_tiet_thuc_day : copy.actualTeachingPeriods;
       copy.isClosed = copy.da_chot !== undefined ? Boolean(copy.da_chot) : copy.isClosed;
       copy.overrideBy = copy.nguoi_ghi_de || copy.nguoi_ghi_de_id || copy.overrideBy || null;
+      copy.isManualOverride = copy.isManualOverride !== undefined ? Boolean(copy.isManualOverride) : Boolean(copy.overrideBy);
       copy.fraudReason = copy.ly_do_ghi_de || copy.fraudReason || '';
       copy.isFraud = copy.co_gian_lan !== undefined ? Boolean(copy.co_gian_lan) : Boolean(copy.isFraud);
       copy.leaveRequestId = copy.don_tu && typeof copy.don_tu === 'object'
@@ -392,6 +435,12 @@ export function normalizeBackendData<T = any>(data: any): T {
       }
       if (Array.isArray(copy.luot_quet) && !('punchLogIds' in copy)) {
         copy.punchLogIds = copy.luot_quet;
+      }
+      if (!copy.method && Array.isArray(copy.luot_quet) && copy.luot_quet.length > 0) {
+        const firstPunch = copy.luot_quet.find((p: any) => p?.phuong_thuc || p?.method) || copy.luot_quet[0];
+        if (firstPunch?.phuong_thuc || firstPunch?.method) {
+          copy.method = firstPunch.phuong_thuc || firstPunch.method;
+        }
       }
       if (!copy.capturedImage && Array.isArray(copy.luot_quet)) {
         const photoPunch = copy.luot_quet.find((p: any) => p?.anh_minh_chung);
@@ -494,7 +543,7 @@ export function normalizeBackendData<T = any>(data: any): T {
     }
 
     // 10. Chuẩn hóa Đối tượng Nhật ký kiểm toán (AuditLog)
-    if ('hanh_dong' in copy || 'loai_doi_tuong' in copy || 'ma_bam_hien_tai' in copy) {
+    if (!('cap_duyet' in copy) && ('hanh_dong' in copy || 'loai_doi_tuong' in copy || 'ma_bam_hien_tai' in copy)) {
       copy.action = copy.hanh_dong || copy.action || '';
       copy.hanh_dong = copy.action;
       copy.targetType = copy.loai_doi_tuong || copy.targetType || '';
@@ -737,6 +786,9 @@ export function normalizeQueryParams(params: any): any {
     ['shiftId', 'ca_id'],
     ['scheduleId', 'lich_trinh_id'],
     ['roomId', 'phong_hoc'],
+    ['weekday', 'thu_trong_tuan'],
+    ['academicYear', 'nam_hoc'],
+    ['semester', 'hoc_ky'],
     ['isFraud', 'co_gian_lan'],
     ['method', 'phuong_thuc'],
     ['status', 'trang_thai'],

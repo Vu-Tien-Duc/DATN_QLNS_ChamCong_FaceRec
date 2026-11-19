@@ -52,26 +52,99 @@ export interface TaxTncnData {
 }
 
 export interface PayrollRecord {
+  id?: string;
+  nguoi_dung_id?: string;
+  thang?: number;
+  nam?: number;
+  nguoi_lap_id?: string;
+  nguoi_duyet_id?: string | null;
+  thoi_gian_duyet?: string | null;
+  luong_co_ban?: number;
+  he_so_luong?: number;
+  so_cong_chuan?: number;
+  so_cong_thuc_te?: number;
+  so_tiet_nghia_vu?: number;
+  so_tiet_thuc_day?: number;
+  so_tiet_vuot_gio?: number;
+  don_gia_tiet_vuot?: number;
+  tien_vuot_gio?: number;
+  tong_phu_cap?: number;
+  tong_giam_tru?: number;
+  dong_bao_hiem?: number;
+  thue_thu_nhap_ca_nhan?: number;
+  thuc_linh?: number;
+  trang_thai?: 'nhap' | 'cho_duyet' | 'da_duyet' | 'da_chi_tra' | string;
+  ghi_chu?: string;
+  tao_luc?: string;
+  cap_nhat_luc?: string;
+  nguoi_dung?: {
+    id?: string;
+    ho_ten?: string;
+    email?: string;
+    ma_can_bo?: string;
+    vai_tro_chinh?: string;
+    anh_dai_dien?: string | null;
+    don_vi_chinh_id?: string | null;
+    don_vi_chinh?: {
+      id?: string;
+      ten_phong_ban?: string;
+      loai_don_vi?: string;
+    } | null;
+    ho_so?: {
+      hoc_ham?: string;
+      hoc_vi?: string;
+      chuc_vu?: string;
+      he_so_luong?: number;
+      so_nguoi_phu_thuoc?: number;
+      loai_hop_dong?: string;
+      ngach_luong?: string;
+    } | null;
+  } | null;
+  nguoi_lap?: {
+    id?: string;
+    ho_ten?: string;
+    email?: string;
+  } | null;
+  nguoi_duyet?: {
+    id?: string;
+    ho_ten?: string;
+    email?: string;
+  } | null;
+  /** @deprecated Dùng id */
   _id: string;
+  /** @deprecated Dùng nguoi_dung hoặc nguoi_dung_id */
   userId: {
+    id?: string;
     _id: string;
+    ho_ten?: string;
     fullName: string;
     email: string;
+    ma_can_bo?: string;
     staffCode?: string;
+    vai_tro_chinh?: string;
     role?: string;
+    anh_dai_dien?: string;
     avatar?: string;
+    hoc_ham?: string;
     academicRank?: string;
+    hoc_vi?: string;
     degree?: string;
+    chuc_vu?: string;
     position?: string;
+    don_vi_chinh_id?: string;
     departmentId?: {
       _id: string;
       name: string;
       code?: string;
     } | string;
   };
+  /** @deprecated Dùng thang */
   month: number;
+  /** @deprecated Dùng nam */
   year: number;
+  /** @deprecated Dùng he_so_luong */
   salaryCoefficient: number;
+  /** @deprecated Dùng luong_co_ban */
   baseSalary: number;
   primarySalary: number;
   positionAllowance?: number;
@@ -79,11 +152,15 @@ export interface PayrollRecord {
   vocationalAllowance?: number;
   allowances?: PhuCapItem[];
   deductions?: GiamTruItem[];
+  /** @deprecated Dùng tong_giam_tru */
+  totalDeductions?: number;
   bonusItems?: KhoanDieuChinhItem[];
   deductionItems?: KhoanDieuChinhItem[];
   teachingHours?: TeachingHoursData;
   grossIncome: number;
+  /** @deprecated Dùng so_cong_chuan */
   standardWorkDays?: number;
+  /** @deprecated Dùng so_cong_thuc_te */
   actualWorkDays?: number;
   createdByUser?: {
     _id?: string;
@@ -95,13 +172,17 @@ export interface PayrollRecord {
     fullName?: string;
     email?: string;
   };
+  /** @deprecated Dùng thoi_gian_duyet */
   approvedAt?: string | null;
+  /** @deprecated Dùng ghi_chu */
   notes?: string;
   insurance?: InsuranceData;
   personalIncomeTax?: TaxTncnData;
   thue_tncn?: TaxTncnData;
+  /** @deprecated Dùng thuc_linh */
   netSalary: number;
-  status: 'nhap' | 'du_thao' | 'cho_duyet' | 'da_duyet' | 'da_khoa' | 'da_chi_tra' | 'da_thanh_toan' | string;
+  /** @deprecated Dùng trang_thai */
+  status: 'nhap' | 'cho_duyet' | 'da_duyet' | 'da_chi_tra' | string;
   isLocked?: boolean;
   lockedAt?: string;
   createdAt?: string;
@@ -121,29 +202,31 @@ export interface PayrollSummaryData {
 }
 
 export interface PayrollQueryParams {
-  month?: number;
-  year?: number;
-  departmentId?: string;
-  status?: string;
-  userId?: string;
+  thang?: number;
+  nam?: number;
+  don_vi_id?: string;
+  trang_thai?: string;
+  nguoi_dung_id?: string;
 }
 
 export interface GeneratePayrollPayload {
-  month: number;
-  year: number;
-  departmentId?: string;
+  thang: number;
+  nam: number;
+  don_vi_id?: string;
 }
 
 export interface LockPayrollPayload {
-  month: number;
-  year: number;
+  thang: number;
+  nam: number;
+  don_vi_id?: string;
   id?: string;
 }
 
 export interface UnlockPayrollPayload {
-  month: number;
-  year: number;
-  reason: string;
+  thang: number;
+  nam: number;
+  ly_do: string;
+  don_vi_id?: string;
   id?: string;
 }
 
@@ -152,16 +235,7 @@ export const payrollApi = {
    * Lấy danh sách bảng lương tháng theo quyền hạn và bộ lọc
    */
   async getPayrolls(params?: PayrollQueryParams): Promise<PayrollRecord[]> {
-    const query = new URLSearchParams();
-    if (params?.month) query.append('thang', String(params.month));
-    if (params?.year) query.append('nam', String(params.year));
-    if (params?.departmentId) query.append('don_vi_id', params.departmentId);
-    if (params?.status) query.append('trang_thai', params.status);
-    if (params?.userId) query.append('nguoi_dung_id', params.userId);
-
-    const qs = query.toString();
-    const url = `/phieu-luong${qs ? `?${qs}` : ''}`;
-    const res = await apiClient.get<any>(url);
+    const res = await apiClient.get<any>('/phieu-luong', { params });
     const data = res.data?.data || res.data;
     if (Array.isArray(data)) return data;
     if (Array.isArray(data?.records)) return data.records;
@@ -194,8 +268,13 @@ export const payrollApi = {
   /**
    * Lấy số liệu thống kê tổng hợp quỹ lương tháng (Admin, Hiệu trưởng, Trưởng khoa)
    */
-  async getPayrollSummary(month: number, year: number): Promise<PayrollSummaryData> {
-    const res = await apiClient.get<any>(`/phieu-luong/tong-hop?thang=${month}&nam=${year}`);
+  async getPayrollSummary(month: number, year: number, departmentId?: string): Promise<PayrollSummaryData> {
+    const query = new URLSearchParams({
+      thang: String(month),
+      nam: String(year),
+    });
+    if (departmentId) query.append('don_vi_id', departmentId);
+    const res = await apiClient.get<any>(`/phieu-luong/tong-hop?${query.toString()}`);
     return (
       res.data?.data ||
       res.data || {
@@ -224,7 +303,10 @@ export const payrollApi = {
    * Khóa sổ lương tháng & chốt công không cho sửa đổi
    */
   async lockPayroll(payload: LockPayrollPayload): Promise<any> {
-    const res = await apiClient.post<any>('/phieu-luong/khoa', payload);
+    const url = payload.id ? `/phieu-luong/${payload.id}/khoa` : '/phieu-luong/khoa';
+    const res = payload.id
+      ? await apiClient.put<any>(url, payload)
+      : await apiClient.post<any>(url, payload);
     return res.data?.data || res.data;
   },
 
@@ -232,7 +314,10 @@ export const payrollApi = {
    * Mở khóa sổ lương tháng (Admin/BGH - bắt buộc có lý do giải trình)
    */
   async unlockPayroll(payload: UnlockPayrollPayload): Promise<any> {
-    const res = await apiClient.post<any>('/phieu-luong/mo-khoa', payload);
+    const url = payload.id ? `/phieu-luong/${payload.id}/mo-khoa` : '/phieu-luong/mo-khoa';
+    const res = payload.id
+      ? await apiClient.put<any>(url, payload)
+      : await apiClient.post<any>(url, payload);
     return res.data?.data || res.data;
   },
 

@@ -11,6 +11,8 @@ export function getSocket(): Socket {
   if (!socketInstance) {
     const token =
       useAuthStore.getState().token ||
+      sessionStorage.getItem('token') ||
+      sessionStorage.getItem('accessToken') ||
       localStorage.getItem('accessToken') ||
       localStorage.getItem('token');
 

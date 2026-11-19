@@ -17,145 +17,194 @@ export type BackendLeaveStatus =
   | 'cancelled';
 
 export interface ApprovalHistoryItem {
-  cap: number;
-  nguoi_duyet?: {
+  level?: 'khoa' | 'bgh' | number | string;
+  cap_duyet?: 'khoa' | 'bgh' | string;
+  cap?: number;
+  approver?: {
     _id: string;
     fullName?: string;
     email?: string;
     role?: string;
     avatar?: string;
   };
+  nguoi_duyet?: {
+    id?: string;
+    _id?: string;
+    ho_ten?: string;
+    fullName?: string;
+    email?: string;
+    vai_tro_chinh?: string;
+    role?: string;
+    anh_dai_dien?: string;
+    avatar?: string;
+  };
   vai_tro?: string;
-  hanh_dong: 'approved' | 'rejected';
+  action?: 'approved' | 'rejected' | string;
+  hanh_dong?: 'approved' | 'rejected' | string;
+  comment?: string;
   ghi_chu?: string;
-  thoi_gian: string;
+  timestamp?: string;
+  thoi_gian?: string;
 }
 
 export interface LeaveRequestData {
+  id?: string;
+  nguoi_dung_id?: string;
+  nguoi_dung?: {
+    id?: string;
+    ho_ten?: string;
+    email?: string;
+    vai_tro_chinh?: string;
+    don_vi_chinh_id?: string | null;
+    don_vi_chinh?: {
+      id?: string;
+      ten_phong_ban?: string;
+      loai_don_vi?: string;
+    } | null;
+    anh_dai_dien?: string | null;
+    ma_can_bo?: string;
+  } | null;
+  nguoi_duyet?: {
+    id?: string;
+    ho_ten?: string;
+    email?: string;
+    vai_tro_chinh?: string;
+  } | null;
+  giang_vien_day_thay?: {
+    id?: string;
+    ho_ten?: string;
+    ma_can_bo?: string;
+  } | null;
+  ca_thay_the?: {
+    id?: string;
+    ten_ca?: string;
+    gio_bat_dau?: string;
+    gio_ket_thuc?: string;
+  } | null;
+  lich_trinh?: {
+    id?: string;
+    phong_hoc?: string;
+    thu_trong_tuan?: number;
+    mon_hoc?: {
+      id?: string;
+      ten_mon?: string;
+      ma_mon?: string;
+    } | null;
+  } | null;
+  loai_don?: BackendLeaveType | string;
+  ly_do?: string;
+  ngay_bat_dau?: string;
+  ngay_ket_thuc?: string;
+  so_ngay?: number;
+  nua_ngay?: boolean;
+  ngay_day_bu?: string | null;
+  so_tiet_nghi?: number;
+  tep_dinh_kem?: string | null;
+  trang_thai?: BackendLeaveStatus | string;
+  ghi_chu_duyet?: string | null;
+  ly_do_tu_choi?: string | null;
+  phien_ban?: number;
+  lich_su_duyet?: ApprovalHistoryItem[];
+  tao_luc?: string;
+  cap_nhat_luc?: string;
+  /** @deprecated Dùng id */
   _id: string;
+  /** @deprecated Dùng nguoi_dung hoặc nguoi_dung_id */
   userId:
     | {
+        id?: string;
         _id: string;
+        ho_ten?: string;
         fullName: string;
         email: string;
+        vai_tro_chinh?: string;
         role?: string;
+        don_vi_chinh_id?: any;
         departmentId?: any;
+        anh_dai_dien?: string;
         avatar?: string;
+        ma_can_bo?: string;
         staffCode?: string;
       }
     | string;
+  /** @deprecated Dùng loai_don */
   type: BackendLeaveType;
-  loai_don?: string;
+  /** @deprecated Dùng ly_do */
   reason: string;
-  ly_do?: string;
+  /** @deprecated Dùng ngay_bat_dau */
   startDate: string;
-  ngay_bat_dau?: string;
+  /** @deprecated Dùng ngay_ket_thuc */
   endDate: string;
-  ngay_ket_thuc?: string;
   numberOfDays?: number;
-  so_ngay?: number;
+  /** @deprecated Dùng so_ngay */
   totalDays?: number;
+  isHalfDay?: boolean;
   scheduleId?: any;
+  schedule?: any;
   makeupDate?: string;
   leavePeriods?: number;
   substituteShiftId?: any;
   substituteTeacherId?: any;
   attachmentUrl?: string;
+  /** @deprecated Dùng trang_thai */
   status: BackendLeaveStatus;
-  trang_thai?: string;
   requiredLevels?: number;
   currentLevel?: number;
   approvedBy?: any;
   approvalNote?: string;
   rejectionReason?: string;
+  /** @deprecated Dùng lich_su_duyet */
   approvalHistory?: ApprovalHistoryItem[];
-  lich_su_duyet?: ApprovalHistoryItem[];
+  /** @deprecated Dùng tao_luc */
   createdAt?: string;
+  /** @deprecated Dùng cap_nhat_luc */
   updatedAt?: string;
 }
 
 export interface LeaveBalanceData {
-  userId: string;
-  year: number;
-  annualLeaveQuota: number;
-  daysUsed: number;
-  pendingDays: number;
-  pendingAnnualLeaveDays: number;
-  pendingRequestsCount: number;
-  remainingDays: number;
-  availableDays: number;
-  isAdmin?: boolean;
+  nguoi_dung_id?: string;
+  nam: number;
+  han_muc_phep_nam: number;
+  so_ngay_da_nghi: number;
+  so_ngay_cho_duyet: number;
+  so_ngay_con_lai: number;
+  so_ngay_kha_dung: number;
+  is_admin?: boolean;
   message?: string;
 }
 
 export interface CreateLeavePayload {
-  type: string;
-  reason: string;
-  startDate: string;
-  endDate: string;
-  isHalfDay?: boolean;
-  leavePeriods?: number;
-  scheduleId?: string;
-  substituteShiftId?: string;
-  substituteTeacherId?: string;
-  makeupDate?: string;
-  attachmentUrl?: string;
+  loai_don: string;
+  ly_do: string;
+  ngay_bat_dau: string;
+  ngay_ket_thuc: string;
+  nua_ngay?: boolean;
+  so_tiet_nghi?: number;
+  lich_trinh_id?: string;
+  ca_thay_the_id?: string;
+  giang_vien_day_thay_id?: string;
+  ngay_day_bu?: string;
+  tep_dinh_kem?: string;
   file?: File;
 }
 
 export const leaveRequestApi = {
   getLeaveRequests: async (params?: {
-    status?: string;
-    type?: string;
-    userId?: string;
-    limit?: number;
-    page?: number;
+    trang_thai?: string;
+    loai_don?: string;
+    nguoi_dung_id?: string;
+    gioi_han?: number;
+    trang?: number;
   }) => {
-    const mappedParams = params
-      ? {
-          trang_thai: params.status,
-          loai_don: params.type,
-          nguoi_dung_id: params.userId,
-          gioi_han: params.limit,
-          trang: params.page,
-        }
-      : undefined;
-    const res = await apiClient.get('/don-nghi-phep', { params: mappedParams });
+    const res = await apiClient.get('/don-nghi-phep', { params });
     return res.data;
   },
 
-  getLeaveBalance: async (userId?: string) => {
+  getLeaveBalance: async (nguoi_dung_id?: string): Promise<LeaveBalanceData> => {
     const res = await apiClient.get('/don-nghi-phep/so-du', {
-      params: userId ? { nguoi_dung_id: userId } : undefined,
+      params: nguoi_dung_id ? { nguoi_dung_id } : undefined,
     });
-    const raw = res.data?.data || res.data;
-    if (!raw || typeof raw !== 'object') return raw;
-
-    const quota = raw.annualLeaveQuota !== undefined ? raw.annualLeaveQuota : (raw.han_muc_phep_nam !== undefined ? raw.han_muc_phep_nam : 12);
-    const used = raw.daysUsed !== undefined ? raw.daysUsed : (raw.so_ngay_da_nghi !== undefined ? raw.so_ngay_da_nghi : 0);
-    const pending = raw.pendingAnnualLeaveDays !== undefined ? raw.pendingAnnualLeaveDays : (raw.so_ngay_cho_duyet !== undefined ? raw.so_ngay_cho_duyet : 0);
-    const available = raw.availableDays !== undefined ? raw.availableDays : (raw.so_ngay_kha_dung !== undefined ? raw.so_ngay_kha_dung : Math.max(0, quota - used - pending));
-    const remaining = raw.remainingDays !== undefined ? raw.remainingDays : (raw.so_ngay_con_lai !== undefined ? raw.so_ngay_con_lai : Math.max(0, quota - used));
-    const year = raw.year || raw.nam || new Date().getFullYear();
-    const isAdmin = Boolean(raw.isAdmin ?? raw.is_admin);
-
-    return {
-      ...raw,
-      annualLeaveQuota: quota,
-      han_muc_phep_nam: quota,
-      daysUsed: used,
-      so_ngay_da_nghi: used,
-      pendingAnnualLeaveDays: pending,
-      so_ngay_cho_duyet: pending,
-      availableDays: available,
-      so_ngay_kha_dung: available,
-      remainingDays: remaining,
-      so_ngay_con_lai: remaining,
-      year,
-      nam: year,
-      isAdmin,
-      is_admin: isAdmin,
-    };
+    return res.data?.data || res.data;
   },
 
   getLeaveRequestById: async (id: string) => {
@@ -166,18 +215,18 @@ export const leaveRequestApi = {
   createLeaveRequest: async (payload: CreateLeavePayload) => {
     if (payload.file) {
       const formData = new FormData();
-      formData.append('loai_don', payload.type);
-      formData.append('ly_do', payload.reason);
-      formData.append('ngay_bat_dau', payload.startDate);
-      formData.append('ngay_ket_thuc', payload.endDate);
-      if (payload.isHalfDay) formData.append('nua_ngay', 'true');
-      if (payload.leavePeriods !== undefined && payload.leavePeriods > 0) {
-        formData.append('so_tiet_nghi', String(payload.leavePeriods));
+      formData.append('loai_don', payload.loai_don);
+      formData.append('ly_do', payload.ly_do);
+      formData.append('ngay_bat_dau', payload.ngay_bat_dau);
+      formData.append('ngay_ket_thuc', payload.ngay_ket_thuc);
+      if (payload.nua_ngay) formData.append('nua_ngay', 'true');
+      if (payload.so_tiet_nghi !== undefined && payload.so_tiet_nghi > 0) {
+        formData.append('so_tiet_nghi', String(payload.so_tiet_nghi));
       }
-      if (payload.scheduleId) formData.append('lich_trinh_id', payload.scheduleId);
-      if (payload.substituteShiftId) formData.append('ca_thay_the_id', payload.substituteShiftId);
-      if (payload.substituteTeacherId) formData.append('giang_vien_day_thay_id', payload.substituteTeacherId);
-      if (payload.makeupDate) formData.append('ngay_day_bu', payload.makeupDate);
+      if (payload.lich_trinh_id) formData.append('lich_trinh_id', payload.lich_trinh_id);
+      if (payload.ca_thay_the_id) formData.append('ca_thay_the_id', payload.ca_thay_the_id);
+      if (payload.giang_vien_day_thay_id) formData.append('giang_vien_day_thay_id', payload.giang_vien_day_thay_id);
+      if (payload.ngay_day_bu) formData.append('ngay_day_bu', payload.ngay_day_bu);
       formData.append('file', payload.file);
 
       const res = await apiClient.post('/don-nghi-phep', formData, {
@@ -186,19 +235,7 @@ export const leaveRequestApi = {
       return res.data;
     }
 
-    const res = await apiClient.post('/don-nghi-phep', {
-      loai_don: payload.type,
-      ly_do: payload.reason,
-      ngay_bat_dau: payload.startDate,
-      ngay_ket_thuc: payload.endDate,
-      nua_ngay: payload.isHalfDay,
-      so_tiet_nghi: payload.leavePeriods,
-      lich_trinh_id: payload.scheduleId,
-      ca_thay_the_id: payload.substituteShiftId,
-      giang_vien_day_thay_id: payload.substituteTeacherId,
-      ngay_day_bu: payload.makeupDate,
-      tep_dinh_kem: payload.attachmentUrl,
-    });
+    const res = await apiClient.post('/don-nghi-phep', payload);
     return res.data;
   },
 

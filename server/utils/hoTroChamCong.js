@@ -203,16 +203,11 @@ const getCachedUsersWithFace = async () => {
       const uIdStr = String(user.id);
       return {
         id: user.id,
-        _id: user.id,
         ho_ten: user.ho_ten || 'Nhân sự',
-        fullName: user.ho_ten || 'Nhân sự',
         email: user.email || '',
         ma_can_bo: user.ma_can_bo || '',
-        staffCode: user.ma_can_bo || '',
         vai_tro_chinh: user.vai_tro_chinh || '',
-        role: user.vai_tro_chinh || '',
         anh_dai_dien: user.anh_dai_dien || '',
-        avatar: user.anh_dai_dien || '',
         faceDescriptors: descriptorsByUserId.get(uIdStr) || [],
       };
     })

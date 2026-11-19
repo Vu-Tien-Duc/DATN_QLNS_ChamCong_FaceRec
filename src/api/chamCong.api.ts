@@ -1,27 +1,25 @@
 import { apiClient } from './apiClient';
 
 export interface FaceDetectPoseResponse {
-  success: boolean;
-  detected: boolean;
-  box?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  landmarks?: number[][];
+  face_detected: boolean;
+  faceCount?: number;
+  bbox?: number[] | null;
+  landmarks?: number[][] | null;
   pose?: {
-    yaw: number;
-    pitch: number;
-    roll: number;
-    direction: string;
-    is_frontal: boolean;
-  };
+    pose?: string;
+    pose_en?: string;
+    pose_vi?: string;
+    yaw_deg?: number;
+    pitch_deg?: number;
+    roll_deg?: number;
+  } | null;
   liveness?: {
-    is_live: boolean;
-    score: number;
+    is_live?: boolean;
+    liveness_score?: number;
+    score?: number;
     reasons?: string[];
-  };
+  } | null;
+  quality?: Record<string, any> | null;
   message?: string;
 }
 
@@ -30,69 +28,227 @@ export interface AttendancePunchResult {
   action: 'check_in' | 'check_out';
   message: string;
   user: {
-    _id: string;
-    fullName: string;
+    id?: string;
+    ho_ten?: string;
+    ma_can_bo?: string;
+    vai_tro_chinh?: string;
+    anh_dai_dien?: string | null;
+    /** @deprecated Dùng id */
+    _id?: string;
+    /** @deprecated Dùng ho_ten */
+    fullName?: string;
+    /** @deprecated Dùng ma_can_bo */
     staffCode?: string;
+    /** @deprecated Dùng vai_tro_chinh */
     role?: string;
+    /** @deprecated Dùng anh_dai_dien */
     avatar?: string;
     department?: string;
   };
+  diem_tin_cay?: number;
+  diem_nguoi_that?: number;
+  co_gian_lan?: boolean;
+  ly_do_gian_lan?: string | null;
+  /** @deprecated Dùng diem_tin_cay */
   similarity?: number;
   confidence?: number;
+  /** @deprecated Dùng diem_nguoi_that */
   livenessScore?: number;
+  /** @deprecated Dùng co_gian_lan */
   isFraud?: boolean;
+  /** @deprecated Dùng ly_do_gian_lan */
   fraudReason?: string;
   record?: {
-    _id: string;
-    workDate: string;
+    id?: string;
+    ngay_cong?: string;
+    thoi_gian_vao?: string;
+    thoi_gian_ra?: string;
+    trang_thai?: 'on_time' | 'late' | 'early_leave' | 'absent' | string;
+    di_muon_phut?: number;
+    ve_som_phut?: number;
+    /** @deprecated Dùng id */
+    _id?: string;
+    /** @deprecated Dùng ngay_cong */
+    workDate?: string;
+    /** @deprecated Dùng thoi_gian_vao */
     checkInTime?: string;
+    /** @deprecated Dùng thoi_gian_ra */
     checkOutTime?: string;
-    status: 'on_time' | 'late' | 'early_leave' | 'absent';
+    /** @deprecated Dùng trang_thai */
+    status?: 'on_time' | 'late' | 'early_leave' | 'absent';
+    /** @deprecated Dùng di_muon_phut */
     lateMinutes?: number;
+    /** @deprecated Dùng ve_som_phut */
     earlyExitMinutes?: number;
     shiftName?: string;
   };
 }
 
 export interface AttendancePunchLogItem {
+  id?: string;
+  thoi_gian_quet?: string;
+  loai_quet?: 'check_in' | 'check_out' | 'unknown' | string;
+  phuong_thuc?: string;
+  do_tin_cay_ai?: number;
+  diem_mat_that?: number;
+  goc_mat_nhan_dien?: string;
+  hop_le?: boolean;
+  ly_do_khong_hop_le?: string;
+  ma_thiet_bi?: string;
+  vi_do?: number;
+  kinh_do?: number;
+  do_chinh_xac_gps?: number;
+  vi_tri_gia_lap?: boolean;
+  khoang_cach_met?: number;
+  anh_minh_chung?: string;
+  /** @deprecated Dùng id */
   _id?: string;
+  /** @deprecated Dùng thoi_gian_quet */
   punchTime?: string;
+  /** @deprecated Dùng loai_quet */
   punchType: 'check_in' | 'check_out' | string;
+  /** @deprecated Dùng phuong_thuc */
   method?: string;
+  /** @deprecated Dùng do_tin_cay_ai */
   confidenceScore?: number;
+  /** @deprecated Dùng diem_mat_that */
   livenessScore?: number;
+  /** @deprecated Dùng goc_mat_nhan_dien */
   faceAngle?: string;
+  /** @deprecated Dùng goc_mat_nhan_dien */
+  recognizedAngle?: string;
+  /** @deprecated Dùng hop_le */
+  isValid?: boolean;
+  /** @deprecated Dùng ly_do_khong_hop_le */
+  invalidReason?: string;
+  /** @deprecated Dùng !hop_le */
   isFraud?: boolean;
+  /** @deprecated Dùng ly_do_khong_hop_le */
   fraudReason?: string;
+  /** @deprecated Dùng ma_thiet_bi */
   deviceId?: string;
   clientIp?: string;
+  /** @deprecated Dùng vi_do */
+  latitude?: number;
+  /** @deprecated Dùng kinh_do */
+  longitude?: number;
   location?: {
     lat?: number;
     lng?: number;
   };
+  /** @deprecated Dùng anh_minh_chung */
+  evidencePhoto?: string;
+  /** @deprecated Dùng anh_minh_chung */
   evidenceImage?: string;
 }
 
 export interface AttendanceHistoryItem {
+  id?: string;
+  nguoi_dung_id?: string;
+  ca_id?: string;
+  lich_trinh_id?: string;
+  ngay_cong?: string;
+  thoi_gian_vao?: string;
+  thoi_gian_ra?: string;
+  thoi_luong_lam_viec_phut?: number;
+  di_muon_phut?: number;
+  ve_som_phut?: number;
+  so_tiet_thuc_day?: number;
+  trang_thai?: 'on_time' | 'late' | 'early_leave' | 'absent' | 'excused_absence' | string;
+  phuong_thuc?: string;
+  don_tu_id?: string;
+  co_gian_lan?: boolean;
+  ly_do_gian_lan?: string | null;
+  ghi_de_thu_cong?: boolean;
+  anh_minh_chung?: string;
+  da_chot?: boolean;
+  nguoi_ghi_de_id?: string | null;
+  ly_do_ghi_de?: string | null;
+  tao_luc?: string;
+  cap_nhat_luc?: string;
+  don_nghi_phep?: {
+    id?: string;
+    loai_don?: string;
+    ngay_bat_dau?: string;
+    ngay_ket_thuc?: string;
+    trang_thai?: string;
+    ly_do?: string;
+  } | null;
+  nguoi_dung?: {
+    id?: string;
+    ho_ten?: string;
+    email?: string;
+    anh_dai_dien?: string | null;
+    ma_can_bo?: string;
+    vai_tro_chinh?: string;
+    don_vi_chinh_id?: string | null;
+    don_vi_chinh?: {
+      id?: string;
+      ten_phong_ban?: string;
+      loai_don_vi?: string;
+    } | null;
+  } | null;
+  ca?: {
+    id?: string;
+    ten_ca?: string;
+    gio_bat_dau?: string;
+    gio_ket_thuc?: string;
+    nguong_di_muon_phut?: number;
+  } | null;
+  lich_trinh?: {
+    id?: string;
+    phong_hoc?: string;
+    thu_trong_tuan?: number;
+    tiet_bat_dau?: number;
+    so_tiet?: number;
+    mon_hoc?: {
+      id?: string;
+      ten_mon?: string;
+      ma_mon?: string;
+    } | null;
+  } | null;
+  nguoi_ghi_de?: {
+    id?: string;
+    ho_ten?: string;
+    ma_can_bo?: string;
+  } | null;
+  don_tu?: {
+    id?: string;
+    loai_don?: string;
+    ngay_bat_dau?: string;
+    ngay_ket_thuc?: string;
+    trang_thai?: string;
+  } | null;
+  luot_quet?: AttendancePunchLogItem[];
+  /** @deprecated Dùng id */
   _id: string;
+  /** @deprecated Dùng nguoi_dung hoặc nguoi_dung_id */
   userId: {
+    id?: string;
     _id: string;
+    ho_ten?: string;
     fullName: string;
     email: string;
+    anh_dai_dien?: string;
     avatar?: string;
+    ma_can_bo?: string;
     staffCode?: string;
+    vai_tro_chinh?: string;
     role?: string;
+    don_vi_chinh_id?: string;
     departmentId?: {
       _id: string;
       name: string;
     };
   };
+  /** @deprecated Dùng ca hoặc ca_id */
   shiftId?: {
     _id: string;
     name: string;
     startTime: string;
     endTime: string;
   };
+  /** @deprecated Dùng lich_trinh hoặc lich_trinh_id */
   scheduleId?: {
     _id: string;
     roomId?: string;
@@ -103,40 +259,52 @@ export interface AttendanceHistoryItem {
       code?: string;
     };
   };
+  /** @deprecated Dùng ngay_cong */
   workDate: string;
+  /** @deprecated Dùng thoi_gian_vao */
   checkInTime?: string;
+  /** @deprecated Dùng thoi_gian_ra */
   checkOutTime?: string;
+  /** @deprecated Dùng thoi_luong_lam_viec_phut */
   workDurationMinutes?: number;
+  /** @deprecated Dùng di_muon_phut */
   lateMinutes?: number;
+  /** @deprecated Dùng ve_som_phut */
   earlyExitMinutes?: number;
   workHours?: number;
+  /** @deprecated Dùng so_tiet_thuc_day */
   actualTeachingPeriods?: number;
   isMissingCheckOut?: boolean;
+  /** @deprecated Dùng trang_thai */
   status: 'on_time' | 'late' | 'early_leave' | 'absent' | 'excused_absence' | string;
   method?: string;
   isManualOverride?: boolean;
+  /** @deprecated Dùng co_gian_lan */
   isFraud?: boolean;
   fraudReason?: string;
   capturedImage?: string;
   evidencePhoto?: string;
   punchLogIds?: AttendancePunchLogItem[];
+  /** @deprecated Dùng don_tu_id */
   leaveRequestId?: {
     _id: string;
     leaveType?: string;
     reason?: string;
   };
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AttendanceHistoryParams {
-  userId?: string;
-  from?: string;
-  to?: string;
-  status?: string;
-  method?: string;
-  isFraud?: boolean;
-  departmentId?: string;
-  page?: number;
-  limit?: number;
+  nguoi_dung_id?: string;
+  tu_ngay?: string;
+  den_ngay?: string;
+  trang_thai?: string;
+  phuong_thuc?: string;
+  co_gian_lan?: boolean;
+  don_vi_id?: string;
+  trang?: number;
+  gioi_han?: number;
 }
 
 export interface AttendanceHistoryResult {
@@ -264,27 +432,14 @@ export const attendanceApi = {
    * Lấy lịch sử chấm công chi tiết theo phân quyền và bộ lọc (from, to, status, method, isFraud, pagination)
    */
   async getAttendanceHistory(params?: AttendanceHistoryParams): Promise<AttendanceHistoryResult> {
-    const query = new URLSearchParams();
-    if (params?.userId) query.append('nguoi_dung_id', params.userId);
-    if (params?.from) query.append('tu_ngay', params.from);
-    if (params?.to) query.append('den_ngay', params.to);
-    if (params?.status) query.append('trang_thai', params.status);
-    if (params?.method) query.append('phuong_thuc', params.method);
-    if (params?.isFraud !== undefined) query.append('co_gian_lan', String(params.isFraud));
-    if (params?.departmentId) query.append('don_vi_id', params.departmentId);
-    if (params?.page) query.append('trang', String(params.page));
-    if (params?.limit) query.append('gioi_han', String(params.limit));
-
-    const qs = query.toString();
-    const url = `/cham-cong/lich-su${qs ? `?${qs}` : ''}`;
-    const res = await apiClient.get<any>(url);
+    const res = await apiClient.get<any>('/cham-cong/lich-su', { params });
     const data = res.data?.data || res.data;
     const records = Array.isArray(data?.records) ? data.records : (Array.isArray(data) ? data : []);
     const pagination = data?.pagination || {
       total: records.length,
-      page: params?.page || 1,
-      limit: params?.limit || 20,
-      totalPages: Math.ceil(records.length / (params?.limit || 20)) || 1,
+      page: params?.trang || 1,
+      limit: params?.gioi_han || 20,
+      totalPages: Math.ceil(records.length / (params?.gioi_han || 20)) || 1,
     };
     return { records, pagination };
   },
@@ -293,31 +448,21 @@ export const attendanceApi = {
    * Tra cứu lịch sử chấm công của chính người dùng hiện tại (bảo đảm 100% chỉ tải dữ liệu của bản thân)
    */
   async getMyAttendanceHistory(params?: {
-    from?: string;
-    to?: string;
-    status?: string;
-    method?: string;
-    page?: number;
-    limit?: number;
+    tu_ngay?: string;
+    den_ngay?: string;
+    trang_thai?: string;
+    phuong_thuc?: string;
+    trang?: number;
+    gioi_han?: number;
   }): Promise<{ records: AttendanceHistoryItem[]; pagination: any }> {
-    const query = new URLSearchParams();
-    if (params?.from) query.append('tu_ngay', params.from);
-    if (params?.to) query.append('den_ngay', params.to);
-    if (params?.status) query.append('trang_thai', params.status);
-    if (params?.method) query.append('phuong_thuc', params.method);
-    if (params?.page) query.append('trang', String(params.page));
-    if (params?.limit) query.append('gioi_han', String(params.limit));
-
-    const qs = query.toString();
-    const url = `/cham-cong/lich-su-cua-toi${qs ? `?${qs}` : ''}`;
-    const res = await apiClient.get<any>(url);
+    const res = await apiClient.get<any>('/cham-cong/lich-su-cua-toi', { params });
     const data = res.data?.data || res.data;
     const records = Array.isArray(data?.records) ? data.records : (Array.isArray(data) ? data : []);
     const pagination = data?.pagination || {
       total: records.length,
-      page: params?.page || 1,
-      limit: params?.limit || 20,
-      totalPages: Math.ceil(records.length / (params?.limit || 20)) || 1,
+      page: params?.trang || 1,
+      limit: params?.gioi_han || 20,
+      totalPages: Math.ceil(records.length / (params?.gioi_han || 20)) || 1,
     };
     return { records, pagination };
   },
@@ -361,9 +506,9 @@ export const attendanceApi = {
    * Điểm danh bằng cách quét mã QR TOTP động
    */
   async scanQRCode(payload: {
-    qrToken: string;
-    location?: { lat: number; lng: number };
-    deviceId?: string;
+    ma_qr: string;
+    toa_do?: { vi_do: number; kinh_do: number };
+    thiet_bi_id?: string;
   }): Promise<any> {
     const res = await apiClient.post<any>('/cham-cong/qr/quet-ma', payload);
     return res.data?.data || res.data;
@@ -415,13 +560,12 @@ export const attendanceApi = {
   async updateAttendance(
     id: string,
     payload: {
-      status?: string;
-      checkInTime?: string;
-      checkOutTime?: string;
-      note?: string;
-      isFraud?: boolean;
-      fraudReason?: string;
-      leaveRequestId?: string;
+      trang_thai?: string;
+      thoi_gian_vao?: string;
+      thoi_gian_ra?: string;
+      co_gian_lan?: boolean;
+      ly_do_ghi_de?: string;
+      don_tu_id?: string;
     }
   ): Promise<any> {
     const res = await apiClient.put<any>(`/cham-cong/${id}/dieu-chinh`, payload);
@@ -436,9 +580,13 @@ export const attendanceApi = {
     return res.data?.data || res.data;
   },
 
-  async getAttendanceEvidence(id: string): Promise<any> {
-    const res = await apiClient.get<any>(`/cham-cong/${id}/minh-chung`);
-    return res.data?.data || res.data;
+  async getAttendanceEvidence(id: string): Promise<{ blob: Blob; url: string } | null> {
+    const res = await apiClient.get<Blob>(`/cham-cong/${id}/minh-chung`, {
+      responseType: 'blob',
+    });
+    const blob = res.data;
+    if (!blob || blob.size === 0) return null;
+    return { blob, url: URL.createObjectURL(blob) };
   },
 
   async getVectorIndexStats(): Promise<any> {

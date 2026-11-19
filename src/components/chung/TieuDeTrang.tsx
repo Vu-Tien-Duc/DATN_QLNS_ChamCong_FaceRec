@@ -20,7 +20,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 }) => {
   return (
     <div
-      className={`pb-3 border-b border-slate-200 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-3 ${className}`}
+      className={`pb-1 flex flex-wrap items-center justify-between gap-3 ${className}`}
       data-purpose="page-header"
     >
       <div className="min-w-[240px] flex-1">
@@ -28,7 +28,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           {title}
         </h1>
         {subtitle && (
-          <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 max-w-3xl truncate">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5 max-w-3xl truncate">
             {subtitle}
           </p>
         )}

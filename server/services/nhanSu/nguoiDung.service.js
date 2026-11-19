@@ -73,7 +73,11 @@ const validateDepartmentRoleRule = async (roleVal, deptId) => {
 const USER_INCLUDES = [
   { model: PhongBan, as: 'don_vi_chinh', attributes: ['id', 'ten_phong_ban', 'loai_don_vi', 'don_vi_cha_id'] },
   { model: HoSoCanBo, as: 'ho_so' },
-  { model: VaiTroNguoiDung, as: 'danh_sach_vai_tro' },
+  {
+    model: VaiTroNguoiDung,
+    as: 'danh_sach_vai_tro',
+    include: [{ model: PhongBan, as: 'don_vi', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] }],
+  },
 ];
 
 // Gộp dữ liệu tài khoản, hồ sơ cán bộ và trạng thái Face ID để trả về client
@@ -92,7 +96,6 @@ const formatUserDetail = (userInstance, faceTemplate = null) => {
     ...profile,
     ...raw,
     id: raw.id,
-    _id: raw.id,
     ho_ten: raw.ho_ten || '',
     ma_can_bo: raw.ma_can_bo || '',
     so_dien_thoai: raw.so_dien_thoai || '',
@@ -115,7 +118,6 @@ const formatUserDetail = (userInstance, faceTemplate = null) => {
     mac_dinh: isRegistered ? Boolean(faceTemplate?.mac_dinh ?? true) : false,
     trang_thai_khuon_mat: isRegistered ? (faceTemplate?.trang_thai || 'hoat_dong') : null,
     anh_khuon_mat: isRegistered ? (faceTemplate?.anh_dai_dien || null) : null,
-    facePhoto: isRegistered ? (faceTemplate?.anh_dai_dien || null) : null,
   };
 };
 

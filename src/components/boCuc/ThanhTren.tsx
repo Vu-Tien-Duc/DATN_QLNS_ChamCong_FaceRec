@@ -73,7 +73,7 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/quan-ly-cham-cong',
     icon: Clock,
     description: 'Bảng tổng hợp công tháng, đi muộn, về sớm toàn trường & theo khoa',
-    roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb'],
+    roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb', 'ke_toan', 'kiem_toan'],
   },
   {
     id: 'profile',
@@ -90,7 +90,7 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/cham-cong-ca-nhan',
     icon: Clock,
     description: 'Lịch sử vào - ra, ngày công cá nhân và gửi đơn giải trình công',
-    excludeRoles: ['admin'],
+    excludeRoles: ['admin', 'kiem_toan'],
   },
   {
     id: 'users',
@@ -124,6 +124,7 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/don-nghi-phep',
     icon: FileText,
     description: 'Quy trình gửi đơn và phê duyệt nghỉ phép 2 cấp',
+    excludeRoles: ['kiem_toan'],
   },
   {
     id: 'settings',
@@ -170,28 +171,27 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
     const loadNotifications = async () => {
       try {
         const lastReadAt = localStorage.getItem('ntu_notif_read_at') || undefined;
-        const list = await thongBaoApi.getNotifications(lastReadAt);
+        const result = await thongBaoApi.getNotifications(lastReadAt);
         if (!active) return;
-        const mapped = list.map((item: any, idx: number) => {
-          const rawType = String(item.loai || item.type || 'attendance');
-          const type: 'attendance' | 'leave' | 'schedule' = rawType.includes('don') || rawType.includes('leave')
+        const mapped = result.danh_sach_thong_bao.map((item, idx) => {
+          const rawType = String(item.loai || 'cham_cong');
+          const type: 'attendance' | 'leave' | 'schedule' = rawType.includes('don')
             ? 'leave'
-            : rawType.includes('lich') || rawType.includes('schedule')
+            : rawType.includes('lich')
             ? 'schedule'
             : 'attendance';
           const defaultPath = type === 'leave' ? '/don-nghi-phep' : type === 'schedule' ? '/lich-trinh' : '/cham-cong-ca-nhan';
           return {
             id: String(item.id || `tb-${idx}`),
-            title: item.tieu_de || item.title || 'Thông báo hệ thống',
-            detail: item.noi_dung || item.detail || '',
-            time: item.thoi_diem ? new Date(item.thoi_diem).toLocaleString('vi-VN') : '',
-            path: item.duong_dan || item.path || defaultPath,
+            title: item.tieu_de || 'Thông báo hệ thống',
+            detail: item.noi_dung || '',
+            time: item.thoi_gian ? new Date(item.thoi_gian).toLocaleString('vi-VN') : '',
+            path: item.duong_dan || defaultPath,
             type,
           };
         });
         setNotifications(mapped);
-        const unread = list.filter((item: any) => item.da_doc === false || item.unread === true).length;
-        setUnreadCount(unread || mapped.length);
+        setUnreadCount(result.so_chua_doc);
       } catch {
         // Bỏ qua lỗi mạng khi tải thông báo nền
       }
@@ -273,8 +273,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
     'truong_phong',
     'pho_phong',
     'tccb',
+    'ke_toan',
+    'kiem_toan',
   ]);
-  const roleLabel = getRoleLabel(user?.role);
+  const roleLabel = getRoleLabel(user?.vai_tro_chinh);
 
   const filteredSearchItems = SEARCH_ITEMS.filter((item) => {
     if (!hasRole(user, item.roles, item.excludeRoles)) return false;
@@ -310,10 +312,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
 
   return (
     <>
-      <header className="sticky top-0 z-30 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-700/80 transition-colors">
+      <header className="sticky top-0 z-30 h-16 bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 transition-colors">
         <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
           {/* ===================================================================
-              LEFT SECTION: MOBILE HAMBURGER + GLOBAL SEARCH BAR
+              LEFT SECTION: MOBILE HAMBURGER + FLUX PILL SEARCH BAR
              =================================================================== */}
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <button
@@ -324,26 +326,39 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* Interactive Search Bar Trigger */}
+            {/* Interactive Flux Pill Search Bar */}
             <div
               onClick={() => setShowSearchModal(true)}
-              className="hidden sm:flex items-center relative cursor-pointer group flex-1 min-w-0 max-w-xs lg:max-w-sm"
-              title="Tìm kiếm nhanh cán bộ, ca làm việc, môn học..."
+              className="hidden sm:flex items-center relative cursor-pointer group flex-1 min-w-0 max-w-sm lg:max-w-md"
+              title="Tìm kiếm nhanh chức năng, nhân sự (Ctrl+K)..."
             >
-              <Search className="w-4 h-4 text-slate-400 group-hover:text-brand-600 dark:group-hover:text-brand-400 absolute left-3.5 pointer-events-none transition-colors" />
+              <Search className="w-4 h-4 text-slate-400 group-hover:text-brand-600 dark:group-hover:text-brand-400 absolute left-4 pointer-events-none transition-colors" />
               <input
                 type="text"
                 readOnly
-                placeholder="Tìm kiếm cán bộ, ca làm việc, môn học..."
-                className="h-9 pl-10 pr-4 w-full rounded-xl text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 group-hover:border-brand-500/60 group-hover:bg-white dark:group-hover:bg-slate-850 text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400 cursor-pointer focus:outline-none transition-colors truncate"
+                placeholder="Search anything..."
+                className="h-10 pl-11 pr-12 w-full rounded-full text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-transparent hover:border-slate-300 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-850 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 cursor-pointer focus:outline-none transition-all truncate"
               />
+              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-400 border border-slate-200 dark:border-slate-600 shadow-2xs pointer-events-none">
+                ⌘K
+              </span>
             </div>
           </div>
 
           {/* ===================================================================
-              RIGHT SECTION: CLOCK, WEBSITE, THEME & PALETTE, NOTIFS, USER
+              RIGHT SECTION: CLOCK, NEW ACTION CTA, THEME, NOTIFS, USER
              =================================================================== */}
           <div ref={dropdownGroupRef} className="flex items-center gap-2 shrink-0">
+            {/* Quick Action Button (Flux Style New Action Button) */}
+            <button
+              type="button"
+              onClick={() => navigate('/diem-danh-khuon-mat')}
+              className="hidden md:inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-xs hover:shadow-brand-500/25 transition-all cursor-pointer shrink-0"
+              title="Mở trạm điểm danh AI"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>+ Điểm danh</span>
+            </button>
             {/* 1. Realtime Digital Clock */}
             <div className="hidden xl:flex items-center gap-2 h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/70 text-xs whitespace-nowrap shrink-0">
               <Clock className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />
@@ -503,19 +518,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
               >
                 <div className="text-right hidden sm:block">
                   <div className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-tight truncate max-w-[145px]">
-                    {user?.fullName || 'Quản Trị Viên'}
+                    {user?.ho_ten || 'Quản Trị Viên'}
                   </div>
                   <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate max-w-[145px] mt-0.5">
-                    {user?.staffCode ? `${user.staffCode} • ` : ''}
+                    {user?.ma_can_bo ? `${user.ma_can_bo} • ` : ''}
                     {roleLabel}
                   </div>
                 </div>
 
                 <UserAvatar
                   user={user}
-                  name={user?.fullName || 'Quản Trị Viên'}
-                  avatarUrl={user?.avatar}
-                  staffCode={user?.staffCode || user?._id}
+                  name={user?.ho_ten || 'Quản Trị Viên'}
+                  avatarUrl={user?.anh_dai_dien}
+                  staffCode={user?.ma_can_bo || user?.id}
                   size="md"
                   shape="circle"
                 />
@@ -539,7 +554,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
                   >
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate group-hover:text-brand-600 transition-colors">
-                        {user?.fullName || 'Quản Trị Viên Hệ Thống'}
+                        {user?.ho_ten || 'Quản Trị Viên Hệ Thống'}
                       </p>
                       <ArrowRight className="w-3 h-3 text-slate-400 group-hover:text-brand-600 group-hover:translate-x-0.5 transition-all" />
                     </div>
@@ -550,9 +565,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
                         {roleLabel}
                       </span>
-                      {user?.staffCode && (
+                      {user?.ma_can_bo && (
                         <span className="text-[10px] font-mono text-slate-400">
-                          {user.staffCode}
+                          {user.ma_can_bo}
                         </span>
                       )}
                     </div>
@@ -576,7 +591,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
                         HRM
                       </span>
                     </button>
-                    {user?.role !== 'admin' && (
+                    {user?.vai_tro_chinh !== 'admin' && (
                       <button
                         type="button"
                         onClick={() => {
@@ -611,7 +626,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
                       <FileText className="w-4 h-4 text-amber-500" />
                       Đơn xin nghỉ phép
                     </button>
-                    {user?.role === 'admin' && (
+                    {user?.vai_tro_chinh === 'admin' && (
                       <button
                         type="button"
                         onClick={() => {

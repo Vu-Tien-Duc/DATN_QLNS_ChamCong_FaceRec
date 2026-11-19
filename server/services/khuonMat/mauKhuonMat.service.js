@@ -91,13 +91,13 @@ const registerFaceDescriptorForUser = async ({
       409,
       'USER_FACE_ALREADY_REGISTERED',
       {
-        duplicateUserId: dup.id || dup._id,
-        duplicateFullName: dup.ho_ten,
-        duplicateEmail: dup.email,
-        duplicateStaffCode: dup.ma_can_bo,
-        distance: dupCheck.distance,
-        similarity: dupCheck.similarity,
-        threshold: dupCheck.threshold,
+        nguoi_dung_trung_id: dup.id,
+        ho_ten_trung: dup.ho_ten,
+        email_trung: dup.email,
+        ma_can_bo_trung: dup.ma_can_bo,
+        khoang_cach: dupCheck.distance,
+        do_tuong_dong: dupCheck.similarity,
+        nguong: dupCheck.threshold,
       }
     );
   }
@@ -168,13 +168,13 @@ const registerFaceDescriptorForUser = async ({
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   return {
-    userId: targetUser.id,
-    fullName: targetUser.ho_ten,
+    nguoi_dung_id: targetUser.id,
+    ho_ten: targetUser.ho_ten,
     email: targetUser.email,
-    isFaceRegistered: true,
-    sampleCount: vectorList.length,
-    sampleAngles: effectiveSampleAngles,
-    templateId: templateDoc.id,
+    da_dang_ky_face: true,
+    so_luong_mau: vectorList.length,
+    cac_goc_chup: effectiveSampleAngles,
+    mau_khuon_mat_id: templateDoc.id,
   };
 };
 
@@ -299,10 +299,10 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
   return {
     success: true,
     message: 'Đã xóa và hủy bỏ vĩnh viễn dữ liệu sinh trắc học theo Nghị định 13/2023/NĐ-CP thành công.',
-    userId: targetUser.id,
-    fullName: targetUser.ho_ten,
-    faceRegistered: false,
-    deletedCount,
+    nguoi_dung_id: targetUser.id,
+    ho_ten: targetUser.ho_ten,
+    da_dang_ky_face: false,
+    so_luong_da_xoa: deletedCount,
   };
 };
 
@@ -365,18 +365,6 @@ const getFaceRegistrationStatusByUserId = async (targetId) => {
     so_chieu_vector: hasValidTemplate ? Number(template?.so_chieu_vector || 512) : null,
     mac_dinh: hasValidTemplate ? Boolean(template?.mac_dinh ?? true) : false,
     trang_thai_khuon_mat: hasValidTemplate ? (template?.trang_thai || 'hoat_dong') : null,
-    userId: user.id,
-    fullName: user.ho_ten,
-    staffCode: user.ma_can_bo,
-    isFaceRegistered: hasValidTemplate,
-    faceRegisteredAt: hasValidTemplate ? template?.ngay_dang_ky || null : null,
-    facePhoto: hasValidTemplate ? template?.anh_dai_dien || user.anh_dai_dien || null : null,
-    sampleCount,
-    sampleAngles,
-    embeddingModel: template?.mo_hinh_ai || 'buffalo_s',
-    vectorDimension: hasValidTemplate ? Number(template?.so_chieu_vector || 512) : null,
-    isDefaultFace: hasValidTemplate ? Boolean(template?.mac_dinh ?? true) : false,
-    faceStatus: hasValidTemplate ? (template?.trang_thai || 'hoat_dong') : null,
   };
 };
 

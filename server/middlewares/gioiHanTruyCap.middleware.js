@@ -101,6 +101,22 @@ const faceCheckInRateLimit = rateLimit({
     }),
 });
 
+// Giới hạn riêng cho luồng phát hiện tư thế đầu 3D realtime (không dùng chung quota chấm công)
+const facePoseRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: (req) => (isLocalOrDev(req) ? 1500 : 600),
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: getRateLimitStore(),
+  handler: (req, res) =>
+    res.status(429).json({
+      success: false,
+      message: 'Luồng phân tích tư thế khuôn mặt đang quá tải, vui lòng chờ giây lát.',
+      errorCode: 'FACE_POSE_RATE_LIMIT_EXCEEDED',
+      data: null,
+    }),
+});
+
 // Giới hạn đăng nhập sai: tối đa 5 lần / 15 phút (dev/local: 50), không đếm lần đăng nhập đúng
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -161,6 +177,7 @@ const passwordResetLimiter = rateLimit({
 const apiGeneralLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: (req) => (isLocalOrDev(req) ? 3000 : 300),
+  skip: (req) => req.path === '/khuon-mat/phat-hien-tu-the',
   standardHeaders: true,
   legacyHeaders: false,
   store: getRateLimitStore(),
@@ -179,6 +196,7 @@ module.exports = {
   isLocalOrDev,
   loginLimiter,
   faceCheckInRateLimit,
+  facePoseRateLimit,
   aiChatRateLimit,
   passwordResetLimiter,
   apiGeneralLimiter,

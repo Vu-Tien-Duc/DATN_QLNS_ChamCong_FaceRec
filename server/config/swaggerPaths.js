@@ -1472,7 +1472,7 @@ const swaggerPaths = {
               type: 'object',
               required: ['type', 'reason', 'startDate', 'endDate'],
               properties: {
-                type: { type: 'string', enum: ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om'], example: 'nghi_phep' },
+                type: { type: 'string', enum: ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om', 'viec_rieng', 'giai_trinh_cong'], example: 'nghi_phep' },
                 startDate: { type: 'string', format: 'date', example: '2026-09-15' },
                 endDate: { type: 'string', format: 'date', example: '2026-09-17' },
                 reason: { type: 'string', example: 'Đi tham dự hội thảo khoa học quốc tế' },
@@ -1493,7 +1493,7 @@ const swaggerPaths = {
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'approved', 'rejected'] }, description: 'Lọc trạng thái' },
-        { name: 'type', in: 'query', schema: { type: 'string', enum: ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om'] }, description: 'Lọc loại đơn' },
+        { name: 'type', in: 'query', schema: { type: 'string', enum: ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om', 'viec_rieng', 'giai_trinh_cong'] }, description: 'Lọc loại đơn' },
         { name: 'userId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID người làm đơn' },
       ],
       responses: {

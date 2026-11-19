@@ -23,9 +23,9 @@ export const scheduleApi = {
    * Lấy danh sách lịch trình / thời khóa biểu
    */
   getSchedules: async (params?: ScheduleQueryParams): Promise<ApiResponse<ScheduleListResponse>> => {
-    const res = await apiClient.get<any>('/lich-trinh', {
-      params,
-    });
+    const res = await apiClient.get<any>('/lich-trinh', { params });
+
+
     const raw = res.data?.data ?? res.data;
     if (raw && typeof raw === 'object' && Array.isArray(raw.schedules)) {
       return res.data;
@@ -43,10 +43,11 @@ export const scheduleApi = {
   /**
    * Lấy lịch làm việc / giảng dạy hôm nay
    */
-  getTodaySchedules: async (params?: { date?: string; userId?: string }): Promise<ApiResponse<ScheduleItem[]>> => {
-    const res = await apiClient.get<any>('/lich-trinh/hom-nay', {
-      params,
-    });
+  getTodaySchedules: async (params?: { ngay?: string; nguoi_dung_id?: string }): Promise<ApiResponse<ScheduleItem[]>> => {
+    const res = await apiClient.get<any>('/lich-trinh/hom-nay', { params });
+
+
+
     const list = extractArray<ScheduleItem>(res.data?.data ?? res.data);
     return { ...res.data, data: list };
   },
@@ -92,10 +93,10 @@ export const scheduleApi = {
   addException: async (
     id: string,
     payload: {
-      date: string;
-      reason?: string;
-      status?: 'nghi' | 'huy' | 'day_bu' | 'doi_ca';
-      makeupDate?: string;
+      ngay: string;
+      ly_do?: string;
+      trang_thai?: 'nghi' | 'huy' | 'day_bu' | 'doi_ca';
+      ngay_day_bu?: string;
     }
   ): Promise<ApiResponse<ScheduleItem>> => {
     const res = await apiClient.post<ApiResponse<ScheduleItem>>(`/lich-trinh/${id}/ngoai-le`, payload);
@@ -123,7 +124,7 @@ export const scheduleApi = {
   /**
    * Lấy danh sách cán bộ / giảng viên
    */
-  getUsers: async (params?: { role?: string; limit?: number }): Promise<ApiResponse<UserProfile[]>> => {
+  getUsers: async (params?: { vai_tro?: string; gioi_han?: number }): Promise<ApiResponse<UserProfile[]>> => {
     const res = await apiClient.get<any>('/nguoi-dung', { params });
     const list = extractArray<UserProfile>(res.data?.data ?? res.data);
     return { ...res.data, data: list };

@@ -78,17 +78,17 @@ export const Profile: React.FC = () => {
   useEffect(() => {
     if (user) {
       setFormData({
-        fullName: user.fullName || '',
-        phone: user.phoneNumber || '',
+        fullName: user.ho_ten || '',
+        phone: user.so_dien_thoai || '',
         email: user.email || '',
-        address: user.address || '',
-        dateOfBirth: user.dateOfBirth ? String(user.dateOfBirth).slice(0, 10) : '',
-        gender: user.gender || 'nam',
+        address: user.dia_chi || '',
+        dateOfBirth: user.ngay_sinh ? String(user.ngay_sinh).slice(0, 10) : '',
+        gender: user.gioi_tinh || 'nam',
         bankAccount: user.so_tai_khoan_ngan_hang || '',
         bankName: user.ten_ngan_hang || '',
         bankBranch: user.chi_nhanh_ngan_hang || '',
       });
-      setPreviewAvatar(user.avatar || null);
+      setPreviewAvatar(user.anh_dai_dien || null);
     }
   }, [user]);
 
@@ -125,7 +125,7 @@ export const Profile: React.FC = () => {
       toast.success('Cập nhật ảnh đại diện thành công!', { id: toastId });
     } catch (err: any) {
       // Hoàn tác preview nếu lỗi
-      setPreviewAvatar(user?.avatar || null);
+      setPreviewAvatar(user?.anh_dai_dien || null);
       toast.error(err.response?.data?.message || 'Không thể tải lên ảnh đại diện', { id: toastId });
     } finally {
       setUploadingAvatar(false);
@@ -137,7 +137,7 @@ export const Profile: React.FC = () => {
 
   // Xử lý gỡ ảnh đại diện
   const handleRemoveAvatar = async () => {
-    if (!user?.avatar && !previewAvatar) return;
+    if (!user?.anh_dai_dien && !previewAvatar) return;
     if (!window.confirm('Bạn có chắc chắn muốn gỡ ảnh đại diện hiện tại?')) return;
 
     setUploadingAvatar(true);
@@ -157,16 +157,17 @@ export const Profile: React.FC = () => {
   // Cập nhật thông tin hồ sơ
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?._id) return;
+    const targetId = user?.id || user?._id;
+    if (!targetId) return;
 
     setLoading(true);
     try {
-      await userApi.updateUser(user._id, {
-        fullName: formData.fullName,
-        phoneNumber: formData.phone,
-        address: formData.address,
-        gender: formData.gender as any,
-        dateOfBirth: formData.dateOfBirth,
+      await userApi.updateUser(targetId, {
+        ho_ten: formData.fullName,
+        so_dien_thoai: formData.phone,
+        dia_chi: formData.address,
+        gioi_tinh: formData.gender as any,
+        ngay_sinh: formData.dateOfBirth,
         so_tai_khoan_ngan_hang: formData.bankAccount.trim() || null,
         ten_ngan_hang: formData.bankName.trim() || null,
         chi_nhanh_ngan_hang: formData.bankBranch.trim() || null,
@@ -268,6 +269,30 @@ export const Profile: React.FC = () => {
           tag: 'KẾ TOÁN',
           color: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60',
         };
+      case 'kiem_toan':
+        return {
+          label: 'Khảo Thí / Kiểm Toán',
+          tag: 'KIỂM TOÁN',
+          color: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-800/60',
+        };
+      case 'truong_phong':
+        return {
+          label: 'Trưởng Phòng Chức Năng',
+          tag: 'TRƯỞNG PHÒNG',
+          color: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800/60',
+        };
+      case 'pho_phong':
+        return {
+          label: 'Phó Trưởng Phòng',
+          tag: 'PHÓ PHÒNG',
+          color: 'bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/60',
+        };
+      case 'quan_ly_xe':
+        return {
+          label: 'Quản Lý Phương Tiện',
+          tag: 'QUẢN LÝ XE',
+          color: 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700',
+        };
       case 'giang_vien':
         return {
           label: 'Giảng viên Giảng dạy',
@@ -290,9 +315,9 @@ export const Profile: React.FC = () => {
     }
   };
 
-  const roleInfo = getRoleBadge(user?.role);
-  const isFaceRegistered = Boolean(user?.isFaceRegistered);
-  const currentAvatarUrl = previewAvatar || user?.avatar;
+  const roleInfo = getRoleBadge(user?.vai_tro_chinh);
+  const isFaceRegistered = Boolean(user?.da_dang_ky_face);
+  const currentAvatarUrl = previewAvatar || user?.anh_dai_dien;
   const userExtra = (user || {}) as Record<string, any>;
 
   const EMPLOYMENT_STATUS_LABELS: Record<string, string> = {
@@ -331,23 +356,23 @@ export const Profile: React.FC = () => {
     return Number.isNaN(d.getTime()) ? 'Chưa cập nhật' : d.toLocaleDateString('vi-VN');
   };
 
-  const employmentStatusKey = user?.employmentStatus || 'dang_lam_viec';
+  const employmentStatusKey = user?.trang_thai_lam_viec || 'dang_lam_viec';
   const employmentStatusLabel = EMPLOYMENT_STATUS_LABELS[employmentStatusKey] || 'Đang làm việc';
   const academicRankLabel =
-    user?.academicRank && user.academicRank !== 'khong'
-      ? ACADEMIC_RANK_LABELS[user.academicRank] || user.academicRank
+    user?.hoc_ham && user.hoc_ham !== 'khong'
+      ? ACADEMIC_RANK_LABELS[user.hoc_ham] || user.hoc_ham
       : '';
-  const degreeLabel = user?.degree ? DEGREE_LABELS[user.degree] || user.degree : 'Chưa cập nhật';
+  const degreeLabel = user?.hoc_vi ? DEGREE_LABELS[user.hoc_vi] || user.hoc_vi : 'Chưa cập nhật';
   const academicSummary = academicRankLabel ? `${academicRankLabel} • ${degreeLabel}` : degreeLabel;
-  const contractLabel = user?.contractType
-    ? CONTRACT_TYPE_LABELS[user.contractType] || user.contractType
+  const contractLabel = user?.loai_hop_dong
+    ? CONTRACT_TYPE_LABELS[user.loai_hop_dong] || user.loai_hop_dong
     : 'Chưa cập nhật';
-  const staffTypeLabel = user?.staffType
-    ? STAFF_TYPE_LABELS[user.staffType] || user.staffType
+  const staffTypeLabel = user?.loai_nhan_su
+    ? STAFF_TYPE_LABELS[user.loai_nhan_su] || user.loai_nhan_su
     : 'Chưa cập nhật';
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-16 animate-in fade-in duration-300">
+    <div className="w-full space-y-5 pb-12 animate-in fade-in duration-300">
       {/* Input File Ẩn Cho Phép Tải Ảnh Từ Mọi Nút */}
       <input
         ref={fileInputRef}
@@ -360,8 +385,8 @@ export const Profile: React.FC = () => {
       {/* ===================================================================
           BỐ CỤC HỒ SƠ NHÂN VIÊN: CỘT TRÁI (ẢNH + TÓM TẮT) | CỘT PHẢI (TAB + NỘI DUNG)
          =================================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)] gap-6 items-start">
-        <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden lg:sticky lg:top-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[21.5rem_minmax(0,1fr)] gap-5 items-start">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden lg:sticky lg:top-4">
           <HoSoBenTrai
             anhDaiDien={
               <div className="relative">
@@ -369,16 +394,16 @@ export const Profile: React.FC = () => {
                   {currentAvatarUrl ? (
                     <img
                       src={currentAvatarUrl}
-                      alt={user?.fullName || 'Avatar'}
+                      alt={user?.ho_ten || 'Avatar'}
                       className="w-full h-full object-cover"
                       onError={() => setPreviewAvatar(null)}
                     />
                   ) : (
                     <UserAvatar
                       user={user}
-                      name={user?.fullName}
-                      avatarUrl={user?.avatar}
-                      staffCode={user?.staffCode || user?._id}
+                      name={user?.ho_ten}
+                      avatarUrl={user?.anh_dai_dien}
+                      staffCode={user?.ma_can_bo || user?.id}
                       size="full"
                       className="w-full h-full"
                     />
@@ -401,27 +426,27 @@ export const Profile: React.FC = () => {
                 </button>
               </div>
             }
-            maCanBo={user?.staffCode}
+            maCanBo={user?.ma_can_bo}
             trangThai={employmentStatusLabel}
-            trangThaiHoatDong={employmentStatusKey !== 'da_nghi_viec' && user?.isActive !== false}
-            hoTen={user?.fullName || 'Cán Bộ Hệ Thống'}
+            trangThaiHoatDong={employmentStatusKey !== 'da_nghi_viec' && user?.kich_hoat !== false}
+            hoTen={user?.ho_ten || 'Cán Bộ Hệ Thống'}
             thongTinChinh={[
-              { icon: <Building2 className="w-3.5 h-3.5" />, text: user?.departmentName || 'Chưa phân công đơn vị' },
+              { icon: <Building2 className="w-3.5 h-3.5" />, text: user?.ten_phong_ban || 'Chưa phân công đơn vị' },
               {
                 icon: <GraduationCap className="w-3.5 h-3.5" />,
                 text:
-                  user?.position && user.position !== 'khong'
-                    ? user.position
-                    : academicRankLabel || getRoleLabel(user?.role),
+                  user?.chuc_vu && user.chuc_vu !== 'khong'
+                    ? user.chuc_vu
+                    : academicRankLabel || getRoleLabel(user?.vai_tro_chinh),
               },
             ]}
             lienHe={[
-              { icon: <Phone className="w-3.5 h-3.5" />, text: user?.phoneNumber || 'Chưa cập nhật' },
+              { icon: <Phone className="w-3.5 h-3.5" />, text: user?.so_dien_thoai || 'Chưa cập nhật' },
               { icon: <Mail className="w-3.5 h-3.5" />, text: user?.email || '—' },
             ]}
             cacNhomPhu={[
-              { tieuDe: 'Vai trò', noiDung: getRoleLabel(user?.role) },
-              { tieuDe: 'Ngày vào làm', noiDung: formatDateVi(user?.startDate) },
+              { tieuDe: 'Vai trò', noiDung: getRoleLabel(user?.vai_tro_chinh) },
+              { tieuDe: 'Ngày vào làm', noiDung: formatDateVi(user?.ngay_vao_lam) },
               {
                 tieuDe: 'Sinh trắc học Face ID',
                 noiDung: (
@@ -464,7 +489,7 @@ export const Profile: React.FC = () => {
         </div>
 
         <div className="min-w-0 space-y-6">
-          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
             <ThanhTabHoSo
               active={activeTab}
               onChange={(id) => setActiveTab(id as typeof activeTab)}
@@ -484,7 +509,7 @@ export const Profile: React.FC = () => {
       {activeTab === 'info' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Cột phải: Form thông tin cá nhân */}
-          <div className="md:col-span-3 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 sm:p-7 shadow-sm">
+          <div className="md:col-span-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 sm:p-7 shadow-sm">
             <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -679,7 +704,7 @@ export const Profile: React.FC = () => {
       {activeTab === 'hrm' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Thông tin biên chế & đơn vị */}
-          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 shadow-sm space-y-4">
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 shadow-sm space-y-4">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Building2 className="w-4 h-4 text-indigo-600" />
               <span>Đơn Vị & Vị Trí Việc Làm</span>
@@ -689,21 +714,21 @@ export const Profile: React.FC = () => {
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
                 <span className="text-slate-500">Mã số nhân sự:</span>
                 <span className="font-mono font-bold text-slate-900 dark:text-white">
-                  {user?.staffCode || 'Chưa cấp mã'}
+                  {user?.ma_can_bo || 'Chưa cấp mã'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
                 <span className="text-slate-500">Khoa / Phòng ban chính:</span>
                 <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                  {user?.departmentName || 'Chưa phân công đơn vị'}
+                  {user?.ten_phong_ban || 'Chưa phân công đơn vị'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
                 <span className="text-slate-500">Loại nhân sự & Chức vụ:</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {user?.position && user.position !== 'khong' ? user.position : staffTypeLabel}
+                  {user?.chuc_vu && user.chuc_vu !== 'khong' ? user.chuc_vu : staffTypeLabel}
                 </span>
               </div>
 
@@ -715,7 +740,7 @@ export const Profile: React.FC = () => {
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
                 <span className="text-slate-500">Ngày vào làm / Thâm niên:</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {formatDateVi(user?.startDate)}
+                  {formatDateVi(user?.ngay_vao_lam)}
                   {userExtra.tham_nien_nam ? ` (${userExtra.tham_nien_nam} năm)` : ''}
                 </span>
               </div>
@@ -726,11 +751,16 @@ export const Profile: React.FC = () => {
                   {formatDateVi(userExtra.ngay_bat_dau_giang_day)}
                 </span>
               </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
+                <span className="text-slate-500">Trạng thái công tác:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{employmentStatusLabel}</span>
+              </div>
             </div>
           </div>
 
           {/* Chế độ đãi ngộ, lương & pháp lý */}
-          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 shadow-sm space-y-4">
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 shadow-sm space-y-4">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Award className="w-4 h-4 text-emerald-600" />
               <span>Chế Độ Đãi Ngộ, Hợp Đồng & Thuế</span>
@@ -788,6 +818,53 @@ export const Profile: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Danh sách vai trò & phạm vi phân quyền */}
+          {Array.isArray(userExtra.roles) && userExtra.roles.length > 0 && (
+            <div className="md:col-span-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 shadow-sm space-y-4">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                <span>Vai Trò &amp; Phạm Vi Phân Quyền ({userExtra.roles.length})</span>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {userExtra.roles.map((r: any, idx: number) => {
+                  const scopeMap: Record<string, string> = {
+                    toan_truong: 'Toàn trường',
+                    khoa: 'Cấp Khoa',
+                    bo_mon: 'Cấp Bộ môn',
+                    phong_ban: 'Phòng ban',
+                  };
+                  const scopeKey = r?.scope || 'toan_truong';
+                  const deptName = r?.department?.name || '';
+                  return (
+                    <div
+                      key={r?.id || idx}
+                      className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex flex-col gap-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="font-bold text-slate-900 dark:text-white">
+                          {getRoleLabel(r?.ma_vai_tro || user?.vai_tro_chinh)}
+                        </span>
+                        {Boolean(r?.duoc_uy_quyen) && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/60 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                            Được ủy quyền duyệt
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-slate-600 dark:text-slate-300">
+                        Phạm vi: <span className="font-semibold">{scopeMap[scopeKey] || scopeKey}</span>
+                        {deptName ? ` • ${deptName}` : ''}
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-500">
+                        Hiệu lực: {r?.tu_ngay ? String(r.tu_ngay).slice(0, 10) : '—'} →{' '}
+                        {r?.den_ngay ? String(r.den_ngay).slice(0, 10) : 'Không thời hạn'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -795,7 +872,7 @@ export const Profile: React.FC = () => {
           TAB 3: SINH TRẮC HỌC FACE ID 512D
          =================================================================== */}
       {activeTab === 'face' && (
-        <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 sm:p-8 shadow-sm space-y-6">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 sm:p-8 shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-100 dark:border-slate-800">
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -820,11 +897,11 @@ export const Profile: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
             {/* Ảnh khuôn mặt đăng ký */}
             <div className="md:col-span-1 flex flex-col items-center p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-center">
-              <div className="w-40 h-40 rounded-3xl bg-white dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 overflow-hidden flex items-center justify-center relative shadow-inner">
-                {user?.facePhoto ? (
+              <div className="w-40 h-40 rounded-2xl bg-white dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 overflow-hidden flex items-center justify-center relative shadow-inner">
+                {user?.anh_khuon_mat ? (
                   <AnhBaoMat
-                    src={user.facePhoto}
-                    alt={user.fullName}
+                    src={user.anh_khuon_mat}
+                    alt={user.ho_ten}
                     className="w-full h-full object-cover"
                     fallback={
                       <div className="text-slate-400 flex flex-col items-center gap-1.5">
@@ -852,14 +929,18 @@ export const Profile: React.FC = () => {
                   <span className="text-slate-500">Trạng thái đăng ký:</span>
                   <span
                     className={`font-bold px-3 py-1 rounded-full text-xs ${
-                      isFaceRegistered
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                        : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                      !isFaceRegistered
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                        : userExtra.faceStatus === 'bi_khoa'
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
                     }`}
                   >
-                    {isFaceRegistered
-                      ? `✓ Đã kích hoạt (${userExtra.so_luong_mau || 5} mẫu)`
-                      : 'Chưa đăng ký mẫu'}
+                    {!isFaceRegistered
+                      ? 'Chưa đăng ký mẫu'
+                      : userExtra.faceStatus === 'bi_khoa'
+                        ? `Tạm khóa (${userExtra.so_luong_mau || 5} mẫu)`
+                        : `✓ Đã kích hoạt (${userExtra.so_luong_mau || 5} mẫu)`}
                   </span>
                 </div>
 
@@ -895,7 +976,7 @@ export const Profile: React.FC = () => {
           TAB 4: BẢO MẬT & ĐỔI MẬT KHẨU
          =================================================================== */}
       {activeTab === 'security' && (
-        <div className="max-w-xl mx-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 sm:p-8 shadow-sm space-y-6">
+        <div className="max-w-xl mx-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 sm:p-8 shadow-sm space-y-6">
           <div className="text-center space-y-1">
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center mb-3 shadow-inner">
               <KeyRound className="w-6 h-6" />
@@ -923,6 +1004,18 @@ export const Profile: React.FC = () => {
                 {(userExtra.passwordChangedAt || userExtra.doi_mat_khau_luc)
                   ? new Date(userExtra.passwordChangedAt || userExtra.doi_mat_khau_luc).toLocaleString('vi-VN')
                   : 'Chưa thay đổi'}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block">Ngày tạo tài khoản:</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 block">
+                {user?.createdAt ? new Date(user.createdAt).toLocaleString('vi-VN') : 'Chưa ghi nhận'}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block">Cập nhật hồ sơ gần nhất:</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 block">
+                {user?.updatedAt ? new Date(user.updatedAt).toLocaleString('vi-VN') : 'Chưa ghi nhận'}
               </span>
             </div>
           </div>

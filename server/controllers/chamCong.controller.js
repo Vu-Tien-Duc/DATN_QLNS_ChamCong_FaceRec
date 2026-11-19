@@ -115,6 +115,23 @@ const getQueueStats = async (req, res, next) => {
 };
 
 
+const NON_ATTENDANCE_ROLES = ['admin', 'kiem_toan'];
+const KIOSK_QR_ROLES = [
+  'admin',
+  'bgh',
+  'tccb',
+  'dao_tao',
+  'truong_khoa',
+  'pho_khoa',
+  'truong_bo_mon',
+  'pho_bo_mon',
+  'truong_phong',
+  'pho_phong',
+];
+
+const getReqUserRole = (req) =>
+  String(req.user?.vai_tro_chinh || req.user?.role || '').trim().toLowerCase();
+
 // POST /api/cham-cong/vao-ca - Check-in theo ca hoặc lịch làm việc
 const checkIn = async (req, res, next) => {
   try {
@@ -131,6 +148,18 @@ const checkIn = async (req, res, next) => {
     } = req.body || {};
 
     const { targetUserId, isAdminOrLeader } = await resolveAttendanceTarget(req, nguoi_dung_id);
+
+    const callerRole = getReqUserRole(req);
+    const isSelfCheckIn = String(targetUserId) === String(req.user?._id || req.user?.id || '');
+    if (isSelfCheckIn && NON_ATTENDANCE_ROLES.includes(callerRole)) {
+      return sendError(
+        res,
+        'Tài khoản Quản trị viên IT / Kiểm toán không thực hiện chấm công cá nhân.',
+        null,
+        403,
+        'ATTENDANCE_ROLE_FORBIDDEN'
+      );
+    }
 
     const resolvedViDo = vi_do !== undefined ? vi_do : (toa_do?.vi_do ?? null);
     const resolvedKinhDo = kinh_do !== undefined ? kinh_do : (toa_do?.kinh_do ?? null);
@@ -173,6 +202,18 @@ const checkOut = async (req, res, next) => {
     } = req.body || {};
 
     const { targetUserId, isAdminOrLeader } = await resolveAttendanceTarget(req, nguoi_dung_id);
+
+    const callerRole = getReqUserRole(req);
+    const isSelfCheckOut = String(targetUserId) === String(req.user?._id || req.user?.id || '');
+    if (isSelfCheckOut && NON_ATTENDANCE_ROLES.includes(callerRole)) {
+      return sendError(
+        res,
+        'Tài khoản Quản trị viên IT / Kiểm toán không thực hiện chấm công cá nhân.',
+        null,
+        403,
+        'ATTENDANCE_ROLE_FORBIDDEN'
+      );
+    }
 
     const resolvedViDo = vi_do !== undefined ? vi_do : (toa_do?.vi_do ?? null);
     const resolvedKinhDo = kinh_do !== undefined ? kinh_do : (toa_do?.kinh_do ?? null);
@@ -323,6 +364,17 @@ const updateAttendanceByAdmin = async (req, res, next) => {
 // POST /api/cham-cong/qr/quet-ma - Chấm công bằng mã QR động TOTP
 const scanQRCode = async (req, res, next) => {
   try {
+    const callerRole = getReqUserRole(req);
+    if (NON_ATTENDANCE_ROLES.includes(callerRole)) {
+      return sendError(
+        res,
+        'Tài khoản Quản trị viên IT / Kiểm toán không thực hiện quét mã QR chấm công cá nhân.',
+        null,
+        403,
+        'ATTENDANCE_ROLE_FORBIDDEN'
+      );
+    }
+
     const {
       ma_qr: resolvedToken,
       vi_do,
@@ -353,6 +405,20 @@ const scanQRCode = async (req, res, next) => {
 // GET /api/cham-cong/qr/tao-ma - Sinh mã QR động cho ca làm việc hoặc phòng học
 const getDynamicQRCode = async (req, res, next) => {
   try {
+    // Nếu gọi bằng JWT người dùng (không phải máy Kiosk dùng x-terminal-key) thì chỉ cấp Quản trị / Lãnh đạo được phát mã QR
+    if (req.user) {
+      const callerRole = getReqUserRole(req);
+      if (!KIOSK_QR_ROLES.includes(callerRole)) {
+        return sendError(
+          res,
+          'Bạn không có quyền phát mã QR điểm danh động.',
+          null,
+          403,
+          'QR_GENERATE_FORBIDDEN'
+        );
+      }
+    }
+
     const {
       ca_id: shiftId,
       lich_trinh_id: scheduleId,
@@ -533,7 +599,7 @@ const verifyLivenessChallengeController = async (req, res, next) => {
 // Kích hoạt thủ công tiến trình quét vắng mặt theo ngày
 const triggerDailyAbsentCheck = async (req, res, next) => {
   try {
-    const rawDate = req.body?.date ?? req.query?.date;
+    const rawDate = req.body?.ngay ?? req.query?.ngay ?? req.body?.date ?? req.query?.date;
     let targetDate = new Date();
     if (rawDate !== undefined && rawDate !== null && rawDate !== '') {
       targetDate = new Date(rawDate);

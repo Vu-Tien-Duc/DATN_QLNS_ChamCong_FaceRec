@@ -35,6 +35,7 @@ import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { Button } from '../../components/chung/NutBam';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
+import { ThanhPhanTrang } from '../../components/chung/ThanhPhanTrang';
 
 // =============================================================================
 // HELPER FUNCTIONS & FORMATTERS
@@ -122,7 +123,8 @@ export const Holidays: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Filter States
-  const [selectedYear, setSelectedYear] = useState<string>('2026');
+  const currentYearStr = String(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState<string>(currentYearStr);
   const [searchKeyword, setSearchKeyword] = useState<string>('');
   const [selectedPaid, setSelectedPaid] = useState<string>(''); // 'true', 'false', ''
   const [selectedTiming, setSelectedTiming] = useState<string>(''); // 'upcoming', 'ongoing', 'passed', ''
@@ -130,7 +132,7 @@ export const Holidays: React.FC = () => {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
@@ -141,17 +143,17 @@ export const Holidays: React.FC = () => {
 
   // Form State
   const [formData, setFormData] = useState<{
-    name: string;
-    startDate: string;
-    endDate: string;
-    isPaid: boolean;
-    description: string;
+    ten_ngay_le: string;
+    ngay_bat_dau: string;
+    ngay_ket_thuc: string;
+    huong_luong: boolean;
+    mo_ta: string;
   }>({
-    name: '',
-    startDate: '',
-    endDate: '',
-    isPaid: true,
-    description: '',
+    ten_ngay_le: '',
+    ngay_bat_dau: '',
+    ngay_ket_thuc: '',
+    huong_luong: true,
+    mo_ta: '',
   });
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
@@ -167,7 +169,7 @@ export const Holidays: React.FC = () => {
     setIsLoading(true);
     try {
       const data = await holidayApi.getHolidays({
-        year: selectedYear !== 'all' ? selectedYear : undefined,
+        nam: selectedYear !== 'all' ? selectedYear : undefined,
       });
       setHolidays(Array.isArray(data) ? data : []);
     } catch (err: any) {
@@ -186,16 +188,16 @@ export const Holidays: React.FC = () => {
   // Chuẩn hóa dữ liệu ngày nghỉ lễ đồng bộ CSDL v2.5
   const normalizedHolidays = useMemo<HolidayItem[]>(() => {
     return holidays.map((h: any) => {
-      const start = h.startDate || h.ngay_bat_dau || '';
-      const end = h.endDate || h.ngay_ket_thuc || '';
+      const start = h.ngay_bat_dau || '';
+      const end = h.ngay_ket_thuc || '';
       return {
         ...h,
-        name: h.name || h.ten_ngay_le || '',
-        startDate: start,
-        endDate: end,
-        year: h.year || h.nam || (start ? parseInt(start.slice(0, 4), 10) : 2026),
-        isPaid: h.isPaid !== undefined ? h.isPaid : (h.huong_luong !== undefined ? h.huong_luong : true),
-        description: h.description !== undefined ? h.description : (h.mo_ta !== undefined ? h.mo_ta : ''),
+        ten_ngay_le: h.ten_ngay_le || '',
+        ngay_bat_dau: start,
+        ngay_ket_thuc: end,
+        nam: h.nam || (start ? parseInt(start.slice(0, 4), 10) : new Date().getFullYear()),
+        huong_luong: h.huong_luong !== undefined ? h.huong_luong : true,
+        mo_ta: h.mo_ta !== undefined ? h.mo_ta : '',
       };
     });
   }, [holidays]);
@@ -207,7 +209,7 @@ export const Holidays: React.FC = () => {
     yearsSet.add(2025);
     yearsSet.add(new Date().getFullYear());
     normalizedHolidays.forEach((h) => {
-      if (h.year) yearsSet.add(h.year);
+      if (h.nam) yearsSet.add(h.nam);
     });
     return Array.from(yearsSet).sort((a, b) => b - a);
   }, [normalizedHolidays]);
@@ -220,20 +222,20 @@ export const Holidays: React.FC = () => {
       // Search
       if (searchKeyword.trim()) {
         const kw = searchKeyword.toLowerCase();
-        const matchName = h.name.toLowerCase().includes(kw);
-        const matchDesc = (h.description || '').toLowerCase().includes(kw);
+        const matchName = h.ten_ngay_le.toLowerCase().includes(kw);
+        const matchDesc = (h.mo_ta || '').toLowerCase().includes(kw);
         if (!matchName && !matchDesc) return false;
       }
 
       // Paid Mode
       if (selectedPaid !== '') {
         const isPaidBool = selectedPaid === 'true';
-        if (h.isPaid !== isPaidBool) return false;
+        if (h.huong_luong !== isPaidBool) return false;
       }
 
       // Timing
       if (selectedTiming !== '') {
-        const timing = getTimingStatus(h.startDate, h.endDate);
+        const timing = getTimingStatus(h.ngay_bat_dau, h.ngay_ket_thuc);
         if (timing.status !== selectedTiming) return false;
       }
 
@@ -257,9 +259,9 @@ export const Holidays: React.FC = () => {
     let paidDays = 0;
 
     normalizedHolidays.forEach((h) => {
-      const days = calculateDayCount(h.startDate, h.endDate);
+      const days = calculateDayCount(h.ngay_bat_dau, h.ngay_ket_thuc);
       totalDays += days;
-      if (h.isPaid) {
+      if (h.huong_luong) {
         paidDays += days;
       }
     });
@@ -270,13 +272,13 @@ export const Holidays: React.FC = () => {
     // Tìm kỳ nghỉ kế tiếp
     const todayStr = new Date().toISOString().slice(0, 10);
     const upcomingList = normalizedHolidays
-      .filter((h) => (h.startDate || '') >= todayStr)
-      .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+      .filter((h) => (h.ngay_bat_dau || '') >= todayStr)
+      .sort((a, b) => (a.ngay_bat_dau || '').localeCompare(b.ngay_bat_dau || ''));
 
     const nextHoliday = upcomingList.length > 0 ? upcomingList[0] : null;
     let daysUntilNext = 0;
     if (nextHoliday) {
-      const s = new Date(nextHoliday.startDate);
+      const s = new Date(nextHoliday.ngay_bat_dau);
       const t = new Date(todayStr);
       daysUntilNext = Math.ceil((s.getTime() - t.getTime()) / (1000 * 60 * 60 * 24));
     }
@@ -304,17 +306,17 @@ export const Holidays: React.FC = () => {
     try {
       const headers = ['Tên kỳ nghỉ lễ', 'Năm', 'Ngày bắt đầu', 'Ngày kết thúc', 'Số ngày', 'Chế độ lương', 'Trạng thái', 'Mô tả / Căn cứ'];
       const rows = filteredHolidays.map((h) => {
-        const days = calculateDayCount(h.startDate, h.endDate);
-        const timing = getTimingStatus(h.startDate, h.endDate);
+        const days = calculateDayCount(h.ngay_bat_dau, h.ngay_ket_thuc);
+        const timing = getTimingStatus(h.ngay_bat_dau, h.ngay_ket_thuc);
         return [
-          `"${h.name.replace(/"/g, '""')}"`,
-          h.year || '',
-          formatDateVN(h.startDate),
-          formatDateVN(h.endDate),
+          `"${h.ten_ngay_le.replace(/"/g, '""')}"`,
+          h.nam || '',
+          formatDateVN(h.ngay_bat_dau),
+          formatDateVN(h.ngay_ket_thuc),
           days,
-          h.isPaid ? '100% Lương' : 'Không hưởng lương',
+          h.huong_luong ? '100% Lương' : 'Không hưởng lương',
           timing.label,
-          `"${(h.description || '').replace(/"/g, '""')}"`,
+          `"${(h.mo_ta || '').replace(/"/g, '""')}"`,
         ];
       });
 
@@ -339,7 +341,7 @@ export const Holidays: React.FC = () => {
     setSearchKeyword('');
     setSelectedPaid('');
     setSelectedTiming('');
-    setSelectedYear('2026');
+    setSelectedYear(String(new Date().getFullYear()));
     setCurrentPage(1);
     toast.success('Đã đặt lại tất cả bộ lọc');
   };
@@ -349,11 +351,11 @@ export const Holidays: React.FC = () => {
   // ===========================================================================
   const openAddModal = () => {
     setFormData({
-      name: '',
-      startDate: '',
-      endDate: '',
-      isPaid: true,
-      description: '',
+      ten_ngay_le: '',
+      ngay_bat_dau: '',
+      ngay_ket_thuc: '',
+      huong_luong: true,
+      mo_ta: '',
     });
     setIsAddModalOpen(true);
   };
@@ -361,11 +363,11 @@ export const Holidays: React.FC = () => {
   const openEditModal = (holiday: HolidayItem) => {
     setActiveHoliday(holiday);
     setFormData({
-      name: holiday.name,
-      startDate: holiday.startDate,
-      endDate: holiday.endDate,
-      isPaid: holiday.isPaid,
-      description: holiday.description || '',
+      ten_ngay_le: holiday.ten_ngay_le,
+      ngay_bat_dau: holiday.ngay_bat_dau,
+      ngay_ket_thuc: holiday.ngay_ket_thuc,
+      huong_luong: holiday.huong_luong,
+      mo_ta: holiday.mo_ta || '',
     });
     setIsEditModalOpen(true);
   };
@@ -373,37 +375,37 @@ export const Holidays: React.FC = () => {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.name.trim()) {
+    if (!formData.ten_ngay_le.trim()) {
       toast.error('Vui lòng nhập tên kỳ nghỉ lễ');
       return;
     }
-    if (!formData.startDate) {
+    if (!formData.ngay_bat_dau) {
       toast.error('Vui lòng chọn ngày bắt đầu');
       return;
     }
-    if (!formData.endDate) {
+    if (!formData.ngay_ket_thuc) {
       toast.error('Vui lòng chọn ngày kết thúc');
       return;
     }
-    if (formData.startDate > formData.endDate) {
+    if (formData.ngay_bat_dau > formData.ngay_ket_thuc) {
       toast.error('Ngày bắt đầu không được lớn hơn ngày kết thúc');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const year = Number(formData.startDate.slice(0, 4));
+      const year = Number(formData.ngay_bat_dau.slice(0, 4));
       const payload: CreateHolidayPayload = {
-        name: formData.name.trim(),
-        startDate: formData.startDate,
-        endDate: formData.endDate,
-        year,
-        isPaid: formData.isPaid,
-        description: formData.description.trim(),
+        ten_ngay_le: formData.ten_ngay_le.trim(),
+        ngay_bat_dau: formData.ngay_bat_dau,
+        ngay_ket_thuc: formData.ngay_ket_thuc,
+        nam: year,
+        huong_luong: formData.huong_luong,
+        mo_ta: formData.mo_ta.trim(),
       };
 
       if (isEditModalOpen && activeHoliday) {
-        await holidayApi.updateHoliday(activeHoliday._id, payload);
+        await holidayApi.updateHoliday(activeHoliday.id, payload);
         toast.success('Cập nhật ngày nghỉ lễ thành công!');
         setIsEditModalOpen(false);
       } else {
@@ -425,7 +427,7 @@ export const Holidays: React.FC = () => {
     if (!activeHoliday) return;
     setIsSubmitting(true);
     try {
-      await holidayApi.deleteHoliday(activeHoliday._id);
+      await holidayApi.deleteHoliday(activeHoliday.id);
       toast.success('Đã xóa ngày nghỉ lễ thành công!');
       setIsDeleteModalOpen(false);
       setActiveHoliday(null);
@@ -484,25 +486,60 @@ export const Holidays: React.FC = () => {
       {/* =========================================================================
           2. UNIFIED HOLIDAYS CARD: KPI STRIP + FILTER BAR + TABLE / GRID
          ========================================================================= */}
-      <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden flex flex-col">
-        <CompactStatsBar
-          embedded
-          items={[
-            { label: 'Tổng kỳ nghỉ', value: kpis.totalHolidays, unit: 'đợt', tone: 'neutral' },
-            { label: 'Tổng ngày nghỉ', value: kpis.totalDays, unit: 'ngày', tone: 'warning' },
-            { label: 'Hưởng 100% lương', value: `${kpis.paidDays}/${kpis.totalDays}`, badge: `${kpis.paidPercentage}%`, tone: 'success' },
-            {
-              label: 'Kỳ nghỉ tới',
-              value: kpis.nextHoliday ? kpis.nextHoliday.name : 'Chưa có',
-              badge: kpis.nextHoliday ? `Còn ${kpis.daysUntilNext}d` : undefined,
-              tone: 'brand',
+      <CompactStatsBar
+        items={[
+          {
+            label: 'Tổng kỳ nghỉ',
+            value: kpis.totalHolidays,
+            unit: 'đợt',
+            subtext: selectedYear === 'all' ? 'Tất cả các năm' : `Năm ${selectedYear}`,
+            tone: 'neutral',
+            active: selectedPaid === '' && selectedTiming === '',
+            onClick: () => {
+              setSelectedPaid('');
+              setSelectedTiming('');
+              setCurrentPage(1);
             },
-          ]}
-        />
+          },
+          {
+            label: 'Tổng ngày nghỉ',
+            value: kpis.totalDays,
+            unit: 'ngày',
+            subtext: 'Tổng thời lượng nghỉ lễ',
+            tone: 'warning',
+          },
+          {
+            label: 'Hưởng 100% lương',
+            value: `${kpis.paidDays}/${kpis.totalDays}`,
+            badge: `${kpis.paidPercentage}%`,
+            progress: kpis.paidPercentage,
+            tone: 'success',
+            active: selectedPaid === 'true',
+            onClick: () => {
+              setSelectedPaid((prev) => (prev === 'true' ? '' : 'true'));
+              setCurrentPage(1);
+            },
+          },
+          {
+            label: 'Kỳ nghỉ tới',
+            value: kpis.nextHoliday ? kpis.nextHoliday.ten_ngay_le : 'Chưa có',
+            badge: kpis.nextHoliday ? `Còn ${kpis.daysUntilNext}d` : undefined,
+            subtext: kpis.nextHoliday ? 'Sắp diễn ra' : 'Không có lịch sắp tới',
+            tone: 'brand',
+            active: selectedTiming === 'upcoming',
+            onClick: () => {
+              setSelectedTiming((prev) => (prev === 'upcoming' ? '' : 'upcoming'));
+              setCurrentPage(1);
+            },
+          },
+        ]}
+      />
 
-        <div className="p-3 border-b border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-2">
+      <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col">
+
+        <div className="p-3.5 border-b border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
             <Search className="w-4 h-4" />
           </span>
           <input
@@ -511,10 +548,22 @@ export const Holidays: React.FC = () => {
               setSearchKeyword(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full h-9 pl-9 pr-3 bg-slate-50 dark:bg-slate-800/80 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 text-xs border border-slate-200/80 dark:border-slate-700 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
+            className="w-full h-9 pl-9 pr-8 bg-slate-50/80 dark:bg-slate-800/80 rounded-xl text-slate-800 dark:text-slate-100 placeholder:text-slate-400 text-xs border border-slate-200/80 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
             placeholder="Tìm kỳ nghỉ lễ theo tên hoặc mô tả..."
             type="text"
           />
+          {searchKeyword && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchKeyword('');
+                setCurrentPage(1);
+              }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-0.5"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         <select
@@ -523,7 +572,7 @@ export const Holidays: React.FC = () => {
             setSelectedYear(e.target.value);
             setCurrentPage(1);
           }}
-          className="h-9 pl-3 pr-7 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
+          className="h-9 pl-3 pr-7 bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
         >
           <option value="all">Tất cả năm</option>
           {availableYears.map((yr) => (
@@ -539,7 +588,7 @@ export const Holidays: React.FC = () => {
             setSelectedPaid(e.target.value);
             setCurrentPage(1);
           }}
-          className="h-9 pl-3 pr-7 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
+          className="h-9 pl-3 pr-7 bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
         >
           <option value="">Tất cả chế độ</option>
           <option value="true">Hưởng 100% lương</option>
@@ -552,7 +601,7 @@ export const Holidays: React.FC = () => {
             setSelectedTiming(e.target.value);
             setCurrentPage(1);
           }}
-          className="h-9 pl-3 pr-7 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
+          className="h-9 pl-3 pr-7 bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
         >
           <option value="">Tất cả thời điểm</option>
           <option value="ongoing">Đang diễn ra</option>
@@ -560,7 +609,7 @@ export const Holidays: React.FC = () => {
           <option value="passed">Đã kết thúc</option>
         </select>
 
-        <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg shrink-0 border border-slate-200/60 dark:border-slate-700/60 h-9">
+        <div className="flex items-center bg-slate-100/80 dark:bg-slate-800 p-1 rounded-xl shrink-0 h-9">
           <button
             onClick={() => setViewMode('table')}
             className={`h-full flex items-center gap-1 px-2.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
@@ -620,19 +669,19 @@ export const Holidays: React.FC = () => {
               </colgroup>
               <thead>
                 <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/70 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  <th className="py-3 px-3 font-semibold whitespace-nowrap">Tên kỳ nghỉ lễ</th>
-                  <th className="py-3 px-3 font-semibold whitespace-nowrap">Khoảng thời gian</th>
-                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">Số ngày</th>
-                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">Chế độ lương</th>
-                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">Trạng thái</th>
-                  <th className="py-3 px-3 font-semibold whitespace-nowrap">Mô tả / Căn cứ</th>
-                  <th className="py-3 px-3 font-semibold text-center whitespace-nowrap">Thao tác</th>
+                  <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Tên kỳ nghỉ lễ</th>
+                  <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Khoảng thời gian</th>
+                  <th className="py-2.5 px-3.5 font-semibold text-center whitespace-nowrap">Số ngày</th>
+                  <th className="py-2.5 px-3.5 font-semibold text-center whitespace-nowrap">Chế độ lương</th>
+                  <th className="py-2.5 px-3.5 font-semibold text-center whitespace-nowrap">Trạng thái</th>
+                  <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Mô tả / Căn cứ</th>
+                  <th className="py-2.5 px-3.5 font-semibold text-center whitespace-nowrap">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-sm text-slate-400">
+                    <td colSpan={7} className="py-12 text-center text-xs text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
                         <span>Đang tải lịch nghỉ lễ...</span>
@@ -644,61 +693,61 @@ export const Holidays: React.FC = () => {
                     <td colSpan={7} className="py-12 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <PartyPopper className="w-8 h-8 text-slate-300 stroke-[1.5]" />
-                        <span className="text-sm font-semibold text-slate-600">Không tìm thấy kỳ nghỉ lễ nào</span>
+                        <span className="text-xs font-semibold text-slate-600">Không tìm thấy kỳ nghỉ lễ nào</span>
                         <p className="text-xs text-slate-400">Thử thay đổi năm hoặc bỏ bớt các tiêu chí lọc</p>
                       </div>
                     </td>
                   </tr>
                 ) : (
                   paginatedHolidays.map((h) => {
-                    const days = calculateDayCount(h.startDate, h.endDate);
-                    const timing = getTimingStatus(h.startDate, h.endDate);
+                    const days = calculateDayCount(h.ngay_bat_dau, h.ngay_ket_thuc);
+                    const timing = getTimingStatus(h.ngay_bat_dau, h.ngay_ket_thuc);
 
                     return (
-                      <tr key={h._id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group">
+                      <tr key={h.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group">
                         {/* Tên kỳ nghỉ lễ */}
-                        <td className="py-3 px-3 min-w-0">
+                        <td className="py-2.5 px-3.5 min-w-0">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                               <PartyPopper className="w-4 h-4" />
                             </div>
                             <div className="flex items-center gap-1.5 truncate min-w-0">
-                              <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                                {h.name || (h as any).ten_ngay_le || '--'}
+                              <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                                {h.ten_ngay_le || (h as any).ten_ngay_le || '--'}
                               </span>
                               <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium tabular-nums shrink-0">
-                                {h.year || (h as any).nam || '--'}
+                                {h.nam || (h as any).nam || '--'}
                               </span>
                             </div>
                           </div>
                         </td>
 
                         {/* Khoảng thời gian */}
-                        <td className="py-3 px-3 whitespace-nowrap">
+                        <td className="py-2.5 px-3.5 whitespace-nowrap">
                           <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200 tabular-nums text-sm font-medium whitespace-nowrap">
                             <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            {h.startDate === h.endDate ? (
-                              <span>{formatDateVN(h.startDate || (h as any).ngay_bat_dau)}</span>
+                            {h.ngay_bat_dau === h.ngay_ket_thuc ? (
+                              <span>{formatDateVN(h.ngay_bat_dau || (h as any).ngay_bat_dau)}</span>
                             ) : (
                               <>
-                                <span>{formatDateShort(h.startDate || (h as any).ngay_bat_dau)}</span>
+                                <span>{formatDateShort(h.ngay_bat_dau || (h as any).ngay_bat_dau)}</span>
                                 <ArrowRight className="w-3 h-3 text-slate-400" />
-                                <span>{formatDateVN(h.endDate || (h as any).ngay_ket_thuc)}</span>
+                                <span>{formatDateVN(h.ngay_ket_thuc || (h as any).ngay_ket_thuc)}</span>
                               </>
                             )}
                           </div>
                         </td>
 
                         {/* Số ngày nghỉ */}
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <td className="py-2.5 px-3.5 text-center whitespace-nowrap">
                           <span className="inline-block px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60 text-xs font-medium tabular-nums">
                             {days} ngày
                           </span>
                         </td>
 
                         {/* Chế độ lương */}
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
-                          {h.isPaid ? (
+                        <td className="py-2.5 px-3.5 text-center whitespace-nowrap">
+                          {h.huong_luong ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-medium whitespace-nowrap">
                               <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                               <span>100% Lương</span>
@@ -711,16 +760,16 @@ export const Holidays: React.FC = () => {
                         </td>
 
                         {/* Trạng thái */}
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <td className="py-2.5 px-3.5 text-center whitespace-nowrap">
                           <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${timing.badgeClass}`}>
                             {timing.label}
                           </span>
                         </td>
 
                         {/* Mô tả / Căn cứ */}
-                        <td className="py-3 px-3 min-w-0">
-                          <span className="text-slate-600 dark:text-slate-400 text-sm block truncate" title={h.description || (h as any).mo_ta || 'Không có mô tả'}>
-                            {h.description || (h as any).mo_ta || 'Theo quy định'}
+                        <td className="py-2.5 px-3.5 min-w-0">
+                          <span className="text-slate-600 dark:text-slate-400 text-sm block truncate" title={h.mo_ta || (h as any).mo_ta || 'Không có mô tả'}>
+                            {h.mo_ta || (h as any).mo_ta || 'Theo quy định'}
                           </span>
                         </td>
 
@@ -772,56 +821,28 @@ export const Holidays: React.FC = () => {
           </div>
 
           {/* Table Pagination Footer */}
-          <div className="flex items-center justify-between px-4 py-3 bg-slate-50/80 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
-            <div>
-              <span>
-                Trang <strong className="text-slate-800 dark:text-slate-100">{currentPage}</strong> / {totalPages} (Tổng cộng{' '}
-                <strong className="text-slate-800 dark:text-slate-100">{filteredHolidays.length}</strong> kỳ nghỉ lễ)
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${
-                  currentPage <= 1
-                    ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 cursor-not-allowed'
-                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer'
-                }`}
-                type="button"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                className="w-8 h-8 rounded-lg bg-rose-600 text-white font-semibold flex items-center justify-center shadow-xs"
-                type="button"
-              >
-                {currentPage}
-              </button>
-              <button
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-                className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${
-                  currentPage >= totalPages
-                    ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 cursor-not-allowed'
-                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer'
-                }`}
-                type="button"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+          <ThanhPhanTrang
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={filteredHolidays.length}
+            pageSize={pageSize}
+            itemLabel="kỳ nghỉ lễ"
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setCurrentPage(1);
+            }}
+          />
         </div>
       ) : (
         <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 bg-slate-50/40 dark:bg-slate-950/30">
           {paginatedHolidays.map((h) => {
-            const days = calculateDayCount(h.startDate, h.endDate);
-            const timing = getTimingStatus(h.startDate, h.endDate);
+            const days = calculateDayCount(h.ngay_bat_dau, h.ngay_ket_thuc);
+            const timing = getTimingStatus(h.ngay_bat_dau, h.ngay_ket_thuc);
 
             return (
               <div
-                key={h._id}
+                key={h.id}
                 className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-sm p-4 flex flex-col justify-between transition-all group"
               >
                 <div>
@@ -832,9 +853,9 @@ export const Holidays: React.FC = () => {
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-rose-600 dark:group-hover:text-rose-400 leading-snug">
-                          {h.name}
+                          {h.ten_ngay_le}
                         </h4>
-                        <span className="text-[11px] text-slate-400 font-medium">Năm học {h.year}</span>
+                        <span className="text-[11px] text-slate-400 font-medium">Năm học {h.nam}</span>
                       </div>
                     </div>
                     <span className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold ${timing.badgeClass}`}>
@@ -846,7 +867,7 @@ export const Holidays: React.FC = () => {
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-400">Thời gian nghỉ:</span>
                       <span className="font-mono font-bold text-slate-800 dark:text-slate-200 text-[11px]">
-                        {formatDateVN(h.startDate)} → {formatDateVN(h.endDate)}
+                        {formatDateVN(h.ngay_bat_dau)} → {formatDateVN(h.ngay_ket_thuc)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
@@ -857,15 +878,15 @@ export const Holidays: React.FC = () => {
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-400">Chế độ:</span>
-                      <span className={`font-semibold ${h.isPaid ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                        {h.isPaid ? '✓ 100% Lương' : 'Không hưởng lương'}
+                      <span className={`font-semibold ${h.huong_luong ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                        {h.huong_luong ? '✓ 100% Lương' : 'Không hưởng lương'}
                       </span>
                     </div>
                   </div>
 
-                  {h.description && (
+                  {h.mo_ta && (
                     <p className="mt-2.5 text-xs text-slate-500 dark:text-slate-400 line-clamp-2 italic">
-                      "{h.description}"
+                      "{h.mo_ta}"
                     </p>
                   )}
                 </div>
@@ -919,7 +940,7 @@ export const Holidays: React.FC = () => {
       {(isAddModalOpen || isEditModalOpen) && (
         <Portal>
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-950/50">
               <div className="flex items-center gap-2.5">
@@ -956,8 +977,8 @@ export const Holidays: React.FC = () => {
                 <input
                   type="text"
                   required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  value={formData.ten_ngay_le}
+                  onChange={(e) => setFormData({ ...formData, ten_ngay_le: e.target.value })}
                   placeholder="VD: Tết Nguyên Đán Bính Ngọ 2026"
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-800"
                 />
@@ -971,8 +992,8 @@ export const Holidays: React.FC = () => {
                   <input
                     type="date"
                     required
-                    value={formData.startDate}
-                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    value={formData.ngay_bat_dau}
+                    onChange={(e) => setFormData({ ...formData, ngay_bat_dau: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-800"
                   />
                 </div>
@@ -983,18 +1004,18 @@ export const Holidays: React.FC = () => {
                   <input
                     type="date"
                     required
-                    value={formData.endDate}
-                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    value={formData.ngay_ket_thuc}
+                    onChange={(e) => setFormData({ ...formData, ngay_ket_thuc: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-800"
                   />
                 </div>
               </div>
 
-              {formData.startDate && formData.endDate && formData.startDate <= formData.endDate && (
+              {formData.ngay_bat_dau && formData.ngay_ket_thuc && formData.ngay_bat_dau <= formData.ngay_ket_thuc && (
                 <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-xs text-amber-800 flex items-center justify-between">
                   <span>Tổng số ngày nghỉ dự kiến:</span>
                   <span className="font-bold">
-                    {calculateDayCount(formData.startDate, formData.endDate)} ngày
+                    {calculateDayCount(formData.ngay_bat_dau, formData.ngay_ket_thuc)} ngày
                   </span>
                 </div>
               )}
@@ -1006,8 +1027,8 @@ export const Holidays: React.FC = () => {
                     <input
                       type="radio"
                       name="isPaid"
-                      checked={formData.isPaid === true}
-                      onChange={() => setFormData({ ...formData, isPaid: true })}
+                      checked={formData.huong_luong === true}
+                      onChange={() => setFormData({ ...formData, huong_luong: true })}
                       className="text-rose-600 focus:ring-rose-500"
                     />
                     <span className="text-xs text-slate-700 font-medium">Hưởng 100% lương (Chuẩn Nhà nước)</span>
@@ -1016,8 +1037,8 @@ export const Holidays: React.FC = () => {
                     <input
                       type="radio"
                       name="isPaid"
-                      checked={formData.isPaid === false}
-                      onChange={() => setFormData({ ...formData, isPaid: false })}
+                      checked={formData.huong_luong === false}
+                      onChange={() => setFormData({ ...formData, huong_luong: false })}
                       className="text-rose-600 focus:ring-rose-500"
                     />
                     <span className="text-xs text-slate-700 font-medium">Không hưởng lương</span>
@@ -1029,8 +1050,8 @@ export const Holidays: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Mô tả / Căn cứ pháp lý</label>
                 <textarea
                   rows={3}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  value={formData.mo_ta}
+                  onChange={(e) => setFormData({ ...formData, mo_ta: e.target.value })}
                   placeholder="Căn cứ thông báo số..., quy chế đào tạo NTU..."
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-800"
                 ></textarea>
@@ -1068,7 +1089,7 @@ export const Holidays: React.FC = () => {
       {isViewModalOpen && activeHoliday && (
         <Portal>
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-950/50">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
@@ -1076,7 +1097,7 @@ export const Holidays: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-800">Chi Tiết Kỳ Nghỉ Lễ</h3>
-                  <span className="text-[11px] text-slate-400">Năm học {activeHoliday.year}</span>
+                  <span className="text-[11px] text-slate-400">Năm học {activeHoliday.nam}</span>
                 </div>
               </div>
               <button
@@ -1093,7 +1114,7 @@ export const Holidays: React.FC = () => {
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                   Tên kỳ nghỉ lễ
                 </span>
-                <p className="text-base font-bold text-slate-900">{activeHoliday.name}</p>
+                <p className="text-base font-bold text-slate-900">{activeHoliday.ten_ngay_le}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 py-2 border-y border-slate-100">
@@ -1102,7 +1123,7 @@ export const Holidays: React.FC = () => {
                     Khoảng thời gian
                   </span>
                   <p className="text-xs font-mono font-bold text-slate-800">
-                    {formatDateVN(activeHoliday.startDate)} → {formatDateVN(activeHoliday.endDate)}
+                    {formatDateVN(activeHoliday.ngay_bat_dau)} → {formatDateVN(activeHoliday.ngay_ket_thuc)}
                   </p>
                 </div>
                 <div>
@@ -1110,7 +1131,7 @@ export const Holidays: React.FC = () => {
                     Tổng số ngày nghỉ
                   </span>
                   <span className="inline-block px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60 text-xs font-bold">
-                    {calculateDayCount(activeHoliday.startDate, activeHoliday.endDate)} ngày thực tế
+                    {calculateDayCount(activeHoliday.ngay_bat_dau, activeHoliday.ngay_ket_thuc)} ngày thực tế
                   </span>
                 </div>
               </div>
@@ -1120,7 +1141,7 @@ export const Holidays: React.FC = () => {
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                     Chế độ lương
                   </span>
-                  {activeHoliday.isPaid ? (
+                  {activeHoliday.huong_luong ? (
                     <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       100% Lương
@@ -1137,10 +1158,10 @@ export const Holidays: React.FC = () => {
                   </span>
                   <span
                     className={`inline-block px-2.5 py-0.5 rounded-lg text-xs font-medium ${
-                      getTimingStatus(activeHoliday.startDate, activeHoliday.endDate).badgeClass
+                      getTimingStatus(activeHoliday.ngay_bat_dau, activeHoliday.ngay_ket_thuc).badgeClass
                     }`}
                   >
-                    {getTimingStatus(activeHoliday.startDate, activeHoliday.endDate).label}
+                    {getTimingStatus(activeHoliday.ngay_bat_dau, activeHoliday.ngay_ket_thuc).label}
                   </span>
                 </div>
               </div>
@@ -1150,8 +1171,27 @@ export const Holidays: React.FC = () => {
                   Mô tả / Căn cứ
                 </span>
                 <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200/80">
-                  {activeHoliday.description || 'Theo lịch và quy định của nhà trường.'}
+                  {activeHoliday.mo_ta || 'Theo lịch và quy định của nhà trường.'}
                 </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100 text-xs">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                    Ngày tạo
+                  </span>
+                  <span className="font-mono text-slate-700">
+                    {(activeHoliday as any).createdAt ? new Date((activeHoliday as any).createdAt).toLocaleString('vi-VN') : '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                    Cập nhật gần nhất
+                  </span>
+                  <span className="font-mono text-slate-700">
+                    {(activeHoliday as any).updatedAt ? new Date((activeHoliday as any).updatedAt).toLocaleString('vi-VN') : '—'}
+                  </span>
+                </div>
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
@@ -1175,7 +1215,7 @@ export const Holidays: React.FC = () => {
       {isDeleteModalOpen && activeHoliday && (
         <Portal>
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
                 <AlertTriangle className="w-6 h-6" />
@@ -1183,7 +1223,7 @@ export const Holidays: React.FC = () => {
               <h3 className="text-base font-bold text-slate-900">Xác Nhận Xóa Kỳ Nghỉ Lễ</h3>
               <p className="text-xs text-slate-500">
                 Bạn có chắc chắn muốn xóa kỳ nghỉ{' '}
-                <b className="text-slate-800 font-semibold">{activeHoliday.name}</b> (Năm {activeHoliday.year})?
+                <b className="text-slate-800 font-semibold">{activeHoliday.ten_ngay_le}</b> (Năm {activeHoliday.nam})?
               </p>
               <p className="text-[11px] text-rose-500 bg-rose-50/50 p-2.5 rounded-xl border border-rose-100 font-medium">
                 Dữ liệu chấm công tự động trong các ngày này sẽ được tính lại theo quy chuẩn ngày làm việc thông thường.

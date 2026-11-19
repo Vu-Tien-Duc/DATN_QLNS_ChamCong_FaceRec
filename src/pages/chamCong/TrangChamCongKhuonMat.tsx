@@ -19,17 +19,23 @@ import {
   User,
   ShieldCheck,
   MapPin,
+  QrCode,
+  Globe,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import confetti from 'canvas-confetti';
 import { useLocation } from 'react-router-dom';
 import { attendanceApi, AttendancePunchResult, AttendanceHistoryItem } from '../../api/chamCong.api';
+import { faceApi } from '../../api/khuonMat.api';
 import { audioFeedback } from '../../utils/amThanh';
 import { useAuthStore } from '../../stores/useXacThucStore';
+import { canPersonalCheckIn, canOperateAttendanceKiosk } from '../../utils/phanQuyen';
 import { cameraManager } from '../../utils/quanLyCamera';
 import { FaceAttendanceScannerModal } from '../../components/sinhTracHoc/ModalQuetChamCong';
 import { FaceRegistrationModal } from '../../components/sinhTracHoc/ModalDangKyKhuonMat';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
+import { KhungDiemDanhTrucTuyenVaQr } from './components/KhungDiemDanhTrucTuyenVaQr';
+import UserAvatar from '../../components/chung/AnhDaiDienNguoiDung';
 
 export const FaceAttendance: React.FC = () => {
   const { user: authUser } = useAuthStore();
@@ -47,7 +53,12 @@ export const FaceAttendance: React.FC = () => {
   const [cameraLoading, setCameraLoading] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
+  // Phân quyền điểm danh rõ ràng theo vai trò (CSDL v2.5 RBAC)
+  const allowPersonalCheckIn = canPersonalCheckIn(authUser);
+  const allowKioskQrDisplay = canOperateAttendanceKiosk(authUser);
+
   // Chế độ & Tính năng tự động
+  const [attendanceMethod, setAttendanceMethod] = useState<'face' | 'online' | 'qr'>('face');
   const [actionType, setActionType] = useState<'check_in' | 'check_out'>('check_in');
   const [isAutoScan, setIsAutoScan] = useState<boolean>(true);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
@@ -57,6 +68,7 @@ export const FaceAttendance: React.FC = () => {
   const [lastResult, setLastResult] = useState<AttendancePunchResult | null>(null);
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const [recentPunches, setRecentPunches] = useState<AttendanceHistoryItem[]>([]);
+  const [serviceHealth, setServiceHealth] = useState<{ status: string; ready?: boolean } | null>(null);
   const [scanStatus, setScanStatus] = useState<{
     type: 'idle' | 'scanning' | 'success' | 'error';
     message: string;
@@ -73,6 +85,7 @@ export const FaceAttendance: React.FC = () => {
     isMountedRef.current = true;
     startCamera();
     loadRecentHistory();
+    loadAiHealth();
 
     return () => {
       isMountedRef.current = false;
@@ -80,11 +93,28 @@ export const FaceAttendance: React.FC = () => {
     };
   }, []);
 
-  // Tải danh sách lượt quét gần nhất
+  // Kiểm tra trạng thái kết nối dịch vụ Face AI
+  const loadAiHealth = async () => {
+    try {
+      const h = await faceApi.getHealth();
+      if (isMountedRef.current) setServiceHealth(h);
+    } catch (_) {
+      if (isMountedRef.current) setServiceHealth({ status: 'offline' });
+    }
+  };
+
+  // Tải danh sách lượt quét hôm nay
   const loadRecentHistory = async () => {
     try {
-      const logs = await attendanceApi.getRecentHistory(8);
-      setRecentPunches(logs);
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const todayIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const res = await attendanceApi.getAttendanceHistory({
+        tu_ngay: todayIso,
+        den_ngay: todayIso,
+        gioi_han: 8,
+      });
+      setRecentPunches(res.records || []);
     } catch (_) {}
   };
 
@@ -246,8 +276,8 @@ export const FaceAttendance: React.FC = () => {
 
         setCapturedPreview(capture.dataUrl);
 
-        // Tọa độ GPS: ưu tiên lấy định vị thực tế từ trình duyệt, fallback về tọa độ khuôn viên trường ĐH Nguyễn Trãi
-        let coords = { lat: 21.028511, lng: 105.854167 };
+        // Tọa độ GPS: ưu tiên lấy định vị thực tế từ trình duyệt, fallback về cấu hình khuôn viên trường
+        let coords: { lat: number; lng: number } | null = null;
         if (typeof navigator !== 'undefined' && navigator.geolocation) {
           try {
             const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
@@ -259,7 +289,17 @@ export const FaceAttendance: React.FC = () => {
             });
             coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
           } catch {
-            // Giữ tọa độ chuẩn khuôn viên trường nếu trình duyệt chặn quyền hoặc timeout
+            // Fallback sang cấu hình khuôn viên từ Backend
+          }
+        }
+        if (!coords) {
+          try {
+            const cfg = await attendanceApi.getCampusConfig();
+            if (typeof cfg?.lat === 'number' && typeof cfg?.lng === 'number') {
+              coords = { lat: cfg.lat, lng: cfg.lng };
+            }
+          } catch {
+            coords = { lat: 20.9752, lng: 105.7628 };
           }
         }
 
@@ -292,9 +332,13 @@ export const FaceAttendance: React.FC = () => {
 
           setScanStatus({
             type: 'success',
-            message: `Điểm danh thành công: ${res.user?.fullName || 'Cán bộ'}`,
-            detail: `Độ tin cậy: ${((res.similarity ?? 0.95) * 100).toFixed(1)}% • ${
-              res.record?.status === 'on_time' ? 'Đúng giờ' : 'Ghi nhận'
+            message: `Điểm danh thành công: ${res.user?.ho_ten || 'Cán bộ'}`,
+            detail: `${
+              res.diem_tin_cay !== undefined && res.diem_tin_cay !== null
+                ? `Độ tin cậy: ${(res.diem_tin_cay * 100).toFixed(1)}% • `
+                : ''
+            }${
+              res.record?.trang_thai === 'on_time' ? 'Đúng giờ' : 'Ghi nhận'
             }`,
           });
 
@@ -377,26 +421,51 @@ export const FaceAttendance: React.FC = () => {
   }, [executePunch, isCameraActive, isProcessing]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12 animate-fade-in">
+    <div className="w-full space-y-5 pb-12 animate-fade-in">
       {/* =====================================================================
           1. HEADER CARD: TIÊU ĐỀ CHUẨN PAGEHEADER & THANH CÔNG CỤ TINH TẾ
       ===================================================================== */}
       <PageHeader
-        title="Điểm Danh Khuôn Mặt"
-        subtitle="Nhận diện sinh trắc học 512 chiều thời gian thực, tự động ghi nhận lượt quẹt thẻ và kiểm soát ca làm việc."
+        title="Điểm Danh Trực Tuyến & Sinh Trắc Học"
+        subtitle="Hỗ trợ nhận diện khuôn mặt AI 512D, điểm danh trực tuyến kèm định vị GPS và quét mã QR động TOTP."
         icon={<ScanFace className="w-5 h-5" />}
-        badge="AI FaceID"
+        badge="Đa phương thức"
         badgeVariant="brand"
         actions={
           <>
+            {/* Trạng thái kết nối dịch vụ Face AI */}
+            <button
+              type="button"
+              onClick={loadAiHealth}
+              title="Nhấn để kiểm tra lại kết nối máy chủ Face AI"
+              className="h-9 flex items-center gap-1.5 px-3 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200/70 dark:hover:bg-slate-700/80 transition-colors cursor-pointer"
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  serviceHealth?.status === 'ok' && serviceHealth?.ready !== false
+                    ? 'bg-emerald-500 animate-pulse'
+                    : serviceHealth?.status === 'ok'
+                      ? 'bg-amber-500 animate-pulse'
+                      : 'bg-rose-500'
+                }`}
+              />
+              <span className="text-slate-600 dark:text-slate-300">
+                {serviceHealth?.status === 'ok' && serviceHealth?.ready !== false
+                  ? 'AI Sẵn sàng'
+                  : serviceHealth?.status === 'ok'
+                    ? 'AI đang khởi tạo'
+                    : 'Chưa kết nối AI'}
+              </span>
+            </button>
+
             {/* Nút Bật/Tắt Tự Động Quét */}
             <button
               type="button"
               onClick={() => setIsAutoScan(!isAutoScan)}
-              className={`h-9 flex items-center gap-1.5 px-3.5 rounded-full border text-xs font-semibold transition-all cursor-pointer ${
+              className={`h-9 flex items-center gap-1.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
                 isAutoScan
                   ? 'border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
-                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                  : 'border-slate-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
               }`}
               title="Bật hoặc tắt chế độ tự động quét khuôn mặt mỗi 2 giây"
             >
@@ -413,7 +482,7 @@ export const FaceAttendance: React.FC = () => {
                 setIsMuted(nextMuted);
                 audioFeedback.setMuted(nextMuted);
               }}
-              className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              className="w-9 h-9 inline-flex items-center justify-center rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
               title={isMuted ? 'Bật âm thanh phản hồi' : 'Tắt âm thanh phản hồi'}
             >
               {isMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-400" /> : <Volume2 className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />}
@@ -426,22 +495,22 @@ export const FaceAttendance: React.FC = () => {
                 stopCamera();
                 setIsScannerModalOpen(true);
               }}
-              className="h-9 flex items-center gap-1.5 px-3.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-xs font-semibold transition-all cursor-pointer"
+              className="h-9 flex items-center gap-1.5 px-3 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-xs font-semibold transition-all cursor-pointer"
               title="Mở trình quét AI Face ID toàn màn hình với hiệu ứng Laser"
             >
               <Maximize2 className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
               <span>Trình Quét HUD</span>
             </button>
 
-            {/* Nút Đăng Ký 5 Góc (Chỉ Admin / BGH) */}
-            {['admin', 'bgh'].includes(authUser?.role || '') && (
+            {/* Nút Đăng Ký 5 Góc (Admin / BGH / TCCB) */}
+            {['admin', 'bgh', 'tccb'].includes(authUser?.role || '') && (
               <button
                 type="button"
                 onClick={() => {
                   stopCamera();
                   setIsEnrollModalOpen(true);
                 }}
-                className="h-9 flex items-center gap-1.5 px-3.5 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                className="h-9 flex items-center gap-1.5 px-3.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
                 title="Đăng ký mẫu khuôn mặt 5 góc"
               >
                 <Sparkles className="w-3.5 h-3.5" />
@@ -453,12 +522,89 @@ export const FaceAttendance: React.FC = () => {
       />
 
       {/* =====================================================================
-          2. MAIN WORKSPACE: CAMERA ĐIỂM DANH (TRÁI) & KẾT QUẢ / LỊCH SỬ (PHẢI)
+          1.5. CHỌN PHƯƠNG THỨC ĐIỂM DANH (PHÂN QUYỀN THEO VAI TRÒ)
       ===================================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* CỘT TRÁI: CAMERA GỌN GÀNG, KHUNG QUÉT TỐI GIẢN (7 Cột) */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <button
+            type="button"
+            onClick={() => setAttendanceMethod('face')}
+            className={`h-9 px-4 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition-all cursor-pointer ${
+              attendanceMethod === 'face'
+                ? 'bg-brand-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/70'
+            }`}
+          >
+            <ScanFace className="w-4 h-4" />
+            <span>{allowPersonalCheckIn ? 'Face ID (AI 512D)' : 'Trạm Kiosk Face ID (1:N)'}</span>
+          </button>
+
+          {allowPersonalCheckIn && (
+            <button
+              type="button"
+              onClick={() => {
+                stopCamera();
+                setAttendanceMethod('online');
+              }}
+              className={`h-9 px-4 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition-all cursor-pointer ${
+                attendanceMethod === 'online'
+                  ? 'bg-brand-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/70'
+              }`}
+            >
+              <Globe className="w-4 h-4" />
+              <span>Điểm danh Trực tuyến (GPS)</span>
+            </button>
+          )}
+
+          {(allowPersonalCheckIn || allowKioskQrDisplay) && (
+            <button
+              type="button"
+              onClick={() => {
+                stopCamera();
+                setAttendanceMethod('qr');
+              }}
+              className={`h-9 px-4 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition-all cursor-pointer ${
+                attendanceMethod === 'qr'
+                  ? 'bg-brand-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/70'
+              }`}
+            >
+              <QrCode className="w-4 h-4" />
+              <span>{allowPersonalCheckIn ? 'Quét mã QR động (TOTP)' : 'Phát mã QR động (Kiosk 20s)'}</span>
+            </button>
+          )}
+        </div>
+
+        {!allowPersonalCheckIn && allowKioskQrDisplay && (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/60 text-xs font-medium">
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+            <span>Tài khoản Quản trị chỉ vận hành trạm Kiosk, không tự chấm công cá nhân</span>
+          </span>
+        )}
+      </div>
+
+      {/* =====================================================================
+          2. MAIN WORKSPACE: KHUNG ĐIỂM DANH (TRÁI) & KẾT QUẢ / LỊCH SỬ (PHẢI)
+      ===================================================================== */}
+      <div className="grid grid-cols-1 xl:grid-cols-5 lg:grid-cols-2 gap-6 items-start">
+        {/* CỘT TRÁI: KHUNG ĐIỂM DANH THEO PHƯƠNG THỨC ĐÃ CHỌN (7 Cột) */}
+        <div className="xl:col-span-3 lg:col-span-1 space-y-4">
+          {attendanceMethod !== 'face' ? (
+            <KhungDiemDanhTrucTuyenVaQr
+              mode={attendanceMethod}
+              actionType={actionType}
+              allowPersonalCheckIn={allowPersonalCheckIn}
+              allowKioskQrDisplay={allowKioskQrDisplay}
+              onChangeActionType={setActionType}
+              onSuccess={(res) => {
+                setLastResult(res);
+                setCapturedPreview(null);
+                loadRecentHistory();
+              }}
+            />
+          ) : (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs space-y-4">
             {/* Thanh điều khiển trên Camera: Chế độ Vào/Tan Ca & Bật/Tắt Cam */}
             <div className="flex items-center justify-between gap-3 flex-wrap">
               {/* Segmented Control Chọn Chế Độ Vào Ca / Tan Ca */}
@@ -634,24 +780,41 @@ export const FaceAttendance: React.FC = () => {
 
               {/* Màn hình thông báo khi Camera đang tắt */}
               {!isCameraActive && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-900 text-white">
-                  {cameraLoading ? (
-                    <RefreshCw className="w-8 h-8 animate-spin text-brand-400 mb-2" />
-                  ) : (
-                    <CameraOff className="w-8 h-8 text-slate-500 mb-2" />
-                  )}
-                  <p className="font-semibold text-xs mb-3 text-slate-300">
-                    {cameraLoading ? 'Đang khởi động Camera...' : 'Camera đang tắt'}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={startCamera}
-                    disabled={cameraLoading}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-sm transition-all cursor-pointer"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>Bật Camera</span>
-                  </button>
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950">
+                  {/* Vòng trang trí nền */}
+                  <div className="absolute inset-0 opacity-10 pointer-events-none">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full border border-indigo-400/30" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-44 h-44 rounded-full border border-indigo-400/50" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full border border-indigo-400/70" />
+                  </div>
+                  <div className="relative flex flex-col items-center gap-3">
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center ${cameraLoading ? 'bg-brand-500/20 border border-brand-500/40' : 'bg-slate-700/60 border border-slate-600/60'}`}>
+                      {cameraLoading ? (
+                        <RefreshCw className="w-7 h-7 animate-spin text-brand-400" />
+                      ) : (
+                        <CameraOff className="w-7 h-7 text-slate-400" />
+                      )}
+                    </div>
+                    <div className="text-center space-y-1">
+                      <p className="font-bold text-sm text-white">
+                        {cameraLoading ? 'Đang khởi động Camera...' : 'Camera chưa được bật'}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {cameraLoading ? 'Vui lòng chờ trong giây lát' : 'Nhấn nút bên dưới để bắt đầu nhận diện khuôn mặt'}
+                      </p>
+                    </div>
+                    {!cameraLoading && (
+                      <button
+                        type="button"
+                        onClick={startCamera}
+                        disabled={cameraLoading}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs shadow-lg shadow-brand-900/40 transition-all cursor-pointer active:scale-95"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>Bật Camera</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -682,7 +845,7 @@ export const FaceAttendance: React.FC = () => {
                 <span>
                   {isAutoScan ? '● Chế độ tự động chụp khi có người' : 'Nhấn nút hoặc bấm phím Space để chụp'}
                 </span>
-                {['admin', 'bgh'].includes(authUser?.role || '') && (
+                {['admin', 'bgh', 'tccb'].includes(authUser?.role || '') && (
                   <button
                     type="button"
                     onClick={() => {
@@ -697,10 +860,11 @@ export const FaceAttendance: React.FC = () => {
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* CỘT PHẢI: KẾT QUẢ VỪA QUÉT & LỊCH SỬ CHẤM CÔNG (5 Cột) */}
-        <div className="lg:col-span-5 space-y-4">
+        <div className="xl:col-span-2 lg:col-span-1 space-y-4">
           {/* 1. THẺ KẾT QUẢ VỪA ĐIỂM DANH */}
           {lastResult ? (
             <div className="p-4 rounded-2xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 space-y-3 animate-fade-in">
@@ -715,32 +879,52 @@ export const FaceAttendance: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-3.5 bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-emerald-200/80 dark:border-emerald-800/80 shadow-xs">
-                {capturedPreview ? (
-                  <img
-                    src={capturedPreview}
-                    alt="Captured"
-                    className="w-14 h-14 rounded-xl object-cover border-2 border-emerald-500 shrink-0"
-                  />
-                ) : (
-                  <div className="w-14 h-14 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg shrink-0">
-                    {lastResult.user?.fullName?.charAt(0) || 'U'}
-                  </div>
-                )}
+                <UserAvatar
+                  user={{
+                    ho_ten: lastResult.user?.ho_ten || lastResult.user?.fullName,
+                    anh_dai_dien: capturedPreview || lastResult.user?.anh_dai_dien || lastResult.user?.avatar,
+                    ma_can_bo: lastResult.user?.ma_can_bo || lastResult.user?.staffCode,
+                  }}
+                  size="lg"
+                  shape="circle"
+                  className="shrink-0 ring-2 ring-emerald-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-900"
+                />
                 <div className="flex-1 min-w-0">
                   <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">
-                    {lastResult.user?.fullName}
+                    {lastResult.user?.ho_ten || lastResult.user?.fullName}
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                    {lastResult.user?.staffCode ? `${lastResult.user.staffCode} • ` : ''}
-                    {lastResult.user?.role?.toUpperCase() || 'GIẢNG VIÊN'}
+                    {lastResult.user?.ma_can_bo
+                      ? `${lastResult.user.ma_can_bo} • `
+                      : lastResult.user?.staffCode
+                      ? `${lastResult.user.staffCode} • `
+                      : ''}
+                    {(lastResult.user?.vai_tro_chinh || lastResult.user?.role || 'GIẢNG VIÊN').toUpperCase()}
                   </p>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                      {lastResult.record?.status === 'on_time' ? 'ĐÚNG GIỜ' : 'GHI NHẬN'}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-medium">
-                      Độ tin cậy: {((lastResult.similarity ?? 0.95) * 100).toFixed(1)}%
-                    </span>
+                    {(() => {
+                      const st = lastResult.record?.status;
+                      const label =
+                        st === 'on_time'
+                          ? 'ĐÚNG GIỜ'
+                          : st === 'late'
+                            ? `ĐI MUỘN${lastResult.record?.lateMinutes ? ` (${lastResult.record.lateMinutes}p)` : ''}`
+                            : st === 'early_leave'
+                              ? `VỀ SỚM${lastResult.record?.earlyExitMinutes ? ` (${lastResult.record.earlyExitMinutes}p)` : ''}`
+                              : 'GHI NHẬN';
+                      const cls =
+                        st === 'on_time'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                          : st === 'late' || st === 'early_leave'
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                            : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300';
+                      return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cls}`}>{label}</span>;
+                    })()}
+                    {lastResult.similarity !== undefined && lastResult.similarity !== null && (
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        Độ tin cậy: {(lastResult.similarity * 100).toFixed(1)}%
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -749,12 +933,19 @@ export const FaceAttendance: React.FC = () => {
             /* Khi chưa có lượt quét mới: hiển thị thẻ thông tin cán bộ đăng nhập */
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2.5">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
-                Cán Bộ Sử Dụng Thiết Bị
+                Cán Bộ Vận Hành
               </span>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold text-sm border border-brand-200 dark:border-brand-800 shrink-0">
-                  <User className="w-5 h-5" />
-                </div>
+                <UserAvatar
+                  user={{
+                    ho_ten: authUser?.fullName,
+                    anh_dai_dien: authUser?.avatar,
+                    ma_can_bo: authUser?.staffCode,
+                  }}
+                  size="md"
+                  shape="circle"
+                  className="shrink-0"
+                />
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
                     {authUser?.fullName || 'Cán Bộ Hệ Thống'}
@@ -811,7 +1002,17 @@ export const FaceAttendance: React.FC = () => {
                         minute: '2-digit',
                       })
                     : '--:--';
-                  const isOnTime = item.status === 'on_time';
+                  const statusMap: Record<string, { label: string; cls: string }> = {
+                    on_time: { label: 'ĐÚNG GIỜ', cls: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400' },
+                    late: { label: 'ĐI MUỘN', cls: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400' },
+                    early_leave: { label: 'VỀ SỚM', cls: 'bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400' },
+                    excused_absence: { label: 'NGHỈ PHÉP', cls: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400' },
+                    absent: { label: 'VẮNG MẶT', cls: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400' },
+                  };
+                  const stMeta = statusMap[item.status] || {
+                    label: String(item.status || 'GHI NHẬN').toUpperCase(),
+                    cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                  };
 
                   return (
                     <div
@@ -819,9 +1020,16 @@ export const FaceAttendance: React.FC = () => {
                       className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/80 transition-colors hover:bg-slate-100/70"
                     >
                       <div className="min-w-0 flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold text-xs shrink-0">
-                          {item.userId?.fullName?.charAt(0) || 'C'}
-                        </div>
+                        <UserAvatar
+                          user={{
+                            ho_ten: item.userId?.fullName,
+                            anh_dai_dien: item.userId?.anh_dai_dien || item.userId?.avatar,
+                            ma_can_bo: item.userId?.ma_can_bo || item.userId?.staffCode,
+                          }}
+                          size="sm"
+                          shape="circle"
+                          className="shrink-0"
+                        />
                         <div className="min-w-0">
                           <p className="font-semibold text-slate-900 dark:text-white truncate">
                             {item.userId?.fullName || 'Cán bộ'}
@@ -837,14 +1045,8 @@ export const FaceAttendance: React.FC = () => {
                           {timeStr}
                         </span>
                         <div>
-                          <span
-                            className={`inline-block px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                              isOnTime
-                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400'
-                                : 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400'
-                            }`}
-                          >
-                            {isOnTime ? 'ĐÚNG GIỜ' : 'ĐI MUỘN'}
+                          <span className={`inline-block px-1.5 py-0.2 rounded text-[9px] font-bold ${stMeta.cls}`}>
+                            {stMeta.label}
                           </span>
                         </div>
                       </div>

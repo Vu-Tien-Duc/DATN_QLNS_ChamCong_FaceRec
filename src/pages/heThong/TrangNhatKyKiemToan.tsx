@@ -13,11 +13,8 @@ import {
   AlertTriangle,
   Link2,
   Terminal,
-  User,
   Copy,
   Check,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   ArrowUpRight,
   Lock,
@@ -37,6 +34,8 @@ import { Badge } from '../../components/chung/NhanTrangThai';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
+import { ThanhPhanTrang } from '../../components/chung/ThanhPhanTrang';
+import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 import { getRoleLabel } from '../../utils/phanQuyen';
 import {
   auditLogApi,
@@ -142,6 +141,7 @@ function getAuditActorInfo(log: any): {
   role: string;
   staffCode: string;
   isSystem: boolean;
+  actorObj: any;
 } {
   const actorObj =
     (log?.nguoi_thuc_hien && typeof log.nguoi_thuc_hien === 'object' ? log.nguoi_thuc_hien : null) ||
@@ -152,10 +152,11 @@ function getAuditActorInfo(log: any): {
 
   if (actorObj) {
     return {
-      name: actorObj.fullName || actorObj.ho_ten || actorObj.email || 'Quản trị viên Hệ thống',
-      role: actorObj.role || actorObj.vai_tro_chinh || actorType,
-      staffCode: actorObj.staffCode || actorObj.ma_can_bo || '--',
+      name: actorObj.ho_ten || actorObj.email || 'Quản trị viên Hệ thống',
+      role: actorObj.vai_tro_chinh || actorType,
+      staffCode: actorObj.ma_can_bo || '--',
       isSystem: false,
+      actorObj,
     };
   }
   return {
@@ -163,6 +164,7 @@ function getAuditActorInfo(log: any): {
     role: actorType || 'system',
     staffCode: '--',
     isSystem,
+    actorObj: null,
   };
 }
 
@@ -258,15 +260,15 @@ export const AuditLogs: React.FC = () => {
     setIsLoading(true);
     try {
       const params: any = {
-        page: currentPage,
-        limit: pageSize,
+        trang: currentPage,
+        gioi_han: pageSize,
       };
 
-      if (keyword.trim()) params.keyword = keyword.trim();
-      if (selectedStatus) params.status = selectedStatus;
-      if (selectedTargetType) params.targetType = selectedTargetType;
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
+      if (keyword.trim()) params.tim_kiem = keyword.trim();
+      if (selectedStatus) params.ket_qua = selectedStatus;
+      if (selectedTargetType) params.loai_doi_tuong = selectedTargetType;
+      if (startDate) params.tu_ngay = startDate;
+      if (endDate) params.den_ngay = endDate;
 
       const res = await auditLogApi.getAuditLogs(params);
       setLogs(res.logs || []);
@@ -316,8 +318,8 @@ export const AuditLogs: React.FC = () => {
     let failedCount = 0;
 
     logs.forEach((log) => {
-      if (log.status === 'success') successCount++;
-      else if (log.status === 'failed') failedCount++;
+      if (['success', 'thanh_cong'].includes(String(log.ket_qua || '').toLowerCase())) successCount++;
+      else if (['failed', 'that_bai'].includes(String(log.ket_qua || '').toLowerCase())) failedCount++;
     });
 
     const pageCount = logs.length || 1;
@@ -344,21 +346,22 @@ export const AuditLogs: React.FC = () => {
     try {
       const dataRows = logs.map((l, idx) => {
         const actorInfo = getAuditActorInfo(l);
-        const detailsStr = l.details ? JSON.stringify(l.details) : '';
+        const detailsStr = l.chi_tiet ? JSON.stringify(l.chi_tiet) : '';
+        const isOk = ['success', 'thanh_cong'].includes(String(l.ket_qua || '').toLowerCase());
 
         return {
           'STT': idx + 1,
-          'Thời Điểm': formatDateTimeVN(l.timestamp),
-          'Hành Động': l.action,
+          'Thời Điểm': formatDateTimeVN(l.thoi_diem),
+          'Hành Động': l.hanh_dong,
           'Người Thực Hiện': actorInfo.name,
           'Mã Cán Bộ': actorInfo.staffCode,
-          'Loại Chủ Thể': l.actorType || 'user',
-          'Loại Đối Tượng': TARGET_TYPE_LABELS[l.targetType] || l.targetType,
-          'ID Đối Tượng': l.targetId,
-          'Địa Chỉ IP': l.ipAddress || '--',
-          'Kết Quả': l.status === 'success' ? 'Thành công' : 'Thất bại',
-          'Mã Băm SHA-256 Hiện Tại': l.currentHash || '--',
-          'Mã Băm Trước Đó': l.previousHash || '--',
+          'Loại Chủ Thể': l.loai_chu_the || 'user',
+          'Loại Đối Tượng': TARGET_TYPE_LABELS[l.loai_doi_tuong] || l.loai_doi_tuong,
+          'ID Đối Tượng': l.doi_tuong_id,
+          'Địa Chỉ IP': l.dia_chi_ip || '--',
+          'Kết Quả': isOk ? 'Thành công' : 'Thất bại',
+          'Mã Băm SHA-256 Hiện Tại': l.ma_bam_hien_tai || '--',
+          'Mã Băm Trước Đó': l.ma_bam_truoc || '--',
           'Chi Tiết Thay Đổi': detailsStr,
         };
       });
@@ -441,18 +444,56 @@ export const AuditLogs: React.FC = () => {
         }
       />
 
-      {/* 2. UNIFIED AUDIT LOGS CARD: KPI STRIP + TOOLBAR + TABLE */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
-        <CompactStatsBar
-          embedded
-          items={[
-            { label: 'Tổng sự kiện', value: kpis.totalRecords.toLocaleString(), tone: 'neutral' },
-            { label: 'Thao tác hợp lệ', value: kpis.successCount, badge: `${kpis.successRate}%`, tone: 'success' },
-            { label: 'Cảnh báo / Lỗi', value: kpis.failedCount, tone: kpis.failedCount > 0 ? 'danger' : 'neutral' },
-            { label: 'Toàn vẹn dữ liệu', value: 'SHA-256', unit: 'Khớp chuỗi', tone: 'brand' },
-          ]}
-        />
-        <div className="p-3 border-b border-slate-200/70 dark:border-slate-800 space-y-2.5">
+      {/* 2. FLUX SEPARATE STATS ROW */}
+      <CompactStatsBar
+        items={[
+          {
+            label: 'Tổng sự kiện',
+            value: kpis.totalRecords.toLocaleString(),
+            subtext: 'Nhật ký toàn hệ thống',
+            tone: 'neutral',
+            active: selectedStatus === '',
+            onClick: () => {
+              setSelectedStatus('');
+              setCurrentPage(1);
+            },
+          },
+          {
+            label: 'Thao tác hợp lệ',
+            value: kpis.successCount,
+            badge: `${kpis.successRate}%`,
+            progress: Number(kpis.successRate) || 0,
+            tone: 'success',
+            active: selectedStatus === 'success',
+            onClick: () => {
+              setSelectedStatus((prev) => (prev === 'success' ? '' : 'success'));
+              setCurrentPage(1);
+            },
+          },
+          {
+            label: 'Cảnh báo / Lỗi',
+            value: kpis.failedCount,
+            subtext: kpis.failedCount > 0 ? 'Cần rà soát bảo mật' : 'Không phát hiện lỗi',
+            tone: kpis.failedCount > 0 ? 'danger' : 'neutral',
+            active: selectedStatus === 'failed',
+            onClick: () => {
+              setSelectedStatus((prev) => (prev === 'failed' ? '' : 'failed'));
+              setCurrentPage(1);
+            },
+          },
+          {
+            label: 'Toàn vẹn dữ liệu',
+            value: 'SHA-256',
+            unit: 'Khớp chuỗi',
+            subtext: 'Chống sửa đổi log',
+            tone: 'brand',
+          },
+        ]}
+      />
+
+      {/* 3. MAIN AUDIT LOGS CARD (FLUX STYLE) */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+        <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 space-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
             {/* Keyword Search */}
             <div className="relative flex-1 min-w-[200px]">
@@ -465,13 +506,13 @@ export const AuditLogs: React.FC = () => {
                   setKeyword(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full h-9 pl-9 pr-7 text-xs rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
+                className="w-full h-9 pl-9 pr-8 text-xs rounded-xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
               />
               {keyword && (
                 <button
                   type="button"
                   onClick={() => setKeyword('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -485,7 +526,7 @@ export const AuditLogs: React.FC = () => {
                 setSelectedTargetType(e.target.value);
                 setCurrentPage(1);
               }}
-              className="h-9 pl-3 pr-7 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:border-brand-500 cursor-pointer"
+              className="h-9 pl-3 pr-7 rounded-xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:border-brand-500 cursor-pointer"
             >
               <option value="">Tất cả đối tượng</option>
               {TARGET_TYPE_OPTIONS.map((opt) => (
@@ -502,7 +543,7 @@ export const AuditLogs: React.FC = () => {
                 setSelectedStatus(e.target.value);
                 setCurrentPage(1);
               }}
-              className="h-9 pl-3 pr-7 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:border-brand-500 cursor-pointer"
+              className="h-9 pl-3 pr-7 rounded-xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:border-brand-500 cursor-pointer"
             >
               <option value="">Tất cả kết quả</option>
               <option value="success">Thành công</option>
@@ -513,7 +554,7 @@ export const AuditLogs: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowDateFilters((prev) => !prev)}
-              className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border text-xs font-semibold transition-colors cursor-pointer ${
+              className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
                 showDateFilters || startDate || endDate
                   ? 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-950/50 dark:text-brand-300 dark:border-brand-800'
                   : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/70'
@@ -574,7 +615,7 @@ export const AuditLogs: React.FC = () => {
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 mb-3 animate-spin">
               <RefreshCw className="w-6 h-6" />
             </div>
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
               Đang tải danh sách nhật ký kiểm toán...
             </p>
           </div>
@@ -604,10 +645,10 @@ export const AuditLogs: React.FC = () => {
               <thead>
                 <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/70 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   <th className="py-3 px-4 whitespace-nowrap">Thời Điểm</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Người Thực Hiện</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Hành Động</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Đối Tượng</th>
-                  <th className="py-3 px-3 text-center whitespace-nowrap">Kết Quả</th>
+                  <th className="py-2.5 px-3.5 whitespace-nowrap">Người Thực Hiện</th>
+                  <th className="py-2.5 px-3.5 whitespace-nowrap">Hành Động</th>
+                  <th className="py-2.5 px-3.5 whitespace-nowrap">Đối Tượng</th>
+                  <th className="py-2.5 px-3.5 text-center whitespace-nowrap">Kết Quả</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Thao Tác</th>
                 </tr>
               </thead>
@@ -629,7 +670,7 @@ export const AuditLogs: React.FC = () => {
 
                   return (
                     <tr
-                      key={log._id}
+                      key={log.id}
                       className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group"
                     >
                       {/* Thời điểm & IP */}
@@ -646,18 +687,24 @@ export const AuditLogs: React.FC = () => {
                       </td>
 
                       {/* Người thực hiện */}
-                      <td className="py-3 px-3 min-w-0">
+                      <td className="py-2.5 px-3.5 min-w-0">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
-                            {actorInfo.isSystem ? (
-                              <Server className="w-3.5 h-3.5 text-brand-500" />
-                            ) : (
-                              <User className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                            )}
-                          </div>
+                          {actorInfo.isSystem ? (
+                            <div className="w-8 h-8 rounded-full bg-brand-50 dark:bg-brand-950/50 text-brand-600 dark:text-brand-400 flex items-center justify-center shrink-0">
+                              <Server className="w-3.5 h-3.5" />
+                            </div>
+                          ) : (
+                            <UserAvatar
+                              user={actorInfo.actorObj}
+                              name={actorInfo.name}
+                              staffCode={actorInfo.staffCode}
+                              size="sm"
+                              shape="circle"
+                            />
+                          )}
                           <div className="min-w-0 leading-snug">
                             <div
-                              className="font-semibold text-sm text-slate-900 dark:text-white truncate"
+                              className="font-semibold text-xs text-slate-900 dark:text-white truncate"
                               title={actorInfo.name}
                             >
                               {actorInfo.name}
@@ -670,7 +717,7 @@ export const AuditLogs: React.FC = () => {
                       </td>
 
                       {/* Hành động (Tiếng Việt dễ hiểu) */}
-                      <td className="py-3 px-3">
+                      <td className="py-2.5 px-3.5">
                         <span
                           title={`Mã hệ thống: ${actVal}`}
                           className={`inline-flex items-center max-w-full truncate px-2.5 py-1 rounded-full text-xs font-medium border ${actStyle.bg} ${actStyle.text} ${actStyle.border}`}
@@ -680,10 +727,10 @@ export const AuditLogs: React.FC = () => {
                       </td>
 
                       {/* Đối tượng tác động */}
-                      <td className="py-3 px-3 min-w-0">
+                      <td className="py-2.5 px-3.5 min-w-0">
                         <div className="min-w-0 leading-snug">
                           <div
-                            className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate"
+                            className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate"
                             title={`${targetLabel} (${targetTypeVal})`}
                           >
                             {targetLabel}
@@ -695,17 +742,27 @@ export const AuditLogs: React.FC = () => {
                       </td>
 
                       {/* Kết quả */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <td className="py-2.5 px-3.5 text-center whitespace-nowrap">
                         {isSuccess ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                             Thành công
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                            <XCircle className="w-3 h-3 text-rose-500" />
-                            Thất bại
-                          </span>
+                          <div className="inline-flex flex-col items-center gap-0.5 max-w-[160px]">
+                            <span
+                              title={log.ly_do_that_bai || ''}
+                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                            >
+                              <XCircle className="w-3 h-3 text-rose-500" />
+                              Thất bại
+                            </span>
+                            {log.ly_do_that_bai && (
+                              <span className="text-[10px] text-rose-600 dark:text-rose-400 truncate max-w-full" title={log.ly_do_that_bai}>
+                                {log.ly_do_that_bai}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
 
@@ -715,11 +772,11 @@ export const AuditLogs: React.FC = () => {
                           {hashVal && (
                             <button
                               type="button"
-                              onClick={() => copyToClipboard(hashVal, log._id)}
+                              onClick={() => copyToClipboard(hashVal, log.id)}
                               title={`Sao chép mã SHA-256 (${truncateHash(hashVal, 6)})`}
                               className="p-1.5 text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors cursor-pointer"
                             >
-                              {copiedKey === log._id ? (
+                              {copiedKey === log.id ? (
                                 <Check className="w-3.5 h-3.5 text-emerald-500" />
                               ) : (
                                 <Copy className="w-3.5 h-3.5" />
@@ -749,51 +806,19 @@ export const AuditLogs: React.FC = () => {
 
         {/* 5. PHÂN TRANG (PAGINATION) */}
         {!isLoading && logs.length > 0 && (
-          <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-            <div className="flex items-center gap-2">
-              <span>Hiển thị</span>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold focus:outline-none"
-              >
-                <option value={10}>10 bản ghi</option>
-                <option value={20}>20 bản ghi</option>
-                <option value={50}>50 bản ghi</option>
-                <option value={100}>100 bản ghi</option>
-              </select>
-              <span>trên trang (Tổng {totalRecords.toLocaleString()} sự kiện)</span>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!pagination.hasPrevPage}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="px-2.5 py-1 text-xs"
-              >
-                <ChevronLeft className="w-3.5 h-3.5 mr-0.5" /> Trước
-              </Button>
-
-              <span className="px-3 py-1 font-semibold text-slate-800 dark:text-slate-200">
-                Trang {pagination.page} / {pagination.totalPages}
-              </span>
-
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!pagination.hasNextPage}
-                onClick={() => setCurrentPage((p) => p + 1)}
-                className="px-2.5 py-1 text-xs"
-              >
-                Sau <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
-              </Button>
-            </div>
-          </div>
+          <ThanhPhanTrang
+            currentPage={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={totalRecords}
+            pageSize={pageSize}
+            pageSizeOptions={[10, 20, 50, 100]}
+            itemLabel="sự kiện kiểm toán"
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setCurrentPage(1);
+            }}
+          />
         )}
       </div>
 
@@ -803,7 +828,7 @@ export const AuditLogs: React.FC = () => {
       {isDetailModalOpen && selectedLog && (
         <Portal>
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 shrink-0">
               <div className="flex items-center gap-2.5">
@@ -812,19 +837,19 @@ export const AuditLogs: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    Sự Kiện Kiểm Toán #{selectedLog._id.slice(-8)}
+                    Sự Kiện Kiểm Toán #{selectedLog.id.slice(-8)}
                     <span
                       className={`text-xs px-2 py-0.5 rounded font-semibold ${
-                        selectedLog.status === 'success'
+                        selectedLog.ket_qua === 'success'
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
                           : 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
                       }`}
                     >
-                      {selectedLog.status}
+                      {selectedLog.ket_qua}
                     </span>
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Thời điểm: {formatDateTimeVN(selectedLog.timestamp)}
+                    Thời điểm: {formatDateTimeVN(selectedLog.thoi_diem)}
                   </p>
                 </div>
               </div>
@@ -839,29 +864,51 @@ export const AuditLogs: React.FC = () => {
             {/* Modal Body */}
             <div className="p-5 space-y-4 overflow-y-auto text-sm">
               {/* Thẻ tóm tắt */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
                   <span className="text-[11px] text-slate-400 block">Hành Động</span>
                   <span className="font-bold text-slate-900 dark:text-white mt-0.5 block truncate">
-                    {selectedLog.action}
+                    {selectedLog.hanh_dong}
                   </span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
                   <span className="text-[11px] text-slate-400 block">Loại Đối Tượng</span>
                   <span className="font-bold text-slate-900 dark:text-white mt-0.5 block truncate">
-                    {TARGET_TYPE_LABELS[selectedLog.targetType] || selectedLog.targetType}
+                    {TARGET_TYPE_LABELS[selectedLog.loai_doi_tuong] || selectedLog.loai_doi_tuong}
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                  <span className="text-[11px] text-slate-400 block">Kết Quả</span>
+                  <span
+                    className={`font-bold mt-0.5 block ${
+                      ['success', 'thanh_cong'].includes(String(selectedLog.ket_qua || 'success').toLowerCase())
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-rose-600 dark:text-rose-400'
+                    }`}
+                  >
+                    {['success', 'thanh_cong'].includes(String(selectedLog.ket_qua || 'success').toLowerCase())
+                      ? 'Thành công'
+                      : 'Thất bại'}
                   </span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
                   <span className="text-[11px] text-slate-400 block">Địa Chỉ IP</span>
                   <span className="font-mono text-xs font-bold text-slate-900 dark:text-white mt-0.5 block truncate">
-                    {selectedLog.ipAddress || '127.0.0.1'}
+                    {selectedLog.dia_chi_ip || '127.0.0.1'}
                   </span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                  <span className="text-[11px] text-slate-400 block">Chủ Thể (Actor)</span>
+                  <span className="text-[11px] text-slate-400 block">
+                    Chủ Thể ({selectedLog.loai_chu_the === 'system' ? 'Hệ thống' : 'Người dùng'})
+                  </span>
                   <span className="font-bold text-slate-900 dark:text-white mt-0.5 block truncate">
                     {getAuditActorInfo(selectedLog).name}
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                  <span className="text-[11px] text-slate-400 block">Thời Điểm Ghi Nhận</span>
+                  <span className="font-mono text-xs font-bold text-slate-900 dark:text-white mt-0.5 block truncate">
+                    {selectedLog.thoi_diem ? new Date(selectedLog.thoi_diem).toLocaleString('vi-VN') : '—'}
                   </span>
                 </div>
               </div>
@@ -877,10 +924,10 @@ export const AuditLogs: React.FC = () => {
                   <div>
                     <span className="text-slate-400 block">Mã băm mắt xích trước (previousHash):</span>
                     <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800 font-mono text-[11px] text-slate-600 dark:text-slate-300 break-all">
-                      <span>{selectedLog.previousHash || '0000000000000000000000000000000000000000000000000000000000000000 (GENESIS)'}</span>
-                      {selectedLog.previousHash && (
+                      <span>{selectedLog.ma_bam_truoc || '0000000000000000000000000000000000000000000000000000000000000000 (GENESIS)'}</span>
+                      {selectedLog.ma_bam_truoc && (
                         <button
-                          onClick={() => copyToClipboard(selectedLog.previousHash || '', 'prevHash')}
+                          onClick={() => copyToClipboard(selectedLog.ma_bam_truoc || '', 'prevHash')}
                           className="text-slate-400 hover:text-indigo-600 ml-2"
                         >
                           <Copy className="w-3.5 h-3.5" />
@@ -892,10 +939,10 @@ export const AuditLogs: React.FC = () => {
                   <div>
                     <span className="text-slate-400 block">Mã băm bản ghi hiện tại (currentHash):</span>
                     <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800 font-mono text-[11px] text-indigo-600 dark:text-indigo-400 font-bold break-all">
-                      <span>{selectedLog.currentHash || 'Chưa tính mã băm'}</span>
-                      {selectedLog.currentHash && (
+                      <span>{selectedLog.ma_bam_hien_tai || 'Chưa tính mã băm'}</span>
+                      {selectedLog.ma_bam_hien_tai && (
                         <button
-                          onClick={() => copyToClipboard(selectedLog.currentHash || '', 'currHash')}
+                          onClick={() => copyToClipboard(selectedLog.ma_bam_hien_tai || '', 'currHash')}
                           className="text-slate-400 hover:text-indigo-600 ml-2"
                         >
                           <Copy className="w-3.5 h-3.5" />
@@ -911,14 +958,14 @@ export const AuditLogs: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Target ID:</span>
                   <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                    {selectedLog.targetId}
+                    {selectedLog.doi_tuong_id}
                   </span>
                 </div>
-                {selectedLog.userAgent && (
+                {selectedLog.thong_tin_trinh_duyet && (
                   <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
                     <span className="text-slate-400 shrink-0">User-Agent:</span>
                     <span className="text-right text-slate-600 dark:text-slate-300 break-all font-mono text-[10px]">
-                      {selectedLog.userAgent}
+                      {selectedLog.thong_tin_trinh_duyet}
                     </span>
                   </div>
                 )}
@@ -938,10 +985,10 @@ export const AuditLogs: React.FC = () => {
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Dữ Liệu Chi Tiết (Event Payload):
                   </span>
-                  {selectedLog.details && (
+                  {selectedLog.chi_tiet && (
                     <button
                       onClick={() =>
-                        copyToClipboard(JSON.stringify(selectedLog.details, null, 2), 'payload')
+                        copyToClipboard(JSON.stringify(selectedLog.chi_tiet, null, 2), 'payload')
                       }
                       className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer font-medium"
                     >
@@ -951,9 +998,9 @@ export const AuditLogs: React.FC = () => {
                   )}
                 </div>
                 <div className="p-3 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs overflow-x-auto max-h-60 border border-slate-800">
-                  {selectedLog.details ? (
+                  {selectedLog.chi_tiet ? (
                     <pre className="whitespace-pre-wrap">
-                      {JSON.stringify(selectedLog.details, null, 2)}
+                      {JSON.stringify(selectedLog.chi_tiet, null, 2)}
                     </pre>
                   ) : (
                     <span className="text-slate-500 italic">Không có dữ liệu chi tiết kèm theo.</span>

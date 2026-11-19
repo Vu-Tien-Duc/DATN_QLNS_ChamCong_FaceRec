@@ -141,9 +141,7 @@ const formatUserResponse = (userInstance, faceTemplate) => {
   const isRegistered = Boolean(faceTemplate);
   const roleVal = normalizeRole(userObj.vai_tro_chinh);
   const deptObj = userObj.don_vi_chinh || null;
-  const deptName = deptObj?.ten_phong_ban || '';
 
-  userObj._id = userObj.id;
   userObj.da_dang_ky_face = isRegistered;
   userObj.ngay_dang_ky_face = isRegistered ? (faceTemplate?.ngay_dang_ky || null) : null;
   userObj.so_luong_mau = isRegistered ? (faceTemplate?.so_luong_mau || 0) : 0;
@@ -152,26 +150,14 @@ const formatUserResponse = (userInstance, faceTemplate) => {
   userObj.mac_dinh = isRegistered ? Boolean(faceTemplate?.mac_dinh ?? true) : false;
   userObj.trang_thai_khuon_mat = isRegistered ? (faceTemplate?.trang_thai || 'hoat_dong') : null;
   userObj.anh_khuon_mat = isRegistered ? (faceTemplate?.anh_dai_dien || null) : null;
-  userObj.isFaceRegistered = isRegistered;
-  userObj.faceRegisteredAt = userObj.ngay_dang_ky_face;
 
   userObj.ho_ten = userObj.ho_ten || '';
   userObj.ma_can_bo = userObj.ma_can_bo || '';
   userObj.so_dien_thoai = userObj.so_dien_thoai || '';
   userObj.vai_tro_chinh = roleVal;
   userObj.don_vi_chinh_id = deptObj || userObj.don_vi_chinh_id || null;
+  userObj.ten_phong_ban = deptObj?.ten_phong_ban || '';
   userObj.anh_dai_dien = userObj.anh_dai_dien || null;
-
-  // Giữ tương thích tên trường cho frontend
-  userObj.fullName = userObj.ho_ten;
-  userObj.staffCode = userObj.ma_can_bo;
-  userObj.phoneNumber = userObj.so_dien_thoai;
-  userObj.role = roleVal;
-  userObj.primaryRole = roleVal;
-  userObj.departmentId = userObj.don_vi_chinh_id;
-  userObj.departmentName = deptName;
-  userObj.avatar = userObj.anh_dai_dien;
-  userObj.facePhoto = userObj.anh_khuon_mat;
 
   return userObj;
 };
@@ -205,7 +191,8 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
       {
         model: VaiTroNguoiDung,
         as: 'danh_sach_vai_tro',
-        attributes: ['ma_vai_tro', 'don_vi_id', 'pham_vi', 'tu_ngay', 'den_ngay'],
+        attributes: ['id', 'ma_vai_tro', 'don_vi_id', 'pham_vi', 'duoc_uy_quyen', 'tu_ngay', 'den_ngay'],
+        include: [{ model: PhongBan, as: 'don_vi', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] }],
       },
     ],
   });
@@ -324,7 +311,8 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
         {
           model: VaiTroNguoiDung,
           as: 'danh_sach_vai_tro',
-          attributes: ['ma_vai_tro', 'don_vi_id', 'pham_vi', 'tu_ngay', 'den_ngay'],
+          attributes: ['id', 'ma_vai_tro', 'don_vi_id', 'pham_vi', 'duoc_uy_quyen', 'tu_ngay', 'den_ngay'],
+          include: [{ model: PhongBan, as: 'don_vi', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] }],
         },
       ],
       transaction,
@@ -502,7 +490,8 @@ const getMe = async (userId) => {
       {
         model: VaiTroNguoiDung,
         as: 'danh_sach_vai_tro',
-        attributes: ['ma_vai_tro', 'don_vi_id', 'pham_vi', 'tu_ngay', 'den_ngay'],
+        attributes: ['id', 'ma_vai_tro', 'don_vi_id', 'pham_vi', 'duoc_uy_quyen', 'tu_ngay', 'den_ngay'],
+        include: [{ model: PhongBan, as: 'don_vi', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] }],
       },
     ],
   });

@@ -161,11 +161,8 @@ const formatDepartmentDoc = (d, countMaps = null) => {
   const parentObj = raw.don_vi_cha
     ? {
         id: raw.don_vi_cha.id,
-        _id: raw.don_vi_cha.id,
         ten_phong_ban: raw.don_vi_cha.ten_phong_ban,
         loai_don_vi: raw.don_vi_cha.loai_don_vi,
-        name: raw.don_vi_cha.ten_phong_ban,
-        type: raw.don_vi_cha.loai_don_vi,
       }
     : raw.don_vi_cha_id || null;
 
@@ -173,21 +170,14 @@ const formatDepartmentDoc = (d, countMaps = null) => {
   if (raw.truong_don_vi) {
     const m = raw.truong_don_vi;
     const vaiTro = normalizeRole(m.vai_tro_chinh);
-    const isActive = m.trang_thai_lam_viec === 'dang_lam_viec';
     managerObj = {
       id: m.id,
-      _id: m.id,
       ho_ten: m.ho_ten || '',
-      fullName: m.ho_ten || '',
       email: m.email || '',
       ma_can_bo: m.ma_can_bo || '',
-      staffCode: m.ma_can_bo || '',
       vai_tro_chinh: vaiTro,
-      role: vaiTro,
       anh_dai_dien: m.anh_dai_dien || null,
-      avatarUrl: m.anh_dai_dien || null,
       trang_thai_lam_viec: m.trang_thai_lam_viec,
-      isActive,
     };
   }
 
@@ -201,7 +191,6 @@ const formatDepartmentDoc = (d, countMaps = null) => {
 
   return {
     id: raw.id,
-    _id: raw.id,
     ten_phong_ban: raw.ten_phong_ban,
     loai_don_vi: raw.loai_don_vi,
     don_vi_cha_id: parentObj,

@@ -17,7 +17,7 @@ const DEFAULT_TAX_BRACKETS = [
   { bac: 1, tu: 0, den: 10000000, thue_suat: 0.05 },
   { bac: 2, tu: 10000000, den: 30000000, thue_suat: 0.1 },
   { bac: 3, tu: 30000000, den: 60000000, thue_suat: 0.2 },
-  { bac: 4, tu: 60000000, den: 100000000, thue_suat: 0.28 },
+  { bac: 4, tu: 60000000, den: 100000000, thue_suat: 0.3 },
   { bac: 5, tu: 100000000, den: Infinity, thue_suat: 0.35 },
 ];
 
@@ -384,7 +384,7 @@ const payrollInclude = [
     attributes: ['id', 'ho_ten', 'email', 'vai_tro_chinh', 'don_vi_chinh_id', 'anh_dai_dien', 'ma_can_bo'],
     include: [
       { model: PhongBan, as: 'don_vi_chinh', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] },
-      { model: HoSoCanBo, as: 'ho_so', attributes: ['hoc_ham', 'hoc_vi', 'chuc_vu', 'he_so_luong'] },
+      { model: HoSoCanBo, as: 'ho_so', attributes: ['hoc_ham', 'hoc_vi', 'chuc_vu', 'he_so_luong', 'so_nguoi_phu_thuoc', 'loai_hop_dong'] },
     ],
   },
   { model: NguoiDung, as: 'nguoi_lap', attributes: ['id', 'ho_ten', 'email'] },
@@ -415,6 +415,14 @@ const formatPayrollDoc = (doc, configParams = null) => {
   const bhtnRate = Number(configParams?.ty_le_bhtn ?? 0.01);
   const totalInsuranceRate = Number(configParams?.tong_ty_le_bao_hiem ?? (bhxhRate + bhytRate + bhtnRate)) || 0.105;
 
+  const isVisitingLecturer = raw.nguoi_dung?.ho_so?.loai_hop_dong === 'thinh_giang';
+  const dependentsCount = Number(raw.nguoi_dung?.ho_so?.so_nguoi_phu_thuoc || 0);
+  const giamTruBanThan = isVisitingLecturer ? 0 : Number(configParams?.giam_tru_ban_than ?? 15500000);
+  const giamTruPhuThuoc = isVisitingLecturer ? 0 : dependentsCount * Number(configParams?.giam_tru_phu_thuoc ?? 6200000);
+  const thuNhapTinhThue = isVisitingLecturer
+    ? gross
+    : Math.max(0, gross - tongBaoHiem - giamTruBanThan - giamTruPhuThuoc);
+
   return {
     ...raw,
     luong_co_so: luongCoSo,
@@ -438,7 +446,12 @@ const formatPayrollDoc = (doc, configParams = null) => {
       bhtn: Math.round(tongBaoHiem * (bhtnRate / totalInsuranceRate)),
       tong_bao_hiem: tongBaoHiem,
     },
-    thue_tncn: { tien_thue: tienThue },
+    thue_tncn: {
+      giam_tru_ban_than: giamTruBanThan,
+      giam_tru_phu_thuoc: giamTruPhuThuoc,
+      thu_nhap_tinh_thue: thuNhapTinhThue,
+      tien_thue: tienThue,
+    },
   };
 };
 

@@ -4,25 +4,37 @@ export type LeaveStatus = 'pending' | 'pending_dean' | 'pending_bgh' | 'approved
 export type LeaveType = 'nghi_phep' | 'day_bu' | 'doi_ca' | 'nghi_om' | 'viec_rieng' | 'giai_trinh_cong';
 
 export interface LeaveRequestItem {
-  _id: string;
-  userId: UserProfile | string;
+  id?: string;
   nguoi_dung_id?: UserProfile | string;
-  type: LeaveType;
   loai_don?: LeaveType;
-  startDate: string;
   ngay_bat_dau?: string;
-  endDate: string;
   ngay_ket_thuc?: string;
-  totalDays: number;
   so_ngay?: number;
-  reason: string;
   ly_do?: string;
-  status: LeaveStatus;
   trang_thai?: LeaveStatus;
-  approverId?: UserProfile | string;
   nguoi_duyet_id?: UserProfile | string;
-  approverComment?: string;
   ghi_chu_duyet?: string;
-  createdAt: string;
   tao_luc?: string;
+  /** @deprecated Dùng id */
+  _id: string;
+  /** @deprecated Dùng nguoi_dung_id */
+  userId?: UserProfile | string;
+  /** @deprecated Dùng loai_don */
+  type?: LeaveType;
+  /** @deprecated Dùng ngay_bat_dau */
+  startDate?: string;
+  /** @deprecated Dùng ngay_ket_thuc */
+  endDate?: string;
+  /** @deprecated Dùng so_ngay */
+  totalDays?: number;
+  /** @deprecated Dùng ly_do */
+  reason?: string;
+  /** @deprecated Dùng trang_thai */
+  status?: LeaveStatus;
+  /** @deprecated Dùng nguoi_duyet_id */
+  approverId?: UserProfile | string;
+  /** @deprecated Dùng ghi_chu_duyet */
+  approverComment?: string;
+  /** @deprecated Dùng tao_luc */
+  createdAt?: string;
 }

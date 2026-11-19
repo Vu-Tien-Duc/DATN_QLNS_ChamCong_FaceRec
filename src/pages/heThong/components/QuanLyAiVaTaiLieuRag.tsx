@@ -94,15 +94,15 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
     e.preventDefault();
     setSavingAiConfig(true);
     try {
-      const payload: Array<{ key: string; value: string }> = [
-        { key: 'AI_DEFAULT_PROVIDER', value: defaultProvider },
-        { key: 'GEMINI_MODEL', value: geminiModel.trim() || 'gemini-2.5-flash' },
-        { key: 'GROQ_MODEL', value: groqModel.trim() || 'llama-3.3-70b-versatile' },
-        { key: 'DEEPSEEK_MODEL', value: deepseekModel.trim() || 'deepseek-chat' },
+      const payload: Array<{ khoa_cau_hinh: string; gia_tri: string }> = [
+        { khoa_cau_hinh: 'AI_DEFAULT_PROVIDER', gia_tri: defaultProvider },
+        { khoa_cau_hinh: 'GEMINI_MODEL', gia_tri: geminiModel.trim() || 'gemini-2.5-flash' },
+        { khoa_cau_hinh: 'GROQ_MODEL', gia_tri: groqModel.trim() || 'llama-3.3-70b-versatile' },
+        { khoa_cau_hinh: 'DEEPSEEK_MODEL', gia_tri: deepseekModel.trim() || 'deepseek-chat' },
       ];
-      if (geminiKey.trim()) payload.push({ key: 'GEMINI_API_KEY', value: geminiKey.trim() });
-      if (groqKey.trim()) payload.push({ key: 'GROQ_API_KEY', value: groqKey.trim() });
-      if (deepseekKey.trim()) payload.push({ key: 'DEEPSEEK_API_KEY', value: deepseekKey.trim() });
+      if (geminiKey.trim()) payload.push({ khoa_cau_hinh: 'GEMINI_API_KEY', gia_tri: geminiKey.trim() });
+      if (groqKey.trim()) payload.push({ khoa_cau_hinh: 'GROQ_API_KEY', gia_tri: groqKey.trim() });
+      if (deepseekKey.trim()) payload.push({ khoa_cau_hinh: 'DEEPSEEK_API_KEY', gia_tri: deepseekKey.trim() });
 
       await systemConfigApi.bulkUpdateConfigs(payload);
       const provRes = await aiApi.getProviders();
@@ -552,18 +552,36 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
                     {selectedDocDetail.thong_bao_loi}
                   </div>
                 )}
-                {(selectedDocDetail.mime_type || selectedDocDetail.ma_bam_sha256) && (
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/70 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
-                    <div>
-                      <span className="text-slate-400 font-sans block">MIME Type:</span>
-                      <span className="text-slate-700 dark:text-slate-200">{selectedDocDetail.mime_type || '—'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 font-sans block">SHA-256:</span>
-                      <span className="text-slate-700 dark:text-slate-200 break-all">{selectedDocDetail.ma_bam_sha256 || '—'}</span>
-                    </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/70 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
+                  <div>
+                    <span className="text-slate-400 font-sans block">MIME Type &amp; Dung lượng:</span>
+                    <span className="text-slate-700 dark:text-slate-200">
+                      {selectedDocDetail.mime_type || '—'} • {formatBytes(selectedDocDetail.kich_thuoc_byte)}
+                    </span>
                   </div>
-                )}
+                  <div>
+                    <span className="text-slate-400 font-sans block">SHA-256:</span>
+                    <span className="text-slate-700 dark:text-slate-200 break-all">{selectedDocDetail.ma_bam_sha256 || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-sans block">Ngày tải lên:</span>
+                    <span className="text-slate-700 dark:text-slate-200">
+                      {(selectedDocDetail as any).createdAt ? new Date((selectedDocDetail as any).createdAt).toLocaleString('vi-VN') : '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-sans block">Cập nhật gần nhất:</span>
+                    <span className="text-slate-700 dark:text-slate-200">
+                      {(selectedDocDetail as any).updatedAt ? new Date((selectedDocDetail as any).updatedAt).toLocaleString('vi-VN') : '—'}
+                    </span>
+                  </div>
+                  {(selectedDocDetail as any).duong_dan && (
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-400 font-sans block">Đường dẫn lưu trữ:</span>
+                      <span className="text-slate-700 dark:text-slate-200 break-all">{(selectedDocDetail as any).duong_dan}</span>
+                    </div>
+                  )}
+                </div>
                 {selectedDocDetail.tom_tat && (
                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 leading-relaxed">
                     <span className="font-semibold text-slate-900 dark:text-white block mb-1">Tóm tắt tài liệu:</span>

@@ -16,7 +16,7 @@ const CAU_HINH_MAC_DINH = {
     { bac: 1, tu: 0, den: 10000000, thue_suat: 0.05 },
     { bac: 2, tu: 10000000, den: 30000000, thue_suat: 0.10 },
     { bac: 3, tu: 30000000, den: 60000000, thue_suat: 0.20 },
-    { bac: 4, tu: 60000000, den: 100000000, thue_suat: 0.28 },
+    { bac: 4, tu: 60000000, den: 100000000, thue_suat: 0.30 },
     { bac: 5, tu: 100000000, den: null, thue_suat: 0.35 }
   ],
   DON_GIA_GIO: 120000,

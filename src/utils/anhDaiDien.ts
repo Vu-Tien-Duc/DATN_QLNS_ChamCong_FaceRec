@@ -108,12 +108,13 @@ export function getCleanAvatarUrl(userOrUrl: any): string | null {
 
   if (!raw) return null;
 
-  // Nếu là ảnh sinh trắc học từ camera điểm danh/đăng ký (chứa face- hoặc camera punch) -> BỎ QUA
-  if (raw.includes('face-') || raw.includes('punch-') || raw.includes('evidence-')) {
+  // Nếu là ảnh sinh trắc học từ camera điểm danh/đăng ký (chứa face-, attendance-, punch-, evidence-) -> BỎ QUA
+  if (raw.includes('face-') || raw.includes('attendance-') || raw.includes('punch-') || raw.includes('evidence-')) {
     return null;
   }
 
   // Chuẩn hoá URL
+  if (raw.startsWith('blob:') || raw.startsWith('data:')) return raw;
   if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
   if (raw.startsWith('/api/tai-tep/tep/')) return raw;
   if (raw.startsWith('/uploads/') || raw.startsWith('uploads/')) {

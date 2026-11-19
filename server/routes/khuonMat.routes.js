@@ -12,7 +12,7 @@ const {
   testFaceRecognition,
 } = require('../controllers/khuonMat.controller');
 const { verifyToken, verifyRole, verifyTerminalKey, getActiveRoles } = require('../middlewares/xacThuc.middleware');
-const { faceCheckInRateLimit } = require('../middlewares/gioiHanTruyCap.middleware');
+const { faceCheckInRateLimit, facePoseRateLimit } = require('../middlewares/gioiHanTruyCap.middleware');
 const { isUserInDeanScope } = require('../utils/phamViTruongKhoa');
 const { UNIT_LEADER_ROLES } = require('../utils/vaiTro.utils');
 
@@ -52,7 +52,7 @@ const angleFields = [
 router.get('/suc-khoe', getFaceHealth);
 
 // Phát hiện tư thế đầu 3D realtime
-router.post('/phat-hien-tu-the', faceCheckInRateLimit, verifyTerminalKey, upload.single('image'), detectPose);
+router.post('/phat-hien-tu-the', facePoseRateLimit, verifyTerminalKey, upload.single('image'), detectPose);
 
 // Kiểm thử nhận diện khuôn mặt Realtime (chỉ Admin / BGH / TCCB)
 router.post('/kiem-thu-nhan-dien', verifyToken, verifyRole(['admin', 'bgh', 'tccb']), faceCheckInRateLimit, upload.single('image'), testFaceRecognition);

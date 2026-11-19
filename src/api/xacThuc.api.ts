@@ -63,7 +63,14 @@ export const authApi = {
     data: FormData | { avatar?: string | null; avatarBase64?: string }
   ): Promise<ApiResponse<{ avatar: string }>> => {
     const headers = data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {};
-    const response = await apiClient.put<ApiResponse<{ avatar: string }>>('/xac-thuc/anh-dai-dien', data, { headers });
+    const response = await apiClient.put<ApiResponse<{ avatar: string; anh_dai_dien?: string }>>(
+      '/xac-thuc/anh-dai-dien',
+      data,
+      { headers }
+    );
+    if (response.data?.data && response.data.data.avatar === undefined) {
+      response.data.data.avatar = response.data.data.anh_dai_dien || '';
+    }
     return response.data;
   },
 

@@ -319,7 +319,7 @@ export const FacultyDirectory: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-2 lg:grid-cols-4 gap-6 text-center divide-x divide-white/10">
           <div className="px-2">
             <div className="text-2xl sm:text-3xl font-extrabold text-[#f37021]">
-              {stats?.tong_so_giang_vien || 32}+
+              {stats?.tong_so_giang_vien ?? 0}
             </div>
             <div className="text-xs text-slate-200 mt-1 font-medium uppercase">
               Cán bộ & Giảng viên cơ hữu
@@ -327,7 +327,7 @@ export const FacultyDirectory: React.FC = () => {
           </div>
           <div className="px-2">
             <div className="text-2xl sm:text-3xl font-extrabold text-[#f37021]">
-              {stats?.so_luong_gs_pgs_ts || 14}+
+              {stats?.so_luong_gs_pgs_ts ?? 0}
             </div>
             <div className="text-xs text-slate-200 mt-1 font-medium uppercase">
               Giáo sư, Phó Giáo sư & Tiến sĩ
@@ -335,10 +335,10 @@ export const FacultyDirectory: React.FC = () => {
           </div>
           <div className="px-2">
             <div className="text-2xl sm:text-3xl font-extrabold text-[#f37021]">
-              {stats?.danh_sach_khoa?.length || 12}
+              {stats?.danh_sach_khoa?.length ?? 0}
             </div>
             <div className="text-xs text-slate-200 mt-1 font-medium uppercase">
-              Khoa, Viện & Phòng ban
+              Khoa đào tạo
             </div>
           </div>
           <div className="px-2">
@@ -623,7 +623,7 @@ export const FacultyDirectory: React.FC = () => {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Tìm theo họ tên, mã cán bộ, hướng nghiên cứu..."
+                placeholder="Tìm theo họ tên hoặc email giảng viên..."
                 className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm border border-slate-300 rounded focus:outline-none focus:border-[#002b5c]"
               />
             </div>

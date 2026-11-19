@@ -245,7 +245,7 @@ export const Settings: React.FC = () => {
       // Khởi tạo draftValues từ server data
       const initialDraft: Record<string, any> = {};
       (data || []).forEach((c) => {
-        initialDraft[c.key] = c.value;
+        initialDraft[c.khoa_cau_hinh] = c.gia_tri;
       });
       setDraftValues(initialDraft);
     } catch (err: any) {
@@ -266,12 +266,12 @@ export const Settings: React.FC = () => {
 
   const filteredConfigs = useMemo(() => {
     return configs.filter((c) => {
-      const upperKey = String(c.key || '').toUpperCase();
+      const upperKey = String(c.khoa_cau_hinh || '').toUpperCase();
       if (HIDDEN_dedicated_AI_KEYS.has(upperKey)) return false;
 
       // Group filter
       if (selectedGroup !== 'ALL') {
-        const rawGroup = (c.group || 'HE_THONG').toUpperCase();
+        const rawGroup = (c.nhom || 'HE_THONG').toUpperCase();
         const groupNorm = rawGroup === 'SYSTEM' ? 'HE_THONG' : rawGroup;
         if (groupNorm !== selectedGroup) return false;
       }
@@ -279,10 +279,10 @@ export const Settings: React.FC = () => {
       // Keyword search
       if (searchKeyword.trim()) {
         const kw = searchKeyword.toLowerCase().trim();
-        const matchKey = (c.key || '').toLowerCase().includes(kw);
+        const matchKey = (c.khoa_cau_hinh || '').toLowerCase().includes(kw);
         const matchTitle = (CONFIG_TITLE_MAP[upperKey] || '').toLowerCase().includes(kw);
-        const matchDesc = (c.description || '').toLowerCase().includes(kw);
-        const matchVal = JSON.stringify(c.value || '').toLowerCase().includes(kw);
+        const matchDesc = (c.mo_ta || '').toLowerCase().includes(kw);
+        const matchVal = JSON.stringify(c.gia_tri || '').toLowerCase().includes(kw);
         if (!matchKey && !matchTitle && !matchDesc && !matchVal) return false;
       }
 
@@ -292,28 +292,28 @@ export const Settings: React.FC = () => {
 
   // KPIs
   const kpis = useMemo(() => {
-    const visibleConfigs = configs.filter((c) => !HIDDEN_dedicated_AI_KEYS.has(String(c.key || '').toUpperCase()));
+    const visibleConfigs = configs.filter((c) => !HIDDEN_dedicated_AI_KEYS.has(String(c.khoa_cau_hinh || '').toUpperCase()));
     const totalCount = visibleConfigs.length;
-    let baseSalary = 2340000;
+    let baseSalary = 2530000;
     let gpsRadius = 150;
     let aiModel = 'buffalo_s';
     let cosineMin = 0.45;
 
     configs.forEach((c) => {
-      const numVal = Number(c.value);
-      if (c.key === 'LUONG_CO_SO' && Number.isFinite(numVal) && numVal > 0) {
+      const numVal = Number(c.gia_tri);
+      if (c.khoa_cau_hinh === 'LUONG_CO_SO' && Number.isFinite(numVal) && numVal > 0) {
         baseSalary = numVal;
-      } else if (c.key === 'GEOFENCE_TRUONG' || c.key === 'CAMPUS_GEOFENCE') {
-        if (c.value?.radiusMeters) gpsRadius = Number(c.value.radiusMeters);
-        else if (c.value?.ban_kinh_met) gpsRadius = Number(c.value.ban_kinh_met);
-      } else if (c.key === 'CAMPUS_GPS_RADIUS_METERS' && Number.isFinite(numVal) && numVal > 0) {
+      } else if (c.khoa_cau_hinh === 'GEOFENCE_TRUONG' || c.khoa_cau_hinh === 'CAMPUS_GEOFENCE') {
+        if (c.gia_tri?.radiusMeters) gpsRadius = Number(c.gia_tri.radiusMeters);
+        else if (c.gia_tri?.ban_kinh_met) gpsRadius = Number(c.gia_tri.ban_kinh_met);
+      } else if (c.khoa_cau_hinh === 'CAMPUS_GPS_RADIUS_METERS' && Number.isFinite(numVal) && numVal > 0) {
         gpsRadius = numVal;
-      } else if (c.key === 'NGUONG_AI' && c.value && typeof c.value === 'object') {
-        if (c.value.mo_hinh || c.value.model) aiModel = c.value.mo_hinh || c.value.model;
-        if (c.value.cosine_min !== undefined || c.value.minCosine !== undefined) {
-          cosineMin = Number(c.value.cosine_min ?? c.value.minCosine);
+      } else if (c.khoa_cau_hinh === 'NGUONG_AI' && c.gia_tri && typeof c.gia_tri === 'object') {
+        if (c.gia_tri.mo_hinh || c.gia_tri.model) aiModel = c.gia_tri.mo_hinh || c.gia_tri.model;
+        if (c.gia_tri.cosine_min !== undefined || c.gia_tri.minCosine !== undefined) {
+          cosineMin = Number(c.gia_tri.cosine_min ?? c.gia_tri.minCosine);
         }
-      } else if (c.key === 'FACE_SIMILARITY_THRESHOLD' && Number.isFinite(numVal) && numVal > 0) {
+      } else if (c.khoa_cau_hinh === 'FACE_SIMILARITY_THRESHOLD' && Number.isFinite(numVal) && numVal > 0) {
         cosineMin = numVal;
       }
     });
@@ -330,7 +330,7 @@ export const Settings: React.FC = () => {
   // Kiểm tra xem có cấu hình nào bị sửa đổi so với server không
   const hasUnsavedChanges = useMemo(() => {
     return configs.some((c) => {
-      return JSON.stringify(draftValues[c.key]) !== JSON.stringify(c.value);
+      return JSON.stringify(draftValues[c.khoa_cau_hinh]) !== JSON.stringify(c.gia_tri);
     });
   }, [configs, draftValues]);
 
@@ -346,7 +346,7 @@ export const Settings: React.FC = () => {
   };
 
   const handleSaveSingleConfig = async (config: SystemConfigItem) => {
-    const key = config.key;
+    const key = config.khoa_cau_hinh;
     const value = draftValues[key];
 
     setSavingKeys((prev) => ({ ...prev, [key]: true }));
@@ -355,7 +355,7 @@ export const Settings: React.FC = () => {
       toast.success(`Cập nhật cấu hình "${key}" thành công!`);
       // Cập nhật lại trong mảng configs cục bộ
       setConfigs((prev) =>
-        prev.map((c) => (c.key === key ? { ...c, value, updatedAt: new Date().toISOString() } : c))
+        prev.map((c) => (c.khoa_cau_hinh === key ? { ...c, gia_tri: value, cap_nhat_luc: new Date().toISOString() } : c))
       );
     } catch (err: any) {
       console.error(`Lỗi khi lưu cấu hình ${key}:`, err);
@@ -366,11 +366,11 @@ export const Settings: React.FC = () => {
   };
 
   const handleSaveAllChanges = async () => {
-    const changedConfigs: Array<{ key: string; value: any }> = [];
+    const changedConfigs: Array<{ khoa_cau_hinh: string; gia_tri: any }> = [];
 
     configs.forEach((c) => {
-      if (JSON.stringify(draftValues[c.key]) !== JSON.stringify(c.value)) {
-        changedConfigs.push({ key: c.key, value: draftValues[c.key] });
+      if (JSON.stringify(draftValues[c.khoa_cau_hinh]) !== JSON.stringify(c.gia_tri)) {
+        changedConfigs.push({ khoa_cau_hinh: c.khoa_cau_hinh, gia_tri: draftValues[c.khoa_cau_hinh] });
       }
     });
 
@@ -401,19 +401,19 @@ export const Settings: React.FC = () => {
 
     try {
       const dataRows = configs.map((c, idx) => {
-        const val = draftValues[c.key] !== undefined ? draftValues[c.key] : c.value;
-        const groupMeta = GROUP_METAS[c.group] || GROUP_METAS.SYSTEM;
+        const val = draftValues[c.khoa_cau_hinh] !== undefined ? draftValues[c.khoa_cau_hinh] : c.gia_tri;
+        const groupMeta = GROUP_METAS[c.nhom] || GROUP_METAS.SYSTEM;
         const valString = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '');
 
         return {
           'STT': idx + 1,
-          'Mã Cấu Hình': c.key,
+          'Mã Cấu Hình': c.khoa_cau_hinh,
           'Nhóm Tham Số': groupMeta.label,
-          'Mô Tả / Ý Nghĩa': c.description || '--',
+          'Mô Tả / Ý Nghĩa': c.mo_ta || '--',
           'Giá Trị Thiết Lập': valString,
           'Kiểu Dữ Liệu': typeof val === 'object' ? (Array.isArray(val) ? 'Mảng (Array)' : 'Đối tượng (Object)') : typeof val,
-          'Người Cập Nhật': (c as any).updatedBy?.fullName || 'Hệ Thống Mặc Định',
-          'Thời Điểm Cập Nhật': c.updatedAt ? formatDateTimeVN(c.updatedAt) : '--',
+          'Người Cập Nhật': (c as any).updatedBy?.fullName || 'Quản trị hệ thống',
+          'Thời Điểm Cập Nhật': c.cap_nhat_luc ? formatDateTimeVN(c.cap_nhat_luc) : '--',
         };
       });
 
@@ -443,10 +443,10 @@ export const Settings: React.FC = () => {
 
   const handleExportJSON = () => {
     const exportData = configs.reduce((acc: any, cur) => {
-      acc[cur.key] = {
-        value: draftValues[cur.key] !== undefined ? draftValues[cur.key] : cur.value,
-        group: cur.group,
-        description: cur.description,
+      acc[cur.khoa_cau_hinh] = {
+        value: draftValues[cur.khoa_cau_hinh] !== undefined ? draftValues[cur.khoa_cau_hinh] : cur.gia_tri,
+        group: cur.nhom,
+        description: cur.mo_ta,
       };
       return acc;
     }, {});
@@ -470,7 +470,7 @@ export const Settings: React.FC = () => {
 
   const openJsonEditor = (config: SystemConfigItem) => {
     setEditingModalConfig(config);
-    const val = draftValues[config.key] !== undefined ? draftValues[config.key] : config.value;
+    const val = draftValues[config.khoa_cau_hinh] !== undefined ? draftValues[config.khoa_cau_hinh] : config.gia_tri;
     setJsonText(JSON.stringify(val, null, 2));
     setJsonError(null);
   };
@@ -479,9 +479,9 @@ export const Settings: React.FC = () => {
     if (!editingModalConfig) return;
     try {
       const parsed = JSON.parse(jsonText);
-      handleValueChange(editingModalConfig.key, parsed);
+      handleValueChange(editingModalConfig.khoa_cau_hinh, parsed);
       setEditingModalConfig(null);
-      toast.success(`Đã cập nhật giá trị JSON cho "${editingModalConfig.key}". Hãy nhấn Lưu Cấu Hình để hoàn tất.`);
+      toast.success(`Đã cập nhật giá trị JSON cho "${editingModalConfig.khoa_cau_hinh}". Hãy nhấn Lưu Cấu Hình để hoàn tất.`);
     } catch (e: any) {
       setJsonError(`Lỗi cú pháp JSON: ${e.message}`);
     }
@@ -492,8 +492,8 @@ export const Settings: React.FC = () => {
   // =============================================================================
 
   const renderConfigEditor = (config: SystemConfigItem) => {
-    const currentVal = draftValues[config.key] !== undefined ? draftValues[config.key] : config.value;
-    const isDirty = JSON.stringify(currentVal) !== JSON.stringify(config.value);
+    const currentVal = draftValues[config.khoa_cau_hinh] !== undefined ? draftValues[config.khoa_cau_hinh] : config.gia_tri;
+    const isDirty = JSON.stringify(currentVal) !== JSON.stringify(config.gia_tri);
 
     // 1. Boolean (Switch)
     if (typeof currentVal === 'boolean') {
@@ -506,7 +506,7 @@ export const Settings: React.FC = () => {
             <input
               type="checkbox"
               checked={currentVal}
-              onChange={(e) => handleValueChange(config.key, e.target.checked)}
+              onChange={(e) => handleValueChange(config.khoa_cau_hinh, e.target.checked)}
               className="sr-only peer"
             />
             <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
@@ -525,21 +525,21 @@ export const Settings: React.FC = () => {
     if (typeof currentVal === 'number' || isNumericString) {
       const numericVal = typeof currentVal === 'number' ? currentVal : Number(currentVal);
       let unit = '';
-      if (config.key.includes('LUONG') || config.key.includes('GIO') && !config.key.includes('CHUAN')) unit = 'VNĐ';
-      else if (config.key.includes('CHUAN')) unit = 'tiết';
-      else if (config.key.includes('RADIUS') || config.key.includes('MET')) unit = 'mét';
-      else if (config.key.includes('PHUT') || config.key.includes('MINUTES')) unit = 'phút';
-      else if (config.key.includes('GIAY')) unit = 'giây';
-      else if (config.key.includes('NAM')) unit = 'năm';
+      if (config.khoa_cau_hinh.includes('LUONG') || config.khoa_cau_hinh.includes('GIO') && !config.khoa_cau_hinh.includes('CHUAN')) unit = 'VNĐ';
+      else if (config.khoa_cau_hinh.includes('CHUAN')) unit = 'tiết';
+      else if (config.khoa_cau_hinh.includes('RADIUS') || config.khoa_cau_hinh.includes('MET')) unit = 'mét';
+      else if (config.khoa_cau_hinh.includes('PHUT') || config.khoa_cau_hinh.includes('MINUTES')) unit = 'phút';
+      else if (config.khoa_cau_hinh.includes('GIAY')) unit = 'giây';
+      else if (config.khoa_cau_hinh.includes('NAM')) unit = 'năm';
 
       return (
         <div className="space-y-1.5">
           <div className="relative">
             <input
               type="number"
-              step={config.key.includes('THRESHOLD') || config.key.includes('MARGIN') ? '0.01' : '1'}
+              step={config.khoa_cau_hinh.includes('THRESHOLD') || config.khoa_cau_hinh.includes('MARGIN') ? '0.01' : '1'}
               value={numericVal}
-              onChange={(e) => handleValueChange(config.key, parseFloat(e.target.value) || 0)}
+              onChange={(e) => handleValueChange(config.khoa_cau_hinh, parseFloat(e.target.value) || 0)}
               className="w-full px-3.5 py-2 text-sm font-semibold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
             />
             {unit && (
@@ -563,9 +563,91 @@ export const Settings: React.FC = () => {
         <input
           type="text"
           value={currentVal}
-          onChange={(e) => handleValueChange(config.key, e.target.value)}
+          onChange={(e) => handleValueChange(config.khoa_cau_hinh, e.target.value)}
           className="w-full px-3.5 py-2 text-sm rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
         />
+      );
+    }
+
+    // 4a. Cấu trúc đặc thù GEOFENCE_TRUONG (toa_do: [lng, lat])
+    if (
+      config.khoa_cau_hinh === 'GEOFENCE_TRUONG' &&
+      currentVal &&
+      typeof currentVal === 'object' &&
+      Array.isArray(currentVal.toa_do)
+    ) {
+      const lngVal = Number(currentVal.toa_do[0] ?? 105.7628);
+      const latVal = Number(currentVal.toa_do[1] ?? 20.9752);
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div className="sm:col-span-2">
+            <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1 truncate">
+              Tên cơ sở
+            </label>
+            <input
+              type="text"
+              value={String(currentVal.ten_co_so ?? '')}
+              onChange={(e) =>
+                handleValueChange(config.khoa_cau_hinh, {
+                  ...currentVal,
+                  ten_co_so: e.target.value,
+                })
+              }
+              className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1 truncate">
+              Vĩ độ (Lat)
+            </label>
+            <input
+              type="number"
+              step="any"
+              value={String(latVal)}
+              onChange={(e) =>
+                handleValueChange(config.khoa_cau_hinh, {
+                  ...currentVal,
+                  toa_do: [lngVal, e.target.value === '' ? 0 : Number(e.target.value)],
+                })
+              }
+              className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1 truncate">
+              Kinh độ (Lng)
+            </label>
+            <input
+              type="number"
+              step="any"
+              value={String(lngVal)}
+              onChange={(e) =>
+                handleValueChange(config.khoa_cau_hinh, {
+                  ...currentVal,
+                  toa_do: [e.target.value === '' ? 0 : Number(e.target.value), latVal],
+                })
+              }
+              className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1 truncate">
+              Bán kính (mét)
+            </label>
+            <input
+              type="number"
+              step="any"
+              value={String(currentVal.ban_kinh_met ?? 150)}
+              onChange={(e) =>
+                handleValueChange(config.khoa_cau_hinh, {
+                  ...currentVal,
+                  ban_kinh_met: e.target.value === '' ? 0 : Number(e.target.value),
+                })
+              }
+              className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+            />
+          </div>
+        </div>
       );
     }
 
@@ -593,7 +675,7 @@ export const Settings: React.FC = () => {
                   value={String(subVal ?? '')}
                   onChange={(e) => {
                     const nextVal = isNum ? (e.target.value === '' ? 0 : Number(e.target.value)) : e.target.value;
-                    handleValueChange(config.key, {
+                    handleValueChange(config.khoa_cau_hinh, {
                       ...currentVal,
                       [subKey]: nextVal,
                     });
@@ -666,35 +748,36 @@ export const Settings: React.FC = () => {
         subtitle="Tham số vận hành: Ngưỡng AI, Geofence GPS, Lương cơ sở, Thuế TNCN và lưu trữ."
       />
 
-      {/* 2. UNIFIED SETTINGS CARD: KPI STRIP + BỘ LỌC + TAB NHÓM + LƯỚI THAM SỐ */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
-        <CompactStatsBar
-          embedded
-          items={[
-            { label: 'Tổng tham số', value: kpis.totalCount, unit: '/ 19 quy định', tone: 'neutral' },
-            { label: 'Lương cơ sở', value: formatCurrencyVN(kpis.baseSalary), tone: 'warning' },
-            { label: 'Ngưỡng AI', value: kpis.cosineMin, badge: kpis.aiModel, tone: 'brand' },
-            { label: 'Geofence GPS', value: `${kpis.gpsRadius} m`, unit: 'Haversine', tone: 'success' },
-          ]}
-        />
-        <div className="p-4 border-b border-slate-200/80 dark:border-slate-800 space-y-3">
+      {/* 2. FLUX SEPARATE STATS ROW */}
+      <CompactStatsBar
+        items={[
+          { label: 'Tổng tham số', value: kpis.totalCount, unit: '/ 19 quy định', subtext: 'Đang đồng bộ CSDL', tone: 'neutral' },
+          { label: 'Lương cơ sở', value: formatCurrencyVN(kpis.baseSalary), subtext: 'Định mức chuẩn hiện hành', tone: 'warning' },
+          { label: 'Ngưỡng AI', value: kpis.cosineMin, badge: kpis.aiModel, subtext: 'Cosine nhận diện 512D', tone: 'brand' },
+          { label: 'Geofence GPS', value: `${kpis.gpsRadius} m`, unit: 'Haversine', subtext: 'Bán kính chấm công', tone: 'success' },
+        ]}
+      />
+
+      {/* 3. MAIN SETTINGS WORKSPACE CARD (FLUX STYLE) */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+        <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 space-y-3">
         {/* Search Bar & Action Buttons */}
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
               placeholder="Tìm kiếm tham số theo mã khóa, mô tả chức năng hoặc giá trị..."
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full h-9 pl-9 pr-8 text-xs rounded-xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-colors"
             />
             {searchKeyword && (
               <button
                 onClick={() => setSearchKeyword('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -788,7 +871,7 @@ export const Settings: React.FC = () => {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 mb-3 animate-spin">
             <RefreshCw className="w-6 h-6" />
           </div>
-          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+          <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
             Đang tải dữ liệu 19 tham số cấu hình hệ thống...
           </p>
         </div>
@@ -807,17 +890,17 @@ export const Settings: React.FC = () => {
       ) : (
         <div className="p-4 bg-slate-50/40 dark:bg-slate-950/30 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredConfigs.map((config) => {
-            const groupNorm = (config.group || 'SYSTEM').toUpperCase();
+            const groupNorm = (config.nhom || 'SYSTEM').toUpperCase();
             const meta = GROUP_METAS[groupNorm] || GROUP_METAS.SYSTEM;
             const Icon = meta.icon;
 
-            const currentVal = draftValues[config.key] !== undefined ? draftValues[config.key] : config.value;
-            const isDirty = JSON.stringify(currentVal) !== JSON.stringify(config.value);
-            const isSaving = savingKeys[config.key] || false;
+            const currentVal = draftValues[config.khoa_cau_hinh] !== undefined ? draftValues[config.khoa_cau_hinh] : config.gia_tri;
+            const isDirty = JSON.stringify(currentVal) !== JSON.stringify(config.gia_tri);
+            const isSaving = savingKeys[config.khoa_cau_hinh] || false;
 
             return (
               <div
-                key={config._id || config.key}
+                key={config.id || config.khoa_cau_hinh}
                 className={`bg-white dark:bg-slate-900 rounded-2xl border p-5 shadow-sm transition-all flex flex-col justify-between ${
                   isDirty
                     ? 'border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-500/20'
@@ -832,12 +915,12 @@ export const Settings: React.FC = () => {
                         <Icon className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <h3 className="font-bold text-sm text-slate-900 dark:text-white truncate max-w-[220px]">
-                          {CONFIG_TITLE_MAP[String(config.key || '').toUpperCase()] || config.key}
+                        <h3 className="font-bold text-xs text-slate-900 dark:text-white truncate max-w-[220px]">
+                          {CONFIG_TITLE_MAP[String(config.khoa_cau_hinh || '').toUpperCase()] || config.khoa_cau_hinh}
                         </h3>
                         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                           <code className="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded">
-                            {config.key}
+                            {config.khoa_cau_hinh}
                           </code>
                           <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full border ${meta.bgColor} ${meta.color} ${meta.borderColor}`}>
                             {meta.label}
@@ -855,7 +938,7 @@ export const Settings: React.FC = () => {
 
                   {/* Mô tả chức năng */}
                   <p className="text-xs text-slate-600 dark:text-slate-400 min-h-[36px] line-clamp-2 mt-2 leading-relaxed">
-                    {config.description || 'Tham số cấu hình hệ thống vận hành trường.'}
+                    {config.mo_ta || 'Tham số cấu hình hệ thống vận hành trường.'}
                   </p>
 
                   {/* Input Editor */}
@@ -868,9 +951,12 @@ export const Settings: React.FC = () => {
                 </div>
 
                 {/* Card Footer: Metadata & Save button */}
-                <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <div className="text-[10px] text-slate-400">
-                    Cập nhật: {formatDateTimeVN(config.updatedAt)}
+                <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <div className="text-[10px] text-slate-400 min-w-0">
+                    <div className="truncate">Cập nhật: {formatDateTimeVN(config.cap_nhat_luc)}</div>
+                    {(config as any).createdAt && (
+                      <div className="truncate">Tạo lúc: {formatDateTimeVN((config as any).createdAt)}</div>
+                    )}
                   </div>
 
                   <Button
@@ -915,10 +1001,10 @@ export const Settings: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    Trình Soạn Thảo JSON: <code className="font-mono text-indigo-600 dark:text-indigo-400">{editingModalConfig.key}</code>
+                    Trình Soạn Thảo JSON: <code className="font-mono text-indigo-600 dark:text-indigo-400">{editingModalConfig.khoa_cau_hinh}</code>
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {editingModalConfig.description}
+                    {editingModalConfig.mo_ta}
                   </p>
                 </div>
               </div>

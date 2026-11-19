@@ -15,6 +15,7 @@ interface ModalPheDuyetDonProps {
   onChangeRejectionReason: (val: string) => void;
   isValidAttachmentUrl: (url?: string) => boolean;
   getAttachmentFullUrl: (url?: string) => string;
+  onOpenAttachment?: (url?: string, download?: boolean) => void;
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
 }
@@ -30,6 +31,7 @@ export const ModalPheDuyetDon: React.FC<ModalPheDuyetDonProps> = ({
   onChangeRejectionReason,
   isValidAttachmentUrl,
   getAttachmentFullUrl,
+  onOpenAttachment,
   onClose,
   onSubmit,
 }) => {
@@ -71,30 +73,33 @@ export const ModalPheDuyetDon: React.FC<ModalPheDuyetDonProps> = ({
                 <div>
                   <span className="text-slate-400">Cán bộ / Giảng viên: </span>
                   <strong className="text-slate-900 dark:text-slate-100 font-semibold">
-                    {(selectedRequest.userId as any)?.fullName}
+                    {(selectedRequest as any)?.nguoi_dung?.ho_ten || (selectedRequest.userId as any)?.ho_ten}
                   </strong>
                   <span className="text-slate-500 font-mono ml-1.5">
-                    ({(selectedRequest.userId as any)?.staffCode || (selectedRequest.userId as any)?.ma_can_bo || 'NTU-CB'})
+                    ({(selectedRequest as any)?.nguoi_dung?.ma_can_bo || (selectedRequest.userId as any)?.ma_can_bo || 'NTU-CB'})
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-400">Lý do xin nghỉ: </span>
                   <span className="text-slate-800 dark:text-slate-200 font-medium">
-                    {selectedRequest.reason || selectedRequest.ly_do}
+                    {selectedRequest.ly_do || selectedRequest.reason}
                   </span>
                 </div>
                 {isValidAttachmentUrl(attachmentUrl) && (
                   <div className="pt-2 flex items-center justify-between border-t border-slate-200/60 dark:border-slate-700/60 mt-1">
                     <span className="text-slate-400 font-medium">Tệp dẫn chứng đính kèm:</span>
-                    <a
-                      href={getAttachmentFullUrl(attachmentUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 hover:underline"
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenAttachment
+                          ? onOpenAttachment(attachmentUrl, false)
+                          : window.open(getAttachmentFullUrl(attachmentUrl), '_blank', 'noopener,noreferrer')
+                      }
+                      className="inline-flex items-center gap-1 font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 hover:underline cursor-pointer"
                     >
                       <Paperclip className="w-3.5 h-3.5" />
                       Xem minh chứng (tab mới)
-                    </a>
+                    </button>
                   </div>
                 )}
               </div>

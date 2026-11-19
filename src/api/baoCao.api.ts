@@ -22,19 +22,46 @@ export interface AttendanceReportSummary {
 }
 
 export interface MonthlyUserReportItem {
-  userId: string;
-  staffCode?: string;
-  fullName: string;
+  nguoi_dung_id?: string;
+  ma_can_bo?: string;
+  ho_ten?: string;
   email: string;
+  don_vi_id?: any;
+  ten_phong_ban?: string;
+  vai_tro_chinh?: string;
+  anh_dai_dien?: string | null;
+  tong_so_ca?: number;
+  so_lan_dung_gio?: number;
+  so_lan_di_muon?: number;
+  so_lan_ve_som?: number;
+  so_lan_vang_mat?: number;
+  so_lan_co_phep?: number;
+  ty_le_chuyen_can?: number;
+  /** @deprecated Dùng nguoi_dung_id */
+  userId: string;
+  /** @deprecated Dùng ma_can_bo */
+  staffCode?: string;
+  /** @deprecated Dùng ho_ten */
+  fullName: string;
+  /** @deprecated Dùng don_vi_id */
   departmentId?: any;
+  /** @deprecated Dùng ten_phong_ban */
   departmentName?: string;
+  /** @deprecated Dùng vai_tro_chinh */
   role?: string;
+  /** @deprecated Dùng tong_so_ca */
   totalShifts: number;
+  /** @deprecated Dùng so_lan_dung_gio */
   onTime: number;
+  /** @deprecated Dùng so_lan_di_muon */
   late: number;
+  /** @deprecated Dùng so_lan_ve_som */
   early: number;
+  /** @deprecated Dùng so_lan_vang_mat */
   absent: number;
+  /** @deprecated Dùng so_lan_co_phep */
   excused: number;
+  /** @deprecated Dùng ty_le_chuyen_can */
   attendanceRate: number;
 }
 
@@ -45,7 +72,8 @@ export interface MonthlyReportResponse {
   report: MonthlyUserReportItem[];
   weeklyTrend: WeeklyTrendItem[];
   pagination?: {
-    total: number;
+    total?: number;
+    totalUsers?: number;
     page: number;
     limit: number;
     totalPages: number;
@@ -53,26 +81,26 @@ export interface MonthlyReportResponse {
 }
 
 export interface ExportOverviewData {
-  period: string;
-  department: string;
-  totalUsers: number;
-  totalShifts: number;
-  onTimeCount: number;
-  lateCount: number;
-  earlyLeaveCount: number;
-  absentCount: number;
-  excusedAbsenceCount: number;
-  overallAttendanceRate: number;
-  approvedLeaveDays: number;
-  exportedAt: string;
+  ky_bao_cao: string;
+  don_vi: string;
+  tong_so_nhan_su: number;
+  tong_so_ca: number;
+  so_lan_dung_gio: number;
+  so_lan_di_muon: number;
+  so_lan_ve_som: number;
+  so_lan_vang_mat: number;
+  so_lan_co_phep: number;
+  ty_le_chuyen_can: number;
+  so_ngay_nghi_phep_da_duyet: number;
+  thoi_diem_xuat: string;
 }
 
 export interface ExportReportDataResponse {
-  overview: ExportOverviewData;
-  attendanceLogs: any[];
-  leaveRequests: any[];
-  staffStats: any[];
-  dailyStats: any[];
+  tong_quan: ExportOverviewData;
+  nhat_ky_cham_cong: any[];
+  don_nghi_phep: any[];
+  thong_ke_nhan_su: any[];
+  thong_ke_theo_ngay: any[];
 }
 
 export const reportApi = {
@@ -80,10 +108,10 @@ export const reportApi = {
    * 1. Thống kê tổng hợp chấm công theo khoảng thời gian và khoa
    */
   async getAttendanceReport(params?: {
-    userId?: string;
-    departmentId?: string;
-    from?: string;
-    to?: string;
+    nguoi_dung_id?: string;
+    don_vi_id?: string;
+    tu_ngay?: string;
+    den_ngay?: string;
   }): Promise<AttendanceReportSummary> {
     const res = await apiClient.get<any>('/bao-cao/cham-cong', { params });
     return res.data?.data || res.data;
@@ -93,11 +121,11 @@ export const reportApi = {
    * 2. Báo cáo tổng hợp theo tháng dành cho cấp quản lý
    */
   async getMonthlyReport(params?: {
-    month?: number;
-    year?: number;
-    departmentId?: string;
-    page?: number;
-    limit?: number;
+    thang?: number;
+    nam?: number;
+    don_vi_id?: string;
+    trang?: number;
+    gioi_han?: number;
   }): Promise<MonthlyReportResponse> {
     const res = await apiClient.get<any>('/bao-cao/hang-thang', { params });
     return res.data?.data || res.data;
@@ -107,12 +135,12 @@ export const reportApi = {
    * 3. Trích xuất toàn bộ dữ liệu 5 Sheets phục vụ xuất Excel
    */
   async getExportReportData(params?: {
-    month?: number;
-    year?: number;
-    from?: string;
-    to?: string;
-    departmentId?: string;
-    userId?: string;
+    thang?: number;
+    nam?: number;
+    tu_ngay?: string;
+    den_ngay?: string;
+    don_vi_id?: string;
+    nguoi_dung_id?: string;
   }): Promise<ExportReportDataResponse> {
     const res = await apiClient.get<any>('/bao-cao/du-lieu-xuat', { params });
     return res.data?.data || res.data;

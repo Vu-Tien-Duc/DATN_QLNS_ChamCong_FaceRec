@@ -1,39 +1,31 @@
 import { apiClient } from './apiClient';
 
 export interface ShiftItem {
-  _id: string;
-  name: string;
-  startTime: string;
-  endTime: string;
-  lateThresholdMinutes: number;
-  isActive: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  id: string;
+  ten_ca: string;
+  gio_bat_dau: string;
+  gio_ket_thuc: string;
+  nguong_di_muon_phut: number;
+  kich_hoat: boolean;
+  tao_luc?: string;
+  cap_nhat_luc?: string;
 }
 
 export interface CreateShiftPayload {
-  name: string;
-  startTime: string;
-  endTime: string;
-  lateThresholdMinutes?: number;
-  isActive?: boolean;
+  ten_ca: string;
+  gio_bat_dau: string;
+  gio_ket_thuc: string;
+  nguong_di_muon_phut?: number;
+  kich_hoat?: boolean;
 }
 
 export interface UpdateShiftPayload {
-  name?: string;
-  startTime?: string;
-  endTime?: string;
-  lateThresholdMinutes?: number;
-  isActive?: boolean;
+  ten_ca?: string;
+  gio_bat_dau?: string;
+  gio_ket_thuc?: string;
+  nguong_di_muon_phut?: number;
+  kich_hoat?: boolean;
 }
-
-const mapShiftPayload = (payload: CreateShiftPayload | UpdateShiftPayload) => {
-  const { name, lateThresholdMinutes, ...rest } = payload as any;
-  const out: Record<string, any> = { ...rest };
-  if (name !== undefined) out.ten_ca = name;
-  if (lateThresholdMinutes !== undefined) out.nguong_di_muon_phut = lateThresholdMinutes;
-  return out;
-};
 
 export const shiftApi = {
   /**
@@ -57,7 +49,7 @@ export const shiftApi = {
    * 3. Thêm mới ca làm việc (Chỉ Admin & BGH)
    */
   async createShift(payload: CreateShiftPayload): Promise<ShiftItem> {
-    const res = await apiClient.post<any>('/ca-lam-viec', mapShiftPayload(payload));
+    const res = await apiClient.post<any>('/ca-lam-viec', payload);
     return res.data?.data || res.data;
   },
 
@@ -65,7 +57,7 @@ export const shiftApi = {
    * 4. Cập nhật thông tin ca làm việc (Chỉ Admin & BGH)
    */
   async updateShift(id: string, payload: UpdateShiftPayload): Promise<ShiftItem> {
-    const res = await apiClient.put<any>(`/ca-lam-viec/${id}`, mapShiftPayload(payload));
+    const res = await apiClient.put<any>(`/ca-lam-viec/${id}`, payload);
     return res.data?.data || res.data;
   },
 

@@ -22,17 +22,22 @@ export type RoleScopeType = 'toan_truong' | 'khoa' | 'bo_mon' | 'phong_ban';
 
 export interface UserRoleItem {
   id?: string;
-  role?: RoleType | string;
   ma_vai_tro?: RoleType | string;
-  scope?: RoleScopeType;
   pham_vi?: RoleScopeType;
-  departmentId?: string | null;
   don_vi_id?: string | null;
-  startDate?: string;
   tu_ngay?: string;
-  endDate?: string | null;
   den_ngay?: string | null;
   duoc_uy_quyen?: boolean;
+  /** @deprecated Dùng ma_vai_tro */
+  role?: RoleType | string;
+  /** @deprecated Dùng pham_vi */
+  scope?: RoleScopeType;
+  /** @deprecated Dùng don_vi_id */
+  departmentId?: string | null;
+  /** @deprecated Dùng tu_ngay */
+  startDate?: string;
+  /** @deprecated Dùng den_ngay */
+  endDate?: string | null;
 }
 
 export interface UserRoleAssignmentPayload {
@@ -56,18 +61,31 @@ export type EmploymentStatusType = 'dang_lam_viec' | 'tam_nghi' | 'da_nghi_viec'
 export type GenderType = 'nam' | 'nu' | 'khac';
 
 export interface UserProfile {
-  _id: string;
-  fullName: string;
+  id?: string;
   ho_ten?: string;
   email: string;
-  phoneNumber?: string;
   so_dien_thoai?: string;
-  avatar?: string;
   anh_dai_dien?: string | null;
-  role: UserRoleLegacy | string;
   vai_tro_chinh?: string;
+  danh_sach_vai_tro?: UserRoleItem[];
+  don_vi_chinh_id?: any;
+  ten_phong_ban?: string;
+  ma_can_bo?: string;
+  /** @deprecated Dùng id */
+  _id: string;
+  /** @deprecated Dùng ho_ten */
+  fullName: string;
+  /** @deprecated Dùng so_dien_thoai */
+  phoneNumber?: string;
+  /** @deprecated Dùng anh_dai_dien */
+  avatar?: string;
+  /** @deprecated Dùng vai_tro_chinh */
+  role: UserRoleLegacy | string;
+  /** @deprecated Dùng vai_tro_chinh */
   primaryRole?: string;
+  /** @deprecated Dùng danh_sach_vai_tro */
   roles?: UserRoleItem[];
+  /** @deprecated Dùng don_vi_chinh_id */
   departmentId?: {
     _id: string;
     name: string;
@@ -76,11 +94,10 @@ export interface UserProfile {
     ten_phong_ban?: string;
     loai_don_vi?: string;
   } | string | null;
-  don_vi_chinh_id?: any;
+  /** @deprecated Dùng ten_phong_ban */
   departmentName?: string;
-  ten_phong_ban?: string;
+  /** @deprecated Dùng ma_can_bo */
   staffCode?: string;
-  ma_can_bo?: string;
   position?: string;
   chuc_vu?: string;
   academicRank?: AcademicRankType;
@@ -159,14 +176,14 @@ export interface UserQueryParams {
 }
 
 export interface CreateUserPayload {
-  fullName: string;
+  fullName?: string;
   ho_ten?: string;
   email: string;
-  password: string;
+  password?: string;
   mat_khau?: string;
-  staffCode: string;
+  staffCode?: string;
   ma_can_bo?: string;
-  role: string;
+  role?: string;
   vai_tro_chinh?: string;
   departmentId?: string | null;
   don_vi_chinh_id?: string | null;
@@ -221,6 +238,7 @@ export interface CreateUserPayload {
 
 export type UpdateUserPayload = Partial<CreateUserPayload> & {
   isActive?: boolean;
+  kich_hoat?: boolean;
   tieu_su?: string;
   huong_nghien_cuu?: string[];
   phong_lam_viec?: string;

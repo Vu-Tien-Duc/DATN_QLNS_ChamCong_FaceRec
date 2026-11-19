@@ -5,17 +5,26 @@ import {
   getCleanAvatarUrl,
   getAvatarTheme,
 } from '../../utils/anhDaiDien';
+import { AnhBaoMat } from './AnhBaoMat';
 
 export interface UserAvatarProps {
   user?: {
-    _id?: string;
     id?: string;
+    ho_ten?: string;
+    anh_dai_dien?: string | null;
+    ma_can_bo?: string;
+    vai_tro_chinh?: string;
+    /** @deprecated Dùng id */
+    _id?: string;
+    /** @deprecated Dùng ho_ten */
     fullName?: string;
     name?: string;
+    /** @deprecated Dùng anh_dai_dien */
     avatar?: string | null;
     avatarUrl?: string | null;
-    anh_dai_dien?: string | null;
+    /** @deprecated Dùng ma_can_bo */
     staffCode?: string;
+    /** @deprecated Dùng vai_tro_chinh */
     role?: string;
   } | null;
   name?: string;
@@ -37,7 +46,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   avatarUrl,
   staffCode,
   size = 'md',
-  shape = 'rounded',
+  shape = 'circle',
   variant = 'gradient',
   className = '',
   showStatusDot = false,
@@ -48,8 +57,8 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   const [imgError, setImgError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const displayName = name || user?.fullName || user?.name || '';
-  const resolvedStaffCode = staffCode || user?.staffCode || user?._id || user?.id || displayName;
+  const displayName = name || user?.ho_ten || user?.name || '';
+  const resolvedStaffCode = staffCode || user?.ma_can_bo || user?.id || displayName;
   const resolvedAvatarUrl = avatarUrl !== undefined ? getCleanAvatarUrl(avatarUrl) : getCleanAvatarUrl(user);
 
   useEffect(() => {
@@ -88,7 +97,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
         } flex items-center justify-center font-bold shadow-2xs overflow-hidden select-none ring-1 ring-black/5 dark:ring-white/10 relative`}
       >
         {hasValidPhoto ? (
-          <img
+          <AnhBaoMat
             src={resolvedAvatarUrl!}
             alt={displayName}
             className="w-full h-full object-cover"

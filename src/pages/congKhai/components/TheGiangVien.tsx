@@ -12,7 +12,9 @@ export const FacultyCard: React.FC<FacultyCardProps> = ({ faculty }) => {
     if (faculty.hoc_ham === 'giao_su' || faculty.danh_hieu.includes('GS')) return 'GS.TS';
     if (faculty.hoc_ham === 'pho_giao_su' || faculty.danh_hieu.includes('PGS')) return 'PGS.TS';
     if (faculty.hoc_vi === 'tien_si' || faculty.danh_hieu.includes('TS')) return 'Tiến sĩ';
-    return 'Thạc sĩ';
+    if (faculty.hoc_vi === 'thac_si' || faculty.danh_hieu.includes('ThS')) return 'Thạc sĩ';
+    if (faculty.hoc_vi === 'ky_su' || faculty.danh_hieu === 'KS') return 'Kỹ sư';
+    return 'Cử nhân';
   };
 
   return (

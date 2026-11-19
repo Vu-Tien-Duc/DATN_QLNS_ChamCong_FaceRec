@@ -36,7 +36,6 @@ const formatScheduleOutput = (sched) => {
   return {
     ...raw,
     id: raw.id,
-    _id: raw.id,
     danh_sach_tuan: weeks,
     ngoai_le: raw.ngoai_le || [],
     nguoi_dung_id: raw.giang_vien || raw.nguoi_dung_id,

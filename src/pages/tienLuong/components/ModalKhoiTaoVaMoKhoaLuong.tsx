@@ -43,7 +43,7 @@ export const ModalKhoiTaoLuong: React.FC<ModalKhoiTaoLuongProps> = ({
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-800 dark:text-white">Khởi Tạo &amp; Tính Bảng Lương</h3>
-                <p className="text-[11px] text-slate-400">Áp dụng NĐ 73/2024/NĐ-CP toàn trường</p>
+                <p className="text-[11px] text-slate-400">Áp dụng bảng cấu hình lương hiện hành toàn trường</p>
               </div>
             </div>
             <button

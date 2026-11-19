@@ -37,14 +37,14 @@ export const Login: React.FC = () => {
   const demoAccounts = [
     {
       role: 'Quản Trị IT',
-      name: 'Nguyễn Văn Quản Trị',
+      name: 'Quản trị viên Hệ thống',
       email: 'admin@truong.edu.vn',
       tag: 'Admin',
       variant: 'brand' as const,
     },
     {
       role: 'Giảng Viên',
-      name: 'Trần Thị Giảng Viên',
+      name: 'Giảng viên mẫu (GV0001)',
       email: 'gv01@truong.edu.vn',
       tag: 'Giảng Viên',
       variant: 'success' as const,
@@ -181,7 +181,7 @@ export const Login: React.FC = () => {
 
           {/* Right Column: Glassmorphism Login Card */}
           <div className="lg:col-span-5">
-            <div className="p-6 sm:p-7 rounded-3xl bg-white/95 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 shadow-2xl space-y-5">
+            <div className="p-6 sm:p-7 rounded-2xl bg-white/95 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 shadow-2xl space-y-5">
               {/* Brand Banner */}
               <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="w-11 h-11 rounded-2xl bg-white p-1.5 border border-slate-200/80 dark:border-slate-700/80 shadow-xs shrink-0 flex items-center justify-center">

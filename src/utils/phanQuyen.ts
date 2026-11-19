@@ -23,10 +23,27 @@ export const normalizeRoleKey = (r?: any): string => {
   return r.trim().toLowerCase().replace(/[\s-]+/g, '_');
 };
 
+const getVietnamTodayKey = (): string =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+
+const isRoleAssignmentActive = (item: any, todayKey: string): boolean => {
+  if (!item || typeof item !== 'object') return false;
+  const rawStart = item.tu_ngay ?? item.startDate;
+  const rawEnd = item.den_ngay ?? item.endDate;
+  const start = rawStart ? String(rawStart).slice(0, 10) : null;
+  const end = rawEnd ? String(rawEnd).slice(0, 10) : null;
+  if (start && start > todayKey) return false;
+  if (end && end < todayKey) return false;
+  return true;
+};
+
 /**
- * Thu thập tập hợp các vai trò chuẩn hóa duy nhất của người dùng (CSDL v2.5 RBAC).
- * Tập hợp trả về CHỈ CHỨA các canonical role key (admin, bgh, truongkhoa, phokhoa...),
- * loại bỏ hoàn toàn các tên đồng nghĩa hoặc bí danh kép làm rối loạn hệ thống.
+ * Thu thập tập hợp các vai trò chuẩn hóa duy nhất còn hiệu lực của người dùng (CSDL v2.5 RBAC).
  */
 export const getUserRoles = (user: UserProfile | null | undefined): Set<string> => {
   const set = new Set<string>();
@@ -40,13 +57,22 @@ export const getUserRoles = (user: UserProfile | null | undefined): Set<string> 
   addRole(user.role);
   addRole(user.primaryRole);
 
-  if (Array.isArray(user.roles)) {
-    user.roles.forEach((item: any) => {
-      if (typeof item === 'string') addRole(item);
-      else if (item?.role) addRole(item.role);
-      else if (item?.ma_vai_tro) addRole(item.ma_vai_tro);
-    });
-  }
+  const roleList = Array.isArray(user.roles)
+    ? user.roles
+    : Array.isArray((user as any).danh_sach_vai_tro)
+    ? (user as any).danh_sach_vai_tro
+    : [];
+
+  const todayKey = getVietnamTodayKey();
+  roleList.forEach((item: any) => {
+    if (!item) return;
+    if (typeof item === 'string') {
+      addRole(item);
+      return;
+    }
+    if (!isRoleAssignmentActive(item, todayKey)) return;
+    addRole(item.ma_vai_tro || item.role);
+  });
 
   return set;
 };
@@ -101,6 +127,40 @@ export const hasRole = (
 };
 
 /**
+ * Kiểm tra quyền tự chấm công cá nhân (Face ID, Trực tuyến GPS, Quét mã QR).
+ * Lưu ý nghiệp vụ: Quản trị viên IT (admin) và Kiểm toán (kiem_toan) KHÔNG tự chấm công cá nhân.
+ */
+export const canPersonalCheckIn = (user: UserProfile | null | undefined): boolean => {
+  if (!user) return false;
+  const roles = getUserRoles(user);
+  return !roles.has('admin') && !roles.has('kiem_toan');
+};
+
+/**
+ * Kiểm tra quyền vận hành Trạm điểm danh Kiosk & phát mã QR động (20s).
+ * Chỉ cấp Quản trị / BGH / TCCB / Đào tạo / Lãnh đạo đơn vị được phép phát mã QR động.
+ * Giảng viên / nhân viên thông thường KHÔNG được tự sinh mã QR để chống gian lận điểm danh hộ.
+ */
+export const KIOSK_OPERATOR_ROLES = [
+  'admin',
+  'bgh',
+  'tccb',
+  'dao_tao',
+  'truong_khoa',
+  'pho_khoa',
+  'truong_bo_mon',
+  'pho_bo_mon',
+  'truong_phong',
+  'pho_phong',
+] as const;
+
+export const canOperateAttendanceKiosk = (user: UserProfile | null | undefined): boolean => {
+  if (!user) return false;
+  const roles = getUserRoles(user);
+  return KIOSK_OPERATOR_ROLES.some((r) => roles.has(r));
+};
+
+/**
  * Kiểm tra quyền duyệt đơn cấp 1 (Trưởng đơn vị hoặc Phó đơn vị có cờ duoc_uy_quyen)
  */
 export const canApproveLevel1 = (user: UserProfile | null | undefined): boolean => {
@@ -114,10 +174,11 @@ export const canApproveLevel1 = (user: UserProfile | null | undefined): boolean 
     : Array.isArray(user.roles)
     ? user.roles
     : [];
+  const todayKey = getVietnamTodayKey();
   return roleList.some(
     (r: any) =>
-      typeof r === 'object' &&
-      Boolean(r?.duoc_uy_quyen) &&
+      isRoleAssignmentActive(r, todayKey) &&
+      Boolean(r?.duoc_uy_quyen ?? r?.isAuthorized) &&
       ['pho_khoa', 'pho_bo_mon', 'pho_phong'].includes(normalizeRoleKey(r?.ma_vai_tro || r?.role))
   );
 };

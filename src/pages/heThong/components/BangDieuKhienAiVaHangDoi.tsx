@@ -14,9 +14,9 @@ export const BangDieuKhienAiVaHangDoi: React.FC<BangDieuKhienAiVaHangDoiProps> =
 }) => {
   const [vectorStats, setVectorStats] = useState<any>(null);
   const [queueStats, setQueueStats] = useState<any>(null);
-  const [viDo, setViDo] = useState('21.028511');
-  const [kinhDo, setKinhDo] = useState('105.804817');
-  const [banKinh, setBanKinh] = useState('200');
+  const [viDo, setViDo] = useState('20.9752');
+  const [kinhDo, setKinhDo] = useState('105.7628');
+  const [banKinh, setBanKinh] = useState('150');
   const [syncing, setSyncing] = useState(false);
   const [savingCampus, setSavingCampus] = useState(false);
 
@@ -32,8 +32,8 @@ export const BangDieuKhienAiVaHangDoi: React.FC<BangDieuKhienAiVaHangDoiProps> =
       if (c) {
         if (c.vi_do !== undefined || c.lat !== undefined) setViDo(String(c.vi_do ?? c.lat));
         if (c.kinh_do !== undefined || c.lng !== undefined) setKinhDo(String(c.kinh_do ?? c.lng));
-        if (c.ban_kinh_met !== undefined || c.radiusMeters !== undefined) {
-          setBanKinh(String(c.ban_kinh_met ?? c.radiusMeters));
+        if (c.ban_kinh_met !== undefined) {
+          setBanKinh(String(c.ban_kinh_met));
         }
       }
     } catch {
@@ -49,7 +49,7 @@ export const BangDieuKhienAiVaHangDoi: React.FC<BangDieuKhienAiVaHangDoiProps> =
     setSyncing(true);
     try {
       const res = await attendanceApi.syncVectorIndex();
-      setVectorStats(res);
+      setVectorStats(res?.stats || res);
       toast.success('Đã đồng bộ lại Vector Index khuôn mặt trong RAM!');
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Đồng bộ Vector Index thất bại.');
@@ -117,7 +117,10 @@ export const BangDieuKhienAiVaHangDoi: React.FC<BangDieuKhienAiVaHangDoiProps> =
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
               <div className="text-slate-500 dark:text-slate-400">Tổng Vector RAM</div>
               <div className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
-                {vectorStats?.totalVectors ?? vectorStats?.tong_vector ?? vectorStats?.count ?? 0}
+                {vectorStats?.total_vectors ??
+                  vectorStats?.stats?.total_vectors ??
+                  vectorStats?.totalVectors ??
+                  0}
               </div>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">

@@ -20,10 +20,6 @@ import {
   MapPin,
   List,
   LayoutGrid,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   ChevronDown,
   ChevronUp,
   Camera,
@@ -54,6 +50,7 @@ import { normalizeRoleKey, hasRole } from '../../utils/phanQuyen';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
+import { ThanhPhanTrang } from '../../components/chung/ThanhPhanTrang';
 import { DepartmentSelect, getDeptCategory } from '../../components/chung/ChonDonVi';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { HoSoBenTrai, ThanhTabHoSo, TruongThongTin } from '../../components/chung/HoSoBenTrai';
@@ -86,13 +83,21 @@ const inferRoleScope = (
 
 const ROLE_OPTIONS = [
   { value: 'bgh', label: 'Ban Giám Hiệu (BGH)', badgeClass: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800' },
-  { value: 'admin', label: 'Quản trị Hệ thống / TCCB', badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800' },
+  { value: 'admin', label: 'Quản trị Hệ thống (Admin IT)', badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800' },
+  { value: 'tccb', label: 'Tổ Chức Cán Bộ (TCCB)', badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800' },
+  { value: 'dao_tao', label: 'Chuyên Viên Đào Tạo', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800' },
+  { value: 'ke_toan', label: 'Kế Toán', badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' },
+  { value: 'kiem_toan', label: 'Khảo Thí / Kiểm Toán', badgeClass: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800' },
   { value: 'truong_khoa', label: 'Trưởng Khoa / Trưởng Đơn Vị', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800' },
   { value: 'pho_khoa', label: 'Phó Trưởng Khoa', badgeClass: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800' },
   { value: 'truong_bo_mon', label: 'Trưởng Bộ Môn', badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800' },
   { value: 'pho_bo_mon', label: 'Phó Trưởng Bộ Môn', badgeClass: 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-800' },
+  { value: 'truong_phong', label: 'Trưởng Phòng', badgeClass: 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-800' },
+  { value: 'pho_phong', label: 'Phó Trưởng Phòng', badgeClass: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800' },
   { value: 'giang_vien', label: 'Giảng Viên', badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' },
-  { value: 'nhan_vien', label: 'Chuyên Viên Hành Chính', badgeClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800' },
+  { value: 'chuyen_vien', label: 'Chuyên Viên', badgeClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800' },
+  { value: 'nhan_vien', label: 'Nhân Viên Hành Chính', badgeClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800' },
+  { value: 'quan_ly_xe', label: 'Quản Lý Phương Tiện', badgeClass: 'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700' },
 ];
 
 const ACADEMIC_RANK_OPTIONS: { value: AcademicRankType; label: string; short: string }[] = [
@@ -300,7 +305,7 @@ const StaffAvatar: React.FC<StaffAvatarProps> = ({
       avatarUrl={user.avatar}
       staffCode={user.staffCode || user._id}
       size={size}
-      shape="rounded"
+      shape="circle"
       showStatusDot={true}
       statusColor={statusColor}
       canUpload={canUpload}
@@ -319,25 +324,28 @@ export const Users: React.FC = () => {
 
   const viewerRole = normalizeRoleKey(currentUser?.role);
   const canCreateOrDelete = hasRole(currentUser, ['admin', 'bgh', 'tccb']);
-  const canEdit = hasRole(currentUser, ['admin', 'bgh', 'tccb', 'truong_khoa']);
+  const canLockAccount = hasRole(currentUser, ['admin', 'bgh']);
+  const canEdit = hasRole(currentUser, ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']);
 
   // Kiểm tra phân cấp quyền khóa/vô hiệu hóa tài khoản (Peer & Hierarchy Protection)
   const canManageUserStatus = useCallback(
     (targetEmp: UserProfile) => {
-      if (!canCreateOrDelete) return false;
+      const isCurrentlyLocked = targetEmp.isActive === false;
+      if (isCurrentlyLocked ? !canCreateOrDelete : !canLockAccount) return false;
       const currentId = String(currentUser?._id || (currentUser as any)?.id || '');
       const targetId = String(targetEmp._id || '');
       if (currentId && targetId && currentId === targetId) return false; // Không tự khóa chính mình
 
       const targetRole = normalizeRoleKey(targetEmp.role);
+      const isViewerBgh = hasRole(currentUser, ['bgh']);
       // 1. Đối tượng là BGH: Chỉ BGH mới có quyền khóa/mở khóa
-      if (targetRole === 'bgh') return viewerRole === 'bgh';
+      if (targetRole === 'bgh') return isViewerBgh;
       // 2. Đối tượng là Admin: Admin không được khóa Admin cùng cấp (Chỉ BGH mới có quyền)
-      if (targetRole === 'admin') return viewerRole === 'bgh';
+      if (targetRole === 'admin') return isViewerBgh;
 
       return true;
     },
-    [canCreateOrDelete, currentUser, viewerRole]
+    [canCreateOrDelete, canLockAccount, currentUser]
   );
 
   // State dữ liệu
@@ -346,6 +354,7 @@ export const Users: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [uploadingAvatar, setUploadingAvatar] = useState<boolean>(false);
+  const [modalAvatarPreview, setModalAvatarPreview] = useState<string | null>(null);
 
   // State bộ lọc & Tìm kiếm
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -431,17 +440,29 @@ export const Users: React.FC = () => {
     setLoading(true);
     try {
       const [usersRes, deptsRes] = await Promise.allSettled([
-        userApi.getUsers({ page: 1, limit: 200 }),
+        userApi.getUsers({ trang: 1, gioi_han: 100 }),
         userApi.getDepartments(),
       ]);
 
       if (usersRes.status === 'fulfilled' && usersRes.value?.data) {
         const raw = usersRes.value.data;
-        const list = Array.isArray(raw)
+        let list: UserProfile[] = Array.isArray(raw)
           ? raw
           : Array.isArray((raw as any).users)
             ? (raw as any).users
             : [];
+        const totalPages = Number((raw as any)?.pagination?.totalPages || 1);
+        if (totalPages > 1) {
+          const rest = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              userApi.getUsers({ trang: i + 2, gioi_han: 100 }).catch(() => null)
+            )
+          );
+          rest.forEach((r) => {
+            const extra = (r?.data as any)?.users;
+            if (Array.isArray(extra)) list = list.concat(extra);
+          });
+        }
         setUsers(list);
       } else if (usersRes.status === 'rejected') {
         const err = usersRes.reason;
@@ -616,7 +637,7 @@ export const Users: React.FC = () => {
       }
 
       const avatarWithCacheBust = `${uploadedUrl}?v=${Date.now()}`;
-      await userApi.updateUser(targetUser._id, { avatar: avatarWithCacheBust });
+      await userApi.updateUser(targetUser._id, { anh_dai_dien: avatarWithCacheBust });
 
       setUsers((prev) =>
         prev.map((u) => (u._id === targetUser._id ? { ...u, avatar: avatarWithCacheBust } : u))
@@ -634,6 +655,8 @@ export const Users: React.FC = () => {
   const handleModalAvatarFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const localBlobUrl = URL.createObjectURL(file);
+    setModalAvatarPreview(localBlobUrl);
     setUploadingAvatar(true);
     try {
       const uploadRes = await userApi.uploadAvatar(file);
@@ -643,6 +666,7 @@ export const Users: React.FC = () => {
         toast.success('Đã tải ảnh đại diện lên thành công!');
       }
     } catch (error: any) {
+      setModalAvatarPreview(null);
       toast.error(error?.response?.data?.message || 'Không thể tải ảnh lên.');
     } finally {
       setUploadingAvatar(false);
@@ -655,6 +679,7 @@ export const Users: React.FC = () => {
   // ---------------------------------------------------------------------------
   const handleOpenCreateModal = () => {
     setEditingUser(null);
+    setModalAvatarPreview(null);
     setActiveFormTab('basic');
     const nextIdx = users.length + 1;
     const suggestedCode = `GV${String(nextIdx).padStart(3, '0')}`;
@@ -700,6 +725,7 @@ export const Users: React.FC = () => {
 
   const handleOpenEditModal = (u: UserProfile) => {
     setEditingUser(u);
+    setModalAvatarPreview(null);
     setActiveFormTab('basic');
     const todayIso = new Date().toISOString().slice(0, 10);
     const mappedRoles: UserRoleAssignmentPayload[] = Array.isArray(u.roles)
@@ -900,7 +926,7 @@ export const Users: React.FC = () => {
         (d) =>
           (d.name || '').toLowerCase().includes('quản trị') ||
           (d.name || '').toLowerCase().includes('hành chính')
-      ) || departments.find((d) => getDeptCategory(d) === 'phongban');
+      ) || departments.find((d) => getDeptCategory(d) === 'phong_ban');
       newDeptId = adminDept ? adminDept._id : '';
       newPosition = 'Quản trị viên hệ thống';
     } else if (newRole === 'truong_khoa' || newRole === 'pho_khoa') {
@@ -939,8 +965,8 @@ export const Users: React.FC = () => {
   };
 
   const availableRoleOptions = useMemo(() => {
-    // Trưởng khoa chỉ được chọn phân quyền cán bộ/giảng viên thuộc khoa
-    if (viewerRole === 'truong_khoa') {
+    // Trưởng khoa / Phó khoa chỉ được chọn phân quyền cán bộ/giảng viên thuộc khoa
+    if (['truong_khoa', 'pho_khoa'].includes(viewerRole)) {
       return ROLE_OPTIONS.filter((r) => ['giang_vien', 'nhan_vien'].includes(r.value));
     }
     // Admin và Ban Giám Hiệu có quyền chọn bất kỳ vai trò nào
@@ -981,8 +1007,8 @@ export const Users: React.FC = () => {
         toast.error('Trưởng Bộ Môn bắt buộc phải thuộc đơn vị cấp Bộ Môn.');
         return;
       }
-      if (formData.role === 'giang_vien' && selectedDept.type !== 'bo_mon' && selectedDept.type !== 'bomon') {
-        toast.error('Giảng viên bắt buộc phải trực thuộc một Bộ Môn cụ thể.');
+      if (formData.role === 'giang_vien' && !['khoa', 'bo_mon', 'bomon'].includes(selectedDept.type || '')) {
+        toast.error('Giảng viên bắt buộc phải trực thuộc một Khoa hoặc Bộ Môn đào tạo.');
         return;
       }
       if (formData.role === 'admin' && (selectedDept.type === 'khoa' || selectedDept.type === 'bo_mon' || selectedDept.type === 'bomon')) {
@@ -1039,28 +1065,28 @@ export const Users: React.FC = () => {
 
       if (editingUser) {
         const updatePayload: UpdateUserPayload = {
-          fullName: formData.fullName.trim(),
+          ho_ten: formData.fullName.trim(),
           email: formData.email.trim(),
-          staffCode: formData.staffCode.trim().toUpperCase(),
-          role: formData.role,
-          departmentId: primaryDeptId,
+          ma_can_bo: formData.staffCode.trim().toUpperCase(),
+          vai_tro_chinh: formData.role,
+          don_vi_chinh_id: primaryDeptId,
           ...(preparedRoleAssignments ? { danh_sach_vai_tro: preparedRoleAssignments } : {}),
-          phoneNumber: formData.phoneNumber?.trim() || undefined,
-          position: formData.position?.trim() || undefined,
-          academicRank: formData.academicRank,
-          degree: formData.degree,
-          staffType: formData.staffType,
-          contractType: formData.contractType,
-          salaryScale: formData.salaryScale,
-          salaryCoefficient: Number(formData.salaryCoefficient),
-          dependentsCount: Number(formData.dependentsCount),
-          annualLeaveQuota: Number(formData.annualLeaveQuota),
-          gender: formData.gender,
-          dateOfBirth: formData.dateOfBirth || undefined,
-          startDate: formData.startDate || undefined,
-          address: formData.address?.trim() || '',
-          employmentStatus: formData.employmentStatus,
-          avatar: formData.avatar?.trim() || null,
+          so_dien_thoai: formData.phoneNumber?.trim() || undefined,
+          chuc_vu: formData.position?.trim() || undefined,
+          hoc_ham: formData.academicRank,
+          hoc_vi: formData.degree,
+          loai_nhan_su: formData.staffType,
+          loai_hop_dong: formData.contractType,
+          ngach_luong: formData.salaryScale,
+          he_so_luong: Number(formData.salaryCoefficient),
+          so_nguoi_phu_thuoc: Number(formData.dependentsCount),
+          han_muc_phep_nam: Number(formData.annualLeaveQuota),
+          gioi_tinh: formData.gender,
+          ngay_sinh: formData.dateOfBirth || undefined,
+          ngay_vao_lam: formData.startDate || undefined,
+          dia_chi: formData.address?.trim() || '',
+          trang_thai_lam_viec: formData.employmentStatus,
+          anh_dai_dien: formData.avatar?.trim() || null,
           ngay_het_han_hop_dong: formData.ngay_het_han_hop_dong || null,
           ngay_bat_dau_giang_day: formData.ngay_bat_dau_giang_day || null,
           so_cccd: formData.so_cccd?.trim() || null,
@@ -1068,10 +1094,10 @@ export const Users: React.FC = () => {
           so_tai_khoan_ngan_hang: formData.so_tai_khoan_ngan_hang?.trim() || null,
           ten_ngan_hang: formData.ten_ngan_hang?.trim() || null,
           chi_nhanh_ngan_hang: formData.chi_nhanh_ngan_hang?.trim() || null,
-          isActive: formData.isActive,
+          kich_hoat: formData.isActive,
         };
         if (formData.password && formData.password.trim().length > 0) {
-          updatePayload.password = formData.password.trim();
+          updatePayload.mat_khau = formData.password.trim();
         }
 
         await userApi.updateUser(editingUser._id, updatePayload);
@@ -1083,13 +1109,36 @@ export const Users: React.FC = () => {
           return;
         }
         const createPayload: CreateUserPayload = {
-          ...formData,
-          fullName: formData.fullName.trim(),
+          ho_ten: formData.fullName.trim(),
           email: formData.email.trim().toLowerCase(),
-          staffCode: formData.staffCode.trim().toUpperCase(),
-          departmentId: primaryDeptId,
-          avatar: formData.avatar?.trim() || null,
+          mat_khau: formData.password,
+          ma_can_bo: formData.staffCode.trim().toUpperCase(),
+          vai_tro_chinh: formData.role,
+          don_vi_chinh_id: primaryDeptId,
           ...(preparedRoleAssignments ? { danh_sach_vai_tro: preparedRoleAssignments } : {}),
+          so_dien_thoai: formData.phoneNumber?.trim() || undefined,
+          chuc_vu: formData.position?.trim() || undefined,
+          hoc_ham: formData.academicRank,
+          hoc_vi: formData.degree,
+          loai_nhan_su: formData.staffType,
+          loai_hop_dong: formData.contractType,
+          ngach_luong: formData.salaryScale,
+          he_so_luong: Number(formData.salaryCoefficient),
+          so_nguoi_phu_thuoc: Number(formData.dependentsCount),
+          han_muc_phep_nam: Number(formData.annualLeaveQuota),
+          gioi_tinh: formData.gender,
+          ngay_sinh: formData.dateOfBirth || undefined,
+          ngay_vao_lam: formData.startDate || undefined,
+          dia_chi: formData.address?.trim() || '',
+          trang_thai_lam_viec: formData.employmentStatus,
+          anh_dai_dien: formData.avatar?.trim() || null,
+          ngay_het_han_hop_dong: formData.ngay_het_han_hop_dong || null,
+          ngay_bat_dau_giang_day: formData.ngay_bat_dau_giang_day || null,
+          so_cccd: formData.so_cccd?.trim() || null,
+          ma_so_thue: formData.ma_so_thue?.trim() || null,
+          so_tai_khoan_ngan_hang: formData.so_tai_khoan_ngan_hang?.trim() || null,
+          ten_ngan_hang: formData.ten_ngan_hang?.trim() || null,
+          chi_nhanh_ngan_hang: formData.chi_nhanh_ngan_hang?.trim() || null,
         };
         await userApi.createUser(createPayload);
         toast.success(`Đã tạo tài khoản cán bộ ${formData.fullName} thành công!`);
@@ -1118,7 +1167,7 @@ export const Users: React.FC = () => {
         await userApi.deleteUser(u._id);
         toast.success(`Đã vô hiệu hóa tài khoản của ${parsed.name}.`);
       } else {
-        await userApi.updateUser(u._id, { isActive: true, employmentStatus: 'dang_lam_viec' });
+        await userApi.updateUser(u._id, { kich_hoat: true, trang_thai_lam_viec: 'dang_lam_viec' });
         toast.success(`Đã mở khóa tài khoản của ${parsed.name}.`);
       }
       await fetchAllData();
@@ -1191,21 +1240,66 @@ export const Users: React.FC = () => {
         }
       />
 
-      {/* ── UNIFIED STAFF WORKSPACE: KPI STRIP + TOOLBAR + DATA TABLE ── */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-hidden">
-        <CompactStatsBar
-          embedded
-          items={[
-            { label: 'Tổng cán bộ', value: stats.total, badge: `${stats.activeCount} công tác`, tone: 'brand' },
-            { label: 'Khối giảng dạy', value: stats.lecturerCount, badge: `${stats.pgsTsCount} PGS/TS`, tone: 'neutral' },
-            { label: 'Đã có Face ID', value: `${stats.faceRegCount}/${stats.total}`, badge: `${stats.facePercent}%`, tone: 'success' },
-            { label: 'Khoa / Phòng ban', value: departments.length, badge: `${stats.leadershipCount} lãnh đạo`, tone: 'neutral' },
-          ]}
-        />
-        {/* Thanh công cụ tìm kiếm & lọc 1 hàng */}
-        <div className="p-3 border-b border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-2">
+      {/* ── FLUX STATS ROW: 4 SEPARATE METRIC CARDS ── */}
+      <CompactStatsBar
+        items={[
+          {
+            label: 'Tổng cán bộ',
+            value: stats.total,
+            badge: `${stats.activeCount} công tác`,
+            subtext: 'Toàn hệ thống',
+            tone: 'neutral',
+            active: filterTab === 'all',
+            onClick: () => {
+              setFilterTab('all');
+              setCurrentPage(1);
+            },
+          },
+          {
+            label: 'Khối giảng dạy',
+            value: stats.lecturerCount,
+            badge: `${stats.pgsTsCount} PGS/TS`,
+            subtext: 'Giảng viên & nghiên cứu',
+            tone: 'brand',
+            active: filterTab === 'giang_vien',
+            onClick: () => {
+              setFilterTab((prev) => (prev === 'giang_vien' ? 'all' : 'giang_vien'));
+              setCurrentPage(1);
+            },
+          },
+          {
+            label: 'Đã có Face ID',
+            value: stats.faceRegCount,
+            badge: `${stats.facePercent}%`,
+            progress: stats.facePercent,
+            tone: 'success',
+            active: filterTab === 'face_yes',
+            onClick: () => {
+              setFilterTab((prev) => (prev === 'face_yes' ? 'all' : 'face_yes'));
+              setCurrentPage(1);
+            },
+          },
+          {
+            label: 'Khoa / Phòng ban',
+            value: departments.length,
+            badge: `${stats.leadershipCount} lãnh đạo`,
+            subtext: 'Đơn vị trực thuộc',
+            tone: 'warning',
+            active: filterTab === 'leadership',
+            onClick: () => {
+              setFilterTab((prev) => (prev === 'leadership' ? 'all' : 'leadership'));
+              setCurrentPage(1);
+            },
+          },
+        ]}
+      />
+
+      {/* ── MAIN STAFF WORKSPACE CARD (FLUX STYLE) ── */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+        {/* Thanh công cụ tìm kiếm & lọc 1 hàng Flux Style */}
+        <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2.5">
           {/* Ô tìm kiếm */}
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-[220px]">
             <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
@@ -1215,7 +1309,7 @@ export const Users: React.FC = () => {
                 setCurrentPage(1);
               }}
               placeholder="Tìm tên cán bộ, mã CB, email, SĐT..."
-              className="w-full h-9 pl-9 pr-7 rounded-lg border border-slate-200/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-colors"
+              className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
             />
             {searchTerm && (
               <button
@@ -1224,7 +1318,7 @@ export const Users: React.FC = () => {
                   setSearchTerm('');
                   setCurrentPage(1);
                 }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -1256,7 +1350,7 @@ export const Users: React.FC = () => {
                 setFilterTab(e.target.value as any);
                 setCurrentPage(1);
               }}
-              className="h-9 appearance-none pl-3 pr-7 rounded-lg border border-slate-200/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:border-brand-500 cursor-pointer"
+              className="h-9 appearance-none pl-3 pr-8 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:border-brand-500 cursor-pointer transition-all"
               aria-label="Phân loại cán bộ"
             >
               <option value="all">Tất cả ({stats.total})</option>
@@ -1265,11 +1359,11 @@ export const Users: React.FC = () => {
               <option value="hanhchinh">Khối Hành chính ({stats.adminStaffCount})</option>
               <option value="face_yes">Đã có Face ID ({stats.faceRegCount})</option>
             </select>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
           {/* Chế độ xem */}
-          <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60 h-9 shrink-0">
+          <div className="flex items-center gap-0.5 bg-slate-100/80 dark:bg-slate-800 p-1 rounded-xl h-9 shrink-0">
             <button
               type="button"
               onClick={() => handleSetViewMode('table')}
@@ -1331,7 +1425,7 @@ export const Users: React.FC = () => {
           ) : viewMode === 'table' ? (
             /* ── CHẾ ĐỘ 1: BẢNG CHI TIẾT CHUẨN (TABLE VIEW) ── */
             <>
-              <div className="hidden lg:grid grid-cols-[1.6fr_1.1fr_1.25fr_1fr_130px_145px] gap-3 px-4 py-3 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/70 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider items-center">
+              <div className="hidden lg:grid grid-cols-[1.6fr_1.1fr_1.25fr_1fr_130px_145px] gap-3 px-5 py-3.5 bg-slate-50/70 dark:bg-slate-850/60 border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider items-center select-none">
                 <div className="min-w-0">Cán bộ / Giảng viên</div>
                 <div className="min-w-0">Mã CB &amp; Liên hệ</div>
                 <div className="min-w-0">Khoa / Đơn vị &amp; Vai trò</div>
@@ -1353,30 +1447,30 @@ export const Users: React.FC = () => {
                   return (
                     <div
                       key={emp._id}
-                      className={`p-3.5 sm:px-4 sm:py-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors flex flex-col lg:grid lg:grid-cols-[1.6fr_1.1fr_1.25fr_1fr_130px_145px] gap-2.5 lg:gap-3 items-start lg:items-center w-full min-w-0 ${
+                      className={`p-3 sm:px-4 sm:py-2.5 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors flex flex-col lg:grid lg:grid-cols-[1.6fr_1.1fr_1.25fr_1fr_130px_145px] gap-2 lg:gap-3 items-start lg:items-center w-full min-w-0 ${
                         emp.isActive === false ? 'opacity-60 bg-slate-50/40 dark:bg-slate-950/30' : ''
                       }`}
                     >
                       {/* Cột 1: Avatar + Họ tên + Chức danh */}
                       <div className="w-full lg:w-auto min-w-0 flex items-center justify-between lg:justify-start gap-2.5">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
                           <StaffAvatar
                             user={emp}
-                            size="md"
+                            size="sm"
                             canUpload={canEdit}
                             onQuickUpload={handleQuickAvatarUpload}
                           />
-                          <div className="flex flex-col min-w-0 flex-1 leading-snug">
+                          <div className="flex flex-col min-w-0 flex-1 leading-tight">
                             <button
                               type="button"
                               onClick={() => setDetailUser(emp)}
-                              className="font-semibold text-slate-900 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 text-sm truncate text-left transition-colors cursor-pointer"
+                              className="font-semibold text-slate-800 dark:text-slate-100 hover:text-brand-600 dark:hover:text-brand-400 text-xs truncate text-left transition-colors cursor-pointer"
                               title={parsed.name}
                             >
                               {parsed.name}
                             </button>
                             <span
-                              className="text-xs text-slate-500 dark:text-slate-400 truncate block"
+                              className="text-[11px] text-slate-400 dark:text-slate-500 truncate block mt-0.5"
                               title={parsed.title || (typeof emp.position === 'string' ? emp.position : '')}
                             >
                               {parsed.title || (typeof emp.position === 'string' && emp.position) || 'Cán bộ cơ hữu'}
@@ -1384,18 +1478,18 @@ export const Users: React.FC = () => {
                           </div>
                         </div>
 
-                        <span className="lg:hidden text-xs font-semibold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200/70 shrink-0 tabular-nums">
+                        <span className="lg:hidden text-[11px] font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded shrink-0 tabular-nums font-mono">
                           {staffCodeVal}
                         </span>
                       </div>
 
                       {/* Cột 2: Mã CB / Email */}
-                      <div className="hidden lg:flex min-w-0 flex-col gap-0.5 leading-snug">
-                        <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 tabular-nums truncate">
+                      <div className="hidden lg:flex min-w-0 flex-col gap-0.5 leading-tight">
+                        <span className="text-xs font-mono font-semibold text-brand-600 dark:text-brand-400 tabular-nums truncate">
                           {staffCodeVal}
                         </span>
                         <span
-                          className="text-xs text-slate-500 dark:text-slate-400 truncate block"
+                          className="text-[11px] text-slate-400 dark:text-slate-500 truncate block font-normal"
                           title={emp.email}
                         >
                           {emp.email}
@@ -1403,60 +1497,69 @@ export const Users: React.FC = () => {
                       </div>
 
                       {/* Cột 3: Khoa / Đơn vị & Vai trò */}
-                      <div className="w-full lg:w-auto min-w-0 flex flex-col gap-1 leading-snug">
+                      <div className="w-full lg:w-auto min-w-0 flex flex-col gap-1 leading-tight">
                         <span
-                          className="inline-flex items-center gap-1.5 text-slate-800 dark:text-slate-200 font-medium text-sm max-w-full min-w-0"
+                          className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium text-xs max-w-full min-w-0"
                           title={deptNameVal}
                         >
-                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
                           <span className="truncate">{deptNameVal}</span>
                         </span>
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border w-fit ${roleMeta.badgeClass}`}
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold w-fit ${roleMeta.badgeClass}`}
                         >
                           {roleMeta.label}
                         </span>
                       </div>
 
                       {/* Cột 4: Học hàm / Ngạch lương */}
-                      <div className="hidden lg:flex min-w-0 flex-col gap-0.5 leading-snug">
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+                      <div className="hidden lg:flex min-w-0 flex-col gap-0.5 leading-tight">
+                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">
                           {academicPrefix || 'Cử nhân / Kỹ sư'} •{' '}
                           {emp.staffType === 'giang_vien' ? 'Giảng dạy' : 'Hành chính'}
                         </span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 tabular-nums font-mono">
                           Ngạch {emp.salaryScale || 'V.07.01.03'} (HS {(emp.salaryCoefficient ?? 2.34).toFixed(2)})
                         </span>
                       </div>
 
-                      {/* Cột 5: Trạng thái Face ID */}
+                      {/* Cột 5: Trạng thái Face ID & Tài khoản */}
                       <div className="w-full lg:w-auto min-w-0 flex items-center justify-between lg:justify-center shrink-0">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-xs font-medium inline-flex items-center gap-1.5 shrink-0 border ${
-                            isRegistered
-                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                          }`}
-                        >
-                          {isRegistered ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                              <span>Đã có Face ID</span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
-                              <span>Chưa đăng ký</span>
-                            </>
+                        <div className="flex flex-col items-start lg:items-center gap-1">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10.5px] font-semibold inline-flex items-center gap-1 shrink-0 ${
+                              isRegistered
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                            }`}
+                          >
+                            {isRegistered ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                <span>Face ID</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                                <span>Chưa Face ID</span>
+                              </>
+                            )}
+                          </span>
+                          {(emp.isActive === false || (emp.employmentStatus && emp.employmentStatus !== 'dang_lam_viec')) && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                              {emp.isActive === false
+                                ? 'Đã khóa TK'
+                                : EMPLOYMENT_STATUS_OPTIONS.find((s) => s.value === emp.employmentStatus)?.label || emp.employmentStatus}
+                            </span>
                           )}
-                        </span>
+                        </div>
 
                         {/* Cụm nút trên Mobile */}
                         <div className="lg:hidden flex items-center gap-1">
                           <button
                             type="button"
                             onClick={() => setDetailUser(emp)}
-                            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+                            className="w-7 h-7 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 flex items-center justify-center"
                             title="Xem chi tiết"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -1465,7 +1568,7 @@ export const Users: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleOpenEditModal(emp)}
-                              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-brand-600 dark:text-brand-400"
+                              className="w-7 h-7 rounded-full border border-slate-200 dark:border-slate-700 text-brand-600 flex items-center justify-center"
                               title="Chỉnh sửa"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
@@ -1479,7 +1582,7 @@ export const Users: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setDetailUser(emp)}
-                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          className="w-7 h-7 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-center cursor-pointer"
                           title="Xem hồ sơ chi tiết"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -1489,7 +1592,7 @@ export const Users: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleOpenEditModal(emp)}
-                            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/40 transition-colors cursor-pointer"
+                            className="w-7 h-7 rounded-full text-slate-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/40 transition-colors flex items-center justify-center cursor-pointer"
                             title="Chỉnh sửa hồ sơ & Tải ảnh đại diện"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
@@ -1573,22 +1676,31 @@ export const Users: React.FC = () => {
                           </div>
                         </div>
 
-                        <span
-                          className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase inline-flex items-center gap-1 ${
-                            isRegistered
-                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                              : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
-                          }`}
-                        >
-                          {isRegistered ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                              <span>Face ID</span>
-                            </>
-                          ) : (
-                            <span>Chưa có</span>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase inline-flex items-center gap-1 ${
+                              isRegistered
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {isRegistered ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                <span>Face ID</span>
+                              </>
+                            ) : (
+                              <span>Chưa có</span>
+                            )}
+                          </span>
+                          {(emp.isActive === false || (emp.employmentStatus && emp.employmentStatus !== 'dang_lam_viec')) && (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                              {emp.isActive === false
+                                ? 'Đã khóa'
+                                : EMPLOYMENT_STATUS_OPTIONS.find((s) => s.value === emp.employmentStatus)?.label || emp.employmentStatus}
+                            </span>
                           )}
-                        </span>
+                        </div>
                       </div>
 
                       <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-300">
@@ -1776,123 +1888,26 @@ export const Users: React.FC = () => {
         </div>
 
         {/* ── 3. BỘ ĐIỀU HƯỚNG PHÂN TRANG CHUẨN (PAGINATION BAR) ─────────── */}
-        {totalFilteredCount > 0 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 text-xs text-slate-500 dark:text-slate-400">
-            {/* Hiển thị phạm vi bản ghi */}
-            <div className="flex items-center gap-2">
-              <span>
-                Hiển thị{' '}
-                <strong className="text-slate-900 dark:text-white">
-                  {(validCurrentPage - 1) * pageSize + 1}
-                </strong>{' '}
-                -{' '}
-                <strong className="text-slate-900 dark:text-white">
-                  {Math.min(validCurrentPage * pageSize, totalFilteredCount)}
-                </strong>{' '}
-                trên tổng số{' '}
-                <strong className="text-brand-600 dark:text-brand-400">{totalFilteredCount}</strong> cán bộ, giảng viên
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3 flex-wrap justify-end">
-              {/* Chọn số dòng trên mỗi trang */}
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px]">Hiển thị:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
-                >
-                  <option value={5}>5 / trang</option>
-                  <option value={10}>10 / trang</option>
-                  <option value={20}>20 / trang</option>
-                  <option value={50}>50 / trang</option>
-                </select>
-              </div>
-
-              {/* Các nút bấm chuyển trang */}
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(1)}
-                  disabled={validCurrentPage <= 1}
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-                  title="Trang đầu"
-                >
-                  <ChevronsLeft className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={validCurrentPage <= 1}
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-                  title="Trang trước"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter((p) => {
-                    if (totalPages <= 7) return true;
-                    if (p === 1 || p === totalPages) return true;
-                    return Math.abs(p - validCurrentPage) <= 1;
-                  })
-                  .map((p, idx, arr) => {
-                    const prevP = arr[idx - 1];
-                    const hasGap = prevP && p - prevP > 1;
-
-                    return (
-                      <React.Fragment key={p}>
-                        {hasGap && <span className="px-1 text-slate-400">...</span>}
-                        <button
-                          type="button"
-                          onClick={() => setCurrentPage(p)}
-                          className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
-                            p === validCurrentPage
-                              ? 'bg-brand-600 text-white shadow-xs'
-                              : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                          }`}
-                        >
-                          {p}
-                        </button>
-                      </React.Fragment>
-                    );
-                  })}
-
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={validCurrentPage >= totalPages}
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-                  title="Trang tiếp"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={validCurrentPage >= totalPages}
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-                  title="Trang cuối"
-                >
-                  <ChevronsRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <ThanhPhanTrang
+          currentPage={validCurrentPage}
+          totalPages={totalPages}
+          totalItems={totalFilteredCount}
+          pageSize={pageSize}
+          pageSizeOptions={[5, 10, 20, 50]}
+          itemLabel="cán bộ, giảng viên"
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setCurrentPage(1);
+          }}
+        />
       </div>
 
       {/* ── 4. MODAL THÊM / CẬP NHẬT HỒ SƠ CÁN BỘ (CÓ UPLOAD AVATAR) ──────────── */}
       {isFormModalOpen && (
         <Portal>
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-950/50">
               <div className="flex items-center gap-3">
@@ -1924,14 +1939,12 @@ export const Users: React.FC = () => {
                 anhDaiDien={
                   <div className="relative">
                     <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-brand-500 to-indigo-600 text-white flex items-center justify-center font-bold text-2xl overflow-hidden shadow-md ring-4 ring-white dark:ring-slate-800">
-                      {formData.avatar ? (
-                        <img
-                          src={formData.avatar}
+                      {(modalAvatarPreview || formData.avatar) ? (
+                        <AnhBaoMat
+                          src={modalAvatarPreview || formData.avatar}
                           alt={formData.fullName || 'Avatar'}
                           className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                          }}
+                          fallback={getInitials(formData.fullName || 'CB')}
                         />
                       ) : (
                         getInitials(formData.fullName || 'CB')
@@ -1976,10 +1989,13 @@ export const Users: React.FC = () => {
                       <Upload className="w-3.5 h-3.5" />
                       <span>{uploadingAvatar ? 'Đang tải...' : 'Tải ảnh từ máy'}</span>
                     </button>
-                    {formData.avatar && (
+                    {(modalAvatarPreview || formData.avatar) && (
                       <button
                         type="button"
-                        onClick={() => setFormData((prev) => ({ ...prev, avatar: '' }))}
+                        onClick={() => {
+                          setModalAvatarPreview(null);
+                          setFormData((prev) => ({ ...prev, avatar: '' }));
+                        }}
                         className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -2689,7 +2705,7 @@ export const Users: React.FC = () => {
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
             >
               {/* Header */}
               <div className="px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-950/50 shrink-0">
@@ -2818,6 +2834,13 @@ export const Users: React.FC = () => {
                                   }
                                 />
                                 <Field
+                                  label="Trạng thái công tác"
+                                  value={
+                                    EMPLOYMENT_STATUS_OPTIONS.find((s) => s.value === detailUser.employmentStatus)?.label ||
+                                    'Đang làm việc'
+                                  }
+                                />
+                                <Field
                                   label="Ngày vào trường"
                                   value={
                                     detailUser.startDate
@@ -2914,12 +2937,12 @@ export const Users: React.FC = () => {
                                 <div>
                                   <div className="font-bold text-slate-900 dark:text-white">
                                     {detailUser.isFaceRegistered
-                                      ? `Đã đăng ký Sinh trắc học Face ID (${modelName} • ${detailUser.vectorDimension || (detailUser as any).so_chieu_vector || 512}D)`
+                                      ? `Đã đăng ký Sinh trắc học Face ID (${modelName} • ${detailUser.vectorDimension || 512}D)`
                                       : 'Chưa đăng ký dữ liệu khuôn mặt Face ID'}
                                   </div>
                                   <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                                     {detailUser.isFaceRegistered
-                                      ? `Số mẫu: ${sampleQty} mẫu (${detailUser.isDefaultFace === false ? 'Mẫu phụ' : 'Mẫu mặc định'}) • Ngày đăng ký: ${
+                                      ? `Trạng thái: ${(detailUser as any).faceStatus === 'bi_khoa' ? 'Tạm khóa' : 'Đang hoạt động'} • Số mẫu: ${sampleQty} mẫu (${detailUser.isDefaultFace === false ? 'Mẫu phụ' : 'Mẫu mặc định'}) • Ngày đăng ký: ${
                                           detailUser.faceRegisteredAt
                                             ? new Date(detailUser.faceRegisteredAt).toLocaleDateString('vi-VN')
                                             : 'Chưa cập nhật'
@@ -2980,6 +3003,22 @@ export const Users: React.FC = () => {
                                 (detailUser.passwordChangedAt || detailUser.doi_mat_khau_luc)
                                   ? new Date(detailUser.passwordChangedAt || detailUser.doi_mat_khau_luc || '').toLocaleString('vi-VN')
                                   : 'Chưa thay đổi'
+                              }
+                            />
+                            <Field
+                              label="Ngày tạo tài khoản"
+                              value={
+                                detailUser.createdAt
+                                  ? new Date(detailUser.createdAt).toLocaleString('vi-VN')
+                                  : 'Chưa ghi nhận'
+                              }
+                            />
+                            <Field
+                              label="Cập nhật gần nhất"
+                              value={
+                                detailUser.updatedAt
+                                  ? new Date(detailUser.updatedAt).toLocaleString('vi-VN')
+                                  : 'Chưa ghi nhận'
                               }
                             />
                           </div>

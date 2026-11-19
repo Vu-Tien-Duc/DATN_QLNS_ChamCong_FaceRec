@@ -22,6 +22,7 @@ export const KhungAnhMinhChung: React.FC<KhungAnhMinhChungProps> = ({
 
   useEffect(() => {
     let active = true;
+    let createdObjectUrl: string | null = null;
     setEvidenceUrls(initialUrl ? [initialUrl] : []);
     setBrokenMap({});
 
@@ -29,20 +30,10 @@ export const KhungAnhMinhChung: React.FC<KhungAnhMinhChungProps> = ({
     setLoading(true);
     attendanceApi
       .getAttendanceEvidence(logId)
-      .then((res: any) => {
-        if (!active || !res) return;
-        const urls: string[] = [];
-        if (res.anh_minh_chung || res.evidenceUrl || res.url) {
-          urls.push(res.anh_minh_chung || res.evidenceUrl || res.url);
-        }
-        if (Array.isArray(res.luot_quet || res.punches || res.items)) {
-          const arr = res.luot_quet || res.punches || res.items;
-          arr.forEach((p: any) => {
-            const u = p?.anh_minh_chung || p?.evidencePhoto || p?.capturedImage;
-            if (u && !urls.includes(u)) urls.push(u);
-          });
-        }
-        if (urls.length > 0) setEvidenceUrls(urls);
+      .then((res) => {
+        if (!active || !res?.url) return;
+        createdObjectUrl = res.url;
+        setEvidenceUrls([res.url]);
       })
       .catch(() => {
         // Fallback to initialUrl if evidence endpoint has no records
@@ -53,6 +44,9 @@ export const KhungAnhMinhChung: React.FC<KhungAnhMinhChungProps> = ({
 
     return () => {
       active = false;
+      if (createdObjectUrl) {
+        URL.revokeObjectURL(createdObjectUrl);
+      }
     };
   }, [logId, initialUrl]);
 

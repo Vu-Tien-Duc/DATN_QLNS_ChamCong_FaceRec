@@ -246,7 +246,7 @@ export const AiChatBox: React.FC = () => {
   const ragFileInputRef = useRef<HTMLInputElement>(null);
   const createdBlobUrlsRef = useRef<string[]>([]);
   const { user } = useAuthStore();
-  const lastUserIdRef = useRef<string | undefined>(user?._id);
+  const lastUserIdRef = useRef<string | undefined>(user?.id);
 
   const isPendingImage = Boolean(pendingFile && pendingFile.type.startsWith('image/'));
 
@@ -286,8 +286,8 @@ export const AiChatBox: React.FC = () => {
 
   // Reset lịch sử & tài liệu RAG khi đổi tài khoản đăng nhập
   useEffect(() => {
-    if (lastUserIdRef.current !== user?._id) {
-      lastUserIdRef.current = user?._id;
+    if (lastUserIdRef.current !== user?.id) {
+      lastUserIdRef.current = user?.id;
       revokeAllSessionBlobUrls();
       setMessages([]);
       setSelectedDocIds([]);
@@ -296,7 +296,7 @@ export const AiChatBox: React.FC = () => {
       setPendingPreviewUrl(null);
       setShowPrompts(true);
     }
-  }, [user?._id, revokeAllSessionBlobUrls]);
+  }, [user?.id, revokeAllSessionBlobUrls]);
 
   // Tải danh sách modes khi khởi tạo
   useEffect(() => {
@@ -355,7 +355,7 @@ export const AiChatBox: React.FC = () => {
   // Tin nhắn chào mừng ban đầu
   useEffect(() => {
     if (messages.length === 0) {
-      const greetingName = user?.fullName ? `Thầy/Cô ${user.fullName}` : 'Thầy/Cô';
+      const greetingName = user?.ho_ten ? `Thầy/Cô ${user.ho_ten}` : 'Thầy/Cô';
       setMessages([
         {
           id: 'welcome',

@@ -1,29 +1,36 @@
 import { apiClient, ApiResponse } from './apiClient';
 
 export interface SubjectItem {
-  _id: string;
-  code: string;
-  name: string;
-  credits: number;
-  departmentId?: {
-    _id: string;
-    name: string;
+  id: string;
+  ma_mon: string;
+  ten_mon: string;
+  so_tin_chi: number;
+  phong_ban_id?: {
+    id?: string;
+    _id?: string;
+    ten_phong_ban?: string;
+    name?: string;
+    loai_don_vi?: string;
     type?: string;
-    parentId?: any;
   } | string | null;
-  description?: string;
-  isActive: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  phong_ban?: {
+    id: string;
+    ten_phong_ban: string;
+    loai_don_vi?: string;
+  } | null;
+  mo_ta?: string;
+  kich_hoat: boolean;
+  tao_luc?: string;
+  cap_nhat_luc?: string;
 }
 
 export interface SubjectQueryParams {
-  search?: string;
-  departmentId?: string;
-  isActive?: boolean | string;
-  credits?: number | string;
-  page?: number;
-  limit?: number;
+  tim_kiem?: string;
+  phong_ban_id?: string;
+  kich_hoat?: boolean | string;
+  so_tin_chi?: number | string;
+  trang?: number;
+  gioi_han?: number;
 }
 
 export interface SubjectPaginatedResponse {
@@ -36,29 +43,22 @@ export interface SubjectPaginatedResponse {
 }
 
 export interface CreateSubjectPayload {
-  code: string;
-  name: string;
-  credits?: number;
-  departmentId?: string | null;
-  description?: string;
-  isActive?: boolean;
+  ma_mon: string;
+  ten_mon: string;
+  so_tin_chi?: number;
+  phong_ban_id?: string | null;
+  mo_ta?: string;
+  kich_hoat?: boolean;
 }
 
 export interface UpdateSubjectPayload {
-  code?: string;
-  name?: string;
-  credits?: number;
-  departmentId?: string | null;
-  description?: string;
-  isActive?: boolean;
+  ma_mon?: string;
+  ten_mon?: string;
+  so_tin_chi?: number;
+  phong_ban_id?: string | null;
+  mo_ta?: string;
+  kich_hoat?: boolean;
 }
-
-const mapSubjectPayload = (payload: CreateSubjectPayload | UpdateSubjectPayload) => {
-  const { name, ...rest } = payload as any;
-  const out: Record<string, any> = { ...rest };
-  if (name !== undefined) out.ten_mon = name;
-  return out;
-};
 
 export const subjectApi = {
   /**
@@ -67,20 +67,12 @@ export const subjectApi = {
   async getSubjects(
     params?: SubjectQueryParams
   ): Promise<{ subjects: SubjectItem[]; total: number; page: number; totalPages: number; availableCredits?: number[] }> {
-    const queryParams = params
-      ? {
-          ...params,
-          ...(params.credits !== undefined ? { so_tin_chi: params.credits } : {}),
-        }
-      : undefined;
-    if (queryParams && 'credits' in queryParams) delete queryParams.credits;
-
-    const res = await apiClient.get<any>('/mon-hoc', { params: queryParams });
+    const res = await apiClient.get<any>('/mon-hoc', { params });
     const raw = res.data?.data || res.data;
 
     if (Array.isArray(raw)) {
       const distinctCredits = Array.from(
-        new Set(raw.map((s: any) => Number(s.credits)).filter((n: number) => !isNaN(n) && n > 0))
+        new Set(raw.map((s: any) => Number(s.so_tin_chi)).filter((n: number) => !isNaN(n) && n > 0))
       ).sort((a: number, b: number) => a - b);
 
       return {
@@ -96,7 +88,7 @@ export const subjectApi = {
     const availableCredits = Array.isArray(raw?.availableCredits)
       ? raw.availableCredits
       : Array.from(
-          new Set(subjects.map((s: any) => Number(s.credits)).filter((n: number) => !isNaN(n) && n > 0))
+          new Set(subjects.map((s: any) => Number(s.so_tin_chi)).filter((n: number) => !isNaN(n) && n > 0))
         ).sort((a: number, b: number) => a - b);
 
     return {
@@ -120,7 +112,7 @@ export const subjectApi = {
    * 3. Thêm mới môn học (Admin & Trưởng khoa)
    */
   async createSubject(payload: CreateSubjectPayload): Promise<SubjectItem> {
-    const res = await apiClient.post<any>('/mon-hoc', mapSubjectPayload(payload));
+    const res = await apiClient.post<any>('/mon-hoc', payload);
     return res.data?.data || res.data;
   },
 
@@ -128,7 +120,7 @@ export const subjectApi = {
    * 4. Cập nhật môn học (Admin & Trưởng khoa)
    */
   async updateSubject(id: string, payload: UpdateSubjectPayload): Promise<SubjectItem> {
-    const res = await apiClient.put<any>(`/mon-hoc/${id}`, mapSubjectPayload(payload));
+    const res = await apiClient.put<any>(`/mon-hoc/${id}`, payload);
     return res.data?.data || res.data;
   },
 
