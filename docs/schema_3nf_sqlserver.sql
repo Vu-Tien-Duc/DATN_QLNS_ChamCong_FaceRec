@@ -276,6 +276,8 @@ CREATE TABLE [lich_trinh] (
     [ca_id] UNIQUEIDENTIFIER NULL,
     [mon_hoc_id] UNIQUEIDENTIFIER NULL,
     [phong_hoc] NVARCHAR(100) NOT NULL DEFAULT N'',
+    [co_so] NVARCHAR(100) NOT NULL DEFAULT N'',
+    [la_truc_tuyen] BIT NOT NULL DEFAULT 0,
     [vi_do] DECIMAL(10, 8) NULL,
     [kinh_do] DECIMAL(11, 8) NULL,
     [ban_kinh_met] INT NOT NULL DEFAULT 100,
@@ -296,10 +298,12 @@ CREATE TABLE [lich_trinh] (
     CONSTRAINT [FK_lich_trinh_user] FOREIGN KEY ([nguoi_dung_id]) REFERENCES [nguoi_dung] ([id]) ON DELETE NO ACTION,
     CONSTRAINT [FK_lich_trinh_ca] FOREIGN KEY ([ca_id]) REFERENCES [ca_lam_viec] ([id]) ON DELETE NO ACTION,
     CONSTRAINT [FK_lich_trinh_mon] FOREIGN KEY ([mon_hoc_id]) REFERENCES [mon_hoc] ([id]) ON DELETE NO ACTION,
+    CONSTRAINT [CK_lich_trinh_ban_kinh] CHECK ([ban_kinh_met] >= 1),
     CONSTRAINT [CK_lich_trinh_thu] CHECK ([thu_trong_tuan] BETWEEN 0 AND 6),
     CONSTRAINT [CK_lich_trinh_tiet] CHECK ([tiet_bat_dau] >= 1 AND [so_tiet] >= 1),
     CONSTRAINT [CK_lich_trinh_thoi_gian] CHECK ([ngay_ket_thuc] >= [ngay_bat_dau]),
     CONSTRAINT [CK_lich_trinh_gio] CHECK ([gio_ket_thuc] > [gio_bat_dau]),
+    CONSTRAINT [CK_lich_trinh_loai] CHECK ([loai_lich] IN (N'chinh_khoa', N'day_bu')),
     CONSTRAINT [CK_lich_trinh_hoc_ky] CHECK ([hoc_ky] BETWEEN 1 AND 3)
 );
 CREATE NONCLUSTERED INDEX [IX_lich_trinh_user_thu] ON [lich_trinh] ([nguoi_dung_id], [thu_trong_tuan]);
@@ -347,6 +351,7 @@ CREATE TABLE [nhat_ky_cham_cong] (
     [nguoi_dung_id] UNIQUEIDENTIFIER NOT NULL,
     [ca_id] UNIQUEIDENTIFIER NOT NULL,
     [lich_trinh_id] UNIQUEIDENTIFIER NULL,
+    [ds_lich_trinh_id] NVARCHAR(MAX) NULL,
     [ngay_cong] DATE NOT NULL,
     [thoi_gian_vao] DATETIME2 NULL,
     [thoi_gian_ra] DATETIME2 NULL,
@@ -363,7 +368,6 @@ CREATE TABLE [nhat_ky_cham_cong] (
     [tao_luc] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     [cap_nhat_luc] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT [PK_nhat_ky_cham_cong] PRIMARY KEY CLUSTERED ([id]),
-    CONSTRAINT [UQ_nhat_ky_cham_cong] UNIQUE ([nguoi_dung_id], [ngay_cong], [ca_id]),
     CONSTRAINT [FK_nhat_ky_user] FOREIGN KEY ([nguoi_dung_id]) REFERENCES [nguoi_dung] ([id]) ON DELETE NO ACTION,
     CONSTRAINT [FK_nhat_ky_ca] FOREIGN KEY ([ca_id]) REFERENCES [ca_lam_viec] ([id]) ON DELETE NO ACTION,
     CONSTRAINT [FK_nhat_ky_lich] FOREIGN KEY ([lich_trinh_id]) REFERENCES [lich_trinh] ([id]) ON DELETE NO ACTION,
@@ -372,8 +376,11 @@ CREATE TABLE [nhat_ky_cham_cong] (
     CONSTRAINT [CK_nhat_ky_di_muon] CHECK ([di_muon_phut] >= 0),
     CONSTRAINT [CK_nhat_ky_ve_som] CHECK ([ve_som_phut] >= 0),
     CONSTRAINT [CK_nhat_ky_so_tiet] CHECK ([so_tiet_thuc_day] >= 0),
+    CONSTRAINT [CK_nhat_ky_trang_thai] CHECK ([trang_thai] IN (N'on_time', N'late', N'early_leave', N'absent', N'excused_absence', N'thieu_check_out')),
     CONSTRAINT [CK_nhat_ky_thoi_gian] CHECK ([thoi_gian_vao] IS NULL OR [thoi_gian_ra] IS NULL OR [thoi_gian_ra] >= [thoi_gian_vao])
 );
+CREATE UNIQUE NONCLUSTERED INDEX [UQ_nhat_ky_cham_cong_lich] ON [nhat_ky_cham_cong] ([nguoi_dung_id], [ngay_cong], [lich_trinh_id]) WHERE [lich_trinh_id] IS NOT NULL;
+CREATE UNIQUE NONCLUSTERED INDEX [UQ_nhat_ky_cham_cong_ca_hc] ON [nhat_ky_cham_cong] ([nguoi_dung_id], [ngay_cong], [ca_id]) WHERE [lich_trinh_id] IS NULL;
 CREATE NONCLUSTERED INDEX [IX_nhat_ky_user_ngay] ON [nhat_ky_cham_cong] ([nguoi_dung_id], [ngay_cong]);
 CREATE NONCLUSTERED INDEX [IX_nhat_ky_trang_thai] ON [nhat_ky_cham_cong] ([trang_thai]);
 GO
@@ -426,6 +433,8 @@ CREATE TABLE [don_nghi_phep] (
     [so_ngay] DECIMAL(4, 1) NOT NULL DEFAULT 1.0,
     [so_tiet_nghi] INT NOT NULL DEFAULT 0,
     [lich_trinh_id] UNIQUEIDENTIFIER NULL,
+    [nhat_ky_id] UNIQUEIDENTIFIER NULL,
+    [so_tiet_xac_nhan] INT NULL,
     [ca_thay_the_id] UNIQUEIDENTIFIER NULL,
     [giang_vien_day_thay_id] UNIQUEIDENTIFIER NULL,
     [ngay_day_bu] DATE NULL,
@@ -439,15 +448,19 @@ CREATE TABLE [don_nghi_phep] (
     CONSTRAINT [PK_don_nghi_phep] PRIMARY KEY CLUSTERED ([id]),
     CONSTRAINT [FK_don_nghi_phep_user] FOREIGN KEY ([nguoi_dung_id]) REFERENCES [nguoi_dung] ([id]) ON DELETE NO ACTION,
     CONSTRAINT [FK_don_nghi_phep_lich] FOREIGN KEY ([lich_trinh_id]) REFERENCES [lich_trinh] ([id]) ON DELETE NO ACTION,
+    CONSTRAINT [FK_don_nghi_phep_nhat_ky] FOREIGN KEY ([nhat_ky_id]) REFERENCES [nhat_ky_cham_cong] ([id]) ON DELETE NO ACTION,
     CONSTRAINT [FK_don_nghi_phep_ca_thay] FOREIGN KEY ([ca_thay_the_id]) REFERENCES [ca_lam_viec] ([id]) ON DELETE NO ACTION,
     CONSTRAINT [FK_don_nghi_phep_day_thay] FOREIGN KEY ([giang_vien_day_thay_id]) REFERENCES [nguoi_dung] ([id]) ON DELETE NO ACTION,
     CONSTRAINT [FK_don_nghi_phep_duyet] FOREIGN KEY ([nguoi_duyet_id]) REFERENCES [nguoi_dung] ([id]) ON DELETE NO ACTION,
+    CONSTRAINT [CK_don_nghi_phep_loai_don] CHECK ([loai_don] IN (N'nghi_phep', N'day_bu', N'doi_ca', N'nghi_om', N'viec_rieng', N'giai_trinh_cong', N'giai_trinh_thieu_check_out')),
     CONSTRAINT [CK_don_nghi_phep_thoi_gian] CHECK ([ngay_ket_thuc] >= [ngay_bat_dau]),
     CONSTRAINT [CK_don_nghi_phep_so_ngay] CHECK ([so_ngay] >= 0),
     CONSTRAINT [CK_don_nghi_phep_so_tiet] CHECK ([so_tiet_nghi] >= 0),
+    CONSTRAINT [CK_don_nghi_phep_so_tiet_xac_nhan] CHECK ([so_tiet_xac_nhan] IS NULL OR [so_tiet_xac_nhan] >= 0),
     CONSTRAINT [CK_don_nghi_phep_trang_thai] CHECK ([trang_thai] IN (N'pending', N'pending_dean', N'pending_bgh', N'approved', N'rejected', N'cancelled'))
 );
 CREATE NONCLUSTERED INDEX [IX_don_nghi_phep_user_trang_thai] ON [don_nghi_phep] ([nguoi_dung_id], [trang_thai]);
+CREATE NONCLUSTERED INDEX [IX_don_nghi_phep_nhat_ky] ON [don_nghi_phep] ([nhat_ky_id]) WHERE [nhat_ky_id] IS NOT NULL;
 GO
 
 -- Khóa ngoại giữa nhat_ky_cham_cong và don_nghi_phep
@@ -510,7 +523,7 @@ CREATE TABLE [phieu_luong] (
     CONSTRAINT [CK_phieu_luong_thang] CHECK ([thang] BETWEEN 1 AND 12),
     CONSTRAINT [CK_phieu_luong_nam] CHECK ([nam] >= 2000),
     CONSTRAINT [CK_phieu_luong_luong_co_ban] CHECK ([luong_co_ban] >= 0),
-    CONSTRAINT [CK_phieu_luong_he_so] CHECK ([he_so_luong] > 0),
+    CONSTRAINT [CK_phieu_luong_he_so] CHECK ([he_so_luong] >= 0),
     CONSTRAINT [CK_phieu_luong_cong_chuan] CHECK ([so_cong_chuan] >= 0),
     CONSTRAINT [CK_phieu_luong_cong_thuc_te] CHECK ([so_cong_thuc_te] >= 0),
     CONSTRAINT [CK_phieu_luong_tiet_nghia_vu] CHECK ([so_tiet_nghia_vu] >= 0),

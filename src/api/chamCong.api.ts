@@ -25,7 +25,12 @@ export interface FaceDetectPoseResponse {
 
 export interface AttendancePunchResult {
   success: boolean;
-  action: 'check_in' | 'check_out';
+  action?: 'check_in' | 'check_out' | string;
+  hanh_dong?: string;
+  da_vao_hang_doi?: boolean;
+  ma_cong_viec?: string;
+  khop_khuon_mat?: boolean;
+  nguoi_dung_id?: string;
   message: string;
   user: {
     id?: string;
@@ -33,54 +38,25 @@ export interface AttendancePunchResult {
     ma_can_bo?: string;
     vai_tro_chinh?: string;
     anh_dai_dien?: string | null;
-    /** @deprecated Dùng id */
-    _id?: string;
-    /** @deprecated Dùng ho_ten */
-    fullName?: string;
-    /** @deprecated Dùng ma_can_bo */
-    staffCode?: string;
-    /** @deprecated Dùng vai_tro_chinh */
-    role?: string;
-    /** @deprecated Dùng anh_dai_dien */
-    avatar?: string;
-    department?: string;
+    email?: string;
+    don_vi_chinh?: {
+      id?: string;
+      ten_phong_ban?: string;
+    } | null;
   };
   diem_tin_cay?: number;
   diem_nguoi_that?: number;
   co_gian_lan?: boolean;
   ly_do_gian_lan?: string | null;
-  /** @deprecated Dùng diem_tin_cay */
-  similarity?: number;
-  confidence?: number;
-  /** @deprecated Dùng diem_nguoi_that */
-  livenessScore?: number;
-  /** @deprecated Dùng co_gian_lan */
-  isFraud?: boolean;
-  /** @deprecated Dùng ly_do_gian_lan */
-  fraudReason?: string;
+  ket_qua?: any;
   record?: {
     id?: string;
     ngay_cong?: string;
     thoi_gian_vao?: string;
     thoi_gian_ra?: string;
-    trang_thai?: 'on_time' | 'late' | 'early_leave' | 'absent' | string;
+    trang_thai?: 'on_time' | 'late' | 'early_leave' | 'thieu_check_out' | 'absent' | 'excused_absence' | string;
     di_muon_phut?: number;
     ve_som_phut?: number;
-    /** @deprecated Dùng id */
-    _id?: string;
-    /** @deprecated Dùng ngay_cong */
-    workDate?: string;
-    /** @deprecated Dùng thoi_gian_vao */
-    checkInTime?: string;
-    /** @deprecated Dùng thoi_gian_ra */
-    checkOutTime?: string;
-    /** @deprecated Dùng trang_thai */
-    status?: 'on_time' | 'late' | 'early_leave' | 'absent';
-    /** @deprecated Dùng di_muon_phut */
-    lateMinutes?: number;
-    /** @deprecated Dùng ve_som_phut */
-    earlyExitMinutes?: number;
-    shiftName?: string;
   };
 }
 
@@ -101,52 +77,15 @@ export interface AttendancePunchLogItem {
   vi_tri_gia_lap?: boolean;
   khoang_cach_met?: number;
   anh_minh_chung?: string;
-  /** @deprecated Dùng id */
-  _id?: string;
-  /** @deprecated Dùng thoi_gian_quet */
-  punchTime?: string;
-  /** @deprecated Dùng loai_quet */
-  punchType: 'check_in' | 'check_out' | string;
-  /** @deprecated Dùng phuong_thuc */
-  method?: string;
-  /** @deprecated Dùng do_tin_cay_ai */
-  confidenceScore?: number;
-  /** @deprecated Dùng diem_mat_that */
-  livenessScore?: number;
-  /** @deprecated Dùng goc_mat_nhan_dien */
-  faceAngle?: string;
-  /** @deprecated Dùng goc_mat_nhan_dien */
-  recognizedAngle?: string;
-  /** @deprecated Dùng hop_le */
-  isValid?: boolean;
-  /** @deprecated Dùng ly_do_khong_hop_le */
-  invalidReason?: string;
-  /** @deprecated Dùng !hop_le */
-  isFraud?: boolean;
-  /** @deprecated Dùng ly_do_khong_hop_le */
-  fraudReason?: string;
-  /** @deprecated Dùng ma_thiet_bi */
-  deviceId?: string;
-  clientIp?: string;
-  /** @deprecated Dùng vi_do */
-  latitude?: number;
-  /** @deprecated Dùng kinh_do */
-  longitude?: number;
-  location?: {
-    lat?: number;
-    lng?: number;
-  };
-  /** @deprecated Dùng anh_minh_chung */
-  evidencePhoto?: string;
-  /** @deprecated Dùng anh_minh_chung */
-  evidenceImage?: string;
 }
 
 export interface AttendanceHistoryItem {
-  id?: string;
+  id: string;
   nguoi_dung_id?: string;
   ca_id?: string;
   lich_trinh_id?: string;
+  /** Danh sách lịch trình thuộc cùng khối ca liên tục (chỉ có với bản ghi giảng dạy đã gom khối) */
+  ds_lich_trinh_id?: string[] | null;
   ngay_cong?: string;
   thoi_gian_vao?: string;
   thoi_gian_ra?: string;
@@ -154,7 +93,7 @@ export interface AttendanceHistoryItem {
   di_muon_phut?: number;
   ve_som_phut?: number;
   so_tiet_thuc_day?: number;
-  trang_thai?: 'on_time' | 'late' | 'early_leave' | 'absent' | 'excused_absence' | string;
+  trang_thai?: 'on_time' | 'late' | 'early_leave' | 'thieu_check_out' | 'absent' | 'excused_absence' | string;
   phuong_thuc?: string;
   don_tu_id?: string;
   co_gian_lan?: boolean;
@@ -220,79 +159,6 @@ export interface AttendanceHistoryItem {
     trang_thai?: string;
   } | null;
   luot_quet?: AttendancePunchLogItem[];
-  /** @deprecated Dùng id */
-  _id: string;
-  /** @deprecated Dùng nguoi_dung hoặc nguoi_dung_id */
-  userId: {
-    id?: string;
-    _id: string;
-    ho_ten?: string;
-    fullName: string;
-    email: string;
-    anh_dai_dien?: string;
-    avatar?: string;
-    ma_can_bo?: string;
-    staffCode?: string;
-    vai_tro_chinh?: string;
-    role?: string;
-    don_vi_chinh_id?: string;
-    departmentId?: {
-      _id: string;
-      name: string;
-    };
-  };
-  /** @deprecated Dùng ca hoặc ca_id */
-  shiftId?: {
-    _id: string;
-    name: string;
-    startTime: string;
-    endTime: string;
-  };
-  /** @deprecated Dùng lich_trinh hoặc lich_trinh_id */
-  scheduleId?: {
-    _id: string;
-    roomId?: string;
-    weekday?: number;
-    subjectId?: {
-      _id?: string;
-      name?: string;
-      code?: string;
-    };
-  };
-  /** @deprecated Dùng ngay_cong */
-  workDate: string;
-  /** @deprecated Dùng thoi_gian_vao */
-  checkInTime?: string;
-  /** @deprecated Dùng thoi_gian_ra */
-  checkOutTime?: string;
-  /** @deprecated Dùng thoi_luong_lam_viec_phut */
-  workDurationMinutes?: number;
-  /** @deprecated Dùng di_muon_phut */
-  lateMinutes?: number;
-  /** @deprecated Dùng ve_som_phut */
-  earlyExitMinutes?: number;
-  workHours?: number;
-  /** @deprecated Dùng so_tiet_thuc_day */
-  actualTeachingPeriods?: number;
-  isMissingCheckOut?: boolean;
-  /** @deprecated Dùng trang_thai */
-  status: 'on_time' | 'late' | 'early_leave' | 'absent' | 'excused_absence' | string;
-  method?: string;
-  isManualOverride?: boolean;
-  /** @deprecated Dùng co_gian_lan */
-  isFraud?: boolean;
-  fraudReason?: string;
-  capturedImage?: string;
-  evidencePhoto?: string;
-  punchLogIds?: AttendancePunchLogItem[];
-  /** @deprecated Dùng don_tu_id */
-  leaveRequestId?: {
-    _id: string;
-    leaveType?: string;
-    reason?: string;
-  };
-  createdAt?: string;
-  updatedAt?: string;
 }
 
 export interface AttendanceHistoryParams {
@@ -354,7 +220,7 @@ export const attendanceApi = {
     const queryParams = new URLSearchParams();
     if (options?.useQueue) queryParams.append('bat_dong_bo', 'true');
 
-    const url = `/khuon-mat/vao-ca${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const url = `/cham-cong/khuon-mat${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
     const res = await apiClient.post<any>(url, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
@@ -386,12 +252,15 @@ export const attendanceApi = {
     if (options?.location) {
       formData.append('vi_do', String(options.location.lat));
       formData.append('kinh_do', String(options.location.lng));
+      if (options.location.accuracy) {
+        formData.append('do_chinh_xac', String(options.location.accuracy));
+      }
     }
     if (options?.deviceId) {
       formData.append('thiet_bi_id', options.deviceId);
     }
 
-    const res = await apiClient.post<any>('/khuon-mat/tan-ca', formData, {
+    const res = await apiClient.post<any>('/cham-cong/khuon-mat', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     const payload = res.data?.data || res.data;
@@ -479,27 +348,44 @@ export const attendanceApi = {
    * Điểm danh Check-in qua Web/Thủ công (hỗ trợ kèm tọa độ GPS)
    */
   async manualCheckIn(payload?: {
-    shiftId?: string;
-    method?: string;
-    deviceId?: string;
-    location?: { lat: number; lng: number };
+    nguoi_dung_id?: string;
+    ca_id?: string;
+    lich_trinh_id?: string;
+    phuong_thuc?: string;
+    thiet_bi_id?: string;
+    vi_do?: number;
+    kinh_do?: number;
+    do_chinh_xac?: number;
+    toa_do?: { vi_do: number; kinh_do: number };
   }): Promise<any> {
-    const res = await apiClient.post<any>('/cham-cong/vao-ca', payload || { phuong_thuc: 'manual' });
-    return res.data?.data || res.data;
+    const res = await apiClient.post<any>('/cham-cong/vao-ca', payload || { phuong_thuc: 'thu_cong_admin' });
+    const data = res.data?.data || res.data;
+    if (res.data?.message && data && typeof data === 'object' && !data.message) {
+      data.message = res.data.message;
+    }
+    return data;
   },
 
   /**
    * Điểm danh Check-out qua Web/Thủ công (hỗ trợ kèm tọa độ GPS)
    */
   async manualCheckOut(payload?: {
-    shiftId?: string;
-    attendanceId?: string;
-    method?: string;
-    deviceId?: string;
-    location?: { lat: number; lng: number };
+    nguoi_dung_id?: string;
+    ca_id?: string;
+    cham_cong_id?: string;
+    phuong_thuc?: string;
+    thiet_bi_id?: string;
+    vi_do?: number;
+    kinh_do?: number;
+    do_chinh_xac?: number;
+    toa_do?: { vi_do: number; kinh_do: number };
   }): Promise<any> {
-    const res = await apiClient.post<any>('/cham-cong/tan-ca', payload || { phuong_thuc: 'manual' });
-    return res.data?.data || res.data;
+    const res = await apiClient.post<any>('/cham-cong/tan-ca', payload || { phuong_thuc: 'thu_cong_admin' });
+    const data = res.data?.data || res.data;
+    if (res.data?.message && data && typeof data === 'object' && !data.message) {
+      data.message = res.data.message;
+    }
+    return data;
   },
 
   /**
@@ -606,6 +492,26 @@ export const attendanceApi = {
 
   async updateCampusConfig(payload: { vi_do: number; kinh_do: number; ban_kinh_met: number }): Promise<any> {
     const res = await apiClient.post<any>('/cham-cong/cau-hinh-khuon-vien', payload);
+    return res.data?.data || res.data;
+  },
+
+  /** C1: Lấy thông tin khối ca hôm nay của người dùng hiện tại (dùng trên màn hình quét mặt) */
+  async getKhoiHomNay(): Promise<{
+    co_the_check_in: boolean;
+    trang_thai: string;
+    thong_bao?: string;
+    khoi?: {
+      ds_lich_trinh_id: string[];
+      gio_bat_dau: string;
+      gio_ket_thuc: string;
+      co_so?: string;
+    } | null;
+    lich_trinh_chon?: any;
+    ca?: { id: string; ten_ca: string; gio_bat_dau: string; gio_ket_thuc: string } | null;
+    lich_trinh_sap_toi?: any;
+    ds_lich_bi_huy?: any[];
+  }> {
+    const res = await apiClient.get<any>('/cham-cong/khoi-hom-nay');
     return res.data?.data || res.data;
   },
 };

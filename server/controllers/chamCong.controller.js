@@ -15,7 +15,6 @@ const {
 const { getFaissStats, ensureRamCacheWarm } = require('../services/khuonMat/ketNoiDichVuKhuonMat');
 const { runDailyAbsentCheck } = require('../services/heThong/tacVuDinhKy.service');
 const systemConfigService = require('../services/heThong/cauHinhHeThong.service');
-const { detectPose } = require('./khuonMat.controller');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 const { ServiceError } = require('../utils/thoiGianChamCong.utils');
 const { isUserInDeanScope } = require('../utils/phamViTruongKhoa');
@@ -34,7 +33,7 @@ const handleServiceError = (res, error, next) => {
 const resolveAttendanceTarget = async (req, requestedUserId) => {
   const isTopAdmin = hasAnyActiveRole(req.user, ['admin', 'bgh']);
   const isAdminOrLeader = isTopAdmin || hasAnyActiveRole(req.user, ['truong_khoa']);
-  const selfUserId = req.user.id || req.user._id;
+  const selfUserId = req.user.id;
   const targetUserId = (isAdminOrLeader && requestedUserId) ? requestedUserId : selfUserId;
 
   if (requestedUserId && isAdminOrLeader && String(targetUserId) !== String(selfUserId) && !isTopAdmin) {
@@ -47,9 +46,59 @@ const resolveAttendanceTarget = async (req, requestedUserId) => {
   return { targetUserId, isAdminOrLeader };
 };
 
-// POST /api/cham-cong/khuon-mat - Điểm danh khuôn mặt Realtime 1:N
+// Chuẩn hóa tọa độ GPS từ req.body (hỗ trợ vi_do/kinh_do rời hoặc toa_do dạng object / chuỗi JSON)
+const parseCoordinatesFromBody = (body = {}) => {
+  let toaDoObj = body?.toa_do ?? null;
+  if (typeof toaDoObj === 'string') {
+    const trimmed = toaDoObj.trim();
+    if (trimmed) {
+      try {
+        toaDoObj = JSON.parse(trimmed);
+      } catch {
+        toaDoObj = null;
+      }
+    } else {
+      toaDoObj = null;
+    }
+  }
+  const hasToaDoObj = toaDoObj && typeof toaDoObj === 'object' && !Array.isArray(toaDoObj);
+  const rawLat = body?.vi_do !== undefined && body?.vi_do !== '' ? body.vi_do : (hasToaDoObj ? toaDoObj.vi_do : undefined);
+  const rawLng = body?.kinh_do !== undefined && body?.kinh_do !== '' ? body.kinh_do : (hasToaDoObj ? toaDoObj.kinh_do : undefined);
+  const rawAcc = body?.do_chinh_xac !== undefined && body?.do_chinh_xac !== ''
+    ? body.do_chinh_xac
+    : (hasToaDoObj ? toaDoObj.do_chinh_xac : undefined);
+
+  const lat = rawLat !== undefined && rawLat !== null ? Number(rawLat) : undefined;
+  const lng = rawLng !== undefined && rawLng !== null ? Number(rawLng) : undefined;
+  const accuracy = rawAcc !== undefined && rawAcc !== null ? Number(rawAcc) : undefined;
+
+  return {
+    vi_do: Number.isFinite(lat) ? lat : null,
+    kinh_do: Number.isFinite(lng) ? lng : null,
+    do_chinh_xac: Number.isFinite(accuracy) ? accuracy : null,
+    location: Number.isFinite(lat) && Number.isFinite(lng)
+      ? { lat, lng, ...(Number.isFinite(accuracy) ? { accuracy } : {}) }
+      : null,
+  };
+};
+
+// POST /api/cham-cong/khuon-mat - Điểm danh khuôn mặt trên tài khoản đang đăng nhập (khuôn mặt phải khớp chính chủ)
 const faceRecognizeAttendance = async (req, res, next) => {
   try {
+    const callerId = req.user?.id;
+    if (!callerId) {
+      return sendError(res, 'Vui lòng đăng nhập để chấm công bằng khuôn mặt.', null, 401);
+    }
+    if (NON_ATTENDANCE_ROLES.includes(getReqUserRole(req))) {
+      return sendError(
+        res,
+        'Tài khoản Quản trị viên IT / Kiểm toán không thực hiện chấm công cá nhân.',
+        null,
+        403,
+        'ATTENDANCE_ROLE_FORBIDDEN'
+      );
+    }
+
     let imageBuffer = null;
 
     if (req.file && req.file.buffer) {
@@ -59,11 +108,7 @@ const faceRecognizeAttendance = async (req, res, next) => {
       imageBuffer = Buffer.from(base64Data, 'base64');
     }
 
-    const location = req.body?.toa_do || {
-      lat: req.body?.vi_do !== undefined ? Number(req.body.vi_do) : undefined,
-      lng: req.body?.kinh_do !== undefined ? Number(req.body.kinh_do) : undefined,
-      accuracy: req.body?.do_chinh_xac !== undefined ? Number(req.body.do_chinh_xac) : undefined,
-    };
+    const { location } = parseCoordinatesFromBody(req.body);
 
     const deviceId = req.body?.thiet_bi_id || 'MAY_CHAM_CONG_CAMERA';
     const reqIp = req.ip || req.connection?.remoteAddress || '127.0.0.1';
@@ -80,12 +125,13 @@ const faceRecognizeAttendance = async (req, res, next) => {
 
     const result = await processFaceAttendance({
       imageBuffer,
-      location: (location.lat !== undefined && location.lng !== undefined) ? location : null,
+      location,
       deviceId,
       reqIp,
       verifyOnly,
       useQueue,
       requestedAction,
+      expectedUserId: String(callerId),
     });
 
     if (result.matched === false || result.success === false) {
@@ -130,7 +176,7 @@ const KIOSK_QR_ROLES = [
 ];
 
 const getReqUserRole = (req) =>
-  String(req.user?.vai_tro_chinh || req.user?.role || '').trim().toLowerCase();
+  String(req.user?.vai_tro_chinh || '').trim().toLowerCase();
 
 // POST /api/cham-cong/vao-ca - Check-in theo ca hoặc lịch làm việc
 const checkIn = async (req, res, next) => {
@@ -139,10 +185,6 @@ const checkIn = async (req, res, next) => {
       ca_id: resolvedCaId,
       lich_trinh_id: resolvedLichTrinhId,
       thiet_bi_id: resolvedThietBiId = 'MOBILE_APP',
-      vi_do,
-      kinh_do,
-      toa_do,
-      do_chinh_xac: resolvedDoChinhXac = null,
       phuong_thuc,
       nguoi_dung_id,
     } = req.body || {};
@@ -150,7 +192,7 @@ const checkIn = async (req, res, next) => {
     const { targetUserId, isAdminOrLeader } = await resolveAttendanceTarget(req, nguoi_dung_id);
 
     const callerRole = getReqUserRole(req);
-    const isSelfCheckIn = String(targetUserId) === String(req.user?._id || req.user?.id || '');
+    const isSelfCheckIn = String(targetUserId) === String(req.user?.id || '');
     if (isSelfCheckIn && NON_ATTENDANCE_ROLES.includes(callerRole)) {
       return sendError(
         res,
@@ -161,11 +203,9 @@ const checkIn = async (req, res, next) => {
       );
     }
 
-    const resolvedViDo = vi_do !== undefined ? vi_do : (toa_do?.vi_do ?? null);
-    const resolvedKinhDo = kinh_do !== undefined ? kinh_do : (toa_do?.kinh_do ?? null);
+    const { vi_do: resolvedViDo, kinh_do: resolvedKinhDo, do_chinh_xac: resolvedDoChinhXac } = parseCoordinatesFromBody(req.body);
     const rawMethod = String(phuong_thuc || '').trim().toLowerCase();
-    const isManualAdmin =
-      isAdminOrLeader && ['thu_cong', 'manual', 'thu_cong_admin', 'admin_manual'].includes(rawMethod);
+    const isManualAdmin = isAdminOrLeader && rawMethod === 'thu_cong_admin';
     const resolvedPhuongThuc = isManualAdmin ? 'thu_cong_admin' : 'gps_mobile';
 
     const result = await performCheckIn({
@@ -180,7 +220,7 @@ const checkIn = async (req, res, next) => {
       dia_chi_ip: req.ip || req.connection?.remoteAddress,
       allowManual: isManualAdmin,
     });
-    return sendSuccess(res, result.message, result.log, 201);
+    return sendSuccess(res, result.message, result, 201);
   } catch (error) {
     handleServiceError(res, error, next);
   }
@@ -193,10 +233,6 @@ const checkOut = async (req, res, next) => {
       ca_id: resolvedCaId,
       cham_cong_id: resolvedChamCongId,
       thiet_bi_id: resolvedThietBiId = 'MOBILE_APP',
-      vi_do,
-      kinh_do,
-      toa_do,
-      do_chinh_xac: resolvedDoChinhXac = null,
       phuong_thuc,
       nguoi_dung_id,
     } = req.body || {};
@@ -204,7 +240,7 @@ const checkOut = async (req, res, next) => {
     const { targetUserId, isAdminOrLeader } = await resolveAttendanceTarget(req, nguoi_dung_id);
 
     const callerRole = getReqUserRole(req);
-    const isSelfCheckOut = String(targetUserId) === String(req.user?._id || req.user?.id || '');
+    const isSelfCheckOut = String(targetUserId) === String(req.user?.id || '');
     if (isSelfCheckOut && NON_ATTENDANCE_ROLES.includes(callerRole)) {
       return sendError(
         res,
@@ -215,11 +251,9 @@ const checkOut = async (req, res, next) => {
       );
     }
 
-    const resolvedViDo = vi_do !== undefined ? vi_do : (toa_do?.vi_do ?? null);
-    const resolvedKinhDo = kinh_do !== undefined ? kinh_do : (toa_do?.kinh_do ?? null);
+    const { vi_do: resolvedViDo, kinh_do: resolvedKinhDo, do_chinh_xac: resolvedDoChinhXac } = parseCoordinatesFromBody(req.body);
     const rawMethod = String(phuong_thuc || '').trim().toLowerCase();
-    const isManualAdmin =
-      isAdminOrLeader && ['thu_cong', 'manual', 'thu_cong_admin', 'admin_manual'].includes(rawMethod);
+    const isManualAdmin = isAdminOrLeader && rawMethod === 'thu_cong_admin';
     const resolvedPhuongThuc = isManualAdmin ? 'thu_cong_admin' : 'gps_mobile';
 
     const result = await performCheckOut({
@@ -256,7 +290,7 @@ const getAttendanceHistory = async (req, res, next) => {
     const result = await fetchAttendanceHistory({
       vai_tro: req.user?.vai_tro_chinh,
       nguoi_dung_id,
-      currentUserId: req.user?._id,
+      currentUserId: req.user?.id,
       don_vi_chinh_id: don_vi_id,
       trang_thai,
       phuong_thuc,
@@ -284,7 +318,7 @@ const getMyAttendanceHistory = async (req, res, next) => {
     const page = req.query?.trang || 1;
     const limit = req.query?.gioi_han || 20;
 
-    const currentId = req.user?._id;
+    const currentId = req.user?.id;
     const result = await fetchAttendanceHistory({
       vai_tro: 'giang_vien', // Ép buộc xem cá nhân
       nguoi_dung_id: currentId,
@@ -345,7 +379,7 @@ const updateAttendanceByAdmin = async (req, res, next) => {
 
     const updated = await modifyAttendanceByAdmin({
       id,
-      nguoi_thuc_hien_id: req.user._id,
+      nguoi_thuc_hien_id: req.user.id,
       currentUser: req.user,
       dia_chi_ip: req.ip || req.connection?.remoteAddress,
       trang_thai,
@@ -377,18 +411,13 @@ const scanQRCode = async (req, res, next) => {
 
     const {
       ma_qr: resolvedToken,
-      vi_do,
-      kinh_do,
-      toa_do,
-      do_chinh_xac: resolvedDoChinhXac = null,
       thiet_bi_id: resolvedThietBiId = 'MOBILE_APP_QR',
     } = req.body || {};
 
-    const resolvedViDo = vi_do !== undefined ? vi_do : (toa_do?.vi_do ?? null);
-    const resolvedKinhDo = kinh_do !== undefined ? kinh_do : (toa_do?.kinh_do ?? null);
+    const { vi_do: resolvedViDo, kinh_do: resolvedKinhDo, do_chinh_xac: resolvedDoChinhXac } = parseCoordinatesFromBody(req.body);
 
     const result = await processScanQRCode({
-      nguoi_dung_id: req.user._id,
+      nguoi_dung_id: req.user.id,
       qrToken: resolvedToken,
       vi_do: resolvedViDo,
       kinh_do: resolvedKinhDo,
@@ -396,7 +425,7 @@ const scanQRCode = async (req, res, next) => {
       thiet_bi_id: resolvedThietBiId,
       dia_chi_ip: req.ip || req.connection?.remoteAddress,
     });
-    return sendSuccess(res, result.message, result.attendanceLog || result.log, 200);
+    return sendSuccess(res, result.message, result, 200);
   } catch (error) {
     handleServiceError(res, error, next);
   }
@@ -599,7 +628,7 @@ const verifyLivenessChallengeController = async (req, res, next) => {
 // Kích hoạt thủ công tiến trình quét vắng mặt theo ngày
 const triggerDailyAbsentCheck = async (req, res, next) => {
   try {
-    const rawDate = req.body?.ngay ?? req.query?.ngay ?? req.body?.date ?? req.query?.date;
+    const rawDate = req.body?.ngay ?? req.query?.ngay;
     let targetDate = new Date();
     if (rawDate !== undefined && rawDate !== null && rawDate !== '') {
       targetDate = new Date(rawDate);
@@ -614,87 +643,35 @@ const triggerDailyAbsentCheck = async (req, res, next) => {
   }
 };
 
-// Nhận nhiều khung hình khuôn mặt liên tiếp để tăng độ chính xác nhận diện điểm danh
-const faceCheckInBatch = async (req, res, next) => {
+// GET /api/cham-cong/khoi-hom-nay – Danh sách khối ca hôm nay của người dùng (dùng trên màn hình quét mặt)
+const getKhoiHomNay = async (req, res, next) => {
   try {
-    const buffers = [];
-    if (Array.isArray(req.files) && req.files.length > 0) {
-      for (const file of req.files) {
-        if (file?.buffer) buffers.push(file.buffer);
-      }
-    } else if (req.file?.buffer) {
-      buffers.push(req.file.buffer);
-    } else if (Array.isArray(req.body?.images)) {
-      for (const img of req.body.images) {
-        if (typeof img === 'string' && img.trim()) {
-          buffers.push(Buffer.from(img.replace(/^data:image\/\w+;base64,/, ''), 'base64'));
-        }
-      }
-    } else if (typeof req.body?.image === 'string' && req.body.image.trim()) {
-      buffers.push(Buffer.from(req.body.image.replace(/^data:image\/\w+;base64,/, ''), 'base64'));
-    }
-
-    if (buffers.length === 0) {
-      return sendError(res, 'Vui lòng cung cấp ít nhất 1 hình ảnh trong batch điểm danh.', null, 400);
-    }
-
-    const location = req.body?.toa_do || {
-      lat: req.body?.vi_do !== undefined ? Number(req.body.vi_do) : undefined,
-      lng: req.body?.kinh_do !== undefined ? Number(req.body.kinh_do) : undefined,
-      accuracy: req.body?.do_chinh_xac !== undefined ? Number(req.body.do_chinh_xac) : undefined,
-    };
-    const resolvedLocation = location.lat !== undefined && location.lng !== undefined ? location : null;
-    const deviceId = req.body?.thiet_bi_id || 'MAY_CHAM_CONG_CAMERA';
-    const reqIp = req.ip || req.connection?.remoteAddress || '127.0.0.1';
-    const verifyOnly = req.body?.xac_thuc_chi_xem === true || req.body?.xac_thuc_chi_xem === 'true';
-
-    const results = [];
-    for (let idx = 0; idx < buffers.length; idx += 1) {
-      try {
-        const itemRes = await processFaceAttendance({
-          imageBuffer: buffers[idx],
-          location: resolvedLocation,
-          deviceId,
-          reqIp,
-          verifyOnly,
-          useQueue: false,
-        });
-        results.push({ index: idx, ...itemRes });
-      } catch (itemErr) {
-        results.push({
-          index: idx,
-          success: false,
-          matched: false,
-          message: itemErr.message,
-          errorCode: itemErr.errorCode || 'BATCH_ITEM_ERROR',
-        });
-      }
-    }
-
-    const matchedCount = results.filter((r) => r.matched).length;
-    const succeededCount = results.filter((r) => r.success).length;
-    return sendSuccess(
-      res,
-      `Đã xử lý ${results.length} ảnh điểm danh (${succeededCount} thành công).`,
-      { total: results.length, matchedCount, succeededCount, results },
-      200
-    );
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, message: 'Chưa xác thực người dùng.' });
+    const { evaluateUserScheduleForCheckIn } = require('../services/chamCong/dieuKienLichChamCong.service');
+    const evalResult = await evaluateUserScheduleForCheckIn(userId, null, req.user);
+    return sendSuccess(res, 'Lấy danh sách khối ca hôm nay thành công.', {
+      co_the_check_in: evalResult.canCheckIn,
+      trang_thai: evalResult.status,
+      thong_bao: evalResult.message,
+      khoi: evalResult.khoi || null,
+      lich_trinh_chon: evalResult.selectedSchedule || null,
+      ca: evalResult.shift ? {
+        id: evalResult.shift.id,
+        ten_ca: evalResult.shift.ten_ca,
+        gio_bat_dau: evalResult.shift.gio_bat_dau,
+        gio_ket_thuc: evalResult.shift.gio_ket_thuc,
+      } : null,
+      lich_trinh_sap_toi: evalResult.upcomingSchedule || null,
+      ds_lich_bi_huy: evalResult.cancelledSchedules || [],
+    });
   } catch (error) {
     handleServiceError(res, error, next);
   }
 };
 
-// Bí danh giữ tương thích cho các handler cũ
-const processFaceCheckInImage = faceRecognizeAttendance;
-const processFaceCheckIn = faceRecognizeAttendance;
-const faceCheckIn = faceRecognizeAttendance;
-
 module.exports = {
   faceRecognizeAttendance,
-  processFaceCheckInImage,
-  processFaceCheckIn,
-  faceCheckIn,
-  faceCheckInBatch,
   checkIn,
   checkOut,
   getAttendanceHistory,
@@ -704,17 +681,14 @@ module.exports = {
   updateAttendanceByAdmin,
   scanQRCode,
   getDynamicQRCode,
-  generateQRCode: getDynamicQRCode,
   getCampusConfigInfo,
-  getCampusLocationConfig: getCampusConfigInfo,
   updateCampusLocationConfig,
   getLivenessChallengeController,
   verifyLivenessChallengeController,
-  getFaissStatsController: getRamIndexStats,
   syncFaissIndexController,
   triggerDailyAbsentCheck,
-  detectPose,
   getRamIndexStats,
   getQueueStats,
+  getKhoiHomNay,
 };
 

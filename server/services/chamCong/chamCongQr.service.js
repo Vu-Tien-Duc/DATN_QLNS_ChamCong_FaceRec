@@ -1,6 +1,6 @@
 // Xử lý quét mã QR động điểm danh (Check-in / Check-out) kèm xác thực vị trí GPS và lưu SQL Server 3NF
 const { Op } = require('sequelize');
-const { NhatKyChamCong, LuotQuetChamCong, LichTrinh, CaLamViec } = require('../../models');
+const { NhatKyChamCong, LuotQuetChamCong, LichTrinh, CaLamViec, NguoiDung } = require('../../models');
 const { validateGeofence, verifyDynamicQRCode, resolveUserGeofenceTargets } = require('../../utils/hoTroChamCong');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
@@ -13,6 +13,7 @@ const {
   calculateCheckOutStatus,
 } = require('../../utils/thoiGianChamCong.utils');
 const { evaluateUserScheduleForCheckIn } = require('./dieuKienLichChamCong.service');
+const { kiemTraChoPhepCheckOut } = require('./khoiCaDay.service');
 
 // Xử lý quét mã QR động cho cả Check-in và Check-out
 const processScanQRCode = async ({
@@ -53,31 +54,24 @@ const processScanQRCode = async ({
     await redisSet(replayKey, '1', 45);
   }
 
-  const lat = vi_do !== undefined ? vi_do : null;
-  const lng = kinh_do !== undefined ? kinh_do : null;
-  const acc = do_chinh_xac !== undefined ? do_chinh_xac : null;
-
-  // 2. Bắt buộc kiểm tra GPS chống gian lận quét QR từ xa
-  if (lat === null || lat === undefined || lng === null || lng === undefined) {
-    throw new ServiceError(
-      'Điểm danh bằng mã QR bắt buộc phải bật định vị GPS để xác thực bạn đang có mặt tại trường.',
-      400,
-      'ATTENDANCE_GPS_REQUIRED'
-    );
-  }
+  const lat = vi_do !== undefined && vi_do !== null && vi_do !== '' ? Number(vi_do) : null;
+  const lng = kinh_do !== undefined && kinh_do !== null && kinh_do !== '' ? Number(kinh_do) : null;
+  const acc = do_chinh_xac !== undefined && do_chinh_xac !== null && do_chinh_xac !== '' ? Number(do_chinh_xac) : null;
+  const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
 
   const now = new Date();
   const { dateStr } = getVietnamDayRange(now);
   const yesterdayStr = getVietnamDayRange(new Date(now.getTime() - 24 * 60 * 60 * 1000)).dateStr;
   const overnightCutoff = new Date(now.getTime() - 18 * 60 * 60 * 1000);
 
-  // 2. Tra cứu bản ghi chấm công đang mở (hỗ trợ cả ca qua đêm)
+  // 2. Tra cứu bản ghi chấm công đang mở (hỗ trợ cả ca qua đêm, loại trừ bản ghi đã bị đánh dấu thiếu check-out)
   let attendance = await NhatKyChamCong.findOne({
     where: {
       nguoi_dung_id,
       ngay_cong: dateStr,
       thoi_gian_vao: { [Op.ne]: null },
       thoi_gian_ra: null,
+      trang_thai: { [Op.ne]: 'thieu_check_out' },
     },
     include: [{ model: CaLamViec, as: 'ca' }],
     order: [['tao_luc', 'DESC']],
@@ -90,14 +84,35 @@ const processScanQRCode = async ({
         ngay_cong: { [Op.in]: [dateStr, yesterdayStr] },
         thoi_gian_vao: { [Op.gte]: overnightCutoff },
         thoi_gian_ra: null,
+        trang_thai: { [Op.ne]: 'thieu_check_out' },
       },
       include: [{ model: CaLamViec, as: 'ca' }],
       order: [['thoi_gian_vao', 'DESC']],
     });
   }
 
+  // Đánh giá xem đã sang khối ca giảng dạy tiếp theo hay vẫn đang ở ca hiện tại
   let evalResult = null;
-  if (!attendance || !attendance.thoi_gian_vao) {
+  let isCheckInAction = !attendance || !attendance.thoi_gian_vao;
+  if (attendance && attendance.thoi_gian_vao) {
+    const evalNext = await evaluateUserScheduleForCheckIn(nguoi_dung_id);
+    if (
+      evalNext?.canCheckIn &&
+      evalNext.selectedSchedule?.id &&
+      String(evalNext.selectedSchedule.id) !== String(attendance.lich_trinh_id || '')
+    ) {
+      evalResult = evalNext;
+      isCheckInAction = true;
+    } else if (attendance.da_chot) {
+      throw new ServiceError(
+        'Bản ghi chấm công đã bị khóa sổ lương, không thể check-out hoặc chỉnh sửa.',
+        409,
+        'ATTENDANCE_LOCKED'
+      );
+    }
+  }
+
+  if (isCheckInAction && !evalResult) {
     evalResult = await evaluateUserScheduleForCheckIn(nguoi_dung_id);
     if (!evalResult || !evalResult.canCheckIn) {
       throw new ServiceError(
@@ -107,20 +122,36 @@ const processScanQRCode = async ({
         evalResult?.status || 'NO_SCHEDULE'
       );
     }
-  } else if (attendance.da_chot) {
-    throw new ServiceError(
-      'Bản ghi chấm công đã bị khóa sổ lương, không thể check-out hoặc chỉnh sửa.',
-      409,
-      'ATTENDANCE_LOCKED'
-    );
   }
 
-  // 3. Bắt buộc kiểm tra GPS chống gian lận quét QR từ xa (ưu tiên tọa độ phòng học nếu có lịch)
+  // 3. Kiểm tra GPS chống gian lận quét QR từ xa (bỏ qua nếu lịch trực tuyến; nới 1.5× khi check-out)
+  const isCheckOutAction = !isCheckInAction;
   let isFraud = false;
   let fraudReason = null;
-  const targetScheduleId = attendance?.lich_trinh_id || evalResult?.selectedSchedule?.id || null;
-  const geoTargets = await resolveUserGeofenceTargets(nguoi_dung_id, targetScheduleId);
-  const geofenceResult = validateGeofence({ lat, lng, accuracy: acc }, geoTargets, null, dia_chi_ip);
+  const targetScheduleId = isCheckOutAction
+    ? attendance?.lich_trinh_id || null
+    : evalResult?.selectedSchedule?.id || null;
+  let isOnlineSchedule = Boolean(!isCheckOutAction && evalResult?.selectedSchedule?.la_truc_tuyen);
+  if (!isOnlineSchedule && targetScheduleId && isValidUuid(String(targetScheduleId))) {
+    const schedForOnline = await LichTrinh.findByPk(targetScheduleId, { attributes: ['id', 'la_truc_tuyen'] });
+    isOnlineSchedule = Boolean(schedForOnline?.la_truc_tuyen);
+  }
+  if (!isOnlineSchedule && !hasCoordinates) {
+    throw new ServiceError(
+      'Điểm danh bằng mã QR bắt buộc phải bật định vị GPS để xác thực bạn đang có mặt tại trường.',
+      400,
+      'ATTENDANCE_GPS_REQUIRED'
+    );
+  }
+  const geoTargets = isOnlineSchedule ? null : await resolveUserGeofenceTargets(nguoi_dung_id, targetScheduleId);
+  const geofenceResult = isOnlineSchedule
+    ? { valid: true, isSuspicious: false, distance: 0, fraudReason: null, suspiciousReason: null }
+    : validateGeofence(
+        { lat, lng, accuracy: acc },
+        geoTargets,
+        isCheckOutAction ? { radiusMultiplier: 1.5 } : null,
+        dia_chi_ip
+      );
   if (!geofenceResult.valid) {
     isFraud = true;
     fraudReason =
@@ -128,8 +159,8 @@ const processScanQRCode = async ({
       `Quét mã QR nhưng GPS nằm ngoài khuôn viên trường (${Math.round(geofenceResult.distance || 0)}m).`;
   }
 
-  // TRƯỜNG HỢP 1: CHƯA CHECK-IN -> THỰC HIỆN CHECK-IN BẰNG QR
-  if (!attendance || !attendance.thoi_gian_vao) {
+  // TRƯỜNG HỢP 1: CHECK-IN BẰNG QR (chưa check-in hoặc đã sang khối ca giảng dạy mới)
+  if (isCheckInAction) {
     const effectiveShift = evalResult.shift;
     const effectiveCaId = effectiveShift?.id || null;
     if (!effectiveCaId) {
@@ -137,17 +168,30 @@ const processScanQRCode = async ({
     }
 
     const resolvedScheduleId = evalResult.selectedSchedule?.id || null;
+    const resolvedKhoiIds = evalResult.khoi ? evalResult.khoi.ds_lich_trinh_id : null;
     const calculatedStatus = evalResult.status || 'on_time';
     const lateMinutes = evalResult.lateMinutes || 0;
 
     const { savedAttendance, punchLog } = await runInTransaction(async (transaction) => {
-      let targetAttendance = attendance;
+      let targetAttendance = await NhatKyChamCong.findOne({
+        where: {
+          nguoi_dung_id,
+          ngay_cong: dateStr,
+          ...(resolvedScheduleId
+            ? { lich_trinh_id: resolvedScheduleId }
+            : { ca_id: effectiveCaId, lich_trinh_id: null }),
+        },
+        lock: transaction.LOCK.UPDATE,
+        transaction,
+      });
+
       if (!targetAttendance) {
         targetAttendance = await NhatKyChamCong.create(
           {
             nguoi_dung_id,
             ca_id: effectiveCaId,
             lich_trinh_id: resolvedScheduleId,
+            ds_lich_trinh_id: resolvedKhoiIds,
             ngay_cong: dateStr,
             thoi_gian_vao: now,
             trang_thai: calculatedStatus,
@@ -157,13 +201,39 @@ const processScanQRCode = async ({
           { transaction }
         );
       } else {
+        if (targetAttendance.da_chot) {
+          throw new ServiceError('Bản ghi chấm công đã được chốt sổ lương, không thể check-in.', 403, 'ATTENDANCE_LOCKED');
+        }
         targetAttendance.thoi_gian_vao = now;
         targetAttendance.trang_thai = calculatedStatus;
         targetAttendance.ca_id = effectiveCaId;
         if (resolvedScheduleId) targetAttendance.lich_trinh_id = resolvedScheduleId;
+        if (resolvedKhoiIds) targetAttendance.ds_lich_trinh_id = resolvedKhoiIds;
         targetAttendance.di_muon_phut = lateMinutes;
         if (isFraud) targetAttendance.co_gian_lan = true;
         await targetAttendance.save({ transaction });
+      }
+
+      // Đóng khối giảng dạy trước chưa check-out sang thieu_check_out khi đã sang khối dạy mới (giữ ca hành chính song song)
+      if (resolvedScheduleId) {
+        const staleLogs = await NhatKyChamCong.findAll({
+          where: {
+            nguoi_dung_id,
+            ngay_cong: dateStr,
+            id: { [Op.ne]: targetAttendance.id },
+            lich_trinh_id: { [Op.ne]: null },
+            thoi_gian_vao: { [Op.ne]: null },
+            thoi_gian_ra: null,
+            trang_thai: { [Op.ne]: 'thieu_check_out' },
+          },
+          transaction,
+        });
+        const sameBlockIds = resolvedKhoiIds || [];
+        for (const stale of staleLogs) {
+          if (sameBlockIds.includes(String(stale.lich_trinh_id))) continue;
+          stale.trang_thai = 'thieu_check_out';
+          await stale.save({ transaction });
+        }
       }
 
       const createdPunch = await LuotQuetChamCong.create(
@@ -188,9 +258,14 @@ const processScanQRCode = async ({
       return { savedAttendance: targetAttendance, punchLog: createdPunch };
     });
 
+    const ownerDoc = await NguoiDung.findByPk(nguoi_dung_id, { attributes: ['don_vi_chinh_id'] }).catch(() => null);
+
     try {
       const { emitAttendanceUpdate, emitFraudAlert } = require('../../config/socket');
-      emitAttendanceUpdate(savedAttendance.toJSON ? savedAttendance.toJSON() : savedAttendance);
+      emitAttendanceUpdate({
+        ...(savedAttendance.toJSON ? savedAttendance.toJSON() : savedAttendance),
+        don_vi_chinh_id: ownerDoc?.don_vi_chinh_id || null,
+      });
       if (isFraud) {
         emitFraudAlert({
           type: 'QR_GEOFENCE_CHECK_IN_ALERT',
@@ -207,7 +282,7 @@ const processScanQRCode = async ({
         : 'Quét mã QR Check-in thành công.',
       trang_thai: calculatedStatus,
       thoi_gian_vao: now,
-      gian_lan: isFraud,
+      co_gian_lan: isFraud,
       ly_do_gian_lan: fraudReason,
       nhat_ky_cham_cong: savedAttendance,
       luot_quet: punchLog,
@@ -223,9 +298,15 @@ const processScanQRCode = async ({
     );
   }
 
+  const { khoiConfig } = await kiemTraChoPhepCheckOut({
+    nguoiDungId: nguoi_dung_id,
+    openLog: attendance,
+    now,
+  });
+
   const { finalStatus, earlyMinutes } = calculateCheckOutStatus(
     now,
-    attendance.ca,
+    khoiConfig,
     attendance.trang_thai
   );
 
@@ -234,6 +315,7 @@ const processScanQRCode = async ({
   const soTietThucDay = await calculateActualTeachingPeriods(
     {
       lichTrinhId: attendance.lich_trinh_id,
+      lichTrinhIds: attendance.ds_lich_trinh_id,
       workingMinutes: durationMinutes,
       earlyMinutes: earlyMinutes || 0,
     },
@@ -272,9 +354,14 @@ const processScanQRCode = async ({
     return { savedAttendance: attendance, punchLog: createdPunch };
   });
 
+  const ownerDoc = await NguoiDung.findByPk(nguoi_dung_id, { attributes: ['don_vi_chinh_id'] }).catch(() => null);
+
   try {
     const { emitAttendanceUpdate, emitFraudAlert } = require('../../config/socket');
-    emitAttendanceUpdate(savedAttendance.toJSON ? savedAttendance.toJSON() : savedAttendance);
+    emitAttendanceUpdate({
+      ...(savedAttendance.toJSON ? savedAttendance.toJSON() : savedAttendance),
+      don_vi_chinh_id: ownerDoc?.don_vi_chinh_id || null,
+    });
     if (isFraud) {
       emitFraudAlert({
         type: 'QR_GEOFENCE_CHECK_OUT_ALERT',
@@ -293,7 +380,7 @@ const processScanQRCode = async ({
     thoi_gian_ra: now,
     so_gio_cong: savedAttendance.so_gio_cong,
     ve_som_phut: savedAttendance.ve_som_phut,
-    gian_lan: isFraud,
+    co_gian_lan: isFraud,
     ly_do_gian_lan: fraudReason,
     nhat_ky_cham_cong: savedAttendance,
     luot_quet: punchLog,

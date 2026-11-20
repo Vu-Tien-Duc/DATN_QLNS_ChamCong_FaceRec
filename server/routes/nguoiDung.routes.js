@@ -13,6 +13,7 @@ const {
 const { verifyToken, verifyRole, requirePermission, requireAnyPermission } = require('../middlewares/xacThuc.middleware');
 const { PERMISSIONS } = require('../config/permissions');
 const { uploadFaceImages } = require('../middlewares/taiAnhKhuonMat.middleware');
+const { UNIT_LEADER_ROLES } = require('../utils/vaiTro.utils');
 
 // Toàn bộ các thao tác người dùng đều yêu cầu đăng nhập
 router.use(verifyToken);
@@ -24,8 +25,8 @@ router.get('/', verifyRole(['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']),
 router.post('/', verifyRole(['admin', 'bgh', 'tccb']), createUser);
 
 // Đăng ký và xóa dữ liệu Face ID theo người dùng
-router.post('/:id/khuon-mat', verifyRole(['admin', 'bgh', 'tccb']), uploadFaceImages, registerFaceDescriptor);
-router.delete('/:id/khuon-mat', verifyRole(['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']), deleteFaceDescriptor);
+router.post('/:id/khuon-mat', verifyRole(['admin', 'bgh', 'tccb', ...UNIT_LEADER_ROLES]), uploadFaceImages, registerFaceDescriptor);
+router.delete('/:id/khuon-mat', verifyRole(['admin', 'bgh', 'tccb', ...UNIT_LEADER_ROLES]), deleteFaceDescriptor);
 
 
 

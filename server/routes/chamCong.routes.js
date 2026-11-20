@@ -10,54 +10,51 @@ const {
   getAttendanceEvidence,
   updateAttendanceByAdmin,
   triggerDailyAbsentCheck,
-  faceCheckIn,
-  faceCheckInBatch,
-  detectPose,
-  generateQRCode,
+  faceRecognizeAttendance,
+  getDynamicQRCode,
   scanQRCode,
-  getCampusLocationConfig,
+  getCampusConfigInfo,
   updateCampusLocationConfig,
   getLivenessChallengeController,
   verifyLivenessChallengeController,
-  getFaissStatsController,
+  getRamIndexStats,
   syncFaissIndexController,
   getQueueStats,
+  getKhoiHomNay,
 } = require('../controllers/chamCong.controller');
-const { verifyToken, authorizeRoles, verifyTerminalKey, requirePermission } = require('../middlewares/xacThuc.middleware');
+const {
+  verifyToken,
+  authorizeRoles,
+  verifyTerminalKey,
+  requirePermission,
+  requireAnyPermission,
+} = require('../middlewares/xacThuc.middleware');
 const { PERMISSIONS } = require('../config/permissions');
 const { faceCheckInRateLimit } = require('../middlewares/gioiHanTruyCap.middleware');
-const { uploadFaceImage, uploadFaceImages } = require('../middlewares/taiAnhKhuonMat.middleware');
+const { uploadFaceImage } = require('../middlewares/taiAnhKhuonMat.middleware');
 
-// Nhận nhiều ảnh khuôn mặt nếu client gửi multipart/form-data, ngược lại đi thẳng sang JSON
-const optionalFaceBatchUpload = (req, res, next) => {
-  if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
-    return uploadFaceImages(req, res, next);
-  }
-  return next();
-};
-
-// Luồng Kiosk / Máy chấm công (xác thực qua x-terminal-key hoặc Bearer JWT)
-router.post('/khuon-mat', faceCheckInRateLimit, verifyTerminalKey, uploadFaceImage, faceCheckIn);
-router.post('/khuon-mat-hang-loat', faceCheckInRateLimit, verifyTerminalKey, optionalFaceBatchUpload, faceCheckInBatch);
-router.get('/thu-thach-mat-that', verifyTerminalKey, getLivenessChallengeController);
-router.post('/xac-thuc-mat-that', faceCheckInRateLimit, verifyTerminalKey, uploadFaceImage, verifyLivenessChallengeController);
-router.get('/chi-so-vector/thong-ke', verifyToken, authorizeRoles('admin', 'bgh'), getFaissStatsController);
+// Nhận diện khuôn mặt chấm công: bắt buộc đăng nhập, khuôn mặt phải khớp chính chủ tài khoản
+router.post('/khuon-mat', faceCheckInRateLimit, verifyToken, requirePermission(PERMISSIONS.CONG_QUET_MAT), uploadFaceImage, faceRecognizeAttendance);
+router.get('/thu-thach-mat-that', verifyToken, getLivenessChallengeController);
+router.post('/xac-thuc-mat-that', faceCheckInRateLimit, verifyToken, uploadFaceImage, verifyLivenessChallengeController);
+router.get('/chi-so-vector/thong-ke', verifyToken, authorizeRoles('admin', 'bgh'), getRamIndexStats);
 router.post('/chi-so-vector/dong-bo', verifyToken, authorizeRoles('admin'), syncFaissIndexController);
 router.get('/hang-doi/thong-ke', verifyToken, authorizeRoles('admin', 'bgh'), getQueueStats);
-router.get('/qr/tao-ma', verifyTerminalKey, generateQRCode);
-router.get('/cau-hinh-khuon-vien', verifyTerminalKey, getCampusLocationConfig);
+router.get('/qr/tao-ma', verifyTerminalKey, getDynamicQRCode);
+router.get('/cau-hinh-khuon-vien', verifyTerminalKey, getCampusConfigInfo);
 
 // Luồng người dùng đã đăng nhập
 router.use(verifyToken);
-router.get('/:id/minh-chung', getAttendanceEvidence);
+router.get('/:id/minh-chung', requireAnyPermission(PERMISSIONS.CONG_XEM_BAN_THAN, PERMISSIONS.CONG_XEM_DON_VI, PERMISSIONS.CONG_XEM_TOAN_TRUONG), getAttendanceEvidence);
 router.post('/cau-hinh-khuon-vien', requirePermission(PERMISSIONS.HE_THONG_CAU_HINH), authorizeRoles('admin'), updateCampusLocationConfig);
-router.post('/qr/quet-ma', scanQRCode);
-router.post('/vao-ca', checkIn);
-router.post('/tan-ca', checkOut);
-router.get('/lich-su-cua-toi', getMyAttendanceHistory);
-router.get('/lich-su', getAttendanceHistory);
+router.post('/qr/quet-ma', requirePermission(PERMISSIONS.CONG_QUET_MAT), scanQRCode);
+router.post('/vao-ca', requireAnyPermission(PERMISSIONS.CONG_QUET_MAT, PERMISSIONS.CONG_CHOT_CONG, PERMISSIONS.CONG_XEM_TOAN_TRUONG), checkIn);
+router.post('/tan-ca', requireAnyPermission(PERMISSIONS.CONG_QUET_MAT, PERMISSIONS.CONG_CHOT_CONG, PERMISSIONS.CONG_XEM_TOAN_TRUONG), checkOut);
+router.get('/lich-su-cua-toi', requirePermission(PERMISSIONS.CONG_XEM_BAN_THAN), getMyAttendanceHistory);
+router.get('/lich-su', requireAnyPermission(PERMISSIONS.CONG_XEM_BAN_THAN, PERMISSIONS.CONG_XEM_DON_VI, PERMISSIONS.CONG_XEM_TOAN_TRUONG), getAttendanceHistory);
+router.get('/khoi-hom-nay', requireAnyPermission(PERMISSIONS.CONG_QUET_MAT, PERMISSIONS.CONG_XEM_BAN_THAN), getKhoiHomNay);
 router.post('/quet-vang-mat', authorizeRoles('admin', 'bgh'), triggerDailyAbsentCheck);
-router.get('/:id', getAttendanceById);
-router.put('/:id/dieu-chinh', authorizeRoles('admin', 'bgh', 'truong_khoa'), updateAttendanceByAdmin);
+router.get('/:id', requireAnyPermission(PERMISSIONS.CONG_XEM_BAN_THAN, PERMISSIONS.CONG_XEM_DON_VI, PERMISSIONS.CONG_XEM_TOAN_TRUONG), getAttendanceById);
+router.put('/:id/dieu-chinh', requireAnyPermission(PERMISSIONS.CONG_XEM_DON_VI, PERMISSIONS.CONG_XEM_TOAN_TRUONG), authorizeRoles('admin', 'bgh', 'truong_khoa'), updateAttendanceByAdmin);
 
 module.exports = router;

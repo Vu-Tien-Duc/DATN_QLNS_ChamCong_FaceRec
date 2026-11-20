@@ -63,10 +63,11 @@ const loadConfigsIntoCache = async (force = false) => {
 
   let configs = await CauHinhHeThong.findAll();
   if (!defaultSeeded && CAU_HINH_MAC_DINH) {
-    const existingKeys = new Set(configs.map((c) => String(c.khoa_cau_hinh || '').toUpperCase()));
-    let createdAny = false;
+    const existingMap = new Map(configs.map((c) => [String(c.khoa_cau_hinh || '').toUpperCase(), c]));
+    let changedAny = false;
     for (const [k, defaultVal] of Object.entries(CAU_HINH_MAC_DINH)) {
-      if (!existingKeys.has(k)) {
+      const existing = existingMap.get(k);
+      if (!existing) {
         const meta = CANONICAL_CONFIG_META[k] || { nhom: 'HE_THONG', mo_ta: `Tham số hệ thống ${k}` };
         try {
           await CauHinhHeThong.create({
@@ -75,14 +76,33 @@ const loadConfigsIntoCache = async (force = false) => {
             nhom: meta.nhom,
             mo_ta: meta.mo_ta,
           });
-          createdAny = true;
+          changedAny = true;
         } catch {
           // ignore race condition
+        }
+      } else if (
+        defaultVal &&
+        typeof defaultVal === 'object' &&
+        !Array.isArray(defaultVal) &&
+        existing.gia_tri &&
+        typeof existing.gia_tri === 'object' &&
+        !Array.isArray(existing.gia_tri)
+      ) {
+        // Tự động bổ sung các sub-key mặc định mới (vd: nguong_gop_khoi_phut trong QUY_TAC_DIEM_DANH)
+        const missingKeys = Object.keys(defaultVal).filter((subKey) => existing.gia_tri[subKey] === undefined);
+        if (missingKeys.length > 0) {
+          try {
+            existing.gia_tri = { ...defaultVal, ...existing.gia_tri };
+            await existing.save();
+            changedAny = true;
+          } catch {
+            // ignore concurrent update
+          }
         }
       }
     }
     defaultSeeded = true;
-    if (createdAny) {
+    if (changedAny) {
       configs = await CauHinhHeThong.findAll();
     }
   }

@@ -43,26 +43,21 @@ const generatePayroll = async (req, res, next) => {
 // POST /api/phieu-luong/khoa | PUT /api/phieu-luong/:id/khoa - Khóa lương tháng và chốt công
 const lockPayroll = async (req, res, next) => {
   try {
-    let month = req.body?.thang;
-    let year = req.body?.nam;
-    if (req.params?.id && (!month || !year)) {
-      const p = await fetchPayrollById(req.params.id, req.user);
-      if (p) {
-        month = p.thang;
-        year = p.nam;
-      }
-    }
-    if (!month || !year) {
+    const payrollId = req.params?.id || null;
+    const month = req.body?.thang;
+    const year = req.body?.nam;
+    if (!payrollId && (!month || !year)) {
       return sendError(res, 'Tháng (thang) và năm (nam) là bắt buộc.', null, 400);
     }
     const result = await lockMonthlyPayroll({
       month,
       year,
       departmentId: req.body?.don_vi_id || null,
+      payrollId,
       currentUser: req.user,
       ip: req.ip || req.connection?.remoteAddress,
     });
-    return sendSuccess(res, result.message, result);
+    return sendSuccess(res, result.thong_bao, result);
   } catch (error) {
     handleServiceError(res, error, next);
   }
@@ -71,28 +66,23 @@ const lockPayroll = async (req, res, next) => {
 // POST /api/phieu-luong/mo-khoa | PUT /api/phieu-luong/:id/mo-khoa - Mở khóa lương tháng đã chốt
 const unlockPayroll = async (req, res, next) => {
   try {
-    let month = req.body?.thang;
-    let year = req.body?.nam;
-    let reason = req.body?.ly_do || 'Mở khóa bảng lương theo yêu cầu điều chỉnh.';
-    if (req.params?.id && (!month || !year)) {
-      const p = await fetchPayrollById(req.params.id, req.user);
-      if (p) {
-        month = p.thang;
-        year = p.nam;
-      }
-    }
-    if (!month || !year) {
+    const payrollId = req.params?.id || null;
+    const month = req.body?.thang;
+    const year = req.body?.nam;
+    const reason = req.body?.ly_do;
+    if (!payrollId && (!month || !year)) {
       return sendError(res, 'Tháng (thang) và năm (nam) là bắt buộc.', null, 400);
     }
     const result = await unlockMonthlyPayroll({
       month,
       year,
       departmentId: req.body?.don_vi_id || null,
+      payrollId,
       reason,
       currentUser: req.user,
       ip: req.ip || req.connection?.remoteAddress,
     });
-    return sendSuccess(res, result.message, result);
+    return sendSuccess(res, result.thong_bao, result);
   } catch (error) {
     handleServiceError(res, error, next);
   }
@@ -133,6 +123,9 @@ const getPayrollById = async (req, res, next) => {
 // GET /api/phieu-luong/cua-toi - Xem phiếu lương của chính mình
 const getMyPayroll = async (req, res, next) => {
   try {
+    if (!req.user?.id) {
+      return sendError(res, 'Người dùng chưa được xác thực.', null, 401);
+    }
     const role = String(req.user?.vai_tro_chinh || '').toLowerCase();
     if (role === 'admin') {
       return sendError(
@@ -150,7 +143,7 @@ const getMyPayroll = async (req, res, next) => {
     const payrolls = await fetchPayrolls({
       thang,
       nam,
-      nguoi_dung_id: req.user._id,
+      nguoi_dung_id: req.user.id,
       currentUser: req.user,
     });
     const myPayroll = payrolls[0] || null;
@@ -166,9 +159,11 @@ const getPayrollSummary = async (req, res, next) => {
     const now = new Date();
     const thang = Number(req.query?.thang || (now.getMonth() + 1));
     const nam = Number(req.query?.nam || now.getFullYear());
+    const don_vi_id = req.query?.don_vi_id;
     const payrolls = await fetchPayrolls({
       thang,
       nam,
+      don_vi_id,
       currentUser: req.user,
     });
     let totalNetSalary = 0;
@@ -176,13 +171,19 @@ const getPayrollSummary = async (req, res, next) => {
     let totalTax = 0;
     let totalInsurance = 0;
     let totalOvertimePay = 0;
+    let lockedCount = 0;
     for (const p of payrolls) {
       totalNetSalary += Number(p.thuc_linh_net || 0);
       totalGrossSalary += Number(p.tong_thu_nhap_gross || 0);
       totalTax += Number(p.thue_tncn?.tien_thue ?? (typeof p.thue_tncn === 'number' ? p.thue_tncn : 0));
       totalInsurance += Number(p.bao_hiem?.tong_bao_hiem ?? p.tong_bao_hiem ?? 0);
       totalOvertimePay += Number(p.gio_giang?.thu_lao_vuot_gio ?? p.thu_lao_vuot_gio ?? 0);
+      if (p.da_khoa === true || ['da_duyet', 'da_chi_tra'].includes(p.trang_thai)) {
+        lockedCount += 1;
+      }
     }
+    const isFullyLocked = payrolls.length > 0 && lockedCount === payrolls.length;
+    const isPartiallyLocked = lockedCount > 0 && lockedCount < payrolls.length;
     return sendSuccess(res, `Tổng hợp quỹ lương tháng ${thang}/${nam}.`, {
       thang,
       nam,
@@ -192,7 +193,9 @@ const getPayrollSummary = async (req, res, next) => {
       tong_thue_tncn: totalTax,
       tong_bao_hiem: totalInsurance,
       tong_vuot_gio: totalOvertimePay,
-      da_khoa: payrolls.some((p) => p.da_khoa === true || p.trang_thai === 'da_khoa'),
+      so_phieu_da_khoa: lockedCount,
+      da_khoa: isFullyLocked,
+      da_khoa_mot_phan: isPartiallyLocked,
     });
   } catch (error) {
     handleServiceError(res, error, next);

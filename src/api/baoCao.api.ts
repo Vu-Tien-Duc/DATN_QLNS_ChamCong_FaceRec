@@ -17,52 +17,28 @@ export interface AttendanceReportSummary {
   earlyLeaveCount: number;
   absentCount: number;
   excusedAbsenceCount: number;
+  thieuCheckOutCount?: number;
   approvedLeaveDays: number;
   weeklyTrend: WeeklyTrendItem[];
 }
 
 export interface MonthlyUserReportItem {
-  nguoi_dung_id?: string;
+  nguoi_dung_id: string;
   ma_can_bo?: string;
-  ho_ten?: string;
+  ho_ten: string;
   email: string;
-  don_vi_id?: any;
+  don_vi_id?: string | null;
   ten_phong_ban?: string;
   vai_tro_chinh?: string;
   anh_dai_dien?: string | null;
-  tong_so_ca?: number;
-  so_lan_dung_gio?: number;
-  so_lan_di_muon?: number;
-  so_lan_ve_som?: number;
-  so_lan_vang_mat?: number;
-  so_lan_co_phep?: number;
-  ty_le_chuyen_can?: number;
-  /** @deprecated Dùng nguoi_dung_id */
-  userId: string;
-  /** @deprecated Dùng ma_can_bo */
-  staffCode?: string;
-  /** @deprecated Dùng ho_ten */
-  fullName: string;
-  /** @deprecated Dùng don_vi_id */
-  departmentId?: any;
-  /** @deprecated Dùng ten_phong_ban */
-  departmentName?: string;
-  /** @deprecated Dùng vai_tro_chinh */
-  role?: string;
-  /** @deprecated Dùng tong_so_ca */
-  totalShifts: number;
-  /** @deprecated Dùng so_lan_dung_gio */
-  onTime: number;
-  /** @deprecated Dùng so_lan_di_muon */
-  late: number;
-  /** @deprecated Dùng so_lan_ve_som */
-  early: number;
-  /** @deprecated Dùng so_lan_vang_mat */
-  absent: number;
-  /** @deprecated Dùng so_lan_co_phep */
-  excused: number;
-  /** @deprecated Dùng ty_le_chuyen_can */
-  attendanceRate: number;
+  tong_so_ca: number;
+  so_lan_dung_gio: number;
+  so_lan_di_muon: number;
+  so_lan_ve_som: number;
+  so_lan_vang_mat: number;
+  so_lan_co_phep: number;
+  so_lan_thieu_check_out?: number;
+  ty_le_chuyen_can: number;
 }
 
 export interface MonthlyReportResponse {
@@ -90,6 +66,7 @@ export interface ExportOverviewData {
   so_lan_ve_som: number;
   so_lan_vang_mat: number;
   so_lan_co_phep: number;
+  so_lan_thieu_check_out?: number;
   ty_le_chuyen_can: number;
   so_ngay_nghi_phep_da_duyet: number;
   thoi_diem_xuat: string;

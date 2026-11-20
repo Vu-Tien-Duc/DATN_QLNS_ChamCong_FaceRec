@@ -25,7 +25,7 @@ const {
 } = require('../../models');
 const systemConfigService = require('./cauHinhHeThong.service');
 const { sendAbsentWarningEmail, sendDailyAttendanceSummaryEmail } = require('./guiEmail.service');
-const { getVietnamTime, getVietnamDayRange, timeStringToMinutes, calculateActualTeachingPeriods } = require('../../utils/thoiGianChamCong.utils');
+const { getVietnamTime, getVietnamDayRange, timeStringToMinutes } = require('../../utils/thoiGianChamCong.utils');
 const { withDistributedLock } = require('../../utils/khoaPhanTan');
 const { isScheduleActiveOnDate } = require('../../utils/ngayLichTrinh.utils');
 
@@ -74,9 +74,36 @@ const getTodayActiveSchedules = async (targetDate = new Date()) => {
             required: true,
             include: scheduleIncludes,
           },
+          {
+            model: NguoiDung,
+            as: 'giang_vien_day_thay',
+            attributes: ['id', 'ho_ten', 'email', 'vai_tro_chinh', 'don_vi_chinh_id'],
+          },
+          {
+            model: CaLamViec,
+            as: 'ca_thay_the',
+            attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc', 'nguong_di_muon_phut'],
+          },
         ],
       }),
     ]);
+
+    const applyExceptionOverride = (ex) => {
+      const overridePlain = typeof ex.lich_trinh.toJSON === 'function' ? ex.lich_trinh.toJSON() : { ...ex.lich_trinh };
+      overridePlain._isSubstituteOverride = true;
+      if (ex.giang_vien_day_thay) {
+        overridePlain.nguoi_dung_id = ex.giang_vien_day_thay.id;
+        overridePlain.giang_vien =
+          typeof ex.giang_vien_day_thay.toJSON === 'function' ? ex.giang_vien_day_thay.toJSON() : ex.giang_vien_day_thay;
+      }
+      if (ex.ca_thay_the) {
+        overridePlain.ca_id = ex.ca_thay_the.id;
+        overridePlain.ca = typeof ex.ca_thay_the.toJSON === 'function' ? ex.ca_thay_the.toJSON() : ex.ca_thay_the;
+        overridePlain.gio_bat_dau = overridePlain.ca.gio_bat_dau;
+        overridePlain.gio_ket_thuc = overridePlain.ca.gio_ket_thuc;
+      }
+      return overridePlain;
+    };
 
     const seenIds = new Set(schedules.map((s) => String(s.id)));
     const combined = [...schedules];
@@ -85,18 +112,7 @@ const getTodayActiveSchedules = async (targetDate = new Date()) => {
       if (ex.trang_thai === 'doi_ca') {
         const isSwapTargetDate = String(ex.ngay_day_bu || ex.ngay).slice(0, 10) === dateStr;
         if (isSwapTargetDate && (ex.giang_vien_day_thay || ex.ca_thay_the)) {
-          const overridePlain = typeof ex.lich_trinh.toJSON === 'function' ? ex.lich_trinh.toJSON() : { ...ex.lich_trinh };
-          overridePlain._isSubstituteOverride = true;
-          if (ex.giang_vien_day_thay) {
-            overridePlain.nguoi_dung_id = ex.giang_vien_day_thay.id;
-            overridePlain.giang_vien = typeof ex.giang_vien_day_thay.toJSON === 'function' ? ex.giang_vien_day_thay.toJSON() : ex.giang_vien_day_thay;
-          }
-          if (ex.ca_thay_the) {
-            overridePlain.ca_id = ex.ca_thay_the.id;
-            overridePlain.ca = typeof ex.ca_thay_the.toJSON === 'function' ? ex.ca_thay_the.toJSON() : ex.ca_thay_the;
-            overridePlain.gio_bat_dau = overridePlain.ca.gio_bat_dau;
-            overridePlain.gio_ket_thuc = overridePlain.ca.gio_ket_thuc;
-          }
+          const overridePlain = applyExceptionOverride(ex);
           const existingIndex = combined.findIndex((s) => String(s.id) === String(ex.lich_trinh.id));
           if (existingIndex >= 0) {
             combined[existingIndex] = overridePlain;
@@ -107,7 +123,7 @@ const getTodayActiveSchedules = async (targetDate = new Date()) => {
         }
       } else if (!seenIds.has(String(ex.lich_trinh.id))) {
         seenIds.add(String(ex.lich_trinh.id));
-        combined.push(ex.lich_trinh);
+        combined.push(ex.giang_vien_day_thay || ex.ca_thay_the ? applyExceptionOverride(ex) : ex.lich_trinh);
       }
     }
 
@@ -145,11 +161,10 @@ const processScheduleAttendanceCheck = async (schedule, dayRange) => {
     };
   }
 
-  // Kiểm tra xem giảng viên đã có bản ghi chấm công cho ca này chưa
-  const existingLog = await NhatKyChamCong.findOne({
+  // Kiểm tra xem giảng viên đã có bản ghi chấm công cho lịch/khối ca này chưa (kể cả đã gộp trong ds_lich_trinh_id)
+  const dayLogs = await NhatKyChamCong.findAll({
     where: {
       nguoi_dung_id: userId,
-      ca_id: shiftId,
       [Op.or]: [
         { ngay_cong: dateStr },
         { thoi_gian_vao: { [Op.between]: [startOfDay, endOfDay] } },
@@ -157,6 +172,14 @@ const processScheduleAttendanceCheck = async (schedule, dayRange) => {
       ],
     },
   });
+
+  const scheduleIdStr = String(schedule.id);
+  const existingLog = dayLogs.find((log) => {
+    if (log.lich_trinh_id && String(log.lich_trinh_id) === scheduleIdStr) return true;
+    if (Array.isArray(log.ds_lich_trinh_id) && log.ds_lich_trinh_id.map(String).includes(scheduleIdStr)) return true;
+    if (!log.lich_trinh_id && shiftId && String(log.ca_id) === String(shiftId)) return true;
+    return false;
+  }) || null;
 
   if (existingLog) {
     console.log(
@@ -683,55 +706,42 @@ const scanAndMarkExpiredShiftsAbsent = async (targetDate = new Date()) => {
   }
 };
 
-// Tự động đóng các lượt quên chấm công tan ca từ các ngày trước
-const closeForgottenOpenCheckouts = async (referenceDate = new Date()) => {
+// Đánh dấu thiếu check-out cho các lượt vào ca chưa ra ca (không tự gán giờ ra hay cộng số tiết; chờ giải trình và cấp trên duyệt)
+const danhDauThieuCheckOut = async (referenceDate = new Date()) => {
   const { dateStr: todayStr } = getVietnamDayRange(referenceDate);
   const openLogs = await NhatKyChamCong.findAll({
     where: {
-      ngay_cong: { [Op.lt]: todayStr },
+      ngay_cong: { [Op.lte]: todayStr },
       thoi_gian_vao: { [Op.ne]: null },
       thoi_gian_ra: null,
       da_chot: false,
+      trang_thai: { [Op.ne]: 'thieu_check_out' },
     },
     include: [{ model: CaLamViec, as: 'ca' }],
   });
 
-  let closedCount = 0;
+  let flaggedCount = 0;
   for (const log of openLogs) {
     try {
-      const checkInAt = new Date(log.thoi_gian_vao);
       const dayKey = String(log.ngay_cong).slice(0, 10);
-      let autoCloseAt = null;
-      if (log.ca?.gio_ket_thuc) {
-        const candidateEnd = new Date(`${dayKey}T${String(log.ca.gio_ket_thuc).slice(0, 5)}:00+07:00`);
-        if (!Number.isNaN(candidateEnd.getTime()) && candidateEnd >= checkInAt) {
-          autoCloseAt = candidateEnd;
-        }
-      }
-      if (!autoCloseAt) {
-        const endOfDayCap = new Date(`${dayKey}T23:59:00+07:00`);
-        const plus4h = new Date(checkInAt.getTime() + 4 * 60 * 60 * 1000);
-        autoCloseAt = plus4h <= endOfDayCap ? plus4h : endOfDayCap;
-      }
+      const startStr = log.ca?.gio_bat_dau ? String(log.ca.gio_bat_dau) : null;
+      const endStr = log.ca?.gio_ket_thuc ? String(log.ca.gio_ket_thuc) : null;
+      // Ca qua đêm của hôm nay vẫn đang diễn ra sau 23:59 nên chưa đánh dấu
+      const isOvernightShift = Boolean(startStr && endStr && endStr < startStr);
+      if (dayKey === todayStr && isOvernightShift) continue;
 
-      const workingMinutes = Math.max(0, Math.round((autoCloseAt.getTime() - checkInAt.getTime()) / 60000));
-      const soTiet = await calculateActualTeachingPeriods(
-        { lichTrinhId: log.lich_trinh_id, workingMinutes, earlyMinutes: 0, lateMinutes: log.di_muon_phut || 0 },
-        LichTrinh
-      );
-
-      log.thoi_gian_ra = autoCloseAt;
-      log.thoi_luong_lam_viec_phut = workingMinutes;
-      log.so_tiet_thuc_day = soTiet;
-      log.ly_do_ghi_de = log.ly_do_ghi_de || 'Hệ thống tự động đóng ca cuối ngày do quên Check-out';
+      log.trang_thai = 'thieu_check_out';
+      log.thoi_luong_lam_viec_phut = 0;
+      log.so_tiet_thuc_day = 0;
+      log.ly_do_ghi_de = log.ly_do_ghi_de || 'Hệ thống đánh dấu thiếu Check-out cuối ngày, chờ giải trình và duyệt công';
       await log.save();
-      closedCount += 1;
+      flaggedCount += 1;
     } catch (err) {
-      console.error(`[Cron AutoClose] Không thể tự động đóng ca log ${log.id}:`, err.message);
+      console.error(`[Cron MissingCheckout] Không thể đánh dấu thiếu check-out log ${log.id}:`, err.message);
     }
   }
 
-  return { closedCount };
+  return { flaggedCount };
 };
 
 // Dọn dẹp ảnh minh chứng và nhật ký chấm công hết hạn lưu trữ
@@ -860,7 +870,7 @@ const initCronJobs = () => {
         600,
         async () => {
           console.log(`[Cron Job] Kích hoạt tác vụ quét vắng mặt tự động lúc 23:59 (${new Date().toISOString()})`);
-          await closeForgottenOpenCheckouts();
+          await danhDauThieuCheckOut();
           await runDailyAbsentCheck();
           await cleanupExpiredRetentionData();
         },
@@ -880,7 +890,7 @@ module.exports = {
   runDailyAbsentCheck,
   processScheduleAttendanceCheck,
   scanAndMarkExpiredShiftsAbsent,
-  closeForgottenOpenCheckouts,
+  danhDauThieuCheckOut,
   cleanupExpiredRetentionData,
   initCronJobs,
 };

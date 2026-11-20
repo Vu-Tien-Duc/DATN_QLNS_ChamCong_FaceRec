@@ -190,6 +190,7 @@ const SUBFIELD_LABEL_MAP: Record<string, string> = {
   ty_le_du_gio: 'Tỷ lệ tính đủ công',
   ty_le_nua_gio: 'Tỷ lệ tính nửa công',
   lam_tron_tiet: 'Quy tắc làm tròn tiết',
+  nguong_gop_khoi_phut: 'Ngưỡng gộp ca liên tiếp (phút)',
   thoi_gian_chay: 'Thời điểm chạy gần nhất',
   trang_thai: 'Trạng thái',
 };

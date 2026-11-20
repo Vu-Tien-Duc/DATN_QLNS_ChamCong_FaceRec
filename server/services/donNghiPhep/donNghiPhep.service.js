@@ -3,22 +3,23 @@ const path = require('path');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const minioStorage = require('../../config/minio');
-const { DonNghiPhep, NguoiDung, HoSoCanBo, LichTrinh, CaLamViec } = require('../../models');
-const { timeStringToMinutes } = require('../../utils/thoiGianChamCong.utils');
+const { DonNghiPhep, NguoiDung, HoSoCanBo, LichTrinh, LichTrinhTuan } = require('../../models');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 const { getDeanScopedUserIds, isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
 const { normalizeRole, UNIT_LEADER_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
-const { detectScheduleConflicts } = require('../nhanSu/lichTrinh.service');
 const { withDistributedLock } = require('../../utils/khoaPhanTan');
 const {
   ServiceError,
+  PENDING_LEAVE_STATUSES,
   getVietnamDateKey,
   calculateLeaveDays,
   getHolidayDateSet,
   getLeaveStatsByYear,
   formatLeaveRequestDoc,
   leaveInclude,
+  isValidAttachmentUrl,
+  validateLeaveScheduleConflict,
 } = require('./tinhPhepNam.helper');
 const pheDuyetDonService = require('./pheDuyetDon.service');
 
@@ -36,6 +37,7 @@ const createLeaveRequestDomain = async ({
   lich_trinh_id,
   ngay_day_bu,
   isHalfDay,
+  nhat_ky_id,
   currentUser,
 }) => {
   const userId = currentUser?.id;
@@ -59,10 +61,10 @@ const createLeaveRequestDomain = async ({
     }
 
     const canonicalType = loai_don.trim().toLowerCase();
-    const validCanonicalTypes = ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om', 'viec_rieng', 'giai_trinh_cong'];
+    const validCanonicalTypes = ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om', 'viec_rieng', 'giai_trinh_cong', 'giai_trinh_thieu_check_out'];
     if (!validCanonicalTypes.includes(canonicalType)) {
       throw new ServiceError(
-        'Loại đơn không hợp lệ. Chỉ chấp nhận: nghi_phep, day_bu, doi_ca, nghi_om, viec_rieng, giai_trinh_cong.',
+        'Loại đơn không hợp lệ. Chỉ chấp nhận: nghi_phep, day_bu, doi_ca, nghi_om, viec_rieng, giai_trinh_cong, giai_trinh_thieu_check_out.',
         400
       );
     }
@@ -84,7 +86,8 @@ const createLeaveRequestDomain = async ({
     }
 
     const todayKey = getVietnamDateKey(new Date());
-    if (canonicalType !== 'giai_trinh_cong' && startKey < todayKey) {
+    const isGiaiTrinhLoai = canonicalType === 'giai_trinh_cong' || canonicalType === 'giai_trinh_thieu_check_out';
+    if (!isGiaiTrinhLoai && startKey < todayKey) {
       throw new ServiceError('Không thể nộp đơn xin nghỉ lùi về các ngày trong quá khứ.', 400);
     }
 
@@ -99,16 +102,93 @@ const createLeaveRequestDomain = async ({
       }
     }
 
+    let matchedMissingCheckoutLog = null;
+    if (canonicalType === 'giai_trinh_thieu_check_out') {
+      const minPastDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const minPastKey = getVietnamDateKey(minPastDate);
+      if (startKey < minPastKey) {
+        throw new ServiceError('Đơn giải trình thiếu check-out chỉ áp dụng cho bản ghi trong vòng 30 ngày gần nhất.', 400);
+      }
+      if (startKey > todayKey) {
+        throw new ServiceError('Không thể giải trình thiếu check-out cho ca trong tương lai.', 400);
+      }
+      const validNhatKyId = nhat_ky_id && isValidUuid(String(nhat_ky_id)) ? String(nhat_ky_id) : null;
+      if (!validNhatKyId) {
+        throw new ServiceError('Đơn giải trình thiếu check-out bắt buộc phải chỉ định bản ghi nhật ký (nhat_ky_id).', 400, 'MISSING_LOG_ID');
+      }
+      const { NhatKyChamCong } = require('../../models');
+      const logRecord = await NhatKyChamCong.findOne({
+        where: { id: validNhatKyId, nguoi_dung_id: userId, trang_thai: 'thieu_check_out' },
+      });
+      if (!logRecord) {
+        throw new ServiceError('Không tìm thấy bản ghi nhật ký thiếu check-out hợp lệ cho bạn.', 404, 'LOG_NOT_FOUND');
+      }
+      const existingExplanation = await DonNghiPhep.findOne({
+        where: { nhat_ky_id: validNhatKyId, trang_thai: { [Op.in]: [...PENDING_LEAVE_STATUSES, 'approved'] } },
+      });
+      if (existingExplanation) {
+        throw new ServiceError('Bản ghi nhật ký này đã có đơn giải trình đang xử lý hoặc đã được duyệt.', 409, 'EXPLANATION_ALREADY_EXISTS');
+      }
+      matchedMissingCheckoutLog = logRecord;
+    }
+
     let makeupDateStr = null;
+    if (ngay_day_bu && (canonicalType === 'day_bu' || canonicalType === 'doi_ca')) {
+      const parsedMakeupDate = new Date(ngay_day_bu);
+      if (Number.isNaN(parsedMakeupDate.getTime())) {
+        throw new ServiceError('Ngày dạy bù không hợp lệ.', 400);
+      }
+      makeupDateStr = getVietnamDateKey(parsedMakeupDate);
+    }
     let validScheduleId = lich_trinh_id && isValidUuid(String(lich_trinh_id)) ? String(lich_trinh_id) : null;
+    if (canonicalType === 'giai_trinh_thieu_check_out' && matchedMissingCheckoutLog?.lich_trinh_id && !validScheduleId) {
+      validScheduleId = String(matchedMissingCheckoutLog.lich_trinh_id);
+    }
     const validSubstituteShiftId =
       ca_thay_the_id && isValidUuid(String(ca_thay_the_id)) ? String(ca_thay_the_id) : null;
     const validSubstituteLecturerId =
       giang_vien_day_thay_id && isValidUuid(String(giang_vien_day_thay_id))
         ? String(giang_vien_day_thay_id)
         : null;
+    const parsedLeavePeriods = Math.max(0, parseInt(so_tiet_nghi, 10) || 0);
 
-    if (validSubstituteLecturerId) {
+    if (canonicalType === 'doi_ca' && !validScheduleId) {
+      throw new ServiceError('Đơn xin đổi ca bắt buộc phải chọn lịch trình giảng dạy (lich_trinh_id).', 400);
+    }
+
+    if (canonicalType === 'day_bu' && (!validScheduleId || !ngay_day_bu || !makeupDateStr)) {
+      throw new ServiceError(
+        !validScheduleId
+          ? 'Đơn đăng ký dạy bù bắt buộc phải chọn lịch trình giảng dạy (lich_trinh_id).'
+          : 'Đơn đăng ký dạy bù bắt buộc phải chọn ngày dạy bù (ngay_day_bu).',
+        400
+      );
+    }
+
+    if (canonicalType === 'day_bu' || canonicalType === 'doi_ca') {
+      // Kiểm tra sở hữu lịch trình trước khi tra cứu/kiểm tra trùng lịch của đồng nghiệp (chống lộ thông tin)
+      const targetSchedule = await LichTrinh.findByPk(validScheduleId, {
+        include: [{ model: LichTrinhTuan, as: 'tuan_hoc', attributes: ['tuan_thu'] }],
+      });
+      if (!targetSchedule) {
+        throw new ServiceError('Không tìm thấy lịch trình giảng dạy được chọn.', 404);
+      }
+      if (String(targetSchedule.nguoi_dung_id) !== String(userId)) {
+        throw new ServiceError(
+          'Bạn chỉ được phép tạo đơn dạy bù / đổi ca cho lịch giảng dạy của chính mình.',
+          403,
+          'SCHEDULE_NOT_OWNED'
+        );
+      }
+
+      await validateLeaveScheduleConflict({
+        targetSchedule,
+        substituteShiftId: validSubstituteShiftId,
+        substituteLecturerId: validSubstituteLecturerId,
+        conflictDateStr: makeupDateStr || startKey,
+        applicantId: userId,
+      });
+    } else if (validSubstituteLecturerId) {
       if (String(validSubstituteLecturerId) === String(userId)) {
         throw new ServiceError('Không thể tự chỉ định chính mình làm giảng viên dạy thay.', 400);
       }
@@ -118,89 +198,6 @@ const createLeaveRequestDomain = async ({
       if (!subUser || subUser.kich_hoat === false) {
         throw new ServiceError('Giảng viên dạy thay không tồn tại hoặc đang bị khóa.', 404);
       }
-
-      if (validScheduleId) {
-        const targetSchedule = await LichTrinh.findByPk(validScheduleId, {
-          attributes: ['id', 'thu_trong_tuan', 'gio_bat_dau', 'gio_ket_thuc'],
-        });
-        if (targetSchedule) {
-          const reqStartKey = getVietnamDateKey(start);
-          const reqEndKey = getVietnamDateKey(end);
-          const subSchedules = await LichTrinh.findAll({
-            where: {
-              nguoi_dung_id: validSubstituteLecturerId,
-              thu_trong_tuan: targetSchedule.thu_trong_tuan,
-              ngay_bat_dau: { [Op.lte]: reqEndKey },
-              ngay_ket_thuc: { [Op.gte]: reqStartKey },
-            },
-            attributes: ['id', 'gio_bat_dau', 'gio_ket_thuc'],
-          });
-
-          const tStart = timeStringToMinutes(targetSchedule.gio_bat_dau);
-          const tEnd = timeStringToMinutes(targetSchedule.gio_ket_thuc);
-          const hasSubConflict = subSchedules.some((s) => {
-            const sStart = timeStringToMinutes(s.gio_bat_dau);
-            const sEnd = timeStringToMinutes(s.gio_ket_thuc);
-            return Math.max(tStart, sStart) < Math.min(tEnd, sEnd);
-          });
-          if (hasSubConflict) {
-            throw new ServiceError(
-              `Giảng viên dạy thay (${subUser.ho_ten}) đã có lịch giảng dạy trùng giờ trong khoảng thời gian này.`,
-              409,
-              'SUBSTITUTE_LECTURER_CONFLICT'
-            );
-          }
-        }
-      }
-    }
-    const parsedLeavePeriods = Math.max(0, parseInt(so_tiet_nghi, 10) || 0);
-
-    if (canonicalType === 'doi_ca' && !validScheduleId) {
-      throw new ServiceError('Đơn xin đổi ca bắt buộc phải chọn lịch trình giảng dạy (lich_trinh_id).', 400);
-    }
-
-    if (canonicalType === 'day_bu') {
-      if (!validScheduleId) {
-        throw new ServiceError('Đơn đăng ký dạy bù bắt buộc phải chọn lịch trình giảng dạy (lich_trinh_id).', 400);
-      }
-
-      if (!ngay_day_bu) {
-        throw new ServiceError('Đơn đăng ký dạy bù bắt buộc phải chọn ngày dạy bù (ngay_day_bu).', 400);
-      }
-      const parsedMakeupDate = new Date(ngay_day_bu);
-      if (Number.isNaN(parsedMakeupDate.getTime())) {
-        throw new ServiceError('Ngày dạy bù không hợp lệ.', 400);
-      }
-      makeupDateStr = getVietnamDateKey(parsedMakeupDate);
-
-      const targetSchedule = await LichTrinh.findByPk(validScheduleId);
-      if (!targetSchedule) {
-        throw new ServiceError('Không tìm thấy lịch trình giảng dạy được chọn để dạy bù.', 404);
-      }
-      let makeupStartTime = targetSchedule.gio_bat_dau;
-      let makeupEndTime = targetSchedule.gio_ket_thuc;
-      if (validSubstituteShiftId) {
-        const subShift = await CaLamViec.findByPk(validSubstituteShiftId);
-        if (subShift) {
-          makeupStartTime = subShift.gio_bat_dau;
-          makeupEndTime = subShift.gio_ket_thuc;
-        }
-      }
-      const makeupWeekday = new Date(`${makeupDateStr}T12:00:00+07:00`).getDay();
-      await detectScheduleConflicts({
-        nguoi_dung_id: validSubstituteLecturerId || userId,
-        phong_hoc: targetSchedule.phong_hoc,
-        thu_trong_tuan: makeupWeekday,
-        tiet_bat_dau: targetSchedule.tiet_bat_dau,
-        so_tiet: targetSchedule.so_tiet,
-        gio_bat_dau: makeupStartTime,
-        gio_ket_thuc: makeupEndTime,
-        ngay_bat_dau: makeupDateStr,
-        ngay_ket_thuc: makeupDateStr,
-        nam_hoc: targetSchedule.nam_hoc,
-        hoc_ky: targetSchedule.hoc_ky,
-        excludeScheduleId: validScheduleId,
-      });
     }
 
     const normalizedReason = ly_do.trim();
@@ -208,7 +205,7 @@ const createLeaveRequestDomain = async ({
       throw new ServiceError('Lý do phải có từ 5 đến 500 ký tự.', 400);
     }
 
-    let finalAttachmentUrl = typeof tep_dinh_kem === 'string' ? tep_dinh_kem.trim() : null;
+    let finalAttachmentUrl = null;
     if (file) {
       if (file.buffer && file.buffer.length > 0) {
         const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
@@ -222,10 +219,28 @@ const createLeaveRequestDomain = async ({
       } else if (file.filename) {
         finalAttachmentUrl = `/api/tai-tep/tep/${file.filename}`;
       }
+    } else if (typeof tep_dinh_kem === 'string' && tep_dinh_kem.trim()) {
+      if (!isValidAttachmentUrl(tep_dinh_kem)) {
+        throw new ServiceError(
+          'Đường dẫn tệp đính kèm không hợp lệ (chỉ chấp nhận URL http/https hoặc tệp tải lên hệ thống).',
+          400,
+          'INVALID_ATTACHMENT_URL'
+        );
+      }
+      finalAttachmentUrl = tep_dinh_kem.trim();
     }
 
     const holidaySet = await getHolidayDateSet(start, end);
     const serverCalculatedDays = calculateLeaveDays(start, end, Boolean(isHalfDay), holidaySet);
+
+    const isTimeOffLeaveType = ['nghi_phep', 'nghi_om', 'viec_rieng'].includes(canonicalType);
+    if (isTimeOffLeaveType && serverCalculatedDays <= 0) {
+      throw new ServiceError(
+        'Khoảng thời gian xin nghỉ chỉ rơi vào Chủ nhật hoặc ngày nghỉ lễ (0 ngày làm việc).',
+        400,
+        'ZERO_LEAVE_DAYS'
+      );
+    }
 
     const isLeadership = hasAnyActiveRole(currentUser, ['truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong']);
     const initialStatus = isLeadership ? 'pending_bgh' : 'pending';
@@ -244,25 +259,50 @@ const createLeaveRequestDomain = async ({
         ho_ten: user.ho_ten,
       };
 
-      const overlappingLeave = await DonNghiPhep.findOne({
-        where: {
-          nguoi_dung_id: userId,
-          trang_thai: { [Op.in]: ['pending', 'pending_dean', 'pending_bgh', 'approved'] },
-          ngay_bat_dau: { [Op.lte]: endKey },
-          ngay_ket_thuc: { [Op.gte]: startKey },
-        },
-        transaction,
-      });
+      if (isTimeOffLeaveType) {
+        const overlappingLeave = await DonNghiPhep.findOne({
+          where: {
+            nguoi_dung_id: userId,
+            loai_don: { [Op.in]: ['nghi_phep', 'nghi_om', 'viec_rieng'] },
+            trang_thai: { [Op.in]: [...PENDING_LEAVE_STATUSES, 'approved'] },
+            ngay_bat_dau: { [Op.lte]: endKey },
+            ngay_ket_thuc: { [Op.gte]: startKey },
+          },
+          transaction,
+        });
 
-      if (overlappingLeave) {
-        const statusDesc = overlappingLeave.trang_thai === 'approved' ? 'đã được phê duyệt' : 'đang chờ xét duyệt';
-        const startFormatted = new Date(overlappingLeave.ngay_bat_dau).toLocaleDateString('vi-VN');
-        const endFormatted = new Date(overlappingLeave.ngay_ket_thuc).toLocaleDateString('vi-VN');
-        throw new ServiceError(
-          `Bạn đã có một đơn nghỉ (${statusDesc}) từ ngày ${startFormatted} đến ngày ${endFormatted} trùng với thời gian này.`,
-          409,
-          'OVERLAPPING_LEAVE_REQUEST'
-        );
+        if (overlappingLeave) {
+          const statusDesc = overlappingLeave.trang_thai === 'approved' ? 'đã được phê duyệt' : 'đang chờ xét duyệt';
+          const startFormatted = new Date(overlappingLeave.ngay_bat_dau).toLocaleDateString('vi-VN');
+          const endFormatted = new Date(overlappingLeave.ngay_ket_thuc).toLocaleDateString('vi-VN');
+          throw new ServiceError(
+            `Bạn đã có một đơn nghỉ (${statusDesc}) từ ngày ${startFormatted} đến ngày ${endFormatted} trùng với thời gian này.`,
+            409,
+            'OVERLAPPING_LEAVE_REQUEST'
+          );
+        }
+      } else if (canonicalType === 'day_bu' || canonicalType === 'doi_ca') {
+        // Cho phép nộp nhiều đơn dạy bù/đổi ca khác lịch trình trong cùng một ngày; chỉ chặn trùng cùng lớp
+        const overlappingScheduleChange = await DonNghiPhep.findOne({
+          where: {
+            nguoi_dung_id: userId,
+            loai_don: canonicalType,
+            lich_trinh_id: validScheduleId,
+            trang_thai: { [Op.in]: [...PENDING_LEAVE_STATUSES, 'approved'] },
+            ngay_bat_dau: { [Op.lte]: endKey },
+            ngay_ket_thuc: { [Op.gte]: startKey },
+          },
+          transaction,
+        });
+
+        if (overlappingScheduleChange) {
+          const statusDesc = overlappingScheduleChange.trang_thai === 'approved' ? 'đã được phê duyệt' : 'đang chờ xét duyệt';
+          throw new ServiceError(
+            `Lớp học này đã có đơn ${canonicalType === 'day_bu' ? 'dạy bù' : 'đổi ca'} (${statusDesc}) trong khoảng thời gian này.`,
+            409,
+            'OVERLAPPING_LEAVE_REQUEST'
+          );
+        }
       }
 
       if (canonicalType === 'nghi_phep') {
@@ -313,6 +353,9 @@ const createLeaveRequestDomain = async ({
           ngay_day_bu: makeupDateStr,
           tep_dinh_kem: finalAttachmentUrl,
           trang_thai: initialStatus,
+          nhat_ky_id: canonicalType === 'giai_trinh_thieu_check_out' && nhat_ky_id && isValidUuid(String(nhat_ky_id))
+            ? String(nhat_ky_id)
+            : null,
         },
         { transaction }
       );
@@ -363,7 +406,7 @@ const fetchLeaveRequests = async ({ trang_thai, loai_don, nguoi_dung_id, current
 
   if (trang_thai && typeof trang_thai === 'string') {
     if (trang_thai === 'pending') {
-      where.trang_thai = { [Op.in]: ['pending', 'pending_dean', 'pending_bgh'] };
+      where.trang_thai = { [Op.in]: PENDING_LEAVE_STATUSES };
     } else {
       where.trang_thai = trang_thai;
     }
@@ -497,6 +540,21 @@ const fetchLeaveBalance = async (nguoi_dung_id, currentUser, nam) => {
   };
 };
 
+// Lấy danh sách giảng viên đang công tác phục vụ chọn người dạy thay khi đổi ca
+const fetchSubstituteLecturers = async (currentUser) => {
+  const currentUserId = currentUser?.id;
+  return NguoiDung.findAll({
+    where: {
+      kich_hoat: true,
+      trang_thai_lam_viec: 'dang_lam_viec',
+      vai_tro_chinh: { [Op.notIn]: ['admin', 'kiem_toan', 'ke_toan', 'quan_ly_xe'] },
+      ...(currentUserId ? { id: { [Op.ne]: currentUserId } } : {}),
+    },
+    attributes: ['id', 'ho_ten', 'ma_can_bo', 'vai_tro_chinh', 'don_vi_chinh_id'],
+    order: [['ho_ten', 'ASC']],
+  });
+};
+
 module.exports = {
   ServiceError,
   calculateLeaveDays,
@@ -505,5 +563,6 @@ module.exports = {
   fetchLeaveRequests,
   fetchLeaveRequestById,
   fetchLeaveBalance,
+  fetchSubstituteLecturers,
   ...pheDuyetDonService,
 };

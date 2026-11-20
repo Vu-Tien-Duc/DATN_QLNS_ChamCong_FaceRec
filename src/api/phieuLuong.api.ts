@@ -13,38 +13,22 @@ export interface GiamTruItem {
   so_tien?: number;
 }
 
-export interface KhoanDieuChinhItem {
-  reason: string;
-  amount: number;
+export interface GioGiangData {
+  dinh_muc_goc?: number;
+  gio_quy_doi_tich_luy?: number;
+  gio_vuot_dinh_muc?: number;
+  don_gia_gio_chuan?: number;
+  thu_lao_vuot_gio?: number;
 }
 
-export interface TeachingHoursData {
-  baseQuota?: number;
-  reductionRatio?: number;
-  adjustedQuota?: number;
-  accumulatedStandardHours?: number;
-  overQuotaHours?: number;
-  hourlyRate?: number;
-  overQuotaRemuneration?: number;
-  advancedPayment?: number;
-}
-
-export interface InsuranceData {
-  socialInsurance?: number;
-  healthInsurance?: number;
-  unemploymentInsurance?: number;
-  totalInsurance?: number;
+export interface BaoHiemData {
   bhxh?: number;
   bhyt?: number;
   bhtn?: number;
   tong_bao_hiem?: number;
 }
 
-export interface TaxTncnData {
-  personalDeduction?: number;
-  dependentDeduction?: number;
-  taxableIncome?: number;
-  taxAmount?: number;
+export interface ThueTncnData {
   giam_tru_ban_than?: number;
   giam_tru_phu_thuoc?: number;
   thu_nhap_tinh_thue?: number;
@@ -52,31 +36,44 @@ export interface TaxTncnData {
 }
 
 export interface PayrollRecord {
-  id?: string;
-  nguoi_dung_id?: string;
-  thang?: number;
-  nam?: number;
+  id: string;
+  nguoi_dung_id: string;
+  thang: number;
+  nam: number;
   nguoi_lap_id?: string;
   nguoi_duyet_id?: string | null;
   thoi_gian_duyet?: string | null;
-  luong_co_ban?: number;
-  he_so_luong?: number;
-  so_cong_chuan?: number;
-  so_cong_thuc_te?: number;
-  so_tiet_nghia_vu?: number;
-  so_tiet_thuc_day?: number;
-  so_tiet_vuot_gio?: number;
-  don_gia_tiet_vuot?: number;
-  tien_vuot_gio?: number;
-  tong_phu_cap?: number;
-  tong_giam_tru?: number;
-  dong_bao_hiem?: number;
-  thue_thu_nhap_ca_nhan?: number;
-  thuc_linh?: number;
-  trang_thai?: 'nhap' | 'cho_duyet' | 'da_duyet' | 'da_chi_tra' | string;
-  ghi_chu?: string;
+  luong_co_ban: number;
+  luong_co_so?: number;
+  he_so_luong: number;
+  luong_chinh?: number;
+  phu_cap_chuc_vu?: number;
+  phu_cap_tham_nien?: number;
+  phu_cap_uu_dai_nghe?: number;
+  so_cong_chuan: number;
+  so_cong_thuc_te: number;
+  so_tiet_nghia_vu: number;
+  so_tiet_thuc_day: number;
+  so_tiet_vuot_gio: number;
+  don_gia_tiet_vuot: number;
+  tien_vuot_gio: number;
+  tong_phu_cap: number;
+  tong_giam_tru: number;
+  dong_bao_hiem: number;
+  thue_thu_nhap_ca_nhan: number;
+  tong_thu_nhap_gross?: number;
+  thuc_linh: number;
+  thuc_linh_net?: number;
+  trang_thai: 'nhap' | 'cho_duyet' | 'da_duyet' | 'da_chi_tra';
+  da_khoa?: boolean;
+  ghi_chu?: string | null;
   tao_luc?: string;
   cap_nhat_luc?: string;
+  danh_sach_phu_cap?: PhuCapItem[];
+  cac_khoan_giam_tru?: GiamTruItem[];
+  gio_giang?: GioGiangData;
+  bao_hiem?: BaoHiemData;
+  thue_tncn?: ThueTncnData;
   nguoi_dung?: {
     id?: string;
     ho_ten?: string;
@@ -96,6 +93,7 @@ export interface PayrollRecord {
       chuc_vu?: string;
       he_so_luong?: number;
       so_nguoi_phu_thuoc?: number;
+      loai_nhan_su?: string;
       loai_hop_dong?: string;
       ngach_luong?: string;
     } | null;
@@ -110,95 +108,29 @@ export interface PayrollRecord {
     ho_ten?: string;
     email?: string;
   } | null;
-  /** @deprecated Dùng id */
-  _id: string;
-  /** @deprecated Dùng nguoi_dung hoặc nguoi_dung_id */
-  userId: {
-    id?: string;
-    _id: string;
-    ho_ten?: string;
-    fullName: string;
-    email: string;
-    ma_can_bo?: string;
-    staffCode?: string;
-    vai_tro_chinh?: string;
-    role?: string;
-    anh_dai_dien?: string;
-    avatar?: string;
-    hoc_ham?: string;
-    academicRank?: string;
-    hoc_vi?: string;
-    degree?: string;
-    chuc_vu?: string;
-    position?: string;
-    don_vi_chinh_id?: string;
-    departmentId?: {
-      _id: string;
-      name: string;
-      code?: string;
-    } | string;
-  };
-  /** @deprecated Dùng thang */
-  month: number;
-  /** @deprecated Dùng nam */
-  year: number;
-  /** @deprecated Dùng he_so_luong */
-  salaryCoefficient: number;
-  /** @deprecated Dùng luong_co_ban */
-  baseSalary: number;
-  primarySalary: number;
-  positionAllowance?: number;
-  seniorityAllowance?: number;
-  vocationalAllowance?: number;
-  allowances?: PhuCapItem[];
-  deductions?: GiamTruItem[];
-  /** @deprecated Dùng tong_giam_tru */
-  totalDeductions?: number;
-  bonusItems?: KhoanDieuChinhItem[];
-  deductionItems?: KhoanDieuChinhItem[];
-  teachingHours?: TeachingHoursData;
-  grossIncome: number;
-  /** @deprecated Dùng so_cong_chuan */
-  standardWorkDays?: number;
-  /** @deprecated Dùng so_cong_thuc_te */
-  actualWorkDays?: number;
-  createdByUser?: {
-    _id?: string;
-    fullName?: string;
-    email?: string;
-  };
-  approvedByUser?: {
-    _id?: string;
-    fullName?: string;
-    email?: string;
-  };
-  /** @deprecated Dùng thoi_gian_duyet */
-  approvedAt?: string | null;
-  /** @deprecated Dùng ghi_chu */
-  notes?: string;
-  insurance?: InsuranceData;
-  personalIncomeTax?: TaxTncnData;
-  thue_tncn?: TaxTncnData;
-  /** @deprecated Dùng thuc_linh */
-  netSalary: number;
-  /** @deprecated Dùng trang_thai */
-  status: 'nhap' | 'cho_duyet' | 'da_duyet' | 'da_chi_tra' | string;
-  isLocked?: boolean;
-  lockedAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
 export interface PayrollSummaryData {
-  month: number;
-  year: number;
-  totalRecords: number;
-  totalNetSalary: number;
-  totalGrossSalary: number;
-  totalTax: number;
-  totalInsurance: number;
-  totalOvertimePay: number;
-  isLocked: boolean;
+  thang: number;
+  nam: number;
+  tong_ban_ghi: number;
+  tong_thuc_linh: number;
+  tong_thu_nhap: number;
+  tong_thue_tncn: number;
+  tong_bao_hiem: number;
+  tong_vuot_gio: number;
+  so_phieu_da_khoa?: number;
+  da_khoa: boolean;
+  da_khoa_mot_phan?: boolean;
+}
+
+export interface PayrollExcelExportData {
+  tieu_de: string;
+  thang: number;
+  nam: number;
+  tong_nhan_su: number;
+  headers: Array<{ key: string; label: string }>;
+  rows: Array<Record<string, any>>;
 }
 
 export interface PayrollQueryParams {
@@ -262,11 +194,14 @@ export const payrollApi = {
     const qs = query.toString();
     const url = `/phieu-luong/cua-toi${qs ? `?${qs}` : ''}`;
     const res = await apiClient.get<any>(url);
-    return res.data?.data || res.data || null;
+    if (res.data && Object.prototype.hasOwnProperty.call(res.data, 'data')) {
+      return res.data.data ?? null;
+    }
+    return res.data || null;
   },
 
   /**
-   * Lấy số liệu thống kê tổng hợp quỹ lương tháng (Admin, Hiệu trưởng, Trưởng khoa)
+   * Lấy số liệu thống kê tổng hợp quỹ lương tháng (Admin, BGH, Kế toán, Trưởng khoa)
    */
   async getPayrollSummary(month: number, year: number, departmentId?: string): Promise<PayrollSummaryData> {
     const query = new URLSearchParams({
@@ -275,18 +210,22 @@ export const payrollApi = {
     });
     if (departmentId) query.append('don_vi_id', departmentId);
     const res = await apiClient.get<any>(`/phieu-luong/tong-hop?${query.toString()}`);
+    if (res.data && Object.prototype.hasOwnProperty.call(res.data, 'data') && res.data.data) {
+      return res.data.data;
+    }
     return (
-      res.data?.data ||
       res.data || {
-        month,
-        year,
-        totalRecords: 0,
-        totalNetSalary: 0,
-        totalGrossSalary: 0,
-        totalTax: 0,
-        totalInsurance: 0,
-        totalOvertimePay: 0,
-        isLocked: false,
+        thang: month,
+        nam: year,
+        tong_ban_ghi: 0,
+        tong_thuc_linh: 0,
+        tong_thu_nhap: 0,
+        tong_thue_tncn: 0,
+        tong_bao_hiem: 0,
+        tong_vuot_gio: 0,
+        so_phieu_da_khoa: 0,
+        da_khoa: false,
+        da_khoa_mot_phan: false,
       }
     );
   },
@@ -296,7 +235,7 @@ export const payrollApi = {
    */
   async generatePayroll(payload: GeneratePayrollPayload): Promise<any> {
     const res = await apiClient.post<any>('/phieu-luong/khoi-tao', payload);
-    return res.data?.data || res.data;
+    return res.data?.data ?? res.data;
   },
 
   /**
@@ -307,31 +246,31 @@ export const payrollApi = {
     const res = payload.id
       ? await apiClient.put<any>(url, payload)
       : await apiClient.post<any>(url, payload);
-    return res.data?.data || res.data;
+    return res.data?.data ?? res.data;
   },
 
   /**
-   * Mở khóa sổ lương tháng (Admin/BGH - bắt buộc có lý do giải trình)
+   * Mở khóa sổ lương tháng (Admin/BGH/Kế toán - bắt buộc có lý do giải trình)
    */
   async unlockPayroll(payload: UnlockPayrollPayload): Promise<any> {
     const url = payload.id ? `/phieu-luong/${payload.id}/mo-khoa` : '/phieu-luong/mo-khoa';
     const res = payload.id
       ? await apiClient.put<any>(url, payload)
       : await apiClient.post<any>(url, payload);
-    return res.data?.data || res.data;
+    return res.data?.data ?? res.data;
   },
 
   /**
    * Trích xuất dữ liệu bảng lương định dạng Excel
    */
-  async exportExcel(month: number, year: number, departmentId?: string): Promise<any> {
+  async exportExcel(month: number, year: number, departmentId?: string): Promise<PayrollExcelExportData> {
     const query = new URLSearchParams();
     query.append('thang', String(month));
     query.append('nam', String(year));
     if (departmentId) query.append('don_vi_id', departmentId);
 
     const res = await apiClient.get<any>(`/phieu-luong/xuat-excel?${query.toString()}`);
-    return res.data?.data || res.data;
+    return res.data?.data ?? res.data;
   },
 
   /**
@@ -339,6 +278,6 @@ export const payrollApi = {
    */
   async exportPdf(id: string): Promise<any> {
     const res = await apiClient.get<any>(`/phieu-luong/${id}/xuat-pdf`);
-    return res.data?.data || res.data;
+    return res.data?.data ?? res.data;
   },
 };

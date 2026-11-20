@@ -2,18 +2,38 @@
 const express = require('express');
 const router = express.Router();
 const { getAttendanceReport, getMonthlyReport, getExportReportData } = require('../controllers/baoCao.controller');
-const { verifyToken, verifyRole } = require('../middlewares/xacThuc.middleware');
+const { verifyToken, requireAnyPermission } = require('../middlewares/xacThuc.middleware');
+const { PERMISSIONS } = require('../config/permissions');
 
 router.use(verifyToken);
 
-// Báo cáo tổng hợp chấm công: Cá nhân xem của mình, Trưởng khoa xem của khoa, BGH/Admin/Kế toán xem toàn trường
-router.get('/cham-cong', verifyRole(['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa', 'giang_vien', 'nhan_vien']), getAttendanceReport);
+// Báo cáo tổng hợp chấm công: Cá nhân xem của mình, lãnh đạo đơn vị xem đơn vị, BGH/Admin/TCCB/Kế toán/Kiểm toán xem toàn trường
+router.get(
+  '/cham-cong',
+  requireAnyPermission(
+    PERMISSIONS.CONG_XEM_BAN_THAN,
+    PERMISSIONS.CONG_XEM_DON_VI,
+    PERMISSIONS.CONG_XEM_TOAN_TRUONG
+  ),
+  getAttendanceReport
+);
 
-// Báo cáo chi tiết theo tháng: Dành cho Admin, BGH, Kế toán và Trưởng khoa
-router.get('/hang-thang', verifyRole(['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']), getMonthlyReport);
+// Báo cáo chi tiết theo tháng: Dành cho cấp quản lý đơn vị và quản trị cấp trường
+router.get(
+  '/hang-thang',
+  requireAnyPermission(PERMISSIONS.CONG_XEM_DON_VI, PERMISSIONS.CONG_XEM_TOAN_TRUONG),
+  getMonthlyReport
+);
 
 // Dữ liệu trích xuất báo cáo Excel 5 Sheets
-router.get('/du-lieu-xuat', verifyRole(['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa', 'giang_vien', 'nhan_vien']), getExportReportData);
+router.get(
+  '/du-lieu-xuat',
+  requireAnyPermission(
+    PERMISSIONS.CONG_XEM_BAN_THAN,
+    PERMISSIONS.CONG_XEM_DON_VI,
+    PERMISSIONS.CONG_XEM_TOAN_TRUONG
+  ),
+  getExportReportData
+);
 
 module.exports = router;
-

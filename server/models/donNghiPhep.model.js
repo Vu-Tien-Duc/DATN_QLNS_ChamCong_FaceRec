@@ -3,7 +3,7 @@ const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
 const { uuidPk, uuidFk, decimalColumn } = require('./modelHelpers');
 
-const LOAI_DON = ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om', 'viec_rieng', 'giai_trinh_cong'];
+const LOAI_DON = ['nghi_phep', 'day_bu', 'doi_ca', 'nghi_om', 'viec_rieng', 'giai_trinh_cong', 'giai_trinh_thieu_check_out'];
 const TRANG_THAI_DON = ['pending', 'pending_dean', 'pending_bgh', 'approved', 'rejected', 'cancelled'];
 
 class DonNghiPhep extends Model {}
@@ -34,6 +34,9 @@ DonNghiPhep.init(
     giang_vien_day_thay_id: uuidFk(true),
     ngay_day_bu: { type: DataTypes.DATEONLY, allowNull: true, defaultValue: null },
     tep_dinh_kem: { type: DataTypes.STRING(500), allowNull: true, defaultValue: null },
+    // Giải trình thiếu check-out: ID bản ghi nhật ký và số tiết xác nhận của người duyệt
+    nhat_ky_id: uuidFk(true),
+    so_tiet_xac_nhan: { type: DataTypes.INTEGER, allowNull: true, defaultValue: null, validate: { min: 0 } },
     trang_thai: {
       type: DataTypes.STRING(50),
       allowNull: false,

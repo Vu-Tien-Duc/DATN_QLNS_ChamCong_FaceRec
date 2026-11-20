@@ -80,12 +80,12 @@ import { formatVND, formatDateVN } from '../../utils/dinhDang';
 
 function getInsuranceDetail(p?: PayrollRecord | null) {
   if (!p) return { bhxh: 0, bhyt: 0, bhtn: 0, total: 0 };
-  const ins: any = p.insurance || (p as any).bao_hiem || {};
+  const ins = p.bao_hiem || {};
   return {
-    bhxh: ins.socialInsurance ?? ins.bhxh ?? 0,
-    bhyt: ins.healthInsurance ?? ins.bhyt ?? 0,
-    bhtn: ins.unemploymentInsurance ?? ins.bhtn ?? 0,
-    total: ins.totalInsurance ?? ins.tong_bao_hiem ?? 0,
+    bhxh: Number(ins.bhxh ?? 0),
+    bhyt: Number(ins.bhyt ?? 0),
+    bhtn: Number(ins.bhtn ?? 0),
+    total: Number(ins.tong_bao_hiem ?? p.dong_bao_hiem ?? 0),
   };
 }
 
@@ -112,11 +112,9 @@ const isSystemAdminUser = (u: any): boolean => {
   );
 };
 
-
 function getTaxAmount(p?: PayrollRecord | null): number {
   if (!p) return 0;
-  const pit: any = p.personalIncomeTax || p.thue_tncn || {};
-  return pit.taxAmount ?? pit.tien_thue ?? 0;
+  return Number(p.thue_tncn?.tien_thue ?? p.thue_thu_nhap_ca_nhan ?? 0);
 }
 
 const ALLOWANCE_LABELS: Record<string, string> = {
@@ -130,7 +128,7 @@ const ALLOWANCE_LABELS: Record<string, string> = {
 
 function getAllowanceRows(p?: PayrollRecord | null): Array<{ label: string; amount: number }> {
   if (!p) return [];
-  const rawList = p.allowances || [];
+  const rawList = p.danh_sach_phu_cap || [];
   if (rawList.length > 0) {
     return rawList.map((item) => {
       const code = String(item.loai_phu_cap || 'KHAC').toUpperCase();
@@ -141,15 +139,15 @@ function getAllowanceRows(p?: PayrollRecord | null): Array<{ label: string; amou
     });
   }
   return [
-    { label: 'Phụ cấp chức vụ lãnh đạo', amount: Number(p.positionAllowance || 0) },
-    { label: 'Phụ cấp thâm niên nghề giáo', amount: Number(p.seniorityAllowance || 0) },
-    { label: 'Phụ cấp ưu đãi nhà giáo', amount: Number(p.vocationalAllowance || 0) },
-  ];
+    { label: 'Phụ cấp chức vụ lãnh đạo', amount: Number(p.phu_cap_chuc_vu || 0) },
+    { label: 'Phụ cấp thâm niên nghề giáo', amount: Number(p.phu_cap_tham_nien || 0) },
+    { label: 'Phụ cấp ưu đãi nhà giáo', amount: Number(p.phu_cap_uu_dai_nghe || 0) },
+  ].filter((item) => item.amount > 0);
 }
 
 function getDeductionRows(p?: PayrollRecord | null): Array<{ label: string; amount: number }> {
   if (!p) return [];
-  const rawList = p.deductions || [];
+  const rawList = p.cac_khoan_giam_tru || [];
   return rawList.map((item) => ({
     label: item.ly_do || 'Khoản giảm trừ lương',
     amount: Number(item.so_tien || 0),
@@ -159,12 +157,16 @@ function getDeductionRows(p?: PayrollRecord | null): Array<{ label: string; amou
 function ChiTietBangLuong({ payroll }: { payroll: PayrollRecord }) {
   const ins = getInsuranceDetail(payroll);
   const tax = getTaxAmount(payroll);
-  const actualDays = payroll.actualWorkDays ?? 0;
-  const standardDays = payroll.standardWorkDays ?? 22;
-  const actualHours = payroll.teachingHours?.accumulatedStandardHours ?? 0;
-  const quotaHours = payroll.teachingHours?.adjustedQuota ?? payroll.teachingHours?.baseQuota ?? 0;
-  const overQuotaHours = payroll.teachingHours?.overQuotaHours ?? 0;
-  const hourlyRate = payroll.teachingHours?.hourlyRate ?? 0;
+  const actualDays = payroll.so_cong_thuc_te ?? 0;
+  const standardDays = payroll.so_cong_chuan ?? 22;
+  const actualHours = payroll.gio_giang?.gio_quy_doi_tich_luy ?? payroll.so_tiet_thuc_day ?? 0;
+  const quotaHours = payroll.gio_giang?.dinh_muc_goc ?? payroll.so_tiet_nghia_vu ?? 0;
+  const overQuotaHours = payroll.gio_giang?.gio_vuot_dinh_muc ?? payroll.so_tiet_vuot_gio ?? 0;
+  const hourlyRate = payroll.gio_giang?.don_gia_gio_chuan ?? payroll.don_gia_tiet_vuot ?? 0;
+  const overQuotaRemuneration = payroll.gio_giang?.thu_lao_vuot_gio ?? payroll.tien_vuot_gio ?? 0;
+  const primarySalary = payroll.luong_chinh ?? Math.max(0, Math.round((payroll.luong_co_ban || 0) * (payroll.he_so_luong ?? 1)) - (payroll.tong_giam_tru || 0));
+  const grossIncome = payroll.tong_thu_nhap_gross ?? (primarySalary + (payroll.tong_phu_cap || 0) + overQuotaRemuneration);
+  const netSalary = payroll.thuc_linh_net ?? payroll.thuc_linh ?? 0;
 
   return (
     <div className="space-y-4 text-xs">
@@ -240,7 +242,7 @@ function ChiTietBangLuong({ payroll }: { payroll: PayrollRecord }) {
               Lương chính (Hệ số: {payroll.he_so_luong}):
             </span>
             <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
-              {formatVND(payroll.primarySalary)}
+              {formatVND(primarySalary)}
             </span>
           </div>
           {getAllowanceRows(payroll).map((item, idx) => (
@@ -256,14 +258,14 @@ function ChiTietBangLuong({ payroll }: { payroll: PayrollRecord }) {
               Vượt giờ giảng dạy ({overQuotaHours} giờ × {formatVND(hourlyRate)}):
             </span>
             <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
-              +{formatVND(payroll.teachingHours?.overQuotaRemuneration)}
+              +{formatVND(overQuotaRemuneration)}
             </span>
           </div>
         </div>
         <div className="flex justify-between py-2 px-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl font-bold border border-slate-200/80 dark:border-slate-700/60">
           <span className="text-slate-800 dark:text-slate-200">TỔNG THU NHẬP GROSS:</span>
           <span className="font-mono text-indigo-700 dark:text-indigo-400 text-sm">
-            {formatVND(payroll.grossIncome)}
+            {formatVND(grossIncome)}
           </span>
         </div>
       </div>
@@ -292,11 +294,11 @@ function ChiTietBangLuong({ payroll }: { payroll: PayrollRecord }) {
                 Thuế thu nhập cá nhân (Thuế TNCN lũy tiến 5 bậc):
               </span>
               {(() => {
-                const pit: any = payroll.personalIncomeTax || payroll.thue_tncn;
+                const pit = payroll.thue_tncn;
                 if (!pit) return null;
-                const selfDed = pit.personalDeduction ?? pit.giam_tru_ban_than;
-                const depDed = pit.dependentDeduction ?? pit.giam_tru_phu_thuoc;
-                const taxable = pit.taxableIncome ?? pit.thu_nhap_tinh_thue;
+                const selfDed = pit.giam_tru_ban_than;
+                const depDed = pit.giam_tru_phu_thuoc;
+                const taxable = pit.thu_nhap_tinh_thue;
                 if (selfDed === undefined && taxable === undefined) return null;
                 return (
                   <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">
@@ -329,7 +331,7 @@ function ChiTietBangLuong({ payroll }: { payroll: PayrollRecord }) {
             <span className="text-[11px] text-slate-400">Thanh toán qua tài khoản ngân hàng</span>
           </div>
           <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 text-xl">
-            {formatVND(payroll.netSalary)}
+            {formatVND(netSalary)}
           </span>
         </div>
       </div>
@@ -343,11 +345,6 @@ const STATUS_CONFIG: Record<
 > = {
   nhap: {
     label: 'Bản Nháp',
-    badgeCls: 'bg-slate-100 text-slate-700 border border-slate-200',
-    dotColor: 'bg-amber-500',
-  },
-  du_thao: {
-    label: 'Dự Thảo',
     badgeCls: 'bg-slate-100 text-slate-700 border border-slate-200',
     dotColor: 'bg-amber-500',
   },
@@ -366,11 +363,6 @@ const STATUS_CONFIG: Record<
     badgeCls: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
     dotColor: 'bg-emerald-500',
   },
-  da_thanh_toan: {
-    label: 'Đã Chi Trả',
-    badgeCls: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    dotColor: 'bg-emerald-500',
-  },
 };
 
 export const Payroll: React.FC = () => {
@@ -378,13 +370,17 @@ export const Payroll: React.FC = () => {
 
   // Role permissions
   const isSystemAdmin = useMemo(() => isAdmin(user), [user]);
+  const hasNoPersonalPayslip = useMemo(
+    () => isSystemAdmin || hasRole(user, ['bgh']),
+    [isSystemAdmin, user]
+  );
 
   const canManagePayroll = useMemo(() => {
     return hasRole(user, ['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']);
   }, [user]);
 
   const canGeneratePayroll = useMemo(() => {
-    return hasRole(user, ['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']);
+    return hasRole(user, ['admin', 'ke_toan']);
   }, [user]);
 
   const canLockOrUnlock = useMemo(() => {
@@ -397,17 +393,15 @@ export const Payroll: React.FC = () => {
   const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
 
   // Tabs: 'all-payrolls' (Toàn trường) | 'my-payroll' (Phiếu lương của tôi)
-  // Admin IT không có bảng lương cá nhân; Giảng viên/Nhân viên không xem được bảng lương toàn trường
   const [activeTab, setActiveTab] = useState<'all-payrolls' | 'my-payroll'>(
-    isSystemAdmin || canManagePayroll ? 'all-payrolls' : 'my-payroll'
+    hasNoPersonalPayslip || canManagePayroll ? 'all-payrolls' : 'my-payroll'
   );
 
-  // Đảm bảo Admin luôn ở tab all-payrolls
   useEffect(() => {
-    if (isSystemAdmin && activeTab === 'my-payroll') {
+    if (hasNoPersonalPayslip && activeTab === 'my-payroll') {
       setActiveTab('all-payrolls');
     }
-  }, [isSystemAdmin, activeTab]);
+  }, [hasNoPersonalPayslip, activeTab]);
 
   // Filters
   const [selectedDepartment, setSelectedDepartment] = useState<string>('ALL');
@@ -536,73 +530,48 @@ export const Payroll: React.FC = () => {
     setCurrentPage(1);
   };
 
-  // Xuất file Excel (.xlsx) bảng lương tài chính chuẩn hóa
-  const handleExportExcel = () => {
-    if (filteredPayrolls.length === 0) {
-      toast.error('Không có dữ liệu bảng lương để xuất file Excel.');
-      return;
-    }
-
+  // Xuất file Excel (.xlsx) bảng lương thông qua dữ liệu đã chuẩn hóa & khử công thức từ Backend
+  const handleExportExcel = async () => {
     try {
-      const dataRows = filteredPayrolls.map((p, idx) => {
-        const u = p.nguoi_dung || ({} as any);
-        const deptName = u.don_vi_chinh?.ten_phong_ban || '—';
-        const ins = getInsuranceDetail(p);
-        const tax = getTaxAmount(p);
-        const positionAllowance = p.positionAllowance || 0;
-        const seniorityAllowance = p.seniorityAllowance || 0;
-        const vocationalAllowance = p.vocationalAllowance || 0;
-        const otherAllowance = (p as any).phu_cap_khac || 0;
-        const totalAllowance = positionAllowance + seniorityAllowance + vocationalAllowance + otherAllowance;
-        const overQuota = p.teachingHours?.overQuotaRemuneration || 0;
-        const statusKey = p.trang_thai || 'nhap';
+      const exportData = await payrollApi.exportExcel(
+        selectedMonth,
+        selectedYear,
+        selectedDepartment !== 'ALL' ? selectedDepartment : undefined
+      );
+      const rawRows = Array.isArray(exportData?.rows) ? exportData.rows : [];
+      const kw = searchKeyword.trim().toLowerCase();
+      const filteredRows = kw
+        ? rawRows.filter((row) =>
+            String(row.ho_ten || '').toLowerCase().includes(kw) ||
+            String(row.ma_can_bo || '').toLowerCase().includes(kw)
+          )
+        : rawRows;
 
-        return {
-          'STT': idx + 1,
-          'Mã Cán Bộ': u.ma_can_bo || '--',
-          'Họ Và Tên': u.ho_ten || '--',
-          'Khoa / Đơn Vị': deptName,
-          'Chức Vụ': u.ho_so?.chuc_vu || '--',
-          'Học Vị': u.ho_so?.hoc_vi || '--',
-          'Ngạch Lương': u.ho_so?.ngach_luong || '--',
-          'Hệ Số Lương': p.he_so_luong || 2.34,
-          'Lương Cơ Sở': p.luong_co_ban || 0,
-          'Lương Chính': p.primarySalary || 0,
-          'Tổng Phụ Cấp': totalAllowance,
-          'Thù Lao Vượt Giờ': overQuota,
-          'Tổng Thu Nhập (Gross)': p.grossIncome || 0,
-          'BHXH': ins.bhxh || 0,
-          'BHYT': ins.bhyt || 0,
-          'BHTN': ins.bhtn || 0,
-          'Tổng Bảo Hiểm': ins.total || 0,
-          'Thuế TNCN': tax,
-          'Thực Lĩnh (Net)': p.thuc_linh || 0,
-          'Trạng Thái': STATUS_CONFIG[statusKey]?.label || statusKey,
-        };
+      if (filteredRows.length === 0) {
+        toast.error('Không có dữ liệu bảng lương để xuất file Excel.');
+        return;
+      }
+
+      const headers = Array.isArray(exportData?.headers) ? exportData.headers : [];
+      const dataRows = filteredRows.map((row, idx) => {
+        const sheetRow: Record<string, any> = {};
+        headers.forEach((h) => {
+          if (h.key === 'stt') {
+            sheetRow[h.label] = idx + 1;
+          } else if (h.key === 'trang_thai') {
+            const st = String(row.trang_thai || 'nhap');
+            sheetRow[h.label] = STATUS_CONFIG[st]?.label || st;
+          } else {
+            sheetRow[h.label] = row[h.key] ?? '';
+          }
+        });
+        return sheetRow;
       });
 
       const ws = XLSX.utils.json_to_sheet(dataRows);
-      ws['!cols'] = [
-        { wch: 6 },
-        { wch: 14 },
-        { wch: 26 },
-        { wch: 26 },
-        { wch: 18 },
-        { wch: 14 },
-        { wch: 15 },
-        { wch: 12 },
-        { wch: 16 },
-        { wch: 16 },
-        { wch: 18 },
-        { wch: 22 },
-        { wch: 14 },
-        { wch: 14 },
-        { wch: 14 },
-        { wch: 20 },
-        { wch: 16 },
-        { wch: 20 },
-        { wch: 16 },
-      ];
+      ws['!cols'] = headers.map((h) => ({
+        wch: h.key === 'stt' ? 6 : ['ho_ten', 'ten_phong_ban', 'tong_thu_nhap_gross', 'thuc_linh_net'].includes(h.key) ? 24 : 16,
+      }));
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, `Bảng Lương T${selectedMonth}_${selectedYear}`);
@@ -610,10 +579,22 @@ export const Payroll: React.FC = () => {
       const fileName = `Bang_Luong_NTU_T${selectedMonth}_${selectedYear}.xlsx`;
       XLSX.writeFile(wb, fileName);
       toast.success('Đã xuất Bảng lương (.xlsx) thành công!');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Lỗi khi xuất bảng lương Excel:', err);
-      toast.error('Lỗi khi đóng gói tệp Excel.');
+      toast.error(err.response?.data?.message || 'Lỗi khi đóng gói tệp Excel.');
     }
+  };
+
+  // In phiếu lương kèm nạp dữ liệu bản in chuẩn hóa từ Backend
+  const handlePrintPayslip = async (payrollId?: string) => {
+    if (payrollId) {
+      try {
+        await payrollApi.exportPdf(payrollId);
+      } catch {
+        // Fallback giữ nguyên chế độ in trình duyệt nếu gọi API thất bại
+      }
+    }
+    window.print();
   };
 
   // Generate Payroll
@@ -643,7 +624,7 @@ export const Payroll: React.FC = () => {
   const handleToggleLockPayroll = async () => {
     if (!summary) return;
 
-    if (summary.isLocked) {
+    if (summary.da_khoa) {
       setIsUnlockModalOpen(true);
     } else {
       if (
@@ -697,10 +678,10 @@ export const Payroll: React.FC = () => {
   };
 
   // Computed display stats
-  const totalNet = summary?.totalNetSalary || payrolls.reduce((sum, p) => sum + (p.netSalary || 0), 0);
-  const totalGross = summary?.totalGrossSalary || payrolls.reduce((sum, p) => sum + (p.grossIncome || 0), 0);
-  const totalOvertime = summary?.totalOvertimePay || payrolls.reduce((sum, p) => sum + (p.teachingHours?.overQuotaRemuneration || 0), 0);
-  const totalDeductions = (summary?.totalTax || 0) + (summary?.totalInsurance || 0);
+  const totalNet = summary?.tong_thuc_linh ?? payrolls.reduce((sum, p) => sum + (p.thuc_linh_net ?? p.thuc_linh ?? 0), 0);
+  const totalGross = summary?.tong_thu_nhap ?? payrolls.reduce((sum, p) => sum + (p.tong_thu_nhap_gross ?? 0), 0);
+  const totalOvertime = summary?.tong_vuot_gio ?? payrolls.reduce((sum, p) => sum + (p.gio_giang?.thu_lao_vuot_gio ?? p.tien_vuot_gio ?? 0), 0);
+  const totalDeductions = (summary?.tong_thue_tncn ?? 0) + (summary?.tong_bao_hiem ?? 0);
 
   return (
     <div className="space-y-4" data-purpose="payroll-management-dashboard">
@@ -715,13 +696,21 @@ export const Payroll: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border text-xs font-semibold ${
-                summary?.isLocked
+                summary?.da_khoa
                   ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
-                  : 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200/80 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                  : summary?.da_khoa_mot_phan
+                    ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-200/80 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                    : 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200/80 dark:border-amber-800 text-amber-700 dark:text-amber-300'
               }`}
             >
-              {summary?.isLocked ? <Lock className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-              <span>{summary?.isLocked ? 'Đã khóa sổ' : 'Sổ dự thảo'}</span>
+              {summary?.da_khoa ? <Lock className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+              <span>
+                {summary?.da_khoa
+                  ? 'Đã khóa sổ'
+                  : summary?.da_khoa_mot_phan
+                    ? `Khóa một phần (${summary.so_phieu_da_khoa ?? 0}/${summary.tong_ban_ghi ?? 0})`
+                    : 'Sổ dự thảo'}
+              </span>
             </span>
 
             {activeTab === 'all-payrolls' && (
@@ -738,15 +727,28 @@ export const Payroll: React.FC = () => {
                 </Button>
 
                 {canLockOrUnlock && (
-                  <Button
-                    onClick={handleToggleLockPayroll}
-                    variant="outline"
-                    size="sm"
-                    leftIcon={summary?.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                    type="button"
-                  >
-                    {summary?.isLocked ? 'Mở khóa sổ' : 'Khóa sổ'}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={handleToggleLockPayroll}
+                      variant="outline"
+                      size="sm"
+                      leftIcon={summary?.da_khoa ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                      type="button"
+                    >
+                      {summary?.da_khoa ? 'Mở khóa sổ' : 'Khóa sổ'}
+                    </Button>
+                    {summary?.da_khoa_mot_phan && (
+                      <Button
+                        onClick={() => setIsUnlockModalOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        leftIcon={<Unlock className="w-3.5 h-3.5" />}
+                        type="button"
+                      >
+                        Mở khóa phần đã chốt
+                      </Button>
+                    )}
+                  </div>
                 )}
 
                 {canGeneratePayroll && (
@@ -779,7 +781,7 @@ export const Payroll: React.FC = () => {
       />
 
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col">
-        {canManagePayroll && !isSystemAdmin && (
+        {canManagePayroll && !hasNoPersonalPayslip && (
           <div className="px-3 pt-2.5 pb-2 border-b border-slate-200/80 dark:border-slate-800 flex items-center gap-1.5 bg-slate-50/50 dark:bg-slate-850/40">
             <button
               onClick={() => setActiveTab('all-payrolls')}
@@ -987,8 +989,13 @@ export const Payroll: React.FC = () => {
                       const stt = (currentPage - 1) * pageSize + idx + 1;
                       const ins = getInsuranceDetail(p);
                       const tax = getTaxAmount(p);
-                      const overtimePay = p.teachingHours?.overQuotaRemuneration || 0;
-                      const overtimeHours = p.teachingHours?.overQuotaHours || 0;
+                      const primarySalary = p.luong_chinh ?? Math.max(0, Math.round((p.luong_co_ban || 0) * (p.he_so_luong ?? 1)) - (p.tong_giam_tru || 0));
+                      const overtimePay = p.gio_giang?.thu_lao_vuot_gio ?? p.tien_vuot_gio ?? 0;
+                      const overtimeHours = p.gio_giang?.gio_vuot_dinh_muc ?? p.so_tiet_vuot_gio ?? 0;
+                      const accumulatedHours = p.gio_giang?.gio_quy_doi_tich_luy ?? p.so_tiet_thuc_day ?? 0;
+                      const quotaHours = p.gio_giang?.dinh_muc_goc ?? p.so_tiet_nghia_vu ?? 0;
+                      const grossIncome = p.tong_thu_nhap_gross ?? (primarySalary + (p.tong_phu_cap || 0) + overtimePay);
+                      const netSalary = p.thuc_linh_net ?? p.thuc_linh ?? 0;
                       const allowancesTotal = getAllowanceRows(p).reduce((sum, item) => sum + item.amount, 0);
                       const statusInfo = STATUS_CONFIG[p.trang_thai || 'nhap'] || STATUS_CONFIG.nhap;
 
@@ -1026,9 +1033,9 @@ export const Payroll: React.FC = () => {
 
                           {/* Lương Chính (Hệ Số) */}
                           <td className="py-2.5 px-3.5 truncate tabular-nums text-slate-800 dark:text-slate-200">
-                            <span className="text-sm font-semibold block truncate">{formatVND(p.primarySalary)}</span>
+                            <span className="text-sm font-semibold block truncate">{formatVND(primarySalary)}</span>
                             <span className="text-slate-400 text-xs font-normal block truncate">
-                              HS {p.he_so_luong || 2.34} • {p.so_cong_thuc_te ?? 0}/{p.so_cong_chuan ?? 22} công
+                              HS {p.he_so_luong ?? 0} • {p.so_cong_thuc_te ?? 0}/{p.so_cong_chuan ?? 22} công
                             </span>
                           </td>
 
@@ -1041,13 +1048,13 @@ export const Payroll: React.FC = () => {
                           <td className="py-2.5 px-3.5 truncate tabular-nums text-amber-700 dark:text-amber-400">
                             <span className="text-sm font-semibold block truncate">+{formatVND(overtimePay)}</span>
                             <span className="text-slate-400 text-xs font-normal block truncate">
-                              {p.teachingHours?.accumulatedStandardHours ?? 0}/{p.teachingHours?.baseQuota ?? 0} giờ ({overtimeHours} giờ vượt)
+                              {accumulatedHours}/{quotaHours} giờ ({overtimeHours} giờ vượt)
                             </span>
                           </td>
 
                           {/* Thu Nhập Gross */}
                           <td className="py-2.5 px-3.5 truncate text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                            {formatVND(p.grossIncome)}
+                            {formatVND(grossIncome)}
                           </td>
 
                           {/* Bảo Hiểm & Thuế */}
@@ -1057,7 +1064,7 @@ export const Payroll: React.FC = () => {
 
                           {/* Thực Lĩnh (Net) */}
                           <td className="py-2.5 px-3.5 truncate text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
-                            {formatVND(p.netSalary)}
+                            {formatVND(netSalary)}
                           </td>
 
                           {/* Trạng Thái */}
@@ -1149,7 +1156,7 @@ export const Payroll: React.FC = () => {
             <div className="flex items-center gap-2">
               {myPayroll && (
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => handlePrintPayslip(myPayroll.id)}
                   className="h-8 px-3 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200 font-semibold transition-colors cursor-pointer shadow-xs"
                   type="button"
                 >
@@ -1290,10 +1297,10 @@ export const Payroll: React.FC = () => {
                   <span className="text-slate-400 dark:text-slate-500 block text-[10px] uppercase font-bold">Trạng thái</span>
                   <span
                     className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      (STATUS_CONFIG[selectedPayrollDetail.status] || STATUS_CONFIG.nhap).badgeCls
+                      (STATUS_CONFIG[selectedPayrollDetail.trang_thai || 'nhap'] || STATUS_CONFIG.nhap).badgeCls
                     }`}
                   >
-                    <span>{(STATUS_CONFIG[selectedPayrollDetail.status] || STATUS_CONFIG.nhap).label}</span>
+                    <span>{(STATUS_CONFIG[selectedPayrollDetail.trang_thai || 'nhap'] || STATUS_CONFIG.nhap).label}</span>
                   </span>
                 </div>
               </div>
@@ -1305,7 +1312,7 @@ export const Payroll: React.FC = () => {
             <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => handlePrintPayslip(selectedPayrollDetail.id)}
                 className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
               >
                 <Printer className="w-3.5 h-3.5 text-slate-500" />

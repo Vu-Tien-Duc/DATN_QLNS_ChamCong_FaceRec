@@ -28,6 +28,7 @@ const CAU_HINH_MAC_DINH = {
     { ma_chuc_vu: 'truong_bo_mon', he_so_phu_cap: 0.5, ty_le_giam_dinh_muc: 0.20 },
     { ma_chuc_vu: 'truong_phong', he_so_phu_cap: 0.6, ty_le_giam_dinh_muc: 0.00 },
     { ma_chuc_vu: 'pho_khoa', he_so_phu_cap: 0.5, ty_le_giam_dinh_muc: 0.20 },
+    { ma_chuc_vu: 'pho_bo_mon', he_so_phu_cap: 0.4, ty_le_giam_dinh_muc: 0.10 },
     { ma_chuc_vu: 'pho_phong', he_so_phu_cap: 0.4, ty_le_giam_dinh_muc: 0.00 }
   ],
   HE_SO_QUY_DOI_GIO: {
@@ -38,7 +39,7 @@ const CAU_HINH_MAC_DINH = {
   NGUONG_AI: { mo_hinh: 'buffalo_s', so_chieu: 512, cosine_min: 0.45, liveness_min: 0.85 },
   MARGIN_TOP1_TOP2: 0.05,
   COOLDOWN_QUET_GIAY: 60,
-  QUY_TAC_DIEM_DANH: { cua_so_checkin_truoc_phut: 30, ty_le_du_gio: 0.80, ty_le_nua_gio: 0.50, lam_tron_tiet: 'FLOOR' },
+  QUY_TAC_DIEM_DANH: { cua_so_checkin_truoc_phut: 30, nguong_gop_khoi_phut: 15, ty_le_du_gio: 0.80, ty_le_nua_gio: 0.50, lam_tron_tiet: 'FLOOR' },
   RETENTION_ANH_NAM: 1,
   RETENTION_METADATA_NAM: 5,
   CRON_LAST_RUN: { thoi_gian_chay: null, trang_thai: 'chua_chay' }

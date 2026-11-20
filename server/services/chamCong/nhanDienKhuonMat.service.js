@@ -1,4 +1,4 @@
-// Điểm danh bằng khuôn mặt Realtime 1:N (Face Service + FAISS), chống quét lặp 60s, kiểm tra GPS và lưu log chấm công
+// Điểm danh bằng khuôn mặt Realtime (Face Service + FAISS), đối chiếu chính chủ tài khoản đăng nhập, chống quét lặp 60s, kiểm tra GPS và lưu log chấm công
 const { Op } = require('sequelize');
 const {
   NhatKyChamCong,
@@ -15,6 +15,7 @@ const { storeAttendanceEvidence, removeAttendanceEvidence } = require('../../uti
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 const { evaluateUserScheduleForCheckIn } = require('./dieuKienLichChamCong.service');
+const { kiemTraChoPhepCheckOut } = require('./khoiCaDay.service');
 const {
   ServiceError,
   calculateActualTeachingPeriods,
@@ -41,6 +42,7 @@ const processFaceAttendance = async ({
   verifyOnly = false,
   useQueue = false,
   requestedAction = null,
+  expectedUserId = null,
 }) => {
   if (!imageBuffer) {
     throw new ServiceError('Vui lòng cung cấp hình ảnh khuôn mặt từ camera.', 400);
@@ -104,25 +106,39 @@ const processFaceAttendance = async ({
 
   const userId = user.id;
 
+  // Chấm công trên tài khoản đăng nhập: khuôn mặt phải khớp đúng chủ tài khoản, chặn chấm công hộ
+  if (expectedUserId && String(userId) !== String(expectedUserId)) {
+    return {
+      success: false,
+      matched: false,
+      message: 'Khuôn mặt không khớp với tài khoản đang đăng nhập. Chỉ chính chủ mới được chấm công.',
+      errorCode: 'FACE_USER_MISMATCH',
+      similarity: aiResult.similarity || 0,
+    };
+  }
+
   // Nếu là chế độ verifyOnly: Chỉ trả về thông tin nhận diện để hiển thị popup xác nhận
   if (verifyOnly) {
-    const departmentName = user.don_vi_chinh?.ten_phong_ban || '';
-
     return {
       success: true,
       khop_khuon_mat: true,
       nguoi_dung_id: userId,
-      nguoi_dung: {
+      user: {
         id: userId,
         ho_ten: user.ho_ten,
         email: user.email,
         vai_tro_chinh: user.vai_tro_chinh,
         anh_dai_dien: user.anh_dai_dien,
         ma_can_bo: user.ma_can_bo || '',
-        ten_phong_ban: departmentName,
+        don_vi_chinh: user.don_vi_chinh
+          ? {
+              id: user.don_vi_chinh.id,
+              ten_phong_ban: user.don_vi_chinh.ten_phong_ban,
+            }
+          : null,
       },
-      do_tuong_dong: aiResult.similarity,
-      do_tin_cay: aiResult.confidence,
+      diem_tin_cay: aiResult.similarity,
+      diem_nguoi_that: aiResult.liveness_score,
       message: `Đã nhận diện: ${user.ho_ten}`,
     };
   }
@@ -152,13 +168,14 @@ const processFaceAttendance = async ({
   const yesterdayStr = getVietnamDayRange(new Date(now.getTime() - 24 * 60 * 60 * 1000)).dateStr;
   const overnightCutoff = new Date(now.getTime() - 18 * 60 * 60 * 1000);
 
-  // Tra cứu bản ghi chấm công đang mở (hỗ trợ cả ca qua đêm)
+  // Tra cứu bản ghi chấm công đang mở (hỗ trợ cả ca qua đêm, loại trừ bản ghi đã bị đánh dấu thiếu check-out)
   let openLog = await NhatKyChamCong.findOne({
     where: {
       nguoi_dung_id: userId,
       ngay_cong: dateStr,
       thoi_gian_vao: { [Op.ne]: null },
       thoi_gian_ra: null,
+      trang_thai: { [Op.ne]: 'thieu_check_out' },
     },
     include: [{ model: CaLamViec, as: 'ca' }],
     order: [['tao_luc', 'DESC']],
@@ -171,6 +188,7 @@ const processFaceAttendance = async ({
         ngay_cong: { [Op.in]: [dateStr, yesterdayStr] },
         thoi_gian_vao: { [Op.gte]: overnightCutoff },
         thoi_gian_ra: null,
+        trang_thai: { [Op.ne]: 'thieu_check_out' },
       },
       include: [{ model: CaLamViec, as: 'ca' }],
       order: [['thoi_gian_vao', 'DESC']],
@@ -191,8 +209,21 @@ const processFaceAttendance = async ({
   // Quyết định hành động: check_in hay check_out (kiểm tra trước khi ghi cooldown/ảnh minh chứng)
   let actionType = requestedAction;
 
+  // Đang có lượt vào ca nhưng đã đến giờ check-in của một khối giảng dạy khác: đây là lượt check-in khối mới
+  let nextBlockEval = null;
+  if (openLog && actionType !== 'check_out') {
+    const evalNext = await evaluateUserScheduleForCheckIn(userId, null, user);
+    if (
+      evalNext?.canCheckIn &&
+      evalNext.selectedSchedule?.id &&
+      String(evalNext.selectedSchedule.id) !== String(openLog.lich_trinh_id || '')
+    ) {
+      nextBlockEval = evalNext;
+    }
+  }
+
   if (actionType === 'check_in') {
-    if (openLog) {
+    if (openLog && !nextBlockEval) {
       const inTimeStr = new Date(openLog.thoi_gian_vao).toLocaleTimeString('vi-VN', {
         hour: '2-digit',
         minute: '2-digit',
@@ -225,7 +256,7 @@ const processFaceAttendance = async ({
     }
     actionType = 'check_out';
   } else {
-    actionType = openLog ? 'check_out' : 'check_in';
+    actionType = openLog && !nextBlockEval ? 'check_out' : 'check_in';
   }
 
   if (actionType === 'check_out' && openLog && openLog.da_chot) {
@@ -234,7 +265,7 @@ const processFaceAttendance = async ({
 
   let scheduleEval = null;
   if (actionType === 'check_in') {
-    scheduleEval = await evaluateUserScheduleForCheckIn(userId, null, user);
+    scheduleEval = nextBlockEval || (await evaluateUserScheduleForCheckIn(userId, null, user));
     if (!scheduleEval || !scheduleEval.canCheckIn) {
       const r = (user.vai_tro_chinh || '').toLowerCase();
       const userPrefix = r === 'giang_vien' ? 'Giảng viên' : 'Cán bộ';
@@ -247,10 +278,17 @@ const processFaceAttendance = async ({
     }
   }
 
-  // 4. Xác thực Geofence GPS & Mạng trường (ưu tiên tọa độ phòng học nếu có lịch)
+  // 4. Xác thực Geofence GPS & Mạng trường (ưu tiên tọa độ phòng học nếu có lịch; bỏ qua nếu lịch trực tuyến)
   const targetScheduleId = actionType === 'check_out' ? openLog?.lich_trinh_id : scheduleEval?.selectedSchedule?.id;
-  const geoTargets = await resolveUserGeofenceTargets(userId, targetScheduleId);
-  const geoCheck = validateGeofence(location, geoTargets, null, reqIp);
+  let isOnlineSchedule = Boolean(actionType !== 'check_out' && scheduleEval?.selectedSchedule?.la_truc_tuyen);
+  if (!isOnlineSchedule && targetScheduleId && isValidUuid(String(targetScheduleId))) {
+    const schedForOnline = await LichTrinh.findByPk(targetScheduleId, { attributes: ['id', 'la_truc_tuyen'] });
+    isOnlineSchedule = Boolean(schedForOnline?.la_truc_tuyen);
+  }
+  const geoTargets = isOnlineSchedule ? null : await resolveUserGeofenceTargets(userId, targetScheduleId);
+  const geoCheck = isOnlineSchedule
+    ? { valid: true, isFraud: false, isSuspicious: false, distance: 0, fraudReason: null, suspiciousReason: null }
+    : validateGeofence(location, geoTargets, actionType === 'check_out' ? { radiusMultiplier: 1.5 } : null, reqIp);
 
   // Chỉ ghi cooldown và lưu ảnh minh chứng sau khi qua toàn bộ bước kiểm tra hợp lệ
   scanCooldownMap.set(userKey, Date.now());
@@ -289,20 +327,21 @@ const processFaceAttendance = async ({
 
     return {
       success: true,
+      action: queueResponse.queued ? actionType : queueResponse.result?.action || actionType,
       hanh_dong: queueResponse.queued ? 'QUEUED' : queueResponse.result?.action || actionType,
       da_vao_hang_doi: queueResponse.queued,
       ma_cong_viec: queueResponse.jobId,
       message: queueResponse.message,
-      nguoi_dung: {
+      user: {
         id: userId,
         ho_ten: user.ho_ten,
         ma_can_bo: user.ma_can_bo,
         vai_tro_chinh: user.vai_tro_chinh,
         anh_dai_dien: user.anh_dai_dien,
       },
-      do_tin_cay_ai: aiResult.similarity,
-      diem_mat_that: aiResult.liveness_score,
-      gian_lan: geoCheck.isFraud,
+      diem_tin_cay: aiResult.similarity,
+      diem_nguoi_that: aiResult.liveness_score,
+      co_gian_lan: geoCheck.isFraud,
       ly_do_gian_lan: geoCheck.fraudReason,
       ket_qua: queueResponse.result,
     };
@@ -314,15 +353,14 @@ const processFaceAttendance = async ({
     if (openLog.da_chot) {
       throw new ServiceError('Bản ghi chấm công đã bị khóa sổ lương, không thể check-out.', 409, 'ATTENDANCE_LOCKED');
     }
-    // 6. Thực hiện CHECK-OUT
+    // 6. Thực hiện CHECK-OUT (chỉ sau khi ca cuối của khối kết thúc và trước khi check-in khối sau)
     const checkOutTime = new Date();
-    let shiftConfig = openLog.ca || null;
-    if (!shiftConfig && openLog.ca_id) {
-      shiftConfig = await CaLamViec.findByPk(openLog.ca_id);
-    }
-    if (!shiftConfig || !shiftConfig.gio_ket_thuc) {
-      shiftConfig = await CaLamViec.findOne({ where: { kich_hoat: true } });
-    }
+    const { khoiConfig } = await kiemTraChoPhepCheckOut({
+      nguoiDungId: userId,
+      openLog,
+      now: checkOutTime,
+    });
+    const shiftConfig = khoiConfig;
 
     let durationMins = openLog.thoi_luong_lam_viec_phut || 0;
     if (openLog.thoi_gian_vao) {
@@ -339,6 +377,7 @@ const processFaceAttendance = async ({
     const teachingPeriods = await calculateActualTeachingPeriods(
       {
         lichTrinhId: openLog.lich_trinh_id,
+        lichTrinhIds: openLog.ds_lich_trinh_id,
         workingMinutes: durationMins,
         earlyMinutes: earlyMinutes || 0,
       },
@@ -368,6 +407,7 @@ const processFaceAttendance = async ({
           anh_minh_chung: storedEvidencePath,
           vi_do: location?.lat ?? null,
           kinh_do: location?.lng ?? null,
+          do_chinh_xac_gps: location?.accuracy ?? null,
           vi_tri_gia_lap: Boolean(geoCheck.isSuspicious),
           khoang_cach_met: Number.isFinite(geoCheck.distance) ? Math.max(0, Number(geoCheck.distance)) : null,
           hop_le: !geoCheck.isFraud,
@@ -401,7 +441,9 @@ const processFaceAttendance = async ({
           where: {
             nguoi_dung_id: userId,
             ngay_cong: dateStr,
-            ca_id: effectiveCaId,
+            ...(selectedScheduleId
+              ? { lich_trinh_id: selectedScheduleId }
+              : { ca_id: effectiveCaId, lich_trinh_id: null }),
           },
           lock: transaction.LOCK.UPDATE,
           transaction,
@@ -416,6 +458,7 @@ const processFaceAttendance = async ({
           }
           targetAttendance.thoi_gian_vao = checkInTime;
           if (selectedScheduleId) targetAttendance.lich_trinh_id = selectedScheduleId;
+          if (scheduleEval.khoi) targetAttendance.ds_lich_trinh_id = scheduleEval.khoi.ds_lich_trinh_id;
           targetAttendance.di_muon_phut = lateMinutes;
           targetAttendance.trang_thai = calculatedStatus;
           if (geoCheck.isFraud) targetAttendance.co_gian_lan = true;
@@ -426,6 +469,7 @@ const processFaceAttendance = async ({
               nguoi_dung_id: userId,
               ca_id: effectiveCaId,
               lich_trinh_id: selectedScheduleId,
+              ds_lich_trinh_id: scheduleEval.khoi ? scheduleEval.khoi.ds_lich_trinh_id : null,
               ngay_cong: dateStr,
               thoi_gian_vao: checkInTime,
               di_muon_phut: lateMinutes,
@@ -434,6 +478,27 @@ const processFaceAttendance = async ({
             },
             { transaction }
           );
+        }
+
+        // Khối giảng dạy trước chưa check-out mà đã check-in khối sau thì khối trước chuyển thành thiếu check-out
+        if (selectedScheduleId) {
+          const staleLogs = await NhatKyChamCong.findAll({
+            where: {
+              nguoi_dung_id: userId,
+              ngay_cong: dateStr,
+              id: { [Op.ne]: targetAttendance.id },
+              lich_trinh_id: { [Op.ne]: null },
+              thoi_gian_vao: { [Op.ne]: null },
+              thoi_gian_ra: null,
+            },
+            transaction,
+          });
+          const sameBlockIds = scheduleEval.khoi?.ds_lich_trinh_id || [];
+          for (const stale of staleLogs) {
+            if (sameBlockIds.includes(String(stale.lich_trinh_id))) continue;
+            stale.trang_thai = 'thieu_check_out';
+            await stale.save({ transaction });
+          }
         }
 
         await LuotQuetChamCong.create(
@@ -449,6 +514,7 @@ const processFaceAttendance = async ({
             anh_minh_chung: storedEvidencePath,
             vi_do: location?.lat ?? null,
             kinh_do: location?.lng ?? null,
+            do_chinh_xac_gps: location?.accuracy ?? null,
             vi_tri_gia_lap: Boolean(geoCheck.isSuspicious),
             khoang_cach_met: Number.isFinite(geoCheck.distance) ? Math.max(0, Number(geoCheck.distance)) : null,
             hop_le: !geoCheck.isFraud,
@@ -513,7 +579,7 @@ const processFaceAttendance = async ({
       thoi_gian_quet: new Date(),
       trang_thai: attendanceRecord.trang_thai,
       do_tin_cay_ai: aiResult.similarity,
-      gian_lan: geoCheck.isFraud,
+      co_gian_lan: geoCheck.isFraud,
       ly_do_gian_lan: geoCheck.fraudReason,
       anh_minh_chung: storedEvidencePath,
     });

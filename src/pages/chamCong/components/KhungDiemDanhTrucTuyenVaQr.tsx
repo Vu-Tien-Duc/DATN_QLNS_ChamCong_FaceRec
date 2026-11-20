@@ -270,7 +270,7 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
           ma_can_bo: authUser?.ma_can_bo,
           anh_dai_dien: authUser?.anh_dai_dien,
         },
-        record: data?.log || data,
+        record: data?.attendanceLog || data?.log || data,
       });
     } catch (err: any) {
       audioFeedback.playWarningBeep();
@@ -479,17 +479,17 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
         <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800">
           <UserAvatar
             user={authUser}
-            name={authUser?.fullName}
-            staffCode={authUser?.staffCode}
+            name={authUser?.ho_ten}
+            staffCode={authUser?.ma_can_bo}
             size="md"
             shape="circle"
           />
           <div className="min-w-0 flex-1">
             <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-              {authUser?.fullName || 'Cán bộ / Giảng viên'}
+              {authUser?.ho_ten || 'Cán bộ / Giảng viên'}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-              {authUser?.staffCode || '—'} • {authUser?.email || ''}
+              {authUser?.ma_can_bo || '—'} • {authUser?.email || ''}
             </div>
           </div>
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300 border border-brand-200/70 dark:border-brand-800/60 shrink-0">

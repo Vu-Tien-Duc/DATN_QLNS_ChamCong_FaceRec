@@ -120,6 +120,7 @@ interface ScheduleItem {
   } | string;
   roomId?: string;
   phong_hoc?: string;
+  co_so?: string;
   weekday: number;
   thu_trong_tuan?: number;
   startTime?: string;
@@ -144,6 +145,8 @@ interface ScheduleItem {
   nam_hoc?: string;
   semester?: number;
   hoc_ky?: number;
+  /** Lịch trực tuyến – bỏ qua kiểm tra GPS khi chấm công */
+  la_truc_tuyen?: boolean;
   exceptions?: any[];
   ngoai_le?: any[];
   weekNumbers?: number[];
@@ -562,6 +565,7 @@ export const Schedules: React.FC = () => {
     shiftId: '',
     subjectId: '',
     roomId: '',
+    co_so: '',
     weekday: 1,
     startPeriod: 1,
     periodCount: 4,
@@ -583,6 +587,7 @@ export const Schedules: React.FC = () => {
     latitude: 20.9752,
     longitude: 105.7628,
     radiusMeters: 100,
+    la_truc_tuyen: false,
   });
   const [weeksInput, setWeeksInput] = useState<string>('1-15');
   const [formSubmitting, setFormSubmitting] = useState<boolean>(false);
@@ -983,6 +988,7 @@ export const Schedules: React.FC = () => {
       shiftId: targetShift?._id || '',
       subjectId: subjects[0]?._id || '',
       roomId: 'Giảng đường CNTT A2-301',
+      co_so: '',
       weekday: weekdayVal,
       startPeriod: initialStartPeriod,
       periodCount: initialPeriodCount,
@@ -999,6 +1005,7 @@ export const Schedules: React.FC = () => {
       latitude: 20.9752,
       longitude: 105.7628,
       radiusMeters: 100,
+      la_truc_tuyen: false,
     });
     setWeeksInput(formatWeeksSummary(defaultWeeks));
     setIsFormModalOpen(true);
@@ -1026,6 +1033,7 @@ export const Schedules: React.FC = () => {
       shiftId: shId || '',
       subjectId: subId || '',
       roomId: item.roomId || item.phong_hoc || '',
+      co_so: item.co_so || '',
       weekday: item.weekday ?? item.thu_trong_tuan ?? 1,
       startPeriod: item.startPeriod || item.tiet_bat_dau || 1,
       periodCount: item.periodCount || item.so_tiet || 4,
@@ -1042,6 +1050,7 @@ export const Schedules: React.FC = () => {
       latitude: item.latitude ?? item.vi_do ?? 20.9752,
       longitude: item.longitude ?? item.kinh_do ?? 105.7628,
       radiusMeters: item.radiusMeters ?? item.ban_kinh_met ?? 100,
+      la_truc_tuyen: item.la_truc_tuyen ?? false,
     });
     setWeeksInput(formatWeeksSummary(editWeeks));
     setIsDetailModalOpen(false);
@@ -1109,6 +1118,7 @@ export const Schedules: React.FC = () => {
         ca_id: formData.shiftId || undefined,
         mon_hoc_id: formData.subjectId || undefined,
         phong_hoc: formData.roomId.trim(),
+      co_so: formData.co_so.trim(),
         thu_trong_tuan: Number(formData.weekday),
         tiet_bat_dau: Number(formData.startPeriod),
         so_tiet: Number(formData.periodCount),
@@ -1125,6 +1135,7 @@ export const Schedules: React.FC = () => {
         vi_do: Number(formData.latitude),
         kinh_do: Number(formData.longitude),
         ban_kinh_met: Number(formData.radiusMeters),
+        la_truc_tuyen: Boolean(formData.la_truc_tuyen),
       };
 
       if (isEditing && selectedSchedule) {
@@ -2889,6 +2900,19 @@ export const Schedules: React.FC = () => {
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Cơ sở (dùng để gom ca liền nhau khi chấm công)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.co_so}
+                    onChange={(e) => setFormData({ ...formData, co_so: e.target.value })}
+                    placeholder="Ví dụ: Gia Lâm, Láng (để trống nếu chỉ có một cơ sở)"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Môn học (nếu có)
                   </label>
                   <select
@@ -2909,6 +2933,20 @@ export const Schedules: React.FC = () => {
                     })}
                   </select>
                 </div>
+              </div>
+
+              {/* A2: Cờ lịch trực tuyến */}
+              <div className="flex items-center gap-2.5 py-1">
+                <input
+                  type="checkbox"
+                  id="la_truc_tuyen_cb"
+                  checked={Boolean(formData.la_truc_tuyen)}
+                  onChange={(e) => setFormData({ ...formData, la_truc_tuyen: e.target.checked })}
+                  className="w-4 h-4 rounded accent-indigo-600 cursor-pointer"
+                />
+                <label htmlFor="la_truc_tuyen_cb" className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                  Lịch dạy trực tuyến (online) – bỏ qua kiểm tra GPS khi chấm công
+                </label>
               </div>
 
               {/* Tọa độ GPS & Bán kính điểm danh (Geofence NTU) */}

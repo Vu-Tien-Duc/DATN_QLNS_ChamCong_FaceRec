@@ -1,7 +1,13 @@
 // Điều chỉnh bản ghi chấm công (Admin/BGH/Lãnh đạo đơn vị) và ghi vết vào NhatKyKiemToan
-const { NhatKyChamCong, NhatKyKiemToan, NguoiDung, VaiTroNguoiDung } = require('../../models');
-const { updateCampusConfig } = require('../../utils/hoTroChamCong');
-const { ServiceError } = require('../../utils/thoiGianChamCong.utils');
+const { NhatKyChamCong, NhatKyKiemToan, NguoiDung, VaiTroNguoiDung, LichTrinh, CaLamViec } = require('../../models');
+const {
+  ServiceError,
+  calculateActualTeachingPeriods,
+  calculateCheckOutStatus,
+  getVietnamTime,
+  timeStringToMinutes,
+} = require('../../utils/thoiGianChamCong.utils');
+const { layKhoiTheoLichTrinh } = require('./khoiCaDay.service');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 const { isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
 const { GLOBAL_ADMIN_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
@@ -91,17 +97,69 @@ const updateAttendanceByAdmin = async ({
   log.nguoi_ghi_de_id = nguoi_thuc_hien_id || null;
   log.ly_do_ghi_de = ly_do_ghi_de || 'Quản trị viên hiệu chỉnh bản ghi chấm công';
 
-  if (log.thoi_gian_vao && log.thoi_gian_ra) {
-    const diffMs = log.thoi_gian_ra.getTime() - log.thoi_gian_vao.getTime();
-    log.thoi_luong_lam_viec_phut = Math.max(0, Math.round(diffMs / 60000));
+  if (log.trang_thai === 'absent' || log.trang_thai === 'thieu_check_out' || log.trang_thai === 'excused_absence') {
+    log.so_tiet_thuc_day = 0;
+    log.di_muon_phut = 0;
+    log.ve_som_phut = 0;
+    if (log.trang_thai === 'absent' || log.trang_thai === 'excused_absence') {
+      log.thoi_luong_lam_viec_phut = 0;
+    }
+  } else {
+    const khoi = log.lich_trinh_id
+      ? await layKhoiTheoLichTrinh(log.nguoi_dung_id, log.lich_trinh_id, log.ngay_cong).catch(() => null)
+      : null;
+    const shiftDoc = !khoi && log.ca_id ? await CaLamViec.findByPk(log.ca_id, { attributes: ['gio_bat_dau', 'gio_ket_thuc'] }) : null;
+    const timeCfg = khoi
+      ? { gio_bat_dau: khoi.gio_bat_dau, gio_ket_thuc: khoi.gio_ket_thuc }
+      : shiftDoc
+      ? { gio_bat_dau: shiftDoc.gio_bat_dau, gio_ket_thuc: shiftDoc.gio_ket_thuc }
+      : null;
+
+    if (thoi_gian_vao !== undefined) {
+      if (log.thoi_gian_vao && timeCfg?.gio_bat_dau) {
+        const vnIn = getVietnamTime(log.thoi_gian_vao);
+        const inMins = vnIn.getHours() * 60 + vnIn.getMinutes();
+        const startMins = timeStringToMinutes(timeCfg.gio_bat_dau);
+        log.di_muon_phut = Math.max(0, inMins - startMins);
+      } else if (!log.thoi_gian_vao) {
+        log.di_muon_phut = 0;
+      }
+    }
+
+    if (thoi_gian_ra !== undefined) {
+      if (log.thoi_gian_ra && timeCfg?.gio_ket_thuc) {
+        log.ve_som_phut = calculateCheckOutStatus(log.thoi_gian_ra, timeCfg, log.trang_thai).earlyMinutes;
+      } else if (!log.thoi_gian_ra) {
+        log.ve_som_phut = 0;
+      }
+    }
+
+    if (log.thoi_gian_vao && log.thoi_gian_ra) {
+      const diffMs = log.thoi_gian_ra.getTime() - log.thoi_gian_vao.getTime();
+      log.thoi_luong_lam_viec_phut = Math.max(0, Math.round(diffMs / 60000));
+      if (log.lich_trinh_id || (Array.isArray(log.ds_lich_trinh_id) && log.ds_lich_trinh_id.length > 0)) {
+        log.so_tiet_thuc_day = await calculateActualTeachingPeriods(
+          {
+            lichTrinhId: log.lich_trinh_id,
+            lichTrinhIds: log.ds_lich_trinh_id,
+            workingMinutes: log.thoi_luong_lam_viec_phut,
+            earlyMinutes: log.ve_som_phut || 0,
+          },
+          LichTrinh
+        );
+      }
+    }
   }
 
   await log.save();
+
+  const logOwner = await NguoiDung.findByPk(log.nguoi_dung_id, { attributes: ['don_vi_chinh_id'] }).catch(() => null);
 
   try {
     const { emitAttendanceUpdate } = require('../../config/socket');
     emitAttendanceUpdate({
       ...(log.toJSON ? log.toJSON() : log),
+      don_vi_chinh_id: logOwner?.don_vi_chinh_id || null,
       chinh_sua_thu_cong: true,
     });
   } catch (_) {}
@@ -130,5 +188,4 @@ const updateAttendanceByAdmin = async ({
 
 module.exports = {
   updateAttendanceByAdmin,
-  updateCampusConfig,
 };

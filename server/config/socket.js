@@ -162,26 +162,26 @@ const emitNewPunch = (punchData) => {
   if (!io) return false;
 
   try {
-    const userId = punchData.nguoi_dung_id || punchData.userId;
-    const departmentId = punchData.don_vi_chinh_id || punchData.departmentId;
+    const userId = punchData.nguoi_dung_id;
+    const departmentId = punchData.don_vi_chinh_id;
     const payload = {
       event: 'NEW_PUNCH',
-      punchId: punchData._id || punchData.punchId || punchData.id,
-      userId,
-      userName: punchData.ho_ten || punchData.userName || punchData.fullName,
-      staffCode: punchData.ma_can_bo || punchData.staffCode,
-      avatar: punchData.anh_dai_dien || punchData.avatar,
-      departmentId,
-      departmentName: punchData.ten_phong_ban || punchData.departmentName,
-      punchType: punchData.loai_quet || punchData.punchType || 'check_in',
-      method: punchData.phuong_thuc || punchData.method || 'face_ai',
-      punchTime: punchData.thoi_gian_quet || punchData.punchTime || new Date(),
-      status: punchData.trang_thai || punchData.status,
-      confidenceScore: punchData.do_chinh_xac || punchData.confidenceScore,
-      isFraud: Boolean(punchData.co_gian_lan !== undefined ? punchData.co_gian_lan : punchData.isFraud),
-      fraudReason: punchData.ly_do_gian_lan || punchData.fraudReason,
-      evidenceUrl: punchData.anh_minh_chung || punchData.evidenceUrl || punchData.evidenceImage,
-      timestamp: Date.now(),
+      id: punchData.id,
+      nguoi_dung_id: userId,
+      ho_ten: punchData.ho_ten,
+      ma_can_bo: punchData.ma_can_bo,
+      anh_dai_dien: punchData.anh_dai_dien,
+      don_vi_chinh_id: departmentId,
+      ten_phong_ban: punchData.ten_phong_ban,
+      loai_quet: punchData.loai_quet || 'check_in',
+      phuong_thuc: punchData.phuong_thuc || 'face_ai',
+      thoi_gian_quet: punchData.thoi_gian_quet || new Date(),
+      trang_thai: punchData.trang_thai,
+      do_tin_cay_ai: punchData.do_tin_cay_ai,
+      co_gian_lan: Boolean(punchData.co_gian_lan),
+      ly_do_gian_lan: punchData.ly_do_gian_lan || null,
+      anh_minh_chung: punchData.anh_minh_chung || null,
+      thoi_diem: Date.now(),
     };
 
     io.to('admin-room').emit('attendance:new-punch', payload);
@@ -194,11 +194,11 @@ const emitNewPunch = (punchData) => {
       io.to(`user:${userId.toString()}`).emit('attendance:new-punch', payload);
     }
 
-    if (payload.isFraud) {
+    if (payload.co_gian_lan) {
       emitFraudAlert({
         type: 'ATTENDANCE_FRAUD',
         severity: 'HIGH',
-        message: `Phát hiện nghi vấn điểm danh bất thường: ${payload.userName} (${payload.fraudReason || 'Sai vị trí Geofence'})`,
+        message: `Phát hiện nghi vấn điểm danh bất thường: ${payload.ho_ten || 'Cán bộ'} (${payload.ly_do_gian_lan || 'Sai vị trí Geofence'})`,
         details: payload,
       });
     }
@@ -215,17 +215,18 @@ const emitAttendanceUpdate = (attendanceData) => {
   if (!io) return false;
 
   try {
-    const userId = attendanceData.nguoi_dung_id || attendanceData.userId;
-    const departmentId = attendanceData.don_vi_chinh_id || attendanceData.departmentId;
+    const userId = attendanceData.nguoi_dung_id;
+    const departmentId = attendanceData.don_vi_chinh_id;
     const payload = {
       event: 'ATTENDANCE_UPDATE',
-      logId: attendanceData._id || attendanceData.id,
-      userId,
-      checkInTime: attendanceData.thoi_gian_vao || attendanceData.thoi_gian_check_in || attendanceData.checkInTime,
-      checkOutTime: attendanceData.thoi_gian_ra || attendanceData.thoi_gian_check_out || attendanceData.checkOutTime,
-      status: attendanceData.trang_thai || attendanceData.status,
-      isManualOverride: Boolean(attendanceData.chinh_sua_thu_cong !== undefined ? attendanceData.chinh_sua_thu_cong : attendanceData.isManualOverride),
-      updatedAt: new Date(),
+      id: attendanceData.id,
+      nguoi_dung_id: userId,
+      don_vi_chinh_id: departmentId || null,
+      thoi_gian_vao: attendanceData.thoi_gian_vao,
+      thoi_gian_ra: attendanceData.thoi_gian_ra,
+      trang_thai: attendanceData.trang_thai,
+      chinh_sua_thu_cong: Boolean(attendanceData.chinh_sua_thu_cong),
+      cap_nhat_luc: new Date(),
     };
 
     io.to('admin-room').emit('attendance:update', payload);
@@ -271,17 +272,17 @@ const emitLeaveRequestUpdate = (leaveData) => {
   if (!io) return false;
 
   try {
-    const userId = leaveData.nguoi_dung_id || leaveData.userId;
-    const departmentId = leaveData.don_vi_id || leaveData.don_vi_chinh_id || leaveData.departmentId;
+    const userId = leaveData.nguoi_dung_id;
+    const departmentId = leaveData.don_vi_chinh_id;
     const payload = {
       event: 'LEAVE_REQUEST_UPDATE',
-      requestId: leaveData._id || leaveData.id,
-      userId,
-      applicantName: leaveData.ho_ten_nguoi_tao || leaveData.applicantName,
-      requestType: leaveData.loai_don || leaveData.type || leaveData.requestType,
-      status: leaveData.trang_thai || leaveData.status,
-      approverId: leaveData.nguoi_duyet_id || leaveData.approverId,
-      updatedAt: new Date(),
+      id: leaveData.id,
+      nguoi_dung_id: userId,
+      ho_ten_nguoi_tao: leaveData.ho_ten_nguoi_tao,
+      loai_don: leaveData.loai_don,
+      trang_thai: leaveData.trang_thai,
+      nguoi_duyet_id: leaveData.nguoi_duyet_id,
+      cap_nhat_luc: new Date(),
     };
 
     io.to('admin-room').emit('leave:status-changed', payload);

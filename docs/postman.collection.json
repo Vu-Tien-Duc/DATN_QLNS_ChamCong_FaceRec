@@ -1701,90 +1701,6 @@
           }
         },
         {
-          "name": "POST /api/khuon-mat/vao-ca — [🔒 Điểm danh] Check-in điểm danh qua Camera nhận diện khuôn mặt Face ID",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "x-terminal-key",
-                "value": "{{terminalKey}}",
-                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/khuon-mat/vao-ca",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "khuon-mat",
-                "vao-ca"
-              ]
-            },
-            "description": "[🔒 Điểm danh] Check-in điểm danh qua Camera nhận diện khuôn mặt Face ID",
-            "auth": {
-              "type": "noauth"
-            },
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "image",
-                  "type": "file",
-                  "src": "",
-                  "description": "Ảnh chụp khuôn mặt từ camera webcam/di động"
-                },
-                {
-                  "key": "location",
-                  "type": "text",
-                  "value": "{\"lat\":21.028511,\"lng\":105.854444}",
-                  "description": ""
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "POST /api/khuon-mat/tan-ca — [🔒 Điểm danh] Check-out kết thúc ca qua Camera nhận diện khuôn mặt Face ID",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "x-terminal-key",
-                "value": "{{terminalKey}}",
-                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/khuon-mat/tan-ca",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "khuon-mat",
-                "tan-ca"
-              ]
-            },
-            "description": "[🔒 Điểm danh] Check-out kết thúc ca qua Camera nhận diện khuôn mặt Face ID",
-            "auth": {
-              "type": "noauth"
-            },
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "image",
-                  "type": "file",
-                  "src": "",
-                  "description": "Ảnh chụp khuôn mặt từ camera webcam/di động"
-                }
-              ]
-            }
-          }
-        },
-        {
           "name": "GET /api/khuon-mat/suc-khoe — [🔓 Public/Kiểm tra] Kiểm tra tình trạng kết nối tới Python FastAPI InsightFace Microservice",
           "request": {
             "method": "GET",
@@ -1879,7 +1795,12 @@
           "name": "POST /api/cham-cong/tan-ca — [🔒 Cá nhân] Điểm danh kết thúc ca (Check-out)",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/api/cham-cong/tan-ca",
               "host": [
@@ -1891,7 +1812,16 @@
                 "tan-ca"
               ]
             },
-            "description": "Tự động tìm kiếm bản ghi check-in mở gần nhất trong ngày để đóng ca và cập nhật thời gian check-out."
+            "description": "Tự động tìm kiếm bản ghi check-in mở gần nhất trong ngày để đóng ca và cập nhật thời gian check-out.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phuong_thuc\": \"gps_mobile\",\n  \"thiet_bi_id\": \"MOBILE_APP\",\n  \"vi_do\": 20.9752,\n  \"kinh_do\": 105.7628\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         },
         {
@@ -1911,43 +1841,55 @@
               ],
               "query": [
                 {
-                  "key": "userId",
+                  "key": "nguoi_dung_id",
                   "value": "",
                   "description": "Lọc theo nhân sự",
                   "disabled": true
                 },
                 {
-                  "key": "departmentId",
+                  "key": "don_vi_id",
                   "value": "",
                   "description": "Lọc theo phòng ban",
                   "disabled": true
                 },
                 {
-                  "key": "status",
+                  "key": "trang_thai",
                   "value": "",
-                  "description": "Lọc theo trạng thái",
+                  "description": "Lọc theo trạng thái (on_time, late, early_leave, thieu_check_out, absent, excused_absence)",
                   "disabled": true
                 },
                 {
-                  "key": "from",
+                  "key": "phuong_thuc",
+                  "value": "",
+                  "description": "Lọc theo phương thức (face_ai, qr_code, gps_mobile, thu_cong_admin, system_auto)",
+                  "disabled": true
+                },
+                {
+                  "key": "co_gian_lan",
+                  "value": "",
+                  "description": "Lọc bản ghi có cờ cảnh báo gian lận (true/false)",
+                  "disabled": true
+                },
+                {
+                  "key": "tu_ngay",
                   "value": "",
                   "description": "Từ ngày (YYYY-MM-DD)",
                   "disabled": true
                 },
                 {
-                  "key": "to",
+                  "key": "den_ngay",
                   "value": "",
                   "description": "Đến ngày (YYYY-MM-DD)",
                   "disabled": true
                 },
                 {
-                  "key": "page",
+                  "key": "trang",
                   "value": "1",
                   "description": "Số trang",
                   "disabled": true
                 },
                 {
-                  "key": "limit",
+                  "key": "gioi_han",
                   "value": "20",
                   "description": "Số bản ghi / trang",
                   "disabled": true
@@ -2071,16 +2013,10 @@
           }
         },
         {
-          "name": "POST /api/cham-cong/khuon-mat — [🔒 Máy chấm công] Điểm danh nhận diện khuôn mặt qua Máy chấm công Face ID",
+          "name": "POST /api/cham-cong/khuon-mat — [🔒 Cá nhân] Điểm danh nhận diện khuôn mặt Face ID (Vào ca / Tan ca)",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "x-terminal-key",
-                "value": "{{terminalKey}}",
-                "description": "Khóa bảo mật của thiết bị Máy chấm công Face ID, được cấu hình qua biến môi trường TERMINAL_KEY."
-              }
-            ],
+            "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/cham-cong/khuon-mat",
               "host": [
@@ -2092,10 +2028,7 @@
                 "khuon-mat"
               ]
             },
-            "description": "Xác thực qua header x-terminal-key hoặc Bearer Token kèm rate limit 15 req/phút. Gửi ảnh multipart/form-data để Face Service nhận diện bằng InsightFace 512D, tự động tìm ca dạy phù hợp trong ngày và ghi nhận điểm danh.",
-            "auth": {
-              "type": "noauth"
-            },
+            "description": "Bắt buộc xác thực Bearer Token và đối khớp chính chủ kèm rate limit 15 req/phút. Gửi ảnh multipart/form-data để Face Service nhận diện bằng InsightFace 512D, tự động gom khối ca dạy liên tục và ghi nhận điểm danh.",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -2103,18 +2036,30 @@
                   "key": "image",
                   "type": "file",
                   "src": "",
-                  "description": "Ảnh JPEG/PNG chụp từ camera máy chấm công gửi tới InsightFace"
+                  "description": "Ảnh JPEG/PNG chụp từ camera gửi tới InsightFace (tối đa 5MB)"
                 },
                 {
-                  "key": "mode",
+                  "key": "loai_thao_tac",
                   "type": "text",
-                  "value": "auto",
-                  "description": ""
+                  "value": "check_in",
+                  "description": "check_in hoặc check_out"
                 },
                 {
-                  "key": "location",
+                  "key": "vi_do",
                   "type": "text",
-                  "value": "{\"lat\":21.028511,\"lng\":105.854444}",
+                  "value": "20.9752",
+                  "description": "Vĩ độ GPS"
+                },
+                {
+                  "key": "kinh_do",
+                  "type": "text",
+                  "value": "105.7628",
+                  "description": "Kinh độ GPS"
+                },
+                {
+                  "key": "thiet_bi_id",
+                  "type": "text",
+                  "value": "STATION_CAMERA_01",
                   "description": ""
                 }
               ]
@@ -2122,55 +2067,33 @@
           }
         },
         {
-          "name": "POST /api/cham-cong/khuon-mat-hang-loat — [🔒 Máy chấm công] Điểm danh nhận diện khuôn mặt hàng loạt (Batch)",
+          "name": "GET /api/cham-cong/khoi-hom-nay — [🔑 JWT] Xem khối ca dạy / lịch chấm công hôm nay của cá nhân",
           "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "x-terminal-key",
-                "value": "{{terminalKey}}",
-                "description": "Khóa bảo mật của thiết bị Máy chấm công Face ID"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "method": "GET",
+            "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/cham-cong/khuon-mat-hang-loat",
+              "raw": "{{baseUrl}}/api/cham-cong/khoi-hom-nay",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "cham-cong",
-                "khuon-mat-hang-loat"
+                "khoi-hom-nay"
               ]
             },
-            "description": "Nhận danh sách nhiều vector khuôn mặt quét được đồng thời trong một khung hình camera Máy chấm công để xử lý điểm danh song song.",
-            "auth": {
-              "type": "noauth"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"descriptors\": []\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "description": "Trả về thông tin khối ca dạy liên tục (hoặc ca hành chính) áp dụng hôm nay của người dùng đang đăng nhập cùng trạng thái cho phép check-in."
           }
         },
         {
-          "name": "GET /api/cham-cong/qr/tao-ma — [🔓 Public] Sinh mã QR Động TOTP (Hiệu lực 15-20s) phục vụ điểm danh Máy chấm công / Lớp học",
+          "name": "GET /api/cham-cong/qr/tao-ma — [🔒 Máy chấm công / Lãnh đạo] Sinh mã QR Động TOTP (Hiệu lực 20s) phục vụ điểm danh Máy chấm công / Lớp học",
           "request": {
             "method": "GET",
             "header": [
               {
                 "key": "x-terminal-key",
                 "value": "{{terminalKey}}",
-                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
+                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token của lãnh đạo/quản trị)"
               }
             ],
             "url": {
@@ -2185,10 +2108,7 @@
                 "tao-ma"
               ]
             },
-            "description": "Sinh chuỗi mã hóa ký HMAC-SHA256 kèm timestamp làm mới liên tục mỗi 15-20 giây để hiển thị trên màn hình Máy chấm công hoặc máy chiếu giảng đường.",
-            "auth": {
-              "type": "noauth"
-            }
+            "description": "Yêu cầu x-terminal-key (Kiosk) hoặc Bearer Token của lãnh đạo/quản trị. Sinh chuỗi mã hóa ký HMAC-SHA256 hiệu lực 20 giây để hiển thị trên màn hình Máy chấm công hoặc máy chiếu giảng đường."
           }
         },
         {
@@ -2216,7 +2136,7 @@
             "description": "Giảng viên dùng điện thoại di động quét mã QR động hiển thị trên máy chiếu / Máy chấm công kết hợp xác thực tọa độ GPS khuôn viên trường (Geofence).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"qrToken\": \"\",\n  \"location\": {\n    \"lat\": 21.028511,\n    \"lng\": 105.854444\n  },\n  \"deviceId\": \"MOBILE_CLIENT_IPHONE15\"\n}",
+              "raw": "{\n  \"ma_qr\": \"\",\n  \"toa_do\": {\n    \"vi_do\": 20.9752,\n    \"kinh_do\": 105.7628\n  },\n  \"thiet_bi_id\": \"MOBILE_CLIENT_IPHONE15\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2226,7 +2146,7 @@
           }
         },
         {
-          "name": "GET /api/cham-cong/cau-hinh-khuon-vien — [🔓 Public] Lấy cấu hình tọa độ khuôn viên trường & bán kính Geofencing GPS",
+          "name": "GET /api/cham-cong/cau-hinh-khuon-vien — [🔒 Máy chấm công / Xác thực] Lấy cấu hình tọa độ khuôn viên trường & bán kính Geofencing GPS",
           "request": {
             "method": "GET",
             "header": [],
@@ -2241,10 +2161,7 @@
                 "cau-hinh-khuon-vien"
               ]
             },
-            "description": "Trả về tọa độ trung tâm khuôn viên trường đại học và bán kính hợp lệ (mét) cho phép điểm danh di động.",
-            "auth": {
-              "type": "noauth"
-            }
+            "description": "Yêu cầu Bearer Token hoặc header x-terminal-key. Trả về tọa độ trung tâm khuôn viên trường đại học và bán kính hợp lệ (mét) cho phép điểm danh di động."
           }
         },
         {
@@ -2269,12 +2186,9 @@
               ]
             },
             "description": "Chỉ Quản trị viên (Admin) mới có quyền hiệu chỉnh tọa độ trung tâm và bán kính cho phép chấm công GPS.",
-            "auth": {
-              "type": "noauth"
-            },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"lat\": 21.028511,\n  \"lng\": 105.854444,\n  \"radiusMeters\": 600\n}",
+              "raw": "{\n  \"ten_co_so\": \"Khuôn viên Cơ sở Chính\",\n  \"vi_do\": 20.9752,\n  \"kinh_do\": 105.7628,\n  \"ban_kinh_met\": 600\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2371,16 +2285,10 @@
           }
         },
         {
-          "name": "GET /api/cham-cong/thu-thach-mat-that — [🔓 Public] Sinh thử thách cử động sống (Liveness Challenge)",
+          "name": "GET /api/cham-cong/thu-thach-mat-that — [🔒 Cá nhân] Sinh thử thách cử động sống (Liveness Challenge)",
           "request": {
             "method": "GET",
-            "header": [
-              {
-                "key": "x-terminal-key",
-                "value": "{{terminalKey}}",
-                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
-              }
-            ],
+            "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/cham-cong/thu-thach-mat-that",
               "host": [
@@ -2392,23 +2300,14 @@
                 "thu-thach-mat-that"
               ]
             },
-            "description": "Trả về chuỗi hành động ngẫu nhiên (chớp mắt, quay trái, mỉm cười) kèm JWT token xác thực phiên sống.",
-            "auth": {
-              "type": "noauth"
-            }
+            "description": "Trả về chuỗi hành động ngẫu nhiên (LOOK_UP, LOOK_DOWN, TURN_LEFT, TURN_RIGHT) kèm chữ ký HMAC hạn 120s."
           }
         },
         {
-          "name": "POST /api/cham-cong/xac-thuc-mat-that — [🔓 Public] Xác minh ảnh khuôn mặt theo thử thách cử động sống",
+          "name": "POST /api/cham-cong/xac-thuc-mat-that — [🔒 Cá nhân] Xác minh ảnh khuôn mặt theo thử thách cử động sống",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "x-terminal-key",
-                "value": "{{terminalKey}}",
-                "description": "Khóa bảo mật máy chấm công Kiosk (hoặc dùng Bearer Token)"
-              }
-            ],
+            "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/cham-cong/xac-thuc-mat-that",
               "host": [
@@ -2420,10 +2319,7 @@
                 "xac-thuc-mat-that"
               ]
             },
-            "description": "[🔓 Public] Xác minh ảnh khuôn mặt theo thử thách cử động sống",
-            "auth": {
-              "type": "noauth"
-            },
+            "description": "[🔒 Cá nhân] Xác minh ảnh khuôn mặt theo thử thách cử động sống",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -2435,12 +2331,6 @@
                 },
                 {
                   "key": "challengeToken",
-                  "type": "text",
-                  "value": "",
-                  "description": ""
-                },
-                {
-                  "key": "action",
                   "type": "text",
                   "value": "",
                   "description": ""
@@ -2478,7 +2368,7 @@
             "description": "[🔒 Cá nhân] Tạo đơn xin nghỉ phép / dạy bù / đổi ca",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"type\": \"nghi_phep\",\n  \"startDate\": \"2026-09-15\",\n  \"endDate\": \"2026-09-17\",\n  \"reason\": \"Đi tham dự hội thảo khoa học quốc tế\",\n  \"attachmentUrl\": \"https://cdn.university.edu.vn/giay-moi-hoi-thao.pdf\"\n}",
+              "raw": "{\n  \"loai_don\": \"nghi_phep\",\n  \"ngay_bat_dau\": \"2026-09-15\",\n  \"ngay_ket_thuc\": \"2026-09-17\",\n  \"ly_do\": \"Đi tham dự hội thảo khoa học quốc tế\",\n  \"tep_dinh_kem\": \"https://cdn.university.edu.vn/giay-moi-hoi-thao.pdf\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2503,21 +2393,21 @@
               ],
               "query": [
                 {
-                  "key": "status",
+                  "key": "trang_thai",
                   "value": "",
-                  "description": "Lọc trạng thái",
+                  "description": "Lọc trạng thái (pending, pending_bgh, approved, rejected, cancelled)",
                   "disabled": true
                 },
                 {
-                  "key": "type",
+                  "key": "loai_don",
                   "value": "",
-                  "description": "Lọc loại đơn",
+                  "description": "Lọc loại đơn (nghi_phep, day_bu, doi_ca, nghi_om, viec_rieng, giai_trinh_cong, giai_trinh_thieu_check_out)",
                   "disabled": true
                 },
                 {
-                  "key": "userId",
+                  "key": "nguoi_dung_id",
                   "value": "",
-                  "description": "Lọc theo ID người làm đơn",
+                  "description": "Lọc theo UUID người làm đơn",
                   "disabled": true
                 }
               ]
@@ -2542,14 +2432,39 @@
               ],
               "query": [
                 {
-                  "key": "userId",
+                  "key": "nguoi_dung_id",
                   "value": "",
                   "description": "ID người dùng cần tra cứu (Mặc định là chính mình)",
+                  "disabled": true
+                },
+                {
+                  "key": "nam",
+                  "value": "2026",
+                  "description": "Năm cần tra cứu",
                   "disabled": true
                 }
               ]
             },
-            "description": "Dùng Aggregate pipeline tính tổng ngày phép tiêu chuẩn, ngày đã sử dụng và ngày còn lại."
+            "description": "Tính tổng ngày phép tiêu chuẩn, ngày đã sử dụng, ngày đang chờ duyệt và ngày còn lại khả dụng trong năm."
+          }
+        },
+        {
+          "name": "GET /api/don-nghi-phep/giang-vien-day-thay — [🔒 Cá nhân] Danh sách giảng viên dạy thay",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/don-nghi-phep/giang-vien-day-thay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "don-nghi-phep",
+                "giang-vien-day-thay"
+              ]
+            },
+            "description": "[🔒 Cá nhân] Lấy danh sách giảng viên đang công tác để chọn người dạy thay khi tạo đơn đổi ca"
           }
         },
         {
@@ -2610,7 +2525,7 @@
             "description": "[🔒 Admin / Trưởng khoa] Phê duyệt đơn xin nghỉ (Hỗ trợ Optimistic Locking qua version)",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"approvalNote\": \"Đồng ý cho nghỉ phép, khoa đã bố trí giảng viên dạy thay.\",\n  \"version\": 0\n}",
+              "raw": "{\n  \"ghi_chu_duyet\": \"Đồng ý cho nghỉ phép, khoa đã bố trí giảng viên dạy thay.\",\n  \"so_tiet_xac_nhan\": 3,\n  \"phien_ban\": 0\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2651,7 +2566,7 @@
             "description": "[🔒 Admin / Trưởng khoa] Từ chối đơn xin nghỉ",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"rejectionReason\": \"Trùng lịch thi kết thúc học phần, đề nghị chọn ngày khác.\",\n  \"version\": 0\n}",
+              "raw": "{\n  \"ly_do_tu_choi\": \"Trùng lịch thi kết thúc học phần, đề nghị chọn ngày khác.\",\n  \"phien_ban\": 0\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2664,7 +2579,12 @@
           "name": "PUT /api/don-nghi-phep/:id/huy — [🔒 Người tạo đơn / Admin] Hủy đơn xin nghỉ phép đã nộp",
           "request": {
             "method": "PUT",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/api/don-nghi-phep/:id/huy",
               "host": [
@@ -2684,7 +2604,16 @@
                 }
               ]
             },
-            "description": "[🔒 Người tạo đơn / Admin] Hủy đơn xin nghỉ phép đã nộp"
+            "description": "[🔒 Người tạo đơn / Admin] Hủy đơn xin nghỉ phép đã nộp (Hỗ trợ Optimistic Locking qua phien_ban)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phien_ban\": 1763628000000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         }
       ]
@@ -2694,7 +2623,7 @@
       "description": "Bảng lương Snapshot năm 2026, khóa lương và thuế TNCN lũy tiến 5 bậc",
       "item": [
         {
-          "name": "POST /api/phieu-luong/khoi-tao — [🔒 Admin/BGH/Trưởng khoa] Tạo & tính toán Snapshot bảng lương năm 2026",
+          "name": "POST /api/phieu-luong/khoi-tao — [🔒 Admin/Kế toán] Tạo & tính toán Snapshot bảng lương năm 2026",
           "request": {
             "method": "POST",
             "header": [
@@ -2714,10 +2643,10 @@
                 "khoi-tao"
               ]
             },
-            "description": "Tính toán giờ dạy thực tế, giờ vượt chuẩn, phụ cấp, trích nộp BHXH 10.5% và thuế TNCN lũy tiến 5 bậc.",
+            "description": "Tính toán giờ dạy thực tế, giờ vượt chuẩn, phụ cấp, trích nộp BHXH/BHYT/BHTN và thuế TNCN lũy tiến 5 bậc.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"month\": 10,\n  \"year\": 2026,\n  \"departmentId\": \"00000000-0000-4000-8000-000000000\"\n}",
+              "raw": "{\n  \"thang\": 10,\n  \"nam\": 2026,\n  \"don_vi_id\": \"00000000-0000-4000-8000-000000000001\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2727,7 +2656,7 @@
           }
         },
         {
-          "name": "GET /api/phieu-luong — [🔒 Admin/BGH/Trưởng khoa] Lấy danh sách bảng lương toàn trường/khoa",
+          "name": "GET /api/phieu-luong — [🔒 Admin/BGH/Kế toán/Trưởng khoa] Lấy danh sách bảng lương toàn trường/khoa",
           "request": {
             "method": "GET",
             "header": [],
@@ -2742,44 +2671,38 @@
               ],
               "query": [
                 {
-                  "key": "month",
+                  "key": "thang",
                   "value": "10",
-                  "description": "Tháng (hoặc thang)",
+                  "description": "Tháng (1-12)",
                   "disabled": true
                 },
                 {
-                  "key": "year",
+                  "key": "nam",
                   "value": "2026",
-                  "description": "Năm (hoặc nam)",
+                  "description": "Năm",
                   "disabled": true
                 },
                 {
-                  "key": "departmentId",
+                  "key": "don_vi_id",
                   "value": "",
-                  "description": "",
+                  "description": "UUID đơn vị / khoa",
                   "disabled": true
                 },
                 {
-                  "key": "status",
+                  "key": "trang_thai",
+                  "value": "nhap",
+                  "description": "nhap | cho_duyet | da_duyet | da_chi_tra",
+                  "disabled": true
+                },
+                {
+                  "key": "nguoi_dung_id",
                   "value": "",
-                  "description": "",
-                  "disabled": true
-                },
-                {
-                  "key": "page",
-                  "value": "1",
-                  "description": "",
-                  "disabled": true
-                },
-                {
-                  "key": "limit",
-                  "value": "20",
-                  "description": "",
+                  "description": "UUID nhân sự",
                   "disabled": true
                 }
               ]
             },
-            "description": "[🔒 Admin/BGH/Trưởng khoa] Lấy danh sách bảng lương toàn trường/khoa"
+            "description": "[🔒 Admin/BGH/Kế toán/Trưởng khoa] Lấy danh sách bảng lương toàn trường/khoa"
           }
         },
         {
@@ -2799,13 +2722,13 @@
               ],
               "query": [
                 {
-                  "key": "month",
+                  "key": "thang",
                   "value": "10",
                   "description": "",
                   "disabled": true
                 },
                 {
-                  "key": "year",
+                  "key": "nam",
                   "value": "2026",
                   "description": "",
                   "disabled": true
@@ -2816,7 +2739,7 @@
           }
         },
         {
-          "name": "GET /api/phieu-luong/tong-hop — [🔒 Admin/BGH] Tổng hợp thống kê quỹ lương, tổng giờ vượt chuẩn và thuế TNCN",
+          "name": "GET /api/phieu-luong/tong-hop — [🔒 Admin/BGH/Kế toán/Trưởng khoa] Tổng hợp thống kê quỹ lương, tổng giờ vượt chuẩn và thuế TNCN",
           "request": {
             "method": "GET",
             "header": [],
@@ -2832,24 +2755,30 @@
               ],
               "query": [
                 {
-                  "key": "month",
+                  "key": "thang",
                   "value": "10",
                   "description": "Tháng",
                   "disabled": true
                 },
                 {
-                  "key": "year",
+                  "key": "nam",
                   "value": "2026",
                   "description": "Năm",
+                  "disabled": true
+                },
+                {
+                  "key": "don_vi_id",
+                  "value": "",
+                  "description": "UUID đơn vị / khoa",
                   "disabled": true
                 }
               ]
             },
-            "description": "[🔒 Admin/BGH] Tổng hợp thống kê quỹ lương, tổng giờ vượt chuẩn và thuế TNCN"
+            "description": "[🔒 Admin/BGH/Kế toán/Trưởng khoa] Tổng hợp thống kê quỹ lương, tổng giờ vượt chuẩn và thuế TNCN"
           }
         },
         {
-          "name": "POST /api/phieu-luong/khoa — [🔒 Admin/BGH] Khóa sổ bảng lương theo tháng & chốt công",
+          "name": "POST /api/phieu-luong/khoa — [🔒 Admin/BGH/Kế toán] Khóa sổ bảng lương theo tháng & chốt công",
           "request": {
             "method": "POST",
             "header": [
@@ -2869,10 +2798,10 @@
                 "khoa"
               ]
             },
-            "description": "[🔒 Admin/BGH] Khóa sổ bảng lương theo tháng & chốt công",
+            "description": "[🔒 Admin/BGH/Kế toán] Khóa sổ bảng lương theo tháng & chốt công",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"month\": 10,\n  \"year\": 2026\n}",
+              "raw": "{\n  \"thang\": 10,\n  \"nam\": 2026\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2882,7 +2811,7 @@
           }
         },
         {
-          "name": "POST /api/phieu-luong/mo-khoa — [🔒 Admin/BGH] Mở khóa sổ bảng lương theo tháng kèm lý do",
+          "name": "POST /api/phieu-luong/mo-khoa — [🔒 Admin/BGH/Kế toán] Mở khóa sổ bảng lương theo tháng kèm lý do",
           "request": {
             "method": "POST",
             "header": [
@@ -2902,10 +2831,10 @@
                 "mo-khoa"
               ]
             },
-            "description": "[🔒 Admin/BGH] Mở khóa sổ bảng lương theo tháng kèm lý do",
+            "description": "[🔒 Admin/BGH/Kế toán] Mở khóa sổ bảng lương theo tháng kèm lý do",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"month\": 10,\n  \"year\": 2026,\n  \"reason\": \"Điều chỉnh bổ sung giờ vượt chuẩn\"\n}",
+              "raw": "{\n  \"thang\": 10,\n  \"nam\": 2026,\n  \"ly_do\": \"Điều chỉnh bổ sung giờ vượt chuẩn\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2915,7 +2844,7 @@
           }
         },
         {
-          "name": "GET /api/phieu-luong/:id — [🔒 Chi tiết] Xem chi tiết một phiếu lương kèm snapshot các buổi dạy",
+          "name": "GET /api/phieu-luong/:id — [🔒 Chi tiết] Xem chi tiết một phiếu lương kèm phụ cấp và giảm trừ",
           "request": {
             "method": "GET",
             "header": [],
@@ -2937,11 +2866,11 @@
                 }
               ]
             },
-            "description": "[🔒 Chi tiết] Xem chi tiết một phiếu lương kèm snapshot các buổi dạy"
+            "description": "[🔒 Chi tiết] Xem chi tiết một phiếu lương kèm phụ cấp và giảm trừ"
           }
         },
         {
-          "name": "PUT /api/phieu-luong/:id/khoa — [🔒 Admin/BGH] Khóa bảng lương chống sửa đổi (qua ID phiếu lương)",
+          "name": "PUT /api/phieu-luong/:id/khoa — [🔒 Admin/BGH/Kế toán] Khóa phiếu lương chống sửa đổi (qua ID phiếu lương)",
           "request": {
             "method": "PUT",
             "header": [],
@@ -2964,11 +2893,11 @@
                 }
               ]
             },
-            "description": "[🔒 Admin/BGH] Khóa bảng lương chống sửa đổi (qua ID phiếu lương)"
+            "description": "[🔒 Admin/BGH/Kế toán] Khóa phiếu lương chống sửa đổi (qua ID phiếu lương)"
           }
         },
         {
-          "name": "PUT /api/phieu-luong/:id/mo-khoa — [🔒 Admin/BGH] Mở khóa bảng lương (qua ID phiếu lương)",
+          "name": "PUT /api/phieu-luong/:id/mo-khoa — [🔒 Admin/BGH/Kế toán] Mở khóa phiếu lương (qua ID phiếu lương)",
           "request": {
             "method": "PUT",
             "header": [
@@ -2996,10 +2925,10 @@
                 }
               ]
             },
-            "description": "[🔒 Admin/BGH] Mở khóa bảng lương (qua ID phiếu lương)",
+            "description": "[🔒 Admin/BGH/Kế toán] Mở khóa phiếu lương (qua ID phiếu lương)",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"reason\": \"Mở khóa điều chỉnh\"\n}",
+              "raw": "{\n  \"ly_do\": \"Mở khóa điều chỉnh\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3009,7 +2938,7 @@
           }
         },
         {
-          "name": "GET /api/phieu-luong/xuat-excel — [🔒 Admin/BGH/Trưởng khoa] Xuất file Excel bảng lương toàn trường/khoa",
+          "name": "GET /api/phieu-luong/xuat-excel — [🔒 Admin/BGH/Kế toán/Trưởng khoa] Xuất file Excel bảng lương toàn trường/khoa",
           "request": {
             "method": "GET",
             "header": [],
@@ -3025,30 +2954,30 @@
               ],
               "query": [
                 {
-                  "key": "month",
+                  "key": "thang",
                   "value": "10",
                   "description": "",
                   "disabled": true
                 },
                 {
-                  "key": "year",
+                  "key": "nam",
                   "value": "2026",
                   "description": "",
                   "disabled": true
                 },
                 {
-                  "key": "departmentId",
+                  "key": "don_vi_id",
                   "value": "",
                   "description": "",
                   "disabled": true
                 }
               ]
             },
-            "description": "[🔒 Admin/BGH/Trưởng khoa] Xuất file Excel bảng lương toàn trường/khoa"
+            "description": "[🔒 Admin/BGH/Kế toán/Trưởng khoa] Xuất file Excel bảng lương toàn trường/khoa"
           }
         },
         {
-          "name": "GET /api/phieu-luong/:id/xuat-pdf — [🔒 Admin/BGH/Cá nhân] Xuất dữ liệu in ấn phiếu lương PDF theo ID",
+          "name": "GET /api/phieu-luong/:id/xuat-pdf — [🔒 Admin/BGH/Kế toán/Cá nhân] Xuất dữ liệu in ấn phiếu lương PDF theo ID",
           "request": {
             "method": "GET",
             "header": [],
@@ -3071,7 +3000,7 @@
                 }
               ]
             },
-            "description": "[🔒 Admin/BGH/Cá nhân] Xuất dữ liệu in ấn phiếu lương PDF theo ID"
+            "description": "[🔒 Admin/BGH/Kế toán/Cá nhân] Xuất dữ liệu in ấn phiếu lương PDF theo ID"
           }
         }
       ]
@@ -3081,7 +3010,7 @@
       "description": "Thống kê tổng hợp số giờ dạy, đi muộn, nghỉ phép",
       "item": [
         {
-          "name": "GET /api/bao-cao/cham-cong — [🔒 Cá nhân / Trưởng khoa / Admin] Báo cáo tổng hợp số liệu chấm công và ngày phép",
+          "name": "GET /api/bao-cao/cham-cong — [🔒 Cá nhân / Lãnh đạo đơn vị / Quản trị trường] Báo cáo tổng hợp số liệu chấm công và ngày phép",
           "request": {
             "method": "GET",
             "header": [],
@@ -3097,36 +3026,36 @@
               ],
               "query": [
                 {
-                  "key": "userId",
+                  "key": "nguoi_dung_id",
                   "value": "",
-                  "description": "Lọc theo giảng viên / nhân viên (chỉ dành cho Trưởng khoa và Admin)",
+                  "description": "UUID giảng viên / nhân viên",
                   "disabled": true
                 },
                 {
-                  "key": "departmentId",
+                  "key": "don_vi_id",
                   "value": "",
-                  "description": "Lọc theo khoa / phòng ban (chỉ dành cho Admin)",
+                  "description": "UUID đơn vị / khoa / bộ môn",
                   "disabled": true
                 },
                 {
-                  "key": "from",
+                  "key": "tu_ngay",
                   "value": "",
                   "description": "Từ ngày (YYYY-MM-DD)",
                   "disabled": true
                 },
                 {
-                  "key": "to",
+                  "key": "den_ngay",
                   "value": "",
                   "description": "Đến ngày (YYYY-MM-DD)",
                   "disabled": true
                 }
               ]
             },
-            "description": "Giảng viên/Nhân viên chỉ xem của chính mình; Trưởng khoa xem của khoa; Admin xem toàn trường."
+            "description": "Giảng viên/Nhân viên xem của chính mình; Lãnh đạo đơn vị xem phạm vi đơn vị; Admin/BGH/TCCB/Kế toán/Kiểm toán xem toàn trường."
           }
         },
         {
-          "name": "GET /api/bao-cao/hang-thang — [🔒 Admin / Trưởng khoa] Báo cáo tổng hợp ngày công chi tiết theo tháng",
+          "name": "GET /api/bao-cao/hang-thang — [🔒 Quản trị trường / Lãnh đạo đơn vị] Báo cáo tổng hợp ngày công chi tiết theo tháng",
           "request": {
             "method": "GET",
             "header": [],
@@ -3142,26 +3071,26 @@
               ],
               "query": [
                 {
-                  "key": "month",
+                  "key": "thang",
                   "value": "10",
                   "description": "Tháng (1-12)",
                   "disabled": true
                 },
                 {
-                  "key": "year",
+                  "key": "nam",
                   "value": "2026",
-                  "description": "Năm (YYYY)",
+                  "description": "Năm (2000-2100)",
                   "disabled": true
                 },
                 {
-                  "key": "departmentId",
+                  "key": "don_vi_id",
                   "value": "",
-                  "description": "Lọc theo mã Khoa / Phòng ban (chỉ dành cho Admin)",
+                  "description": "UUID đơn vị / khoa / bộ môn",
                   "disabled": true
                 }
               ]
             },
-            "description": "Tổng hợp chi tiết danh sách từng nhân sự trong tháng gồm: tổng buổi dạy, đúng giờ, đi muộn, về sớm, vắng mặt, nghỉ có phép."
+            "description": "Tổng hợp chi tiết danh sách từng nhân sự trong tháng gồm: tổng số ca, đúng giờ, đi muộn, về sớm, vắng mặt, nghỉ có phép, thiếu check-out."
           }
         },
         {
@@ -3181,26 +3110,26 @@
               ],
               "query": [
                 {
-                  "key": "month",
-                  "value": "9",
+                  "key": "thang",
+                  "value": "10",
                   "description": "Tháng cần xuất (1-12)",
                   "disabled": true
                 },
                 {
-                  "key": "year",
+                  "key": "nam",
                   "value": "2026",
-                  "description": "Năm (YYYY)",
+                  "description": "Năm (2000-2100)",
                   "disabled": true
                 },
                 {
-                  "key": "departmentId",
+                  "key": "don_vi_id",
                   "value": "",
-                  "description": "Lọc theo khoa (Admin có thể lọc, Trưởng khoa tự động giới hạn)",
+                  "description": "UUID đơn vị",
                   "disabled": true
                 }
               ]
             },
-            "description": "Trả về cấu trúc dữ liệu hoàn chỉnh 5 sheet: Tổng hợp công, Bảng chấm công chi tiết, Danh sách đi muộn/về sớm, Thống kê đơn nghỉ phép, và Phân bổ giờ giảng theo khoa."
+            "description": "Trả về cấu trúc dữ liệu 5 sheet: tong_quan, thong_ke_nhan_su, nhat_ky_cham_cong, don_nghi_phep, thong_ke_theo_ngay."
           }
         }
       ]

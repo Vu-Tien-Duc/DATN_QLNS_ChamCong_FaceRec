@@ -1,7 +1,7 @@
 // Mô hình bảng nhat_ky_cham_cong: tổng hợp chấm công theo ngày và ca làm việc.
 const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/db');
-const { uuidPk, uuidFk } = require('./modelHelpers');
+const { uuidPk, uuidFk, jsonText } = require('./modelHelpers');
 
 // Tính số giờ công và cờ ghi đè thủ công từ dữ liệu có sẵn
 class NhatKyChamCong extends Model {
@@ -20,6 +20,7 @@ NhatKyChamCong.init(
     nguoi_dung_id: uuidFk(false),
     ca_id: uuidFk(false),
     lich_trinh_id: uuidFk(true),
+    ds_lich_trinh_id: jsonText('ds_lich_trinh_id'),
     ngay_cong: { type: DataTypes.DATEONLY, allowNull: false, validate: { isDate: true } },
     thoi_gian_vao: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
     thoi_gian_ra: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
@@ -31,7 +32,13 @@ NhatKyChamCong.init(
       type: DataTypes.STRING(50),
       allowNull: false,
       defaultValue: 'on_time',
-      validate: { notEmpty: true },
+      validate: {
+        notEmpty: true,
+        isIn: {
+          args: [['on_time', 'late', 'early_leave', 'absent', 'excused_absence', 'thieu_check_out']],
+          msg: 'Trạng thái chấm công không hợp lệ',
+        },
+      },
     },
     don_tu_id: uuidFk(true),
     co_gian_lan: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
@@ -55,8 +62,8 @@ NhatKyChamCong.init(
       },
     },
     indexes: [
-      { unique: true, name: 'UQ_nhat_ky_cham_cong', fields: ['nguoi_dung_id', 'ngay_cong', 'ca_id'] },
       { fields: ['nguoi_dung_id', 'ngay_cong'] },
+      { fields: ['nguoi_dung_id', 'ngay_cong', 'lich_trinh_id'] },
       { fields: ['trang_thai'] },
     ],
   }

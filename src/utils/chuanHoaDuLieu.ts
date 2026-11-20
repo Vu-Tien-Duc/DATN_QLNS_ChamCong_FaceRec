@@ -468,7 +468,7 @@ export function normalizeBackendData<T = any>(data: any): T {
     }
 
     // 8. Chuẩn hóa Đối tượng Phiếu lương (Payroll)
-    if ('thuc_linh_net' in copy || 'tong_thu_nhap_gross' in copy || ('thang' in copy && 'nam' in copy)) {
+    if (!('tong_ban_ghi' in copy) && ('thuc_linh_net' in copy || 'tong_thu_nhap_gross' in copy || ('thang' in copy && 'nam' in copy))) {
       copy.month = copy.thang !== undefined ? copy.thang : copy.month;
       copy.thang = copy.month;
       copy.year = copy.nam !== undefined ? copy.nam : copy.year;

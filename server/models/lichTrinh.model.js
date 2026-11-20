@@ -19,6 +19,7 @@ LichTrinh.init(
     ca_id: uuidFk(true),
     mon_hoc_id: uuidFk(true),
     phong_hoc: trimmedString('phong_hoc', 100, { allowNull: false, defaultValue: '' }),
+    co_so: trimmedString('co_so', 100, { allowNull: false, defaultValue: '' }),
     vi_do: decimalColumn('vi_do', 10, 8, null, true),
     kinh_do: decimalColumn('kinh_do', 11, 8, null, true),
     ban_kinh_met: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100, validate: { min: 1 } },
@@ -42,6 +43,7 @@ LichTrinh.init(
     },
     nam_hoc: { type: DataTypes.STRING(50), allowNull: false, defaultValue: '2025-2026' },
     hoc_ky: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1, validate: { min: 1, max: 3 } },
+    la_truc_tuyen: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   },
   {
     sequelize,

@@ -6,7 +6,8 @@ const {
   calculatePersonalIncomeTax5Brackets,
   formatPayrollDoc,
 } = require('../services/phieuLuong/tinhThueVaLuong.helper');
-const { calculateLeaveDays } = require('../services/donNghiPhep/tinhPhepNam.helper');
+const { calculateLeaveDays, formatLeaveRequestDoc } = require('../services/donNghiPhep/tinhPhepNam.helper');
+const { assertExpectedVersion } = require('../services/donNghiPhep/pheDuyetDon.service');
 const { normalizeAttendanceMethod } = require('../utils/thoiGianChamCong.utils');
 
 describe('Payroll Tax & Formatting Helpers', () => {
@@ -67,5 +68,44 @@ describe('Leave Days & Attendance Method Normalization', () => {
     assert.equal(normalizeAttendanceMethod('face'), 'face_ai');
     assert.equal(normalizeAttendanceMethod('manual'), 'thu_cong_admin');
     assert.equal(normalizeAttendanceMethod('qr_code'), 'qr_code');
+  });
+
+  it('kiểm tra Optimistic Locking (phien_ban) và sắp xếp lich_su_duyet theo thời gian', () => {
+    const updatedAt = '2026-11-20T08:00:00.000Z';
+    const expectedMs = new Date(updatedAt).getTime();
+
+    assert.doesNotThrow(() => assertExpectedVersion({ cap_nhat_luc: updatedAt }, expectedMs));
+    assert.doesNotThrow(() => assertExpectedVersion({ cap_nhat_luc: updatedAt }, undefined));
+    assert.throws(
+      () => assertExpectedVersion({ cap_nhat_luc: updatedAt }, 0),
+      (err) => err.statusCode === 409 && err.errorCode === 'OPTIMISTIC_LOCK_CONFLICT'
+    );
+    assert.throws(
+      () => assertExpectedVersion({ cap_nhat_luc: updatedAt }, expectedMs - 1000),
+      (err) => err.statusCode === 409 && err.errorCode === 'OPTIMISTIC_LOCK_CONFLICT'
+    );
+
+    const formatted = formatLeaveRequestDoc({
+      id: 'req-1',
+      so_ngay: 5,
+      trang_thai: 'pending_bgh',
+      lich_su_duyet: [
+        { cap_duyet: 'bgh', thoi_diem: '2026-11-20T10:00:00.000Z', y_kien: 'BGH duyệt' },
+        { cap_duyet: 'khoa', thoi_diem: '2026-11-20T08:00:00.000Z', y_kien: 'Khoa thông qua' },
+      ],
+    });
+    assert.equal(formatted.so_cap_duyet, 2);
+    assert.equal(formatted.cap_duyet_hien_tai, 2);
+    assert.equal(formatted.lich_su_duyet[0].cap_duyet, 'khoa');
+    assert.equal(formatted.lich_su_duyet[1].cap_duyet, 'bgh');
+
+    const leaderSingleDay = formatLeaveRequestDoc({
+      id: 'req-2',
+      so_ngay: 1,
+      trang_thai: 'pending_bgh',
+      lich_su_duyet: [],
+    });
+    assert.equal(leaderSingleDay.so_cap_duyet, 2);
+    assert.equal(leaderSingleDay.cap_duyet_hien_tai, 2);
   });
 });

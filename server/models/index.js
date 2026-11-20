@@ -96,6 +96,7 @@ DonNghiPhep.belongsTo(NguoiDung, { foreignKey: 'nguoi_dung_id', as: 'nguoi_dung'
 DonNghiPhep.belongsTo(NguoiDung, { foreignKey: 'nguoi_duyet_id', as: 'nguoi_duyet', ...noAction });
 DonNghiPhep.belongsTo(NguoiDung, { foreignKey: 'giang_vien_day_thay_id', as: 'giang_vien_day_thay', ...noAction });
 DonNghiPhep.belongsTo(LichTrinh, { foreignKey: 'lich_trinh_id', as: 'lich_trinh', ...noAction });
+DonNghiPhep.belongsTo(NhatKyChamCong, { foreignKey: 'nhat_ky_id', as: 'nhat_ky', ...noAction });
 DonNghiPhep.belongsTo(CaLamViec, { foreignKey: 'ca_thay_the_id', as: 'ca_thay_the', ...noAction });
 
 DonNghiPhep.hasMany(LichSuDuyetDon, { foreignKey: 'don_nghi_phep_id', as: 'lich_su_duyet', ...cascade });

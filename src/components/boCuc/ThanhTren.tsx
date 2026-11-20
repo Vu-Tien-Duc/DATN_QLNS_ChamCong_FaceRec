@@ -26,7 +26,6 @@ import {
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { ThemeToggle } from '../chung/NutChuyenGiaoDien';
-import { Portal } from '../chung/CongDichChuyen';
 import { ModalCaiDatGiaoDien } from '../chung/ModalCaiDatGiaoDien';
 import { UserAvatar } from '../chung/AnhDaiDienNguoiDung';
 import { hasRole, getRoleLabel } from '../../utils/phanQuyen';
@@ -146,7 +145,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
   // Dropdown & Modal States
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [showThemeSettings, setShowThemeSettings] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -163,7 +162,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
     }>
   >([]);
 
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchBoxRef = useRef<HTMLDivElement | null>(null);
   const dropdownGroupRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -208,19 +207,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
     return () => clearInterval(timer);
   }, []);
 
-  // Keyboard shortcut listener for Global Search (Cmd+K / Ctrl+K / Escape) & click outside dropdowns
+  // Escape & click outside dropdowns
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setShowSearchModal((prev) => !prev);
-      } else if (e.key === 'Escape') {
-        setShowSearchModal(false);
+      if (e.key === 'Escape') {
+        setShowSearchDropdown(false);
         setShowNotifications(false);
         setShowUserMenu(false);
       }
     };
     const handleClickOutside = (e: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
+        setShowSearchDropdown(false);
+      }
       if (dropdownGroupRef.current && !dropdownGroupRef.current.contains(e.target as Node)) {
         setShowNotifications(false);
         setShowUserMenu(false);
@@ -233,17 +232,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  // Focus search input when search modal opens
-  useEffect(() => {
-    if (showSearchModal) {
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 50);
-    } else {
-      setSearchQuery('');
-    }
-  }, [showSearchModal]);
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('vi-VN', {
@@ -290,7 +278,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
   });
 
   const handleSelectSearchItem = (path: string) => {
-    setShowSearchModal(false);
+    setShowSearchDropdown(false);
+    setSearchQuery('');
     navigate(path);
   };
 
@@ -326,22 +315,67 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* Interactive Flux Pill Search Bar */}
+            {/* Simple Search Bar */}
             <div
-              onClick={() => setShowSearchModal(true)}
-              className="hidden sm:flex items-center relative cursor-pointer group flex-1 min-w-0 max-w-sm lg:max-w-md"
-              title="Tìm kiếm nhanh chức năng, nhân sự (Ctrl+K)..."
+              ref={searchBoxRef}
+              className="hidden sm:flex items-center relative flex-1 min-w-0 max-w-sm lg:max-w-md"
             >
-              <Search className="w-4 h-4 text-slate-400 group-hover:text-brand-600 dark:group-hover:text-brand-400 absolute left-4 pointer-events-none transition-colors" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
               <input
                 type="text"
-                readOnly
-                placeholder="Search anything..."
-                className="h-10 pl-11 pr-12 w-full rounded-full text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-transparent hover:border-slate-300 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-850 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 cursor-pointer focus:outline-none transition-all truncate"
+                value={searchQuery}
+                onFocus={() => setShowSearchDropdown(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowSearchDropdown(true);
+                }}
+                placeholder="Tìm kiếm chức năng..."
+                className="h-9 pl-10 pr-8 w-full rounded-xl text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-transparent focus:border-brand-400 dark:focus:border-brand-600 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition-all"
               />
-              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-400 border border-slate-200 dark:border-slate-600 shadow-2xs pointer-events-none">
-                ⌘K
-              </span>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  title="Xóa từ khóa"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {showSearchDropdown && searchQuery.trim().length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-lg max-h-72 overflow-y-auto p-1.5 z-50 text-xs">
+                  {filteredSearchItems.length === 0 ? (
+                    <div className="p-4 text-center text-slate-400">
+                      Không tìm thấy kết quả phù hợp
+                    </div>
+                  ) : (
+                    filteredSearchItems.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleSelectSearchItem(item.path)}
+                          className="w-full p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-left flex items-center gap-2.5 transition-colors cursor-pointer"
+                        >
+                          <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
+                            <Icon className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                              {item.title}
+                            </p>
+                            <p className="text-[11px] text-slate-400 truncate">
+                              {item.description}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -681,86 +715,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
           </div>
         </div>
       </header>
-
-      {/* =========================================================================
-          GLOBAL SEARCH COMMAND PALETTE MODAL (SPOTLIGHT ⌘K / CTRL+K)
-         ========================================================================= */}
-      {showSearchModal && (
-        <Portal>
-          <div
-            onClick={() => setShowSearchModal(false)}
-            className="fixed inset-0 z-[100] flex items-start justify-center pt-20 p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200"
-          >
-          <div
-            className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 max-w-xl w-full overflow-hidden animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Search Input Bar */}
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
-              <Search className="w-5 h-5 text-brand-600 dark:text-brand-400 flex-shrink-0" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm trang chức năng, cán bộ, môn học, ca dạy..."
-                className="w-full text-sm font-medium bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setShowSearchModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Search Results List */}
-            <div className="p-2 max-h-80 overflow-y-auto space-y-1 text-xs">
-              {filteredSearchItems.length === 0 ? (
-                <div className="p-8 text-center text-slate-400">
-                  Không tìm thấy kết quả nào phù hợp với từ khóa "{searchQuery}"
-                </div>
-              ) : (
-                filteredSearchItems.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => handleSelectSearchItem(item.path)}
-                      className="p-3 rounded-2xl hover:bg-brand-50/70 dark:hover:bg-brand-950/40 hover:border-brand-300 dark:hover:border-brand-700/60 border border-transparent cursor-pointer flex items-center justify-between gap-3 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 group-hover:bg-brand-600 group-hover:text-white transition-colors flex-shrink-0">
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-slate-800 dark:text-slate-100 group-hover:text-brand-600 dark:group-hover:text-brand-400 truncate">
-                            {item.title}
-                          </p>
-                          <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                            {item.description}
-                          </p>
-                        </div>
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand-600 group-hover:translate-x-1 transition-all flex-shrink-0" />
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Footer with Keyboard Hints */}
-            <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-              <span>Điều hướng nhanh toàn hệ thống</span>
-              <div className="flex items-center gap-2">
-                <span>Nhấn <kbd className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border text-[10px]">ESC</kbd> để đóng</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        </Portal>
-      )}
 
       {/* Popup Cài Đặt Giao Diện & Màu Sắc */}
       <ModalCaiDatGiaoDien

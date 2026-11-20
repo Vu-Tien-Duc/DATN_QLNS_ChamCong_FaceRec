@@ -8,6 +8,7 @@ const {
   approveLeaveRequestDomain,
   rejectLeaveRequestDomain,
   cancelLeaveRequestDomain,
+  fetchSubstituteLecturers,
 } = require('../services/donNghiPhep/donNghiPhep.service');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 
@@ -34,6 +35,7 @@ const createLeaveRequest = async (req, res, next) => {
       so_tiet_nghi,
       ca_thay_the_id,
       giang_vien_day_thay_id,
+      nhat_ky_id,
     } = req.body || {};
 
     const leaveRequest = await createLeaveRequestDomain({
@@ -48,6 +50,7 @@ const createLeaveRequest = async (req, res, next) => {
       so_tiet_nghi,
       ca_thay_the_id,
       giang_vien_day_thay_id,
+      nhat_ky_id,
       file: req.file,
       currentUser: req.user,
     });
@@ -102,10 +105,12 @@ const approveLeaveRequest = async (req, res, next) => {
   try {
     const ghi_chu_duyet = req.body?.ghi_chu_duyet || 'Đã phê duyệt đơn.';
     const phien_ban = req.body?.phien_ban;
+    const so_tiet_xac_nhan = req.body?.so_tiet_xac_nhan !== undefined ? Number(req.body.so_tiet_xac_nhan) : undefined;
     const updated = await approveLeaveRequestDomain({
       id: req.params.id,
       ghi_chu_duyet,
       phien_ban_ky_vong: phien_ban,
+      so_tiet_xac_nhan,
       currentUser: req.user,
       dia_chi_ip: req.ip || req.connection?.remoteAddress,
     });
@@ -149,11 +154,22 @@ const cancelLeaveRequest = async (req, res, next) => {
   }
 };
 
+// GET /api/don-nghi-phep/giang-vien-day-thay - Danh sách giảng viên khả dụng để dạy thay khi đổi ca
+const getSubstituteLecturers = async (req, res, next) => {
+  try {
+    const lecturers = await fetchSubstituteLecturers(req.user);
+    return sendSuccess(res, 'Lấy danh sách giảng viên dạy thay thành công.', lecturers);
+  } catch (error) {
+    handleServiceError(res, error, next);
+  }
+};
+
 module.exports = {
   createLeaveRequest,
   getLeaveRequests,
   getLeaveRequestById,
   getLeaveBalance,
+  getSubstituteLecturers,
   approveLeaveRequest,
   rejectLeaveRequest,
   cancelLeaveRequest,

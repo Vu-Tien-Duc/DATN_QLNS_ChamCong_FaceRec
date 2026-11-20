@@ -403,7 +403,19 @@ const validateGeofence = (clientLocation, targetLocation = null, maxRadius = nul
       : CAMPUS_CONFIG;
 
   const cachedRadius = systemConfigService.getConfigSync('CAMPUS_GPS_RADIUS_METERS');
-  const allowedRadius = maxRadius || cachedRadius || activeCampus.radiusMeters;
+  // Hỗ trợ maxRadius là số hoặc object { radiusMultiplier }
+  const radiusMultiplier =
+    maxRadius && typeof maxRadius === 'object' && Number.isFinite(Number(maxRadius.radiusMultiplier)) && Number(maxRadius.radiusMultiplier) > 0
+      ? Number(maxRadius.radiusMultiplier)
+      : 1;
+  let resolvedRadius;
+  if (maxRadius && typeof maxRadius === 'object' && Number.isFinite(Number(maxRadius.radiusMultiplier))) {
+    const baseR = cachedRadius || activeCampus.radiusMeters;
+    resolvedRadius = Math.round(Number(baseR) * radiusMultiplier);
+  } else {
+    resolvedRadius = maxRadius;
+  }
+  const allowedRadius = resolvedRadius || cachedRadius || activeCampus.radiusMeters;
   const accuracyTolerance = Math.min(Number(clientLocation?.accuracy) || 0, 100);
   const effectiveRadius = allowedRadius + accuracyTolerance;
 
@@ -481,8 +493,8 @@ const validateGeofence = (clientLocation, targetLocation = null, maxRadius = nul
         : [];
 
     for (const target of targets) {
-      const lat = target?.lat !== undefined ? target.lat : (target?.latitude !== undefined ? target.latitude : target?.vi_do);
-      const lng = target?.lng !== undefined ? target.lng : (target?.longitude !== undefined ? target.longitude : target?.kinh_do);
+      const lat = target?.lat;
+      const lng = target?.lng;
       if (lat !== undefined && lat !== null && lng !== undefined && lng !== null) {
         const distance = calculateDistanceMeters(
           Number(clientLocation.lat),
@@ -490,16 +502,16 @@ const validateGeofence = (clientLocation, targetLocation = null, maxRadius = nul
           Number(lat),
           Number(lng)
         );
-        const targetRadius = Number(target?.radiusMeters ?? target?.ban_kinh_met);
+        const targetRadius = Number(target?.radiusMeters);
         const targetEffectiveRadius =
           Number.isFinite(targetRadius) && targetRadius > 0
-            ? targetRadius + accuracyTolerance
+            ? Math.round(targetRadius * radiusMultiplier) + accuracyTolerance
             : effectiveRadius;
 
         if (distance <= targetEffectiveRadius) {
           isInside = true;
           closestTarget = {
-            name: target.name || target.ten_phong_ban || activeCampus.name,
+            name: target.name || activeCampus.name,
             lat: Number(lat),
             lng: Number(lng),
           };
@@ -510,7 +522,7 @@ const validateGeofence = (clientLocation, targetLocation = null, maxRadius = nul
         if (distance < minDistance) {
           minDistance = distance;
           closestTarget = {
-            name: target.name || target.ten_phong_ban || activeCampus.name,
+            name: target.name || activeCampus.name,
             lat: Number(lat),
             lng: Number(lng),
           };
@@ -680,10 +692,10 @@ const updateCampusConfig = (newConfig = {}) => {
     return number;
   };
 
-  const incomingName = newConfig.name !== undefined ? newConfig.name : newConfig.ten_co_so;
-  const incomingLat = newConfig.lat !== undefined ? newConfig.lat : newConfig.vi_do;
-  const incomingLng = newConfig.lng !== undefined ? newConfig.lng : newConfig.kinh_do;
-  const incomingRadius = newConfig.radiusMeters !== undefined ? newConfig.radiusMeters : newConfig.ban_kinh_met;
+  const incomingName = newConfig.ten_co_so;
+  const incomingLat = newConfig.vi_do;
+  const incomingLng = newConfig.kinh_do;
+  const incomingRadius = newConfig.ban_kinh_met;
 
   if (incomingName !== undefined) {
     const name = String(incomingName).trim();

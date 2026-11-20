@@ -5,6 +5,7 @@ const { sendCheckOutNotificationEmail } = require('../heThong/guiEmail.service')
 const { validateGeofence, resolveUserGeofenceTargets } = require('../../utils/hoTroChamCong');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
+const { kiemTraChoPhepCheckOut } = require('./khoiCaDay.service');
 const {
   ServiceError,
   normalizeAttendanceMethod,
@@ -53,14 +54,6 @@ const performCheckOut = async ({
   const acc = do_chinh_xac !== undefined && do_chinh_xac !== null && do_chinh_xac !== '' ? Number(do_chinh_xac) : null;
   const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
 
-  if (!allowManual && !hasCoordinates) {
-    throw new ServiceError(
-      'Chấm công tan ca bắt buộc phải gửi tọa độ GPS hợp lệ.',
-      400,
-      'ATTENDANCE_GPS_REQUIRED'
-    );
-  }
-
   const now = new Date();
   const { dateStr } = getVietnamDayRange(now);
 
@@ -69,6 +62,7 @@ const performCheckOut = async ({
     ngay_cong: dateStr,
     thoi_gian_vao: { [Op.ne]: null },
     thoi_gian_ra: null,
+    trang_thai: { [Op.ne]: 'thieu_check_out' },
   };
 
   if (cham_cong_id && isValidUuid(String(cham_cong_id))) {
@@ -80,6 +74,7 @@ const performCheckOut = async ({
   let openLog = await NhatKyChamCong.findOne({
     where,
     include: [{ model: CaLamViec, as: 'ca' }],
+    order: [['thoi_gian_vao', 'DESC']],
   });
 
   if (!openLog) {
@@ -91,6 +86,7 @@ const performCheckOut = async ({
         ngay_cong: { [Op.in]: [dateStr, yesterdayStr] },
         thoi_gian_vao: { [Op.gte]: overnightCutoff },
         thoi_gian_ra: null,
+        trang_thai: { [Op.ne]: 'thieu_check_out' },
         ...(cham_cong_id && isValidUuid(String(cham_cong_id))
           ? { id: cham_cong_id }
           : ca_id && isValidUuid(String(ca_id))
@@ -118,33 +114,55 @@ const performCheckOut = async ({
     );
   }
 
+  // Khối ca liên tục chứa lịch của bản ghi (ca hành chính không có lịch trình nên dùng chính ca làm việc)
+  const { khoiConfig } = await kiemTraChoPhepCheckOut({ nguoiDungId: nguoi_dung_id, openLog, now, allowManual });
+
   let isFraud = false;
   let fraudReason = null;
   let geofenceMeta = null;
 
-  if (finalMethod === 'gps_mobile' || hasCoordinates) {
-    if (acc !== null && Number.isFinite(acc) && acc > 150) {
+  // A2: Lịch trực tuyến → bỏ qua kiểm tra vị trí GPS khi check-out
+  let isOnlineScheduleOut = false;
+  if (openLog.lich_trinh_id) {
+    const schedForOnline = await LichTrinh.findByPk(openLog.lich_trinh_id, { attributes: ['id', 'la_truc_tuyen'] });
+    isOnlineScheduleOut = Boolean(schedForOnline?.la_truc_tuyen);
+  }
+
+  if (!isOnlineScheduleOut) {
+    if (!allowManual && !hasCoordinates) {
       throw new ServiceError(
-        `Độ chính xác GPS không đủ tin cậy (sai số ${acc}m vượt ngưỡng cho phép <= 150m). Vui lòng di chuyển ra nơi thoáng.`,
+        'Chấm công tan ca bắt buộc phải gửi tọa độ GPS hợp lệ.',
         400,
-        'GPS_ACCURACY_UNRELIABLE',
-        { accuracy: acc }
+        'ATTENDANCE_GPS_REQUIRED'
       );
     }
-    if (hasCoordinates) {
-      const geoTargets = await resolveUserGeofenceTargets(nguoi_dung_id, openLog.lich_trinh_id);
-      const geofenceResult = validateGeofence({ lat, lng, accuracy: acc }, geoTargets, null, dia_chi_ip);
-      geofenceMeta = geofenceResult;
-      if (!geofenceResult.valid) {
-        isFraud = true;
-        fraudReason = geofenceResult.fraudReason || `Tọa độ GPS check-out nằm ngoài bán kính cho phép (${Math.round(geofenceResult.distance)}m so với tâm trường).`;
+    if (finalMethod === 'gps_mobile' || hasCoordinates) {
+      // Check-out nới rộng ngưỡng GPS lên 300m (người có thể đã ra ngoài hành lang/sân)
+      const GPS_ACCURACY_LIMIT_CHECKOUT = 300;
+      if (acc !== null && Number.isFinite(acc) && acc > GPS_ACCURACY_LIMIT_CHECKOUT) {
+        throw new ServiceError(
+          `Độ chính xác GPS không đủ tin cậy khi check-out (sai số ${acc}m vượt ngưỡng <= ${GPS_ACCURACY_LIMIT_CHECKOUT}m). Vui lòng di chuyển ra nơi thoáng.`,
+          400,
+          'GPS_ACCURACY_UNRELIABLE',
+          { accuracy: acc }
+        );
+      }
+      if (hasCoordinates) {
+        const geoTargets = await resolveUserGeofenceTargets(nguoi_dung_id, openLog.lich_trinh_id);
+        // Check-out: nới rộng bán kính 1.5× qua radiusMultiplier
+        const geofenceResult = validateGeofence({ lat, lng, accuracy: acc }, geoTargets, { radiusMultiplier: 1.5 }, dia_chi_ip);
+        geofenceMeta = geofenceResult;
+        if (!geofenceResult.valid) {
+          isFraud = true;
+          fraudReason = geofenceResult.fraudReason || `Tọa độ GPS check-out nằm ngoài bán kính cho phép (${Math.round(geofenceResult.distance)}m so với tâm trường).`;
+        }
       }
     }
   }
 
   const { finalStatus, earlyMinutes } = calculateCheckOutStatus(
     now,
-    openLog.ca,
+    khoiConfig,
     openLog.trang_thai
   );
 
@@ -159,6 +177,7 @@ const performCheckOut = async ({
   const soTietThucDay = await calculateActualTeachingPeriods(
     {
       lichTrinhId: openLog.lich_trinh_id,
+      lichTrinhIds: openLog.ds_lich_trinh_id,
       workingMinutes,
       earlyMinutes: earlyMinutes || 0,
     },
@@ -196,25 +215,28 @@ const performCheckOut = async ({
     await openLog.save({ transaction });
   });
 
-  NguoiDung.findByPk(nguoi_dung_id, { attributes: ['email', 'ho_ten'] })
-    .then((user) => {
-      if (user && user.email) {
-        sendCheckOutNotificationEmail({
-          to: user.email,
-          fullName: user.ho_ten || 'Thầy/Cô',
-          checkInTime: openLog.thoi_gian_vao,
-          checkOutTime: now,
-          isEarlyLeave: earlyMinutes > 0,
-          earlyMinutes,
-          method: finalMethod,
-        }).catch(() => {});
-      }
-    })
-    .catch(() => {});
+  const attendanceOwner = await NguoiDung.findByPk(nguoi_dung_id, {
+    attributes: ['email', 'ho_ten', 'don_vi_chinh_id'],
+  }).catch(() => null);
+
+  if (attendanceOwner && attendanceOwner.email) {
+    sendCheckOutNotificationEmail({
+      to: attendanceOwner.email,
+      fullName: attendanceOwner.ho_ten || 'Thầy/Cô',
+      checkInTime: openLog.thoi_gian_vao,
+      checkOutTime: now,
+      isEarlyLeave: earlyMinutes > 0,
+      earlyMinutes,
+      method: finalMethod,
+    }).catch(() => {});
+  }
 
   try {
     const { emitAttendanceUpdate, emitFraudAlert } = require('../../config/socket');
-    emitAttendanceUpdate(openLog.toJSON ? openLog.toJSON() : openLog);
+    emitAttendanceUpdate({
+      ...(openLog.toJSON ? openLog.toJSON() : openLog),
+      don_vi_chinh_id: attendanceOwner?.don_vi_chinh_id || null,
+    });
     if (isFraud) {
       emitFraudAlert({
         type: 'GEOFENCE_CHECK_OUT_ALERT',

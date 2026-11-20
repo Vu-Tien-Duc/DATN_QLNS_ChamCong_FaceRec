@@ -49,11 +49,11 @@ import {
 import { departmentApi } from '../../api/phongBan.api';
 import { scheduleApi } from '../../api/lichTrinh.api';
 import { shiftApi } from '../../api/caLamViec.api';
-import { userApi } from '../../api/nguoiDung.api';
 import { holidayApi, HolidayItem } from '../../api/ngayNghiLe.api';
 import { apiClient, extractArray } from '../../api/apiClient';
-import { DepartmentItem, ShiftItem, UserProfile } from '../../types/index';
+import { DepartmentItem, ShiftItem } from '../../types/index';
 import { isAdmin as checkIsAdmin, hasRole, canApproveLevel1 } from '../../utils/phanQuyen';
+import { useSocketEvent } from '../../api/socket';
 import { formatDateVN, formatDateTimeVN } from '../../utils/dinhDang';
 import { ModalPheDuyetDon } from './components/ModalPheDuyetDon';
 import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
@@ -168,6 +168,13 @@ function getLeaveTypeMeta(type?: string) {
         dotColor: 'bg-amber-500',
         icon: Clock,
       };
+    case 'giai_trinh_thieu_check_out':
+      return {
+        label: 'Giải Trình Thiếu Check-out',
+        badgeClass: 'bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+        dotColor: 'bg-purple-500',
+        icon: AlertCircle,
+      };
     default:
       return {
         label: type || 'Nghỉ Phép',
@@ -183,7 +190,6 @@ function getLeaveStatusMeta(status?: string) {
   const norm = (status || '').toLowerCase();
   switch (norm) {
     case 'pending':
-    case 'pending_dean':
       return {
         label: 'Chờ Cấp 1 (Khoa)',
         badgeClass: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-300 dark:border-amber-800',
@@ -234,16 +240,17 @@ function getLeaveStatusMeta(status?: string) {
 
 export const LeaveRequests: React.FC = () => {
   const { user } = useAuthStore();
-  const currentUserId = user?.id || user?._id;
+  const currentUserId = user?.id;
 
-  // Quyền Admin IT & Thẩm quyền lãnh đạo xét duyệt
+  // Quyền Admin IT, quyền nộp đơn (theo permissions.js: không cấp cho admin/bgh/tccb/dao_tao/ke_toan) & thẩm quyền xét duyệt
   const isAdmin = useMemo(() => checkIsAdmin(user), [user]);
-  const isBghOrHrApprover = useMemo(() => hasRole(user, ['admin', 'bgh', 'tccb']), [user]);
-  const isUnitApprover = useMemo(() => canApproveLevel1(user) || isBghOrHrApprover, [user, isBghOrHrApprover]);
-  const canLoadUserDirectory = useMemo(
-    () => hasRole(user, ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']),
+  const canCreateLeave = useMemo(
+    () => !hasRole(user, ['admin', 'bgh', 'tccb', 'dao_tao', 'ke_toan']),
     [user]
   );
+  const isBghOrAdminApprover = useMemo(() => hasRole(user, ['admin', 'bgh']), [user]);
+  const isBghOrHrApprover = useMemo(() => hasRole(user, ['admin', 'bgh', 'tccb']), [user]);
+  const isUnitApprover = useMemo(() => canApproveLevel1(user) || isBghOrHrApprover, [user, isBghOrHrApprover]);
 
   // Data States
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequestData[]>([]);
@@ -251,7 +258,7 @@ export const LeaveRequests: React.FC = () => {
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalanceData | null>(null);
   const [schedules, setSchedules] = useState<any[]>([]);
   const [shifts, setShifts] = useState<ShiftItem[]>([]);
-  const [teachers, setTeachers] = useState<UserProfile[]>([]);
+  const [teachers, setTeachers] = useState<Array<{ id: string; ho_ten: string; ma_can_bo?: string }>>([]);
   const [holidays, setHolidays] = useState<HolidayItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -279,6 +286,7 @@ export const LeaveRequests: React.FC = () => {
   const [approvalAction, setApprovalAction] = useState<'APPROVE' | 'REJECT'>('APPROVE');
   const [approvalNote, setApprovalNote] = useState<string>('');
   const [rejectionReason, setRejectionReason] = useState<string>('');
+  const [soTietXacNhan, setSoTietXacNhan] = useState<number | ''>('');
   const [actionSubmitting, setActionSubmitting] = useState<boolean>(false);
 
   // Helper kiểm tra URL minh chứng hợp lệ (loại bỏ chuỗi undefined, null từ đơn cũ)
@@ -343,12 +351,21 @@ export const LeaveRequests: React.FC = () => {
       const applicant = req.nguoi_dung;
       const applicantId = applicant?.id || req.nguoi_dung_id;
       if (applicantId === currentUserId) return false;
-      const st = req.trang_thai || req.status;
-      if (st === 'pending_bgh') return isBghOrHrApprover;
-      if (st === 'pending' || st === 'pending_dean') return isUnitApprover;
+      const applicantRole = String(applicant?.vai_tro_chinh || '').trim().toLowerCase();
+      const st = req.trang_thai || '';
+      if (st === 'pending_bgh') {
+        if (!isBghOrHrApprover) return false;
+        if (!isBghOrAdminApprover && ['admin', 'bgh'].includes(applicantRole)) return false;
+        return true;
+      }
+      if (st === 'pending') {
+        if (!isUnitApprover) return false;
+        if (!isBghOrHrApprover && ['truong_khoa', 'admin', 'bgh'].includes(applicantRole)) return false;
+        return true;
+      }
       return false;
     },
-    [currentUserId, isBghOrHrApprover, isUnitApprover]
+    [currentUserId, isBghOrAdminApprover, isBghOrHrApprover, isUnitApprover]
   );
 
   const canCancelRequest = useCallback(
@@ -357,23 +374,26 @@ export const LeaveRequests: React.FC = () => {
       const applicantId = applicant?.id || req.nguoi_dung_id;
       const isOwner = applicantId === currentUserId;
       const isBghOrAdmin = hasRole(user, ['admin', 'bgh']);
-      const st = req.trang_thai || req.status;
+      const st = req.trang_thai || '';
       if (isBghOrAdmin) {
-        return ['pending', 'pending_dean', 'pending_bgh', 'approved'].includes(st);
+        return ['pending', 'pending_bgh', 'approved'].includes(st);
       }
-      return isOwner && ['pending', 'pending_dean', 'pending_bgh'].includes(st);
+      if (!isOwner) return false;
+      if (['pending', 'pending_bgh'].includes(st)) return true;
+      if (st === 'approved' && req.ngay_bat_dau) {
+        return String(req.ngay_bat_dau).slice(0, 10) > toLocalIsoDate(new Date());
+      }
+      return false;
     },
     [currentUserId, user]
   );
 
   const getLatestApprovalNote = useCallback((req: LeaveRequestData): string => {
-    if (req.ghi_chu_duyet) return req.ghi_chu_duyet;
-    const history = (req.lich_su_duyet || []) as any[];
+    const history = req.lich_su_duyet || [];
     for (let i = history.length - 1; i >= 0; i--) {
       const item = history[i];
-      if ((item?.hanh_dong || item?.action) === 'approved') {
-        const note = item?.ghi_chu || item?.y_kien || item?.comment;
-        if (note) return String(note);
+      if (item?.hanh_dong === 'approved' && item.y_kien) {
+        return String(item.y_kien);
       }
     }
     return '';
@@ -395,14 +415,14 @@ export const LeaveRequests: React.FC = () => {
     return dates;
   }, [holidays]);
 
-  // Helper hàm ánh xạ tên đơn vị / Khoa / Phòng ban an toàn (chống hiển thị ObjectId trần)
+  // Helper hàm ánh xạ tên đơn vị / Khoa / Phòng ban an toàn
   const resolveDeptName = useCallback((deptRef: any): string => {
     if (!deptRef) return 'ĐH Nguyễn Trãi';
     if (typeof deptRef === 'object' && deptRef !== null) {
-      return deptRef.ten_phong_ban || deptRef.name || 'ĐH Nguyễn Trãi';
+      return deptRef.ten_phong_ban || 'ĐH Nguyễn Trãi';
     }
     const idStr = String(deptRef).trim();
-    const matched = departments.find((d) => (d.id || d._id) === idStr);
+    const matched = departments.find((d) => d.id === idStr);
     if (matched) return matched.ten_phong_ban;
     return 'Khoa / Đơn vị';
   }, [departments]);
@@ -466,7 +486,7 @@ export const LeaveRequests: React.FC = () => {
         leaveRequestApi.getLeaveBalance().catch(() => null),
         scheduleApi.getSchedules({ gioi_han: 100 }).catch(() => ({ data: [] })),
         shiftApi.getShifts().catch(() => []),
-        canLoadUserDirectory ? userApi.getUsers({ gioi_han: 100 }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+        canCreateLeave ? leaveRequestApi.getSubstituteLecturers().catch(() => []) : Promise.resolve([]),
         holidayApi.getHolidays({ nam: String(new Date().getFullYear()) }).catch(() => []),
       ]);
 
@@ -474,17 +494,22 @@ export const LeaveRequests: React.FC = () => {
       if (balanceRes) setLeaveBalance(balanceRes);
       setSchedules(extractArray<any>(schedRes));
       setShifts(extractArray<ShiftItem>(shiftRes));
-      setTeachers(extractArray<UserProfile>(usersRes));
+      setTeachers(Array.isArray(usersRes) ? usersRes : []);
       setHolidays(Array.isArray(holidayRes) ? holidayRes : []);
     } catch (err) {
       console.error('Error loading metadata:', err);
     }
-  }, [canLoadUserDirectory]);
+  }, [canCreateLeave]);
 
   useEffect(() => {
     loadRequests();
     loadMetadata();
   }, [loadRequests, loadMetadata]);
+
+  useSocketEvent('leave:status-changed', () => {
+    loadRequests();
+    loadMetadata();
+  });
 
   // =============================================================================
   // KPI METRICS CALCULATION (Matching code.html)
@@ -492,10 +517,10 @@ export const LeaveRequests: React.FC = () => {
 
   const metrics = useMemo(() => {
     const totalMonth = leaveRequests.length;
-    const step1Count = leaveRequests.filter((r) => ['pending', 'pending_dean'].includes(r.trang_thai || r.status)).length;
-    const step2Count = leaveRequests.filter((r) => (r.trang_thai || r.status) === 'pending_bgh').length;
-    const approvedCount = leaveRequests.filter((r) => (r.trang_thai || r.status) === 'approved').length;
-    const rejectedCount = leaveRequests.filter((r) => (r.trang_thai || r.status) === 'rejected').length;
+    const step1Count = leaveRequests.filter((r) => r.trang_thai === 'pending').length;
+    const step2Count = leaveRequests.filter((r) => r.trang_thai === 'pending_bgh').length;
+    const approvedCount = leaveRequests.filter((r) => r.trang_thai === 'approved').length;
+    const rejectedCount = leaveRequests.filter((r) => r.trang_thai === 'rejected').length;
     const approvalRate = totalMonth > 0 ? Math.round((approvedCount / totalMonth) * 100) : 0;
 
     return {
@@ -570,10 +595,10 @@ export const LeaveRequests: React.FC = () => {
       if (selectedDeptId && selectedDeptId !== 'all') {
         const userDeptId = String(applicant?.don_vi_chinh_id || applicant?.don_vi_chinh?.id || '');
         if (userDeptId !== selectedDeptId) {
-          const userDept = departments.find((d) => String(d.id || d._id) === userDeptId);
+          const userDept = departments.find((d) => String(d.id) === userDeptId);
           const parentId = userDept?.don_vi_cha_id
             ? (typeof userDept.don_vi_cha_id === 'object' && 'id' in userDept.don_vi_cha_id
-                ? String(userDept.don_vi_cha_id.id || userDept.don_vi_cha_id._id)
+                ? String(userDept.don_vi_cha_id.id)
                 : String(userDept.don_vi_cha_id))
             : '';
           if (parentId !== selectedDeptId) {
@@ -590,8 +615,8 @@ export const LeaveRequests: React.FC = () => {
 
       // 4. Lọc Trạng thái luồng duyệt
       if (selectedWorkflowStatus !== 'all') {
-        const st = req.trang_thai || req.status;
-        if (selectedWorkflowStatus === 'step1' && !['pending', 'pending_dean'].includes(st)) return false;
+        const st = req.trang_thai || '';
+        if (selectedWorkflowStatus === 'step1' && st !== 'pending') return false;
         if (selectedWorkflowStatus === 'step2' && st !== 'pending_bgh') return false;
         if (selectedWorkflowStatus === 'approved' && st !== 'approved') return false;
         if (selectedWorkflowStatus === 'rejected' && st !== 'rejected') return false;
@@ -642,7 +667,7 @@ export const LeaveRequests: React.FC = () => {
       endDate: new Date().toISOString().split('T')[0],
       isHalfDay: false,
       leavePeriods: '',
-      scheduleId: schedules[0]?._id || '',
+      scheduleId: schedules[0]?.id || '',
       substituteShiftId: '',
       substituteTeacherId: '',
       makeupDate: '',
@@ -705,7 +730,10 @@ export const LeaveRequests: React.FC = () => {
           createFormData.type === 'doi_ca' && createFormData.substituteTeacherId
             ? createFormData.substituteTeacherId
             : undefined,
-        ngay_day_bu: createFormData.type === 'day_bu' ? createFormData.makeupDate : undefined,
+        ngay_day_bu:
+          createFormData.type === 'day_bu' || (createFormData.type === 'doi_ca' && createFormData.makeupDate)
+            ? createFormData.makeupDate
+            : undefined,
         file: createFormData.file || undefined,
       };
 
@@ -774,11 +802,12 @@ export const LeaveRequests: React.FC = () => {
     setApprovalAction(action);
     setApprovalNote('');
     setRejectionReason('');
+    setSoTietXacNhan('');
     setIsApprovalModalOpen(true);
   };
 
   const getExpectedVersion = useCallback((req?: LeaveRequestData | null): number | undefined => {
-    const updated = req?.updatedAt || (req as any)?.cap_nhat_luc;
+    const updated = req?.cap_nhat_luc;
     if (!updated) return undefined;
     const ts = new Date(updated).getTime();
     return Number.isFinite(ts) ? ts : undefined;
@@ -796,9 +825,29 @@ export const LeaveRequests: React.FC = () => {
     setActionSubmitting(true);
     try {
       const expectedVersion = getExpectedVersion(selectedRequest);
-      const targetId = selectedRequest.id || selectedRequest._id;
+      const targetId = selectedRequest.id;
+      if (!targetId) {
+        toast.error('Không xác định được mã đơn cần xử lý.');
+        return;
+      }
       if (approvalAction === 'APPROVE') {
-        await leaveRequestApi.approveLeaveRequest(targetId, approvalNote.trim(), expectedVersion);
+        const isGiaiTrinhThieuCheckOut = selectedRequest.loai_don === 'giai_trinh_thieu_check_out';
+        const requiresConfirmedPeriods =
+          isGiaiTrinhThieuCheckOut &&
+          Boolean(selectedRequest.lich_trinh_id || selectedRequest.lich_trinh || selectedRequest.nhat_ky?.lich_trinh_id);
+        const parsedConfirmedPeriods = soTietXacNhan !== '' ? Number(soTietXacNhan) : undefined;
+        if (
+          requiresConfirmedPeriods &&
+          (parsedConfirmedPeriods === undefined ||
+            !Number.isInteger(parsedConfirmedPeriods) ||
+            parsedConfirmedPeriods < 1 ||
+            parsedConfirmedPeriods > 15)
+        ) {
+          toast.error('Vui lòng nhập số tiết xác nhận hợp lệ (từ 1 đến 15 tiết).');
+          setActionSubmitting(false);
+          return;
+        }
+        await leaveRequestApi.approveLeaveRequest(targetId, approvalNote.trim(), expectedVersion, parsedConfirmedPeriods);
         toast.success('Phê duyệt đơn xin nghỉ phép thành công');
       } else {
         await leaveRequestApi.rejectLeaveRequest(targetId, rejectionReason.trim(), expectedVersion);
@@ -850,7 +899,7 @@ export const LeaveRequests: React.FC = () => {
 
         return {
           'STT': i + 1,
-          'Mã Đơn': r.id || r._id || `DP-${i + 1}`,
+          'Mã Đơn': r.id || `DP-${i + 1}`,
           'Họ Và Tên': userObj?.ho_ten || 'Cán Bộ',
           'Mã Cán Bộ': userObj?.ma_can_bo || '--',
           'Email': userObj?.email || '--',
@@ -933,7 +982,7 @@ export const LeaveRequests: React.FC = () => {
             >
               Xuất Excel
             </Button>
-            {!isAdmin && (
+            {canCreateLeave && (
               <Button
                 onClick={openCreateModal}
                 variant="primary"
@@ -1127,6 +1176,7 @@ export const LeaveRequests: React.FC = () => {
                   <option value="nghi_om">Nghỉ ốm / Thai sản</option>
                   <option value="viec_rieng">Việc riêng / Không lương</option>
                   <option value="giai_trinh_cong">Giải trình chấm công</option>
+                  <option value="giai_trinh_thieu_check_out">Giải trình thiếu check-out</option>
                 </select>
                 <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
@@ -1211,8 +1261,8 @@ export const LeaveRequests: React.FC = () => {
                   const applicant = item.nguoi_dung;
                   const applicantId: string = applicant?.id || item.nguoi_dung_id || '';
                   const isOwner = applicantId === currentUserId;
-                  const typeMeta = getLeaveTypeMeta(item.loai_don || item.type);
-                  const statusMeta = getLeaveStatusMeta(item.trang_thai || item.status);
+                  const typeMeta = getLeaveTypeMeta(item.loai_don);
+                  const statusMeta = getLeaveStatusMeta(item.trang_thai);
 
                   // Parse raw ho_ten
                   const rawName = applicant?.ho_ten || 'Cán Bộ';
@@ -1224,10 +1274,10 @@ export const LeaveRequests: React.FC = () => {
                   const canApprove = canApproveRequest(item);
                   const canCancel = canCancelRequest(item);
 
-                  const daysCount = item.so_ngay ?? item.totalDays ?? 1;
-                  const itemAttachment = item.tep_dinh_kem || item.attachmentUrl;
+                  const daysCount = item.so_ngay ?? 1;
+                  const itemAttachment = item.tep_dinh_kem;
                   const hasValidAttachment = isValidAttachmentUrl(itemAttachment);
-                  const itemId = item.id || item._id;
+                  const itemId = item.id || '';
 
                   return (
                     <tr
@@ -1285,7 +1335,7 @@ export const LeaveRequests: React.FC = () => {
                             <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums font-mono">
                               {daysCount} ngày
                             </span>
-                            {(Boolean(item.nua_ngay) || Number(daysCount) === 0.5) && (
+                            {Number(daysCount) === 0.5 && (
                               <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
                                 Nửa ngày
                               </span>
@@ -1353,17 +1403,17 @@ export const LeaveRequests: React.FC = () => {
                             />
                             {statusMeta.label}
                           </span>
-                          {(item.trang_thai || item.status) === 'approved' && (
+                          {(item.trang_thai) === 'approved' && (
                             <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-[150px] mt-0.5" title={`Duyệt bởi: ${getApproverDisplayName(item)}`}>
                               {getApproverDisplayName(item)}
                             </span>
                           )}
-                          {(item.trang_thai || item.status) === 'pending_bgh' && (
+                          {(item.trang_thai) === 'pending_bgh' && (
                             <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-[150px] mt-0.5" title={`Khoa đã thông qua: ${getStep1ApproverName(item)}`}>
                               Khoa: {getStep1ApproverName(item)}
                             </span>
                           )}
-                          {(item.trang_thai || item.status) === 'rejected' && (
+                          {(item.trang_thai) === 'rejected' && (
                             <span className="text-[10px] text-rose-600 dark:text-rose-400 truncate max-w-[150px] mt-0.5" title={`Từ chối bởi ${getApproverDisplayName(item)}: ${item.ly_do_tu_choi || ''}`}>
                               {getApproverDisplayName(item)}
                             </span>
@@ -1404,7 +1454,7 @@ export const LeaveRequests: React.FC = () => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleCancelRequest(item._id, getExpectedVersion(item));
+                                handleCancelRequest(itemId, getExpectedVersion(item));
                               }}
                               className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/50 transition-colors cursor-pointer"
                               title="Hủy đơn xin nghỉ"
@@ -1661,10 +1711,10 @@ export const LeaveRequests: React.FC = () => {
                       >
                         <option value="">-- Chọn buổi giảng dạy cần bù --</option>
                         {schedules.map((s: any) => {
-                          const sId = s.id || s._id;
+                          const sId = s.id;
                           return (
                           <option key={sId} value={sId}>
-                            {s.mon_hoc?.ten_mon || 'Môn học'} - Phòng {s.phong_hoc || 'Online'} ({s.thu_trong_tuan ? `Thứ ${s.thu_trong_tuan === 8 ? 'CN' : s.thu_trong_tuan}` : formatDateVN(s.ngay_bat_dau)}{s.gio_bat_dau ? ` ${s.gio_bat_dau}-${s.gio_ket_thuc}` : ''})
+                            {s.mon_hoc?.ten_mon || 'Môn học'} - Phòng {s.phong_hoc || 'Online'} ({s.thu_trong_tuan !== undefined && s.thu_trong_tuan !== null ? (Number(s.thu_trong_tuan) === 0 ? 'Chủ nhật' : `Thứ ${Number(s.thu_trong_tuan) + 1}`) : formatDateVN(s.ngay_bat_dau)}{s.gio_bat_dau ? ` ${s.gio_bat_dau}-${s.gio_ket_thuc}` : ''})
                           </option>
                           );
                         })}
@@ -1697,10 +1747,10 @@ export const LeaveRequests: React.FC = () => {
                       >
                         <option value="">-- Chọn buổi học cần đổi --</option>
                         {schedules.map((s: any) => {
-                          const sId = s.id || s._id;
+                          const sId = s.id;
                           return (
                           <option key={sId} value={sId}>
-                            {s.mon_hoc?.ten_mon || 'Môn học'} - Phòng {s.phong_hoc || 'Online'} ({s.thu_trong_tuan ? `Thứ ${s.thu_trong_tuan === 8 ? 'CN' : s.thu_trong_tuan}` : formatDateVN(s.ngay_bat_dau)}{s.gio_bat_dau ? ` ${s.gio_bat_dau}-${s.gio_ket_thuc}` : ''})
+                            {s.mon_hoc?.ten_mon || 'Môn học'} - Phòng {s.phong_hoc || 'Online'} ({s.thu_trong_tuan !== undefined && s.thu_trong_tuan !== null ? (Number(s.thu_trong_tuan) === 0 ? 'Chủ nhật' : `Thứ ${Number(s.thu_trong_tuan) + 1}`) : formatDateVN(s.ngay_bat_dau)}{s.gio_bat_dau ? ` ${s.gio_bat_dau}-${s.gio_ket_thuc}` : ''})
                           </option>
                           );
                         })}
@@ -1715,7 +1765,7 @@ export const LeaveRequests: React.FC = () => {
                       >
                         <option value="">-- Chọn ca thay thế --</option>
                         {shifts.map((sh) => {
-                          const shId = sh.id || sh._id;
+                          const shId = sh.id;
                           return (
                           <option key={shId} value={shId}>
                             {sh.ten_ca} ({sh.gio_bat_dau} - {sh.gio_ket_thuc})
@@ -1733,9 +1783,9 @@ export const LeaveRequests: React.FC = () => {
                       >
                         <option value="">-- Chọn giảng viên dạy thay --</option>
                         {teachers
-                          .filter((t) => (t.id || t._id) !== currentUserId)
+                          .filter((t) => t.id !== currentUserId)
                           .map((t) => {
-                            const tId = t.id || t._id;
+                            const tId = t.id;
                             return (
                             <option key={tId} value={tId}>
                               {t.ho_ten} {t.ma_can_bo ? `(${t.ma_can_bo})` : ''}
@@ -1743,6 +1793,15 @@ export const LeaveRequests: React.FC = () => {
                             );
                           })}
                       </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-600 dark:text-slate-400 mb-1">Ngày dạy bù / đổi sang (tùy chọn):</label>
+                      <input
+                        type="date"
+                        value={createFormData.makeupDate}
+                        onChange={(e) => setCreateFormData({ ...createFormData, makeupDate: e.target.value })}
+                        className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                      />
                     </div>
                   </div>
                 )}
@@ -1821,7 +1880,7 @@ export const LeaveRequests: React.FC = () => {
                       Chi Tiết Hồ Sơ Đơn Nghỉ Phép
                     </h3>
                     {(() => {
-                      const sm = getLeaveStatusMeta(selectedRequest.trang_thai || selectedRequest.status);
+                      const sm = getLeaveStatusMeta(selectedRequest.trang_thai);
                       return (
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${sm.badgeClass}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${sm.dotColor} ${sm.isPulse ? 'animate-pulse' : ''}`} />
@@ -1831,7 +1890,7 @@ export const LeaveRequests: React.FC = () => {
                     })()}
                   </div>
                   <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                    Mã đơn: <span className="text-slate-700 dark:text-slate-300 font-semibold">{selectedRequest.id || selectedRequest._id}</span>
+                    Mã đơn: <span className="text-slate-700 dark:text-slate-300 font-semibold">{selectedRequest.id}</span>
                     {selectedRequest.tao_luc && (
                       <span className="ml-2 text-slate-400">
                         • Nộp: {formatDateTimeVN(selectedRequest.tao_luc)}
@@ -1937,16 +1996,16 @@ export const LeaveRequests: React.FC = () => {
                 <div className="p-3 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-850/40">
                   <span className="text-slate-400 block mb-1 font-medium">Hình thức nghỉ:</span>
                   <span className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                    {getLeaveTypeMeta(selectedRequest.loai_don || selectedRequest.type).label}
+                    {getLeaveTypeMeta(selectedRequest.loai_don).label}
                   </span>
                 </div>
                 <div className="p-3 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-850/40">
                   <span className="text-slate-400 block mb-1 font-medium">Tổng số ngày:</span>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-base text-brand-600 dark:text-brand-400 font-mono">
-                      {selectedRequest.so_ngay ?? selectedRequest.totalDays ?? 1} ngày
+                      {selectedRequest.so_ngay ?? 1} ngày
                     </span>
-                    {(Boolean(selectedRequest.nua_ngay) || Number(selectedRequest.so_ngay ?? 1) === 0.5) && (
+                    {Number(selectedRequest.so_ngay ?? 1) === 0.5 && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
                         Nửa ngày
                       </span>
@@ -2002,6 +2061,32 @@ export const LeaveRequests: React.FC = () => {
                     </span>
                   </div>
                 )}
+                {selectedRequest.so_tiet_xac_nhan !== null && selectedRequest.so_tiet_xac_nhan !== undefined && (
+                  <div className="p-3 rounded-xl border border-emerald-200/70 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20">
+                    <span className="text-slate-400 block mb-1 font-medium">Số tiết xác nhận:</span>
+                    <span className="font-bold text-emerald-700 dark:text-emerald-300 font-mono">
+                      {selectedRequest.so_tiet_xac_nhan} tiết
+                    </span>
+                  </div>
+                )}
+                {selectedRequest.nhat_ky && (
+                  <div className="sm:col-span-3 p-3 rounded-xl border border-amber-200/70 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20">
+                    <span className="text-slate-400 block mb-1 font-medium">Nhật ký chấm công liên kết:</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                      Ngày công {formatDateVN(selectedRequest.nhat_ky.ngay_cong)} • Giờ vào:{' '}
+                      <span className="font-mono">
+                        {selectedRequest.nhat_ky.thoi_gian_vao ? formatDateTimeVN(selectedRequest.nhat_ky.thoi_gian_vao) : 'Chưa ghi nhận'}
+                      </span>{' '}
+                      • Giờ ra:{' '}
+                      <span className="font-mono">
+                        {selectedRequest.nhat_ky.thoi_gian_ra ? formatDateTimeVN(selectedRequest.nhat_ky.thoi_gian_ra) : 'Chưa check-out'}
+                      </span>
+                      {Number(selectedRequest.nhat_ky.di_muon_phut || 0) > 0
+                        ? ` • Đi muộn ${selectedRequest.nhat_ky.di_muon_phut} phút`
+                        : ''}
+                    </span>
+                  </div>
+                )}
                 {selectedRequest.tao_luc && (
                   <div className="p-3 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-850/40">
                     <span className="text-slate-400 block mb-1 font-medium">Ngày gửi đơn:</span>
@@ -2047,10 +2132,10 @@ export const LeaveRequests: React.FC = () => {
                     <Paperclip className="w-4 h-4 text-brand-600 dark:text-brand-400" />
                     Tài liệu / Ảnh minh chứng (do Giảng viên đính kèm lúc nộp đơn):
                   </span>
-                  {isValidAttachmentUrl(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem) && (
+                  {isValidAttachmentUrl(selectedRequest.tep_dinh_kem) && (
                     <button
                       type="button"
-                      onClick={() => handleOpenAttachment(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem)}
+                      onClick={() => handleOpenAttachment(selectedRequest.tep_dinh_kem)}
                       className="text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
@@ -2059,15 +2144,15 @@ export const LeaveRequests: React.FC = () => {
                   )}
                 </div>
 
-                {isValidAttachmentUrl(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem) ? (
+                {isValidAttachmentUrl(selectedRequest.tep_dinh_kem) ? (
                   <div>
-                    {isImageAttachment(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem) ? (
+                    {isImageAttachment(selectedRequest.tep_dinh_kem) ? (
                       <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black/5 dark:bg-white/5 p-2 flex flex-col items-center justify-center">
                         <AnhBaoMat
-                          src={getAttachmentFullUrl(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem)}
+                          src={getAttachmentFullUrl(selectedRequest.tep_dinh_kem)}
                           alt="Ảnh minh chứng nghỉ phép"
                           className="max-h-56 sm:max-h-64 w-auto object-contain rounded-lg shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
-                          onClick={() => handleOpenAttachment(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem)}
+                          onClick={() => handleOpenAttachment(selectedRequest.tep_dinh_kem)}
                         />
                         <span className="text-[10px] text-slate-400 mt-1.5 italic">
                           (Bấm vào ảnh để xem kích thước gốc trong tab mới)
@@ -2079,14 +2164,14 @@ export const LeaveRequests: React.FC = () => {
                           <FileText className="w-6 h-6 text-brand-600 dark:text-brand-400 shrink-0" />
                           <div className="min-w-0">
                             <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate block">
-                              {getAttachmentFileName(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem)}
+                              {getAttachmentFileName(selectedRequest.tep_dinh_kem)}
                             </span>
                             <span className="text-[10px] text-slate-400">Tài liệu đính kèm kèm theo đơn</span>
                           </div>
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleOpenAttachment(selectedRequest.attachmentUrl || (selectedRequest as any).tep_dinh_kem, true)}
+                          onClick={() => handleOpenAttachment(selectedRequest.tep_dinh_kem, true)}
                           className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 hover:bg-brand-100 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
                         >
                           <Download className="w-3.5 h-3.5" />
@@ -2115,7 +2200,7 @@ export const LeaveRequests: React.FC = () => {
                       const hasBghStep =
                         Number(selectedRequest.so_ngay ?? 1) > 3 ||
                         selectedRequest.trang_thai === 'pending_bgh' ||
-                        hist.some((h: any) => h.cap_duyet === 'bgh' || Number(h.cap) === 2);
+                        hist.some((h: any) => h.cap_duyet === 'bgh');
                       return hasBghStep
                         ? (Number(selectedRequest.so_ngay ?? 1) > 3 ? 'Quy trình 2 cấp (Đơn > 3 ngày)' : 'Quy trình cấp BGH')
                         : 'Quy trình 1 cấp (Đơn ≤ 3 ngày)';
@@ -2148,11 +2233,9 @@ export const LeaveRequests: React.FC = () => {
 
                   {/* Bước 2: Cấp 1 - Trưởng Khoa / Đơn vị */}
                   {(() => {
-                    const history = (selectedRequest.lich_su_duyet || []) as any[];
-                    const step1 =
-                      history.find((h: any) => h.cap_duyet === 'khoa' || Number(h.cap_duyet ?? h.cap) === 1) ||
-                      null;
-                    const step2InHist = history.find((h: any) => h.cap_duyet === 'bgh' || Number(h.cap_duyet ?? h.cap) === 2);
+                    const history = selectedRequest.lich_su_duyet || [];
+                    const step1 = history.find((h) => h.cap_duyet === 'khoa') || null;
+                    const step2InHist = history.find((h) => h.cap_duyet === 'bgh');
                     const isTotalMultiStep =
                       Number(selectedRequest.so_ngay ?? 1) > 3 ||
                       selectedRequest.trang_thai === 'pending_bgh' ||
@@ -2168,10 +2251,9 @@ export const LeaveRequests: React.FC = () => {
                     let note = '';
 
                     if (step1) {
-                      approverName = step1.nguoi_duyet?.ho_ten || step1.vai_tro || 'Trưởng khoa';
-                      const rawTs = step1.thoi_gian || step1.thoi_diem || step1.timestamp;
-                      actionTime = rawTs ? formatDateTimeVN(rawTs) : '';
-                      note = step1.ghi_chu || step1.y_kien || step1.comment || '';
+                      approverName = step1.nguoi_duyet?.ho_ten || 'Trưởng khoa';
+                      actionTime = step1.thoi_diem ? formatDateTimeVN(step1.thoi_diem) : '';
+                      note = step1.y_kien || '';
                       if (step1.hanh_dong === 'rejected') {
                         statusLabel = 'Từ chối duyệt';
                         statusBadgeClass = 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800';
@@ -2196,7 +2278,7 @@ export const LeaveRequests: React.FC = () => {
                       IconComponent = Check;
                       approverName = getApproverDisplayName(selectedRequest);
                       actionTime = selectedRequest.cap_nhat_luc ? formatDateTimeVN(selectedRequest.cap_nhat_luc) : '';
-                      note = selectedRequest.ghi_chu_duyet || '';
+                      note = getLatestApprovalNote(selectedRequest);
                     } else if (selectedRequest.trang_thai === 'rejected') {
                       statusLabel = 'Từ chối duyệt';
                       statusBadgeClass = 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800';
@@ -2242,10 +2324,8 @@ export const LeaveRequests: React.FC = () => {
 
                   {/* Bước 3: Cấp 2 - Ban Giám Hiệu */}
                   {(() => {
-                    const history = (selectedRequest.lich_su_duyet || []) as any[];
-                    const step2 =
-                      history.find((h: any) => h.cap_duyet === 'bgh' || Number(h.cap_duyet ?? h.cap) === 2) ||
-                      null;
+                    const history = selectedRequest.lich_su_duyet || [];
+                    const step2 = history.find((h) => h.cap_duyet === 'bgh') || null;
                     const isTotalMultiStep =
                       Number(selectedRequest.so_ngay ?? 1) > 3 ||
                       selectedRequest.trang_thai === 'pending_bgh' ||
@@ -2283,9 +2363,8 @@ export const LeaveRequests: React.FC = () => {
 
                     if (step2) {
                       approverName = step2.nguoi_duyet?.ho_ten || 'Ban Giám Hiệu';
-                      const rawTs2 = step2.thoi_gian || step2.thoi_diem || step2.timestamp;
-                      actionTime = rawTs2 ? formatDateTimeVN(rawTs2) : '';
-                      note = step2.ghi_chu || step2.y_kien || step2.comment || '';
+                      actionTime = step2.thoi_diem ? formatDateTimeVN(step2.thoi_diem) : '';
+                      note = step2.y_kien || '';
                       if (step2.hanh_dong === 'rejected') {
                         statusLabel = 'BGH Từ chối';
                         statusBadgeClass = 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800';
@@ -2304,14 +2383,14 @@ export const LeaveRequests: React.FC = () => {
                       IconComponent = Check;
                       approverName = getApproverDisplayName(selectedRequest);
                       actionTime = selectedRequest.cap_nhat_luc ? formatDateTimeVN(selectedRequest.cap_nhat_luc) : '';
-                      note = selectedRequest.ghi_chu_duyet || '';
+                      note = getLatestApprovalNote(selectedRequest);
                     } else if (selectedRequest.trang_thai === 'rejected') {
                       statusLabel = 'Dừng luồng';
                       statusBadgeClass = 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700';
                       iconBg = 'bg-slate-400 text-white';
                       IconComponent = X;
                       approverName = 'Đơn đã dừng do bị từ chối';
-                    } else if (['pending', 'pending_dean'].includes(selectedRequest.trang_thai || selectedRequest.status)) {
+                    } else if (selectedRequest.trang_thai === 'pending') {
                       statusLabel = 'Chờ xong Cấp 1';
                       statusBadgeClass = 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700';
                       iconBg = 'bg-slate-400 text-white';
@@ -2360,11 +2439,11 @@ export const LeaveRequests: React.FC = () => {
               )}
 
               {/* Rejection Alert nếu có */}
-              {selectedRequest.rejectionReason && (
+              {selectedRequest.ly_do_tu_choi && (
                 <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2.5">
                   <XCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
                   <div>
-                    <strong className="font-bold">Lý do từ chối:</strong> {selectedRequest.rejectionReason}
+                    <strong className="font-bold">Lý do từ chối:</strong> {selectedRequest.ly_do_tu_choi}
                   </div>
                 </div>
               )}
@@ -2375,7 +2454,7 @@ export const LeaveRequests: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-slate-400 font-medium">Trạng thái:</span>
                 {(() => {
-                  const sm = getLeaveStatusMeta(selectedRequest.status);
+                  const sm = getLeaveStatusMeta(selectedRequest.trang_thai);
                   return (
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${sm.badgeClass}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${sm.dotColor} ${sm.isPulse ? 'animate-pulse' : ''}`} />
@@ -2414,11 +2493,11 @@ export const LeaveRequests: React.FC = () => {
                     </>
                   )}
                 {/* Nút Hủy đơn cho người tạo đơn hoặc Admin/BGH */}
-                {canCancelRequest(selectedRequest) && (
+                {canCancelRequest(selectedRequest) && selectedRequest.id && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleCancelRequest(selectedRequest._id, getExpectedVersion(selectedRequest))}
+                      onClick={() => handleCancelRequest(selectedRequest.id!, getExpectedVersion(selectedRequest))}
                       className="text-amber-600 hover:text-amber-700 border-amber-200 dark:border-amber-900 hover:bg-amber-50 dark:hover:bg-amber-950/30"
                     >
                       <RotateCcw className="w-3.5 h-3.5 mr-1" />
@@ -2442,6 +2521,8 @@ export const LeaveRequests: React.FC = () => {
         approvalNote={approvalNote}
         rejectionReason={rejectionReason}
         submitting={actionSubmitting}
+        soTietXacNhan={soTietXacNhan}
+        onChangeSoTietXacNhan={setSoTietXacNhan}
         onChangeApprovalNote={setApprovalNote}
         onChangeRejectionReason={setRejectionReason}
         isValidAttachmentUrl={isValidAttachmentUrl}

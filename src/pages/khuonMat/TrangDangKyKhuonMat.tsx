@@ -166,7 +166,7 @@ export const FaceRegistrationPage: React.FC = () => {
   };
 
   const canManageOthers = useMemo(
-    () => hasRole(authUser, ['admin', 'bgh', 'tccb']),
+    () => hasRole(authUser, ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong']),
     [authUser]
   );
 

@@ -37,9 +37,9 @@ export interface AttendanceSuccessInfo {
   action: 'check-in' | 'check-out';
   snapshotUrl?: string;
   user: {
-    fullName: string;
+    ho_ten: string;
     email?: string;
-    avatar?: string;
+    anh_dai_dien?: string | null;
     department?: string;
     role: string;
   };
@@ -841,14 +841,15 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
           action: activeMode,
           snapshotUrl,
           user: {
-            fullName: resolvedUser.ho_ten || 'Cán bộ',
+            ho_ten: resolvedUser.ho_ten || 'Cán bộ',
             email: resolvedUser.email,
-            avatar: resolvedUser.anh_dai_dien || resolvedUser.anh_khuon_mat,
-            department: resolvedUser.ten_phong_ban || resolvedUser.don_vi_chinh?.ten_phong_ban || 'Vận hành',
+            anh_dai_dien: resolvedUser.anh_dai_dien,
+            department: resolvedUser.don_vi_chinh?.ten_phong_ban || 'Vận hành',
             role: roleDisplay,
           },
           timeStr,
           dateStr,
+          similarity: resultData?.diem_tin_cay,
           status: 'Chờ xác nhận',
           message: finalMessage,
         });
@@ -921,7 +922,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
             >
               <img
                 src={successInfo.snapshotUrl || ''}
-                alt={successInfo.user.fullName}
+                alt={successInfo.user.ho_ten}
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent pointer-events-none" />
@@ -943,7 +944,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
 
           {/* Họ tên & Email */}
           <div className="space-y-0.5">
-            <h3 className="text-2xl font-black text-white">{successInfo.user.fullName}</h3>
+            <h3 className="text-2xl font-black text-white">{successInfo.user.ho_ten}</h3>
             {successInfo.user.email && (
               <p className="text-xs text-indigo-200/70">{successInfo.user.email}</p>
             )}

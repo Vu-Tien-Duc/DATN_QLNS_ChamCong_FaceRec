@@ -127,6 +127,7 @@ const processPunchJobData = async (jobData) => {
   } = require('../utils/thoiGianChamCong.utils');
   const { validateGeofence, resolveUserGeofenceTargets } = require('../utils/hoTroChamCong');
   const { evaluateUserScheduleForCheckIn } = require('../services/chamCong/dieuKienLichChamCong.service');
+  const { kiemTraChoPhepCheckOut } = require('../services/chamCong/khoiCaDay.service');
 
   const effectivePunchTime = punchTime ? new Date(punchTime) : new Date();
   const nowVN = getVietnamTime(effectivePunchTime);
@@ -162,6 +163,7 @@ const processPunchJobData = async (jobData) => {
       ngay_cong: workDateStr,
       thoi_gian_vao: { [Op.ne]: null },
       thoi_gian_ra: null,
+      trang_thai: { [Op.ne]: 'thieu_check_out' },
     },
     include: [{ model: CaLamViec, as: 'ca' }],
     order: [['tao_luc', 'DESC']],
@@ -174,6 +176,7 @@ const processPunchJobData = async (jobData) => {
         ngay_cong: { [Op.in]: [workDateStr, yesterdayStr] },
         thoi_gian_vao: { [Op.gte]: overnightCutoff },
         thoi_gian_ra: null,
+        trang_thai: { [Op.ne]: 'thieu_check_out' },
       },
       include: [{ model: CaLamViec, as: 'ca' }],
       order: [['thoi_gian_vao', 'DESC']],
@@ -184,16 +187,34 @@ const processPunchJobData = async (jobData) => {
   let attendanceRecord = null;
   const canonicalMethod = normalizeAttendanceMethod(type || 'face_ai');
 
+  // Đồng bộ luồng khối ca: đang có openLog nhưng đã tới giờ check-in khối giảng dạy mới (hoặc ca hành chính song song)
+  let nextBlockEval = null;
+  if (openLog && actionType !== 'check_out') {
+    const evalNext = await evaluateUserScheduleForCheckIn(effectiveUserId, null, null, effectivePunchTime);
+    if (evalNext?.canCheckIn) {
+      const isNewTeachingBlock = Boolean(
+        evalNext.selectedSchedule?.id &&
+          String(evalNext.selectedSchedule.id) !== String(openLog.lich_trinh_id || '') &&
+          !(evalNext.khoi?.ds_lich_trinh_id || []).includes(String(openLog.lich_trinh_id || ''))
+      );
+      const isParallelAdminAndTeaching = Boolean(!openLog.lich_trinh_id && evalNext.selectedSchedule?.id);
+      if (isNewTeachingBlock || isParallelAdminAndTeaching) {
+        nextBlockEval = evalNext;
+        actionType = 'check_in';
+      }
+    }
+  }
+
   if (actionType === 'check_out' && !openLog) {
     throw new UnrecoverableError('Không tìm thấy lượt check-in nào đang mở để thực hiện check-out.');
   }
-  if (actionType === 'check_in' && openLog) {
+  if (actionType === 'check_in' && openLog && !nextBlockEval) {
     throw new UnrecoverableError('Người dùng đang có một ca làm việc chưa hoàn thành tan ca.');
   }
 
   let scheduleEval = null;
   if (actionType !== 'check_out' || !openLog) {
-    scheduleEval = await evaluateUserScheduleForCheckIn(effectiveUserId, null, null, effectivePunchTime);
+    scheduleEval = nextBlockEval || (await evaluateUserScheduleForCheckIn(effectiveUserId, null, null, effectivePunchTime));
     if (!scheduleEval || !scheduleEval.canCheckIn) {
       throw new UnrecoverableError(
         scheduleEval?.message || 'Hôm nay không có lịch phân công hoặc ca làm việc đủ điều kiện để check-in.'
@@ -202,8 +223,15 @@ const processPunchJobData = async (jobData) => {
   }
 
   const targetScheduleId = actionType === 'check_out' ? openLog?.lich_trinh_id : scheduleEval?.selectedSchedule?.id;
-  const geoTargets = await resolveUserGeofenceTargets(effectiveUserId, targetScheduleId);
-  const geoCheck = validateGeofence(location, geoTargets, null, reqIp);
+  let isOnlineSchedule = Boolean(actionType !== 'check_out' && scheduleEval?.selectedSchedule?.la_truc_tuyen);
+  if (!isOnlineSchedule && targetScheduleId) {
+    const schedForOnline = await LichTrinh.findByPk(targetScheduleId, { attributes: ['id', 'la_truc_tuyen'] }).catch(() => null);
+    isOnlineSchedule = Boolean(schedForOnline?.la_truc_tuyen);
+  }
+  const geoTargets = isOnlineSchedule ? null : await resolveUserGeofenceTargets(effectiveUserId, targetScheduleId);
+  const geoCheck = isOnlineSchedule
+    ? { valid: true, isFraud: false, isSuspicious: false, distance: 0, fraudReason: null, suspiciousReason: null }
+    : validateGeofence(location, geoTargets, actionType === 'check_out' ? { radiusMultiplier: 1.5 } : null, reqIp);
   const safeDistance = Number.isFinite(geoCheck.distance) ? Math.max(0, Number(geoCheck.distance)) : null;
 
   if (openLog && actionType === 'check_out') {
@@ -212,9 +240,21 @@ const processPunchJobData = async (jobData) => {
     }
     // Luồng CHECK-OUT
     const checkOutTime = effectivePunchTime;
+    let khoiConfig = openLog.ca;
+    try {
+      const checkOutEval = await kiemTraChoPhepCheckOut({
+        nguoiDungId: effectiveUserId,
+        openLog,
+        now: checkOutTime,
+      });
+      khoiConfig = checkOutEval.khoiConfig;
+    } catch (err) {
+      throw new UnrecoverableError(err.message || 'Chưa đủ điều kiện check-out cho khối ca này.');
+    }
+
     const { finalStatus, earlyMinutes } = calculateCheckOutStatus(
       checkOutTime,
-      openLog.ca,
+      khoiConfig,
       openLog.trang_thai
     );
 
@@ -225,6 +265,7 @@ const processPunchJobData = async (jobData) => {
     const soTietThucDay = await calculateActualTeachingPeriods(
       {
         lichTrinhId: openLog.lich_trinh_id,
+        lichTrinhIds: openLog.ds_lich_trinh_id,
         workingMinutes: durationMins,
         earlyMinutes: earlyMinutes || 0,
       },
@@ -253,6 +294,7 @@ const processPunchJobData = async (jobData) => {
           anh_minh_chung: evidenceRef || null,
           vi_do: location?.lat ?? null,
           kinh_do: location?.lng ?? null,
+          do_chinh_xac_gps: location?.accuracy ?? null,
           vi_tri_gia_lap: Boolean(geoCheck.isSuspicious),
           khoang_cach_met: safeDistance,
           hop_le: !geoCheck.isFraud,
@@ -270,6 +312,7 @@ const processPunchJobData = async (jobData) => {
     const checkInTime = effectivePunchTime;
     const selectedShift = scheduleEval.shift;
     const selectedScheduleId = scheduleEval.selectedSchedule?.id || null;
+    const selectedKhoiIds = scheduleEval.khoi ? scheduleEval.khoi.ds_lich_trinh_id : null;
     const calculatedStatus = scheduleEval.status || 'on_time';
     const lateMinutes = scheduleEval.lateMinutes || 0;
 
@@ -282,7 +325,9 @@ const processPunchJobData = async (jobData) => {
         where: {
           nguoi_dung_id: effectiveUserId,
           ngay_cong: workDateStr,
-          ca_id: selectedShift.id,
+          ...(selectedScheduleId
+            ? { lich_trinh_id: selectedScheduleId }
+            : { ca_id: selectedShift.id, lich_trinh_id: null }),
         },
         lock: transaction.LOCK.UPDATE,
         transaction,
@@ -298,6 +343,7 @@ const processPunchJobData = async (jobData) => {
         if (!targetAttendance.thoi_gian_vao) {
           targetAttendance.thoi_gian_vao = checkInTime;
           if (selectedScheduleId) targetAttendance.lich_trinh_id = selectedScheduleId;
+          if (selectedKhoiIds) targetAttendance.ds_lich_trinh_id = selectedKhoiIds;
           targetAttendance.trang_thai = calculatedStatus;
           targetAttendance.di_muon_phut = lateMinutes;
           if (geoCheck.isFraud) targetAttendance.co_gian_lan = true;
@@ -309,6 +355,7 @@ const processPunchJobData = async (jobData) => {
             nguoi_dung_id: effectiveUserId,
             ca_id: selectedShift.id,
             lich_trinh_id: selectedScheduleId,
+            ds_lich_trinh_id: selectedKhoiIds,
             ngay_cong: workDateStr,
             thoi_gian_vao: checkInTime,
             di_muon_phut: lateMinutes,
@@ -317,6 +364,28 @@ const processPunchJobData = async (jobData) => {
           },
           { transaction }
         );
+      }
+
+      // Khối giảng dạy trước chưa check-out mà đã check-in khối sau -> chuyển khối trước sang thiếu check-out (giữ nguyên ca hành chính song song)
+      if (selectedScheduleId) {
+        const staleLogs = await NhatKyChamCong.findAll({
+          where: {
+            nguoi_dung_id: effectiveUserId,
+            ngay_cong: workDateStr,
+            id: { [Op.ne]: targetAttendance.id },
+            lich_trinh_id: { [Op.ne]: null },
+            thoi_gian_vao: { [Op.ne]: null },
+            thoi_gian_ra: null,
+            trang_thai: { [Op.ne]: 'thieu_check_out' },
+          },
+          transaction,
+        });
+        const sameBlockIds = selectedKhoiIds || [];
+        for (const stale of staleLogs) {
+          if (sameBlockIds.includes(String(stale.lich_trinh_id))) continue;
+          stale.trang_thai = 'thieu_check_out';
+          await stale.save({ transaction });
+        }
       }
 
       await LuotQuetChamCong.create(
@@ -332,6 +401,7 @@ const processPunchJobData = async (jobData) => {
           anh_minh_chung: evidenceRef || null,
           vi_do: location?.lat ?? null,
           kinh_do: location?.lng ?? null,
+          do_chinh_xac_gps: location?.accuracy ?? null,
           vi_tri_gia_lap: Boolean(geoCheck.isSuspicious),
           khoang_cach_met: safeDistance,
           hop_le: !geoCheck.isFraud,
@@ -354,17 +424,17 @@ const processPunchJobData = async (jobData) => {
     loai_doi_tuong: 'nhat_ky_cham_cong',
     dia_chi_ip: reqIp,
     chi_tiet: {
-      method: type,
-      similarity: aiResult?.similarity,
-      isFraud: geoCheck.isFraud,
-      fraudReason: geoCheck.fraudReason,
-      processedVia: 'BULLMQ_ASYNC_PIPELINE',
+      phuong_thuc: canonicalMethod,
+      do_tin_cay_ai: aiResult?.similarity ?? null,
+      co_gian_lan: geoCheck.isFraud,
+      ly_do_gian_lan: geoCheck.fraudReason,
+      xu_ly_qua: 'BULLMQ_ASYNC_PIPELINE',
     },
   }).catch((err) => console.error('[AuditLog Queue Error]:', err.message));
 
   // Phát sự kiện realtime Socket.IO tới admin và lãnh đạo đơn vị
   try {
-    const { emitNewPunch } = require('../config/socket');
+    const { emitNewPunch, emitAttendanceUpdate } = require('../config/socket');
     NguoiDung.findByPk(effectiveUserId, {
       attributes: ['id', 'ho_ten', 'ma_can_bo', 'anh_dai_dien', 'don_vi_chinh_id'],
       raw: true,
@@ -372,19 +442,23 @@ const processPunchJobData = async (jobData) => {
       .then((userDoc) => {
         emitNewPunch({
           id: attendanceRecord.id,
-          userId: effectiveUserId,
-          userName: userDoc?.ho_ten || 'Cán bộ',
-          staffCode: userDoc?.ma_can_bo,
-          avatar: userDoc?.anh_dai_dien,
-          departmentId: userDoc?.don_vi_chinh_id,
-          punchType: actionType,
-          method: type || 'face_ai',
-          punchTime: effectivePunchTime,
-          status: attendanceRecord.trang_thai,
-          confidenceScore: aiResult?.similarity || 1.0,
-          isFraud: geoCheck.isFraud,
-          fraudReason: geoCheck.fraudReason,
-          evidenceUrl: evidenceRef,
+          nguoi_dung_id: effectiveUserId,
+          ho_ten: userDoc?.ho_ten || 'Cán bộ',
+          ma_can_bo: userDoc?.ma_can_bo || null,
+          anh_dai_dien: userDoc?.anh_dai_dien || null,
+          don_vi_chinh_id: userDoc?.don_vi_chinh_id || null,
+          loai_quet: actionType,
+          phuong_thuc: canonicalMethod,
+          thoi_gian_quet: effectivePunchTime,
+          trang_thai: attendanceRecord.trang_thai,
+          do_tin_cay_ai: aiResult?.similarity || 1.0,
+          co_gian_lan: geoCheck.isFraud,
+          ly_do_gian_lan: geoCheck.fraudReason,
+          anh_minh_chung: evidenceRef,
+        });
+        emitAttendanceUpdate({
+          ...(attendanceRecord.toJSON ? attendanceRecord.toJSON() : attendanceRecord),
+          don_vi_chinh_id: userDoc?.don_vi_chinh_id || null,
         });
       })
       .catch(() => {});

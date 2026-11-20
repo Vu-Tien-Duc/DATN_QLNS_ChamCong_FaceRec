@@ -75,6 +75,11 @@ const STATUS_CONFIGS: Record<string, { label: string; dotCls: string; badgeCls: 
     dotCls: 'bg-indigo-500',
     badgeCls: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800',
   },
+  thieu_check_out: {
+    label: 'Thiếu check-out',
+    dotCls: 'bg-purple-500',
+    badgeCls: 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800',
+  },
   absent: {
     label: 'Vắng không phép',
     dotCls: 'bg-rose-500',
@@ -85,6 +90,35 @@ const STATUS_CONFIGS: Record<string, { label: string; dotCls: string; badgeCls: 
 // =============================================================================
 // MAIN DASHBOARD COMPONENT
 // =============================================================================
+
+// Chống Excel Formula Injection ở client
+const sanitizeExcelCell = (value: any): any => {
+  if (typeof value !== 'string') return value;
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+};
+
+// Duyệt cây đơn vị đa cấp từ danh sách phẳng
+const getDescendantDepartmentIds = (rootDeptId: string, departments: DepartmentItem[]): Set<string> => {
+  const result = new Set<string>([String(rootDeptId)]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const d of departments) {
+      const id = String(d.id || (d as any)._id || '');
+      const rawParent = d.don_vi_cha_id;
+      const parentId = rawParent
+        ? typeof rawParent === 'object' && rawParent !== null
+          ? String((rawParent as any).id || (rawParent as any)._id || '')
+          : String(rawParent)
+        : '';
+      if (id && parentId && result.has(parentId) && !result.has(id)) {
+        result.add(id);
+        added = true;
+      }
+    }
+  }
+  return result;
+};
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -100,17 +134,7 @@ export const Dashboard: React.FC = () => {
   const [allUsersList, setAllUsersList] = useState<any[]>([]);
   const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
-  const [totalStaff, setTotalStaff] = useState<number>(0);
   const [totalDepartments, setTotalDepartments] = useState<number>(0);
-  const [todayAttendanceStats, setTodayAttendanceStats] = useState({
-    present: 0,
-    onTime: 0,
-    late: 0,
-    earlyLeave: 0,
-    absent: 0,
-    excused: 0,
-    rate: 0,
-  });
   const [pendingLeaveCount, setPendingLeaveCount] = useState<number>(0);
   const [pendingLeaveList, setPendingLeaveList] = useState<LeaveRequestData[]>([]);
   const [payrollNetSalary, setPayrollNetSalary] = useState<number>(0);
@@ -120,14 +144,10 @@ export const Dashboard: React.FC = () => {
   // Today schedules & events
   const [todaySchedules, setTodaySchedules] = useState<ScheduleItem[]>([]);
 
-  // Charts data
-  const [weeklyTrendData, setWeeklyTrendData] = useState<
-    Array<{ day: string; dateStr: string; present: number; late: number; excused: number; absent: number }>
-  >([]);
-
-  // Live recent punches & today punches
+  // Live recent punches, today punches & 7-day logs
   const [recentPunches, setRecentPunches] = useState<AttendanceHistoryItem[]>([]);
   const [todayAttendanceRecords, setTodayAttendanceRecords] = useState<AttendanceHistoryItem[]>([]);
+  const [sevenDaysRecords, setSevenDaysRecords] = useState<AttendanceHistoryItem[]>([]);
   const [tableFilter, setTableFilter] = useState<'ALL' | 'face_ai' | 'GPS'>('ALL');
   const [searchPunchKeyword, setSearchPunchKeyword] = useState<string>('');
 
@@ -176,17 +196,18 @@ export const Dashboard: React.FC = () => {
       // 1. Tải danh sách nhân sự (theo phân quyền) & đơn vị & cấu hình khuôn viên
       const [usersRes, deptsRes, campusRes] = await Promise.all([
         canViewUsers
-          ? apiClient.get('/nguoi-dung?gioi_han=100').catch(() => ({ data: { data: [] } }))
+          ? apiClient.get('/nguoi-dung?gioi_han=500').catch(() => ({ data: { data: [] } }))
           : Promise.resolve({ data: { data: [] } }),
         apiClient.get('/phong-ban?cay=false').catch(() => ({ data: { data: [] } })),
         attendanceApi.getCampusConfig().catch(() => null),
       ]);
-      const usersList = extractArray(usersRes.data);
+      const rawUsersList = extractArray(usersRes.data);
+      const usersList = rawUsersList.filter(
+        (u: any) => !['admin', 'bgh'].includes(String(u.vai_tro_chinh || '').trim().toLowerCase())
+      );
       const deptsList = extractArray(deptsRes.data);
-      const totalUsersCount = Number((usersRes.data?.data as any)?.pagination?.total ?? usersList.length ?? 0);
       setAllUsersList(usersList);
       setDepartments(deptsList as DepartmentItem[]);
-      setTotalStaff(totalUsersCount);
       setTotalDepartments(deptsList.length || 0);
       if (campusRes) {
         setCampusInfo({
@@ -200,39 +221,12 @@ export const Dashboard: React.FC = () => {
         .getAttendanceHistory({
           tu_ngay: todayDateIso,
           den_ngay: todayDateIso,
-          gioi_han: 200,
+          gioi_han: 500,
         })
-        .catch(() => ({ records: [], pagination: { total: 0, page: 1, limit: 200, totalPages: 1 } }));
+        .catch(() => ({ records: [], pagination: { total: 0, page: 1, limit: 500, totalPages: 1 } }));
 
       const todayRecords = todayRes.records || [];
       setTodayAttendanceRecords(todayRecords);
-      let onTime = 0;
-      let late = 0;
-      let early = 0;
-      let absent = 0;
-      let excused = 0;
-
-      todayRecords.forEach((r) => {
-        if (r.status === 'on_time') onTime++;
-        else if (r.status === 'late') late++;
-        else if (r.status === 'early_leave') early++;
-        else if (r.status === 'excused_absence') excused++;
-        else if (r.status === 'absent') absent++;
-      });
-
-      const present = onTime + late + early;
-      const totalExpected = totalUsersCount > 0 ? totalUsersCount : present + absent || 1;
-      const calculatedRate = totalExpected > 0 ? Math.round((present / totalExpected) * 100) : 0;
-
-      setTodayAttendanceStats({
-        present,
-        onTime,
-        late,
-        earlyLeave: early,
-        absent,
-        excused,
-        rate: Math.min(100, calculatedRate),
-      });
 
       // 3. Tải đơn nghỉ phép chờ duyệt
       if (canViewLeaves) {
@@ -255,9 +249,15 @@ export const Dashboard: React.FC = () => {
       if (canViewPayrollSummary) {
         const payrollRes = await payrollApi
           .getPayrollSummary(currentMonth, currentYear)
-          .catch(() => ({ totalNetSalary: 0, isLocked: false }));
-        setPayrollNetSalary(payrollRes.totalNetSalary || 0);
-        setPayrollStatus(payrollRes.isLocked ? 'Đã khóa sổ' : 'Dự thảo');
+          .catch(() => ({ tong_thuc_linh: 0, da_khoa: false, da_khoa_mot_phan: false }));
+        setPayrollNetSalary(payrollRes.tong_thuc_linh || 0);
+        setPayrollStatus(
+          payrollRes.da_khoa
+            ? 'Đã khóa sổ'
+            : payrollRes.da_khoa_mot_phan
+              ? 'Khóa một phần'
+              : 'Dự thảo'
+        );
       } else {
         setPayrollNetSalary(0);
         setPayrollStatus('Không áp dụng');
@@ -265,7 +265,7 @@ export const Dashboard: React.FC = () => {
 
       // 5. Tải lịch sử quét sinh trắc học gần nhất
       const recentRes = await attendanceApi
-        .getAttendanceHistory({ gioi_han: 12 })
+        .getAttendanceHistory({ gioi_han: 100 })
         .catch(() => ({ records: [] }));
       setRecentPunches(recentRes.records || []);
 
@@ -275,44 +275,21 @@ export const Dashboard: React.FC = () => {
         .catch(() => ({ data: [] }));
       setTodaySchedules(extractArray<ScheduleItem>(schedRes.data || []));
 
-      // 7. Xây dựng dữ liệu biểu đồ xu hướng 7 ngày gần nhất
-      const daysOfWeek = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-      const past7Days: Array<{ day: string; dateStr: string }> = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const dStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-        const dayLabel = i === 0 ? 'Hôm nay' : `${daysOfWeek[d.getDay()]} (${pad(d.getDate())})`;
-        past7Days.push({ day: dayLabel, dateStr: dStr });
-      }
+      // 7. Tải dữ liệu chấm công 7 ngày gần nhất để dựng biểu đồ xu hướng theo bộ lọc đơn vị
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dStart = new Date();
+      dStart.setDate(dStart.getDate() - 6);
+      const startIso = `${dStart.getFullYear()}-${pad(dStart.getMonth() + 1)}-${pad(dStart.getDate())}`;
 
       const sevenDaysRes = await attendanceApi
         .getAttendanceHistory({
-          tu_ngay: past7Days[0].dateStr,
-          den_ngay: past7Days[past7Days.length - 1].dateStr,
-          gioi_han: 300,
+          tu_ngay: startIso,
+          den_ngay: todayDateIso,
+          gioi_han: 500,
         })
         .catch(() => ({ records: [] }));
 
-      const sevenDaysRecords = sevenDaysRes.records || [];
-      const trend = past7Days.map((item) => {
-        const dayLogs = sevenDaysRecords.filter((r) => r.ngay_cong === item.dateStr);
-        const pCount = dayLogs.filter((r) => r.trang_thai === 'on_time').length;
-        const lCount = dayLogs.filter((r) => r.trang_thai === 'late' || r.trang_thai === 'early_leave').length;
-        const eCount = dayLogs.filter((r) => r.trang_thai === 'excused_absence').length;
-        const aCount = dayLogs.filter((r) => r.trang_thai === 'absent').length;
-        return {
-          day: item.day,
-          dateStr: item.dateStr,
-          present: pCount,
-          late: lCount,
-          excused: eCount,
-          absent: aCount,
-        };
-      });
-
-      setWeeklyTrendData(trend);
+      setSevenDaysRecords(sevenDaysRes.records || []);
     } catch (err: any) {
       console.error('Lỗi khi tải dữ liệu Dashboard:', err);
       toast.error('Không thể đồng bộ toàn bộ dữ liệu Dashboard.');
@@ -329,11 +306,8 @@ export const Dashboard: React.FC = () => {
   // REALTIME SOCKET.IO LISTENERS (< 100ms UI UPDATE)
   // ===========================================================================
   useSocketEvent('attendance:new-punch', (punchData: any) => {
-    const isCheckOut =
-      punchData?.punchType === 'check_out' ||
-      punchData?.action === 'check_out' ||
-      punchData?.action === 'check-out';
-    const punchUserName = punchData?.userName || punchData?.user?.fullName || 'Cán bộ';
+    const isCheckOut = punchData?.loai_quet === 'check_out';
+    const punchUserName = punchData?.ho_ten || 'Cán bộ';
     toast.success(
       `Điểm danh: ${punchUserName} vừa quét ${
         isCheckOut ? 'tan ca' : 'vào ca'
@@ -393,43 +367,120 @@ export const Dashboard: React.FC = () => {
     return 'Văn phòng / Ban';
   };
 
-  // Lọc danh sách nhân viên áp dụng bộ lọc Khoa / Bộ môn
+  // Tập đơn vị con đa cấp theo bộ lọc Khoa/Viện
+  const scopedDeptIds = useMemo(() => {
+    if (departmentFilter === 'ALL') return null;
+    return getDescendantDepartmentIds(departmentFilter, departments);
+  }, [departmentFilter, departments]);
+
+  // Lọc danh sách nhân viên áp dụng bộ lọc Khoa / Bộ môn đa cấp
   const filteredUsersList = useMemo(() => {
-    if (departmentFilter === 'ALL') return allUsersList;
+    if (!scopedDeptIds) return allUsersList;
+    const selectedDept = departments.find((d) => String(d.id || d._id) === String(departmentFilter));
+    const isBghFilter = selectedDept
+      ? String(selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
+        String(selectedDept.ten_phong_ban || '').toLowerCase().includes('giám hiệu')
+      : false;
+
     return allUsersList.filter((u) => {
       const uDeptId = getEmpDepartmentId(u);
-      const selectedDept = departments.find((d) => String(d.id || d._id) === String(departmentFilter));
-      const isBghFilter = selectedDept
-        ? String(selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
-          String(selectedDept.ten_phong_ban || '').toLowerCase().includes('giám hiệu')
-        : false;
-
       if (isBghFilter) {
-        return String(u.vai_tro_chinh || '').toLowerCase().includes('bgh') || uDeptId === departmentFilter;
+        return String(u.vai_tro_chinh || '').toLowerCase().includes('bgh') || scopedDeptIds.has(uDeptId);
       }
+      if (uDeptId && scopedDeptIds.has(uDeptId)) return true;
 
-      // 1. Trực tiếp
-      if (uDeptId === departmentFilter) return true;
-
-      // 2. Cha (Khoa -> Bộ môn)
-      const uDept = departments.find((d) => String(d.id || d._id) === uDeptId);
-      const uParentId = uDept?.don_vi_cha_id
-        ? typeof uDept.don_vi_cha_id === 'object' && uDept.don_vi_cha_id !== null
-          ? String((uDept.don_vi_cha_id as any).id || (uDept.don_vi_cha_id as any)._id || '')
-          : String(uDept.don_vi_cha_id)
-        : '';
-      if (uParentId && uParentId === departmentFilter) return true;
-
-      // 3. Roles
       const roleList = Array.isArray(u.danh_sach_vai_tro) ? u.danh_sach_vai_tro : [];
       return roleList.some((r: any) => {
         const rDept = r.don_vi_id;
         if (!rDept) return false;
         const rId = typeof rDept === 'object' && rDept !== null ? String(rDept.id || rDept._id || '') : String(rDept);
-        return rId === departmentFilter;
+        return scopedDeptIds.has(rId);
       });
     });
-  }, [allUsersList, departmentFilter, departments]);
+  }, [allUsersList, departmentFilter, departments, scopedDeptIds]);
+
+  const totalStaff = filteredUsersList.length;
+
+  const isLogInScopedDept = useCallback(
+    (log: any) => {
+      if (!scopedDeptIds) return true;
+      const uObj = log?.nguoi_dung;
+      if (uObj) {
+        const uDept = getEmpDepartmentId(uObj);
+        if (uDept && scopedDeptIds.has(uDept)) return true;
+      }
+      const uid = String(log?.nguoi_dung_id || uObj?.id || '');
+      return filteredUsersList.some((u) => String(u.id || u._id) === uid);
+    },
+    [scopedDeptIds, filteredUsersList]
+  );
+
+  // Thống kê điểm danh hôm nay tính động theo bộ lọc đơn vị & đọc đúng trường chuẩn trang_thai
+  const todayAttendanceStats = useMemo(() => {
+    const scopedToday = todayAttendanceRecords.filter(isLogInScopedDept);
+    let onTime = 0;
+    let late = 0;
+    let early = 0;
+    let absent = 0;
+    let excused = 0;
+    let thieuCheckOut = 0;
+
+    scopedToday.forEach((r: any) => {
+      const st = r.trang_thai;
+      if (st === 'on_time') onTime++;
+      else if (st === 'late') late++;
+      else if (st === 'early_leave') early++;
+      else if (st === 'excused_absence') excused++;
+      else if (st === 'absent') absent++;
+      else if (st === 'thieu_check_out') thieuCheckOut++;
+    });
+
+    const present = onTime + late + early;
+    const totalExpected = totalStaff > 0 ? totalStaff : present + absent + thieuCheckOut || 1;
+    const calculatedRate = totalExpected > 0 ? Math.round((present / totalExpected) * 100) : 0;
+
+    return {
+      present,
+      onTime,
+      late,
+      earlyLeave: early,
+      absent,
+      excused,
+      thieuCheckOut,
+      rate: Math.min(100, calculatedRate),
+    };
+  }, [todayAttendanceRecords, isLogInScopedDept, totalStaff]);
+
+  // Biểu đồ xu hướng 7 ngày tính động theo bộ lọc đơn vị
+  const weeklyTrendData = useMemo(() => {
+    const daysOfWeek = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+    const past7Days: Array<{ day: string; dateStr: string }> = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const dayLabel = i === 0 ? 'Hôm nay' : `${daysOfWeek[d.getDay()]} (${pad(d.getDate())})`;
+      past7Days.push({ day: dayLabel, dateStr: dStr });
+    }
+
+    const scopedSevenDays = sevenDaysRecords.filter(isLogInScopedDept);
+    return past7Days.map((item) => {
+      const dayLogs = scopedSevenDays.filter((r: any) => r.ngay_cong === item.dateStr);
+      const pCount = dayLogs.filter((r: any) => r.trang_thai === 'on_time').length;
+      const lCount = dayLogs.filter((r: any) => r.trang_thai === 'late' || r.trang_thai === 'early_leave').length;
+      const eCount = dayLogs.filter((r: any) => r.trang_thai === 'excused_absence').length;
+      const aCount = dayLogs.filter((r: any) => r.trang_thai === 'absent').length;
+      return {
+        day: item.day,
+        dateStr: item.dateStr,
+        present: pCount,
+        late: lCount,
+        excused: eCount,
+        absent: aCount,
+      };
+    });
+  }, [sevenDaysRecords, isLogInScopedDept]);
 
   // Xuất Báo Cáo Chấm Công Sáng Nay ra file Excel (.xlsx)
   const handleExportMorningReportExcel = () => {
@@ -455,7 +506,9 @@ export const Dashboard: React.FC = () => {
         const hasOut = Boolean(punchLog?.thoi_gian_ra);
         const checkInFormatted = hasIn ? formatTimeVN(punchLog?.thoi_gian_vao) : '--:--:--';
         const checkOutFormatted = hasOut ? formatTimeVN(punchLog?.thoi_gian_ra) : '--:--:--';
-        const statusMeta = punchLog ? STATUS_CONFIGS[punchLog.trang_thai] || { label: 'Có mặt' } : { label: 'Chưa check-in' };
+        const statusMeta = punchLog
+          ? STATUS_CONFIGS[punchLog.trang_thai] || { label: 'Có mặt' }
+          : { label: 'Chưa check-in' };
 
         const firstPunch = punchLog?.luot_quet?.[0];
         const rawMethod = String(firstPunch?.phuong_thuc || '').toLowerCase();
@@ -471,14 +524,14 @@ export const Dashboard: React.FC = () => {
 
         return {
           'STT': i + 1,
-          'Mã Cán Bộ': emp.ma_can_bo || '--',
-          'Họ Và Tên': emp.ho_ten || '--',
-          'Khoa / Bộ Môn': deptName,
-          'Chức Vụ': emp.chuc_vu || 'Giảng viên',
+          'Mã Cán Bộ': sanitizeExcelCell(emp.ma_can_bo || '--'),
+          'Họ Và Tên': sanitizeExcelCell(emp.ho_ten || '--'),
+          'Khoa / Bộ Môn': sanitizeExcelCell(deptName),
+          'Chức Vụ': sanitizeExcelCell(emp.chuc_vu || 'Giảng viên'),
           'Ngày Điểm Danh': dateStr,
           'Giờ Check-in': checkInFormatted,
           'Giờ Check-out': checkOutFormatted,
-          'Trạng Thái Sáng Nay': hasIn ? statusMeta.label : 'Chưa đến',
+          'Trạng Thái Sáng Nay': statusMeta.label,
           'Phương Thức Xác Thực': methodStr,
           'Độ Tin Cậy AI': firstPunch?.do_tin_cay_ai ? `${Number(firstPunch.do_tin_cay_ai).toFixed(2)} cos` : '--',
           'Face ID': emp.da_dang_ky_face ? 'Đã kích hoạt' : 'Chưa đăng ký',
@@ -524,31 +577,9 @@ export const Dashboard: React.FC = () => {
       if (tableFilter === 'face_ai' && !isFace) return false;
       if (tableFilter === 'GPS' && !isGps) return false;
 
-      // Filter by Department
-      if (departmentFilter !== 'ALL') {
-        const userObj = item.nguoi_dung;
-        if (userObj) {
-          const deptId = getEmpDepartmentId(userObj);
-          const selectedDept = departments.find((d) => String(d.id || d._id) === String(departmentFilter));
-          const isBghFilter = selectedDept
-            ? String(selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
-              String(selectedDept.ten_phong_ban || '').toLowerCase().includes('giám hiệu')
-            : false;
-          if (isBghFilter) {
-            const isUserBgh = String(userObj.vai_tro_chinh || '').toLowerCase().includes('bgh') || deptId === departmentFilter;
-            if (!isUserBgh) return false;
-          } else {
-            const matchesDirect = deptId === departmentFilter;
-            const uDept = departments.find((d) => String(d.id || d._id) === deptId);
-            const uParentId = uDept?.don_vi_cha_id
-              ? typeof uDept.don_vi_cha_id === 'object' && uDept.don_vi_cha_id !== null
-                ? String((uDept.don_vi_cha_id as any).id || (uDept.don_vi_cha_id as any)._id || '')
-                : String(uDept.don_vi_cha_id)
-              : '';
-            const matchesParent = Boolean(uParentId && uParentId === departmentFilter);
-            if (!matchesDirect && !matchesParent) return false;
-          }
-        }
+      // Filter by Department (đa cấp)
+      if (scopedDeptIds) {
+        if (!isLogInScopedDept(item)) return false;
       }
 
       // Filter by keyword
@@ -565,19 +596,22 @@ export const Dashboard: React.FC = () => {
     });
   }, [recentPunches, tableFilter, searchPunchKeyword, departmentFilter, departments]);
 
-  // Donut chart calculations (100% REAL)
+  // Donut chart calculations (100% REAL, bao gồm đủ các trạng thái)
+  const lateAndEarlyToday = todayAttendanceStats.late + todayAttendanceStats.earlyLeave;
   const totalRecordsToday =
-    todayAttendanceStats.present + todayAttendanceStats.absent + todayAttendanceStats.excused;
+    todayAttendanceStats.present + todayAttendanceStats.absent + todayAttendanceStats.excused + todayAttendanceStats.thieuCheckOut;
   const onTimePct = totalRecordsToday > 0 ? Math.round((todayAttendanceStats.onTime / totalRecordsToday) * 100) : 0;
-  const latePct = totalRecordsToday > 0 ? Math.round((todayAttendanceStats.late / totalRecordsToday) * 100) : 0;
+  const latePct = totalRecordsToday > 0 ? Math.round((lateAndEarlyToday / totalRecordsToday) * 100) : 0;
   const excusedPct = totalRecordsToday > 0 ? Math.round((todayAttendanceStats.excused / totalRecordsToday) * 100) : 0;
   const absentPct = totalRecordsToday > 0 ? Math.round((todayAttendanceStats.absent / totalRecordsToday) * 100) : 0;
+  const missingCoPct = totalRecordsToday > 0 ? Math.round((todayAttendanceStats.thieuCheckOut / totalRecordsToday) * 100) : 0;
 
   // Donut SVG circumference calculation (r = 38 => circumference = 2 * PI * 38 = 238.76)
   const circumference = 238.76;
   const strokeOnTime = totalRecordsToday > 0 ? (onTimePct / 100) * circumference : 0;
   const strokeLate = totalRecordsToday > 0 ? (latePct / 100) * circumference : 0;
   const strokeExcused = totalRecordsToday > 0 ? (excusedPct / 100) * circumference : 0;
+  const strokeAbsent = totalRecordsToday > 0 ? (absentPct / 100) * circumference : 0;
 
   return (
     <div className="space-y-4">
@@ -817,7 +851,7 @@ export const Dashboard: React.FC = () => {
             {(() => {
               const maxDayTotal = Math.max(
                 4,
-                ...weeklyTrendData.map((d) => d.present + d.late + d.excused)
+                ...weeklyTrendData.map((d) => d.present + d.late + d.excused + d.absent)
               );
               const yAxisTop = Math.ceil(maxDayTotal / 4) * 4;
               const chartHeight = 190;
@@ -849,6 +883,9 @@ export const Dashboard: React.FC = () => {
                       const hExcused = (dItem.excused / yAxisTop) * chartHeight;
                       const yExcused = yLate - hExcused;
 
+                      const hAbsent = (dItem.absent / yAxisTop) * chartHeight;
+                      const yAbsent = yExcused - hAbsent;
+
                       return (
                         <g key={idx} transform={`translate(${xOffset}, 0)`}>
                           {isToday && (
@@ -857,6 +894,7 @@ export const Dashboard: React.FC = () => {
                           {hPresent > 0 && <rect fill="rgb(var(--brand-600))" height={hPresent} rx="4" width="28" x="0" y={yPresent} />}
                           {hLate > 0 && <rect fill="#64748B" height={hLate} rx="2" width="28" x="0" y={yLate} />}
                           {hExcused > 0 && <rect fill="rgb(var(--brand-400))" height={hExcused} rx="2" width="28" x="0" y={yExcused} />}
+                          {hAbsent > 0 && <rect fill="#F43F5E" height={hAbsent} rx="2" width="28" x="0" y={yAbsent} />}
                           <text
                             fill={isToday ? 'rgb(var(--brand-600))' : '#64748B'}
                             fontFamily="Inter"
@@ -893,7 +931,7 @@ export const Dashboard: React.FC = () => {
               className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
               type="button"
             >
-              Xuất Excel (.xlsx)
+              Xem &amp; Xuất báo cáo chi tiết
             </button>
           </div>
         </div>
@@ -958,6 +996,20 @@ export const Dashboard: React.FC = () => {
                       strokeWidth="12"
                     />
                   )}
+                  {/* Absent (Rose) */}
+                  {strokeAbsent > 0 && (
+                    <circle
+                      cx="50"
+                      cy="50"
+                      fill="none"
+                      r="38"
+                      stroke="#F43F5E"
+                      strokeDasharray={`${strokeAbsent} ${circumference}`}
+                      strokeDashoffset={`-${strokeOnTime + strokeLate + strokeExcused}`}
+                      strokeLinecap="round"
+                      strokeWidth="12"
+                    />
+                  )}
                 </svg>
 
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
@@ -987,11 +1039,11 @@ export const Dashboard: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      Đi muộn (cho phép)
+                      Đi muộn / Về sớm
                     </span>
                   </div>
                   <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">
-                    {todayAttendanceStats.late}{' '}
+                    {lateAndEarlyToday}{' '}
                     <span className="text-[10px] font-normal text-slate-500">({latePct}%)</span>
                   </span>
                 </div>
@@ -1009,7 +1061,7 @@ export const Dashboard: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 opacity-60">
+                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Vắng không phép</span>
@@ -1019,6 +1071,19 @@ export const Dashboard: React.FC = () => {
                     <span className="text-[10px] font-normal text-slate-500">({absentPct}%)</span>
                   </span>
                 </div>
+
+                {todayAttendanceStats.thieuCheckOut > 0 && (
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
+                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Thiếu check-out</span>
+                    </div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">
+                      {todayAttendanceStats.thieuCheckOut}{' '}
+                      <span className="text-[10px] font-normal text-slate-500">({missingCoPct}%)</span>
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

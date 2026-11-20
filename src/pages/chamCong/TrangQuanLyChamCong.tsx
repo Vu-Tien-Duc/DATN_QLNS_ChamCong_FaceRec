@@ -179,6 +179,13 @@ const STATUS_CONFIG: Record<
     bgSoft: 'bg-orange-50 dark:bg-orange-950/30',
     icon: Clock,
   },
+  thieu_check_out: {
+    label: 'Thiếu Check-out',
+    dotColor: 'bg-purple-500',
+    badgeCls: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800',
+    bgSoft: 'bg-purple-50 dark:bg-purple-950/30',
+    icon: AlertCircle,
+  },
   excused_absence: {
     label: 'Nghỉ Có Phép',
     dotColor: 'bg-blue-500',
@@ -201,22 +208,7 @@ const METHOD_LABELS: Record<string, { label: string; icon: any; cls: string }> =
     icon: ScanFace,
     cls: 'text-indigo-600 bg-indigo-50 border-indigo-200 dark:text-indigo-300 dark:bg-indigo-950/40 dark:border-indigo-800',
   },
-  FACE: {
-    label: 'Face ID AI',
-    icon: ScanFace,
-    cls: 'text-indigo-600 bg-indigo-50 border-indigo-200 dark:text-indigo-300 dark:bg-indigo-950/40 dark:border-indigo-800',
-  },
-  face: {
-    label: 'Face ID AI',
-    icon: ScanFace,
-    cls: 'text-indigo-600 bg-indigo-50 border-indigo-200 dark:text-indigo-300 dark:bg-indigo-950/40 dark:border-indigo-800',
-  },
   qr_code: {
-    label: 'Mã QR TOTP',
-    icon: QrCode,
-    cls: 'text-cyan-600 bg-cyan-50 border-cyan-200 dark:text-cyan-300 dark:bg-cyan-950/40 dark:border-cyan-800',
-  },
-  QR: {
     label: 'Mã QR TOTP',
     icon: QrCode,
     cls: 'text-cyan-600 bg-cyan-50 border-cyan-200 dark:text-cyan-300 dark:bg-cyan-950/40 dark:border-cyan-800',
@@ -226,43 +218,13 @@ const METHOD_LABELS: Record<string, { label: string; icon: any; cls: string }> =
     icon: ShieldCheck,
     cls: 'text-purple-600 bg-purple-50 border-purple-200 dark:text-purple-300 dark:bg-purple-950/40 dark:border-purple-800',
   },
-  MANUAL: {
-    label: 'Cổng Web / Thủ Công',
-    icon: Edit3,
-    cls: 'text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-800',
-  },
-  manual: {
-    label: 'Cổng Web / Thủ Công',
-    icon: Edit3,
-    cls: 'text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-800',
-  },
-  ADMIN_OVERRIDE: {
-    label: 'Quản Trị Điều Chỉnh',
-    icon: ShieldCheck,
-    cls: 'text-purple-600 bg-purple-50 border-purple-200 dark:text-purple-300 dark:bg-purple-950/40 dark:border-purple-800',
-  },
-  admin_override: {
-    label: 'Quản Trị Điều Chỉnh',
-    icon: ShieldCheck,
-    cls: 'text-purple-600 bg-purple-50 border-purple-200 dark:text-purple-300 dark:bg-purple-950/40 dark:border-purple-800',
-  },
   system_auto: {
-    label: 'Hệ Thống Tự Động',
-    icon: Sparkles,
-    cls: 'text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-300 dark:bg-slate-900 dark:border-slate-700',
-  },
-  SYSTEM: {
     label: 'Hệ Thống Tự Động',
     icon: Sparkles,
     cls: 'text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-300 dark:bg-slate-900 dark:border-slate-700',
   },
   gps_mobile: {
     label: 'Mobile GPS',
-    icon: MapPin,
-    cls: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-800',
-  },
-  GPS: {
-    label: 'Định Vị GPS',
     icon: MapPin,
     cls: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-800',
   },
@@ -473,15 +435,11 @@ export const AttendanceManage: React.FC = () => {
     if (!searchKeyword.trim()) return records;
     const kw = searchKeyword.toLowerCase();
     return records.filter((r) => {
-      const name = (r.nguoi_dung?.ho_ten || r.userId?.fullName || '').toLowerCase();
-      const email = (r.nguoi_dung?.email || r.userId?.email || '').toLowerCase();
-      const code = (r.nguoi_dung?.ma_can_bo || r.userId?.staffCode || '').toLowerCase();
-      const dept = (
-        r.nguoi_dung?.don_vi_chinh?.ten_phong_ban ||
-        (typeof r.userId?.departmentId === 'object' ? r.userId?.departmentId?.name : '') ||
-        ''
-      ).toLowerCase();
-      const shift = (r.ca?.ten_ca || r.shiftId?.name || '').toLowerCase();
+      const name = (r.nguoi_dung?.ho_ten || '').toLowerCase();
+      const email = (r.nguoi_dung?.email || '').toLowerCase();
+      const code = (r.nguoi_dung?.ma_can_bo || '').toLowerCase();
+      const dept = (r.nguoi_dung?.don_vi_chinh?.ten_phong_ban || '').toLowerCase();
+      const shift = (r.ca?.ten_ca || '').toLowerCase();
       return (
         name.includes(kw) ||
         email.includes(kw) ||
@@ -503,16 +461,16 @@ export const AttendanceManage: React.FC = () => {
     let totalLateMinutes = 0;
 
     filteredRecords.forEach((r) => {
-      const st = r.trang_thai || r.status;
+      const st = r.trang_thai;
       if (st === 'on_time') onTime++;
       else if (st === 'late') {
         late++;
-        totalLateMinutes += (r.di_muon_phut ?? r.lateMinutes ?? 0);
+        totalLateMinutes += (r.di_muon_phut ?? 0);
       } else if (st === 'early_leave') early++;
       else if (st === 'absent') absent++;
       else if (st === 'excused_absence') excused++;
 
-      if (r.co_gian_lan ?? r.isFraud) fraudCount++;
+      if (r.co_gian_lan) fraudCount++;
     });
 
     const total = filteredRecords.length;
@@ -540,33 +498,31 @@ export const AttendanceManage: React.FC = () => {
 
     try {
       const dataRows = filteredRecords.map((r, idx) => {
-        const deptName =
-          r.nguoi_dung?.don_vi_chinh?.ten_phong_ban ||
-          (typeof r.userId?.departmentId === 'object' ? r.userId?.departmentId?.name || '' : '');
-        const stKey = r.trang_thai || r.status || '';
+        const deptName = r.nguoi_dung?.don_vi_chinh?.ten_phong_ban || '';
+        const stKey = r.trang_thai || '';
         const statusLabel = STATUS_CONFIG[stKey]?.label || stKey || 'Chưa rõ';
-        const methodKey = r.phuong_thuc || r.method || '';
+        const methodKey = r.luot_quet?.[0]?.phuong_thuc || r.phuong_thuc || (r.ghi_de_thu_cong ? 'thu_cong_admin' : '');
         const methodLabel = METHOD_LABELS[methodKey]?.label || methodKey || 'Chưa rõ';
-        const isFraudVal = Boolean(r.co_gian_lan ?? r.isFraud);
+        const isFraudVal = Boolean(r.co_gian_lan);
         const isFraudText = isFraudVal ? 'Phát hiện nghi vấn' : 'Bình thường';
 
         return {
           'STT': idx + 1,
-          'Mã Cán Bộ': r.nguoi_dung?.ma_can_bo || r.userId?.staffCode || '--',
-          'Họ Và Tên': r.nguoi_dung?.ho_ten || r.userId?.fullName || '--',
-          'Email Công Vụ': r.nguoi_dung?.email || r.userId?.email || '--',
+          'Mã Cán Bộ': r.nguoi_dung?.ma_can_bo || '--',
+          'Họ Và Tên': r.nguoi_dung?.ho_ten || '--',
+          'Email Công Vụ': r.nguoi_dung?.email || '--',
           'Khoa / Phòng Ban': deptName || '--',
-          'Ngày Chấm Công': formatShortDate(r.ngay_cong || r.workDate),
-          'Ca Làm Việc': r.ca?.ten_ca || r.shiftId?.name || 'Hành chính',
-          'Giờ Check-in': formatShortTime(r.thoi_gian_vao || r.checkInTime),
-          'Giờ Check-out': formatShortTime(r.thoi_gian_ra || r.checkOutTime),
-          'Đi Muộn (Phút)': r.di_muon_phut ?? r.lateMinutes ?? 0,
-          'Thời Lượng (Giờ)': r.thoi_luong_lam_viec_phut != null ? +(r.thoi_luong_lam_viec_phut / 60).toFixed(1) : (r.workHours || 0),
-          'Số Tiết Dạy': r.so_tiet_thuc_day ?? r.actualTeachingPeriods ?? 0,
+          'Ngày Chấm Công': formatShortDate(r.ngay_cong),
+          'Ca Làm Việc': r.ca?.ten_ca || 'Hành chính',
+          'Giờ Check-in': formatShortTime(r.thoi_gian_vao),
+          'Giờ Check-out': formatShortTime(r.thoi_gian_ra),
+          'Đi Muộn (Phút)': r.di_muon_phut ?? 0,
+          'Thời Lượng (Giờ)': r.thoi_luong_lam_viec_phut != null ? +(r.thoi_luong_lam_viec_phut / 60).toFixed(1) : 0,
+          'Số Tiết Dạy': r.so_tiet_thuc_day ?? 0,
           'Trạng Thái': statusLabel,
           'Phương Thức Điểm Danh': methodLabel,
           'An Ninh / Gian Lận': isFraudText,
-          'Lý Do / Chi Tiết': r.ly_do_gian_lan || r.fraudReason || r.ly_do_ghi_de || '',
+          'Lý Do / Chi Tiết': r.ly_do_gian_lan || r.ly_do_ghi_de || '',
         };
       });
 
@@ -605,12 +561,16 @@ export const AttendanceManage: React.FC = () => {
 
   // Adjust Handlers
   const handleOpenAdjustModal = (item: AttendanceHistoryItem) => {
+    if (item.da_chot) {
+      toast.error('Bản ghi chấm công đã chốt, không thể hiệu chỉnh.');
+      return;
+    }
     setAdjustingLog(item);
-    setAdjustStatus(item.trang_thai || item.status || 'on_time');
-    setAdjustCheckIn(toLocalDatetimeInput(item.thoi_gian_vao || item.checkInTime));
-    setAdjustCheckOut(toLocalDatetimeInput(item.thoi_gian_ra || item.checkOutTime));
-    const isFraudVal = Boolean(item.co_gian_lan ?? item.isFraud);
-    const reasonVal = item.ly_do_gian_lan || item.fraudReason || item.ly_do_ghi_de || '';
+    setAdjustStatus(item.trang_thai || 'on_time');
+    setAdjustCheckIn(toLocalDatetimeInput(item.thoi_gian_vao));
+    setAdjustCheckOut(toLocalDatetimeInput(item.thoi_gian_ra));
+    const isFraudVal = Boolean(item.co_gian_lan);
+    const reasonVal = item.ly_do_gian_lan || item.ly_do_ghi_de || '';
     setAdjustNote(!isFraudVal && reasonVal ? reasonVal : '');
     setAdjustIsFraud(isFraudVal);
     setAdjustFraudReason(isFraudVal && reasonVal ? reasonVal : '');
@@ -623,7 +583,7 @@ export const AttendanceManage: React.FC = () => {
       const resolvedOverrideReason = adjustIsFraud
         ? adjustFraudReason.trim() || adjustNote.trim()
         : adjustNote.trim() || adjustFraudReason.trim();
-      const targetId = adjustingLog.id || adjustingLog._id;
+      const targetId = adjustingLog.id;
       await attendanceApi.updateAttendance(targetId, {
         trang_thai: adjustStatus,
         thoi_gian_vao: adjustCheckIn ? new Date(adjustCheckIn).toISOString() : undefined,
@@ -668,16 +628,16 @@ export const AttendanceManage: React.FC = () => {
     setIsSubmittingManual(true);
     try {
       if (manualPunchType === 'check_in') {
-        await (attendanceApi.manualCheckIn as any)({
-          userId: manualUserId,
-          method: 'manual',
-          deviceId: 'WEB_ADMIN_PORTAL',
+        await attendanceApi.manualCheckIn({
+          nguoi_dung_id: manualUserId,
+          phuong_thuc: 'thu_cong_admin',
+          thiet_bi_id: 'WEB_ADMIN_PORTAL',
         });
       } else {
-        await (attendanceApi.manualCheckOut as any)({
-          userId: manualUserId,
-          method: 'manual',
-          deviceId: 'WEB_ADMIN_PORTAL',
+        await attendanceApi.manualCheckOut({
+          nguoi_dung_id: manualUserId,
+          phuong_thuc: 'thu_cong_admin',
+          thiet_bi_id: 'WEB_ADMIN_PORTAL',
         });
       }
       toast.success('Điểm danh bổ sung thành công!');
@@ -869,6 +829,7 @@ export const AttendanceManage: React.FC = () => {
                 <option value="on_time">Đúng giờ</option>
                 <option value="late">Đi muộn</option>
                 <option value="early_leave">Về sớm</option>
+<option value="thieu_check_out">Thiếu check-out</option>
                 <option value="excused_absence">Nghỉ có phép</option>
                 <option value="absent">Vắng mặt</option>
               </select>
@@ -1055,46 +1016,43 @@ export const AttendanceManage: React.FC = () => {
                 </tr>
               ) : (
                 filteredRecords.map((item) => {
-                  const statusKey = item.trang_thai || item.status;
+                  const statusKey = item.trang_thai || 'absent';
                   const statusObj = STATUS_CONFIG[statusKey] || STATUS_CONFIG.absent;
-                  const methodKey = item.phuong_thuc || item.method || '';
+                  const methodKey =
+                    item.luot_quet?.[0]?.phuong_thuc ||
+                    item.phuong_thuc ||
+                    (item.ghi_de_thu_cong ? 'thu_cong_admin' : '');
                   const methodObj =
-                    METHOD_LABELS[methodKey] ||
-                    METHOD_LABELS[methodKey.toUpperCase()] || {
+                    METHOD_LABELS[methodKey] || {
                       label: methodKey || 'Chưa rõ',
                       icon: Clock,
                       cls: 'text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-300 dark:bg-slate-900 dark:border-slate-700',
                     };
                   const MethodIcon = methodObj.icon;
-                  const isFraud = Boolean(item.co_gian_lan ?? item.isFraud);
-                  const deptName =
-                    item.nguoi_dung?.don_vi_chinh?.ten_phong_ban ||
-                    (typeof item.userId?.departmentId === 'object' ? item.userId?.departmentId?.name || '' : '');
+                  const isFraud = Boolean(item.co_gian_lan);
+                  const deptName = item.nguoi_dung?.don_vi_chinh?.ten_phong_ban || '';
                   const snapshot =
                     item.anh_minh_chung ||
-                    item.capturedImage ||
-                    item.evidencePhoto ||
-                    (item.luot_quet && item.luot_quet[0]?.anh_minh_chung) ||
-                    (item.punchLogIds && (item.punchLogIds[0]?.evidencePhoto || item.punchLogIds[0]?.evidenceImage));
-                  const userFullName = item.nguoi_dung?.ho_ten || item.userId?.fullName || 'Chưa định danh';
-                  const userStaffCode = item.nguoi_dung?.ma_can_bo || item.userId?.staffCode || '--';
-                  const userAvatarUrl = item.nguoi_dung?.anh_dai_dien || item.userId?.avatar;
-                  const checkInTimeVal = item.thoi_gian_vao || item.checkInTime;
-                  const checkOutTimeVal = item.thoi_gian_ra || item.checkOutTime;
-                  const lateMins = item.di_muon_phut ?? item.lateMinutes;
-                  const earlyMins = item.ve_som_phut ?? item.earlyExitMinutes;
-                  const durationMins = item.thoi_luong_lam_viec_phut ?? item.workDurationMinutes;
-                  const teachPeriods = item.so_tiet_thuc_day ?? (item as any).actualTeachingPeriods;
-                  const isClosed = item.da_chot ?? (item as any).isClosed;
-                  const shiftName = item.ca?.ten_ca || item.shiftId?.name || 'Ca Hành Chính';
-                  const roomStr = item.lich_trinh?.phong_hoc || (item as any).schedule?.roomId;
-                  const subjectStr = item.lich_trinh?.mon_hoc?.ten_mon || (item as any).schedule?.subject?.name;
-                  const hasOverride = Boolean(item.nguoi_ghi_de_id || (item as any).overrideBy || item.ghi_de_thu_cong);
-                  const hasLeaveReq = Boolean(item.don_tu_id || item.don_nghi_phep || item.don_tu || (item as any).leaveRequest);
+                    (item.luot_quet && item.luot_quet[0]?.anh_minh_chung);
+                  const userFullName = item.nguoi_dung?.ho_ten || 'Chưa định danh';
+                  const userStaffCode = item.nguoi_dung?.ma_can_bo || '--';
+                  const userAvatarUrl = item.nguoi_dung?.anh_dai_dien;
+                  const checkInTimeVal = item.thoi_gian_vao;
+                  const checkOutTimeVal = item.thoi_gian_ra;
+                  const lateMins = item.di_muon_phut;
+                  const earlyMins = item.ve_som_phut;
+                  const durationMins = item.thoi_luong_lam_viec_phut;
+                  const teachPeriods = item.so_tiet_thuc_day;
+                  const isClosed = Boolean(item.da_chot);
+                  const shiftName = item.ca?.ten_ca || 'Ca Hành Chính';
+                  const roomStr = item.lich_trinh?.phong_hoc;
+                  const subjectStr = item.lich_trinh?.mon_hoc?.ten_mon;
+                  const hasOverride = Boolean(item.nguoi_ghi_de_id || item.ghi_de_thu_cong);
+                  const hasLeaveReq = Boolean(item.don_tu_id || item.don_nghi_phep || item.don_tu);
 
                   return (
                     <tr
-                      key={item.id || item._id}
+                      key={item.id}
                       className={`hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group ${
                         isFraud ? 'bg-rose-50/30 dark:bg-rose-950/20' : ''
                       }`}
@@ -1131,7 +1089,7 @@ export const AttendanceManage: React.FC = () => {
                       <td className="py-2.5 px-3.5">
                         <div className="flex flex-col leading-tight">
                           <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                            {formatDateVN(item.ngay_cong || item.workDate)}
+                            {formatDateVN(item.ngay_cong)}
                           </span>
                           <span className="text-[11px] text-brand-600 dark:text-brand-400 font-medium truncate mt-0.5">
                             {shiftName}
@@ -1194,11 +1152,7 @@ export const AttendanceManage: React.FC = () => {
                       <td className="py-2.5 px-3.5">
                         <div className="flex flex-col leading-tight">
                           <span className="text-xs text-slate-700 dark:text-slate-300 font-mono font-medium tabular-nums">
-                            {durationMins != null
-                              ? formatMinutes(durationMins)
-                              : item.workHours
-                              ? `${item.workHours} giờ`
-                              : '--'}
+                            {durationMins != null ? formatMinutes(durationMins) : '--'}
                           </span>
                           <span className="text-[10px] text-slate-400 dark:text-slate-500 tabular-nums">
                             {teachPeriods ? `${teachPeriods} tiết • ` : ''}
@@ -1242,7 +1196,7 @@ export const AttendanceManage: React.FC = () => {
 
                       {/* Cột 7: Minh Chứng (13%) */}
                       <td className="py-2.5 px-3.5">
-                        {snapshot && !brokenEvidence[item.id || item._id] ? (
+                        {snapshot && !brokenEvidence[item.id] ? (
                           <div className="flex items-center gap-1.5 min-w-0">
                             <div
                               onClick={() => setSelectedDetailLog(item)}
@@ -1254,8 +1208,7 @@ export const AttendanceManage: React.FC = () => {
                                 alt="Biometric camera snapshot"
                                 src={resolveMediaUrl(snapshot)}
                                 onError={() => {
-                                  const idKey = item.id || item._id;
-                                  setBrokenEvidence((prev) => ({ ...prev, [idKey]: true }));
+                                  setBrokenEvidence((prev) => ({ ...prev, [item.id]: true }));
                                 }}
                               />
                             </div>
@@ -1268,7 +1221,7 @@ export const AttendanceManage: React.FC = () => {
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 truncate">
                             #NP-Đã duyệt
                           </span>
-                        ) : methodKey === 'GPS' || methodKey === 'gps_mobile' ? (
+                        ) : methodKey === 'gps_mobile' ? (
                           <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
                             Định vị GPS
                           </span>
@@ -1293,8 +1246,13 @@ export const AttendanceManage: React.FC = () => {
                           {hasRole(user, ['admin', 'bgh', 'truong_khoa']) && (
                             <button
                               onClick={() => handleOpenAdjustModal(item)}
-                              className="w-7 h-7 rounded-full inline-flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-brand-600 transition-colors"
-                              title="Duyệt bù / Hiệu chỉnh"
+                              disabled={isClosed}
+                              className={`w-7 h-7 rounded-full inline-flex items-center justify-center transition-colors ${
+                                isClosed
+                                  ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed opacity-50'
+                                  : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-brand-600 cursor-pointer'
+                              }`}
+                              title={isClosed ? 'Bản ghi đã chốt công, không thể hiệu chỉnh' : 'Duyệt bù / Hiệu chỉnh'}
                               type="button"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
@@ -1344,7 +1302,7 @@ export const AttendanceManage: React.FC = () => {
                       Đối Soát Minh Chứng Sinh Trắc Học
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Mã bản ghi: <span className="font-mono">{selectedDetailLog.id || selectedDetailLog._id}</span>
+                      Mã bản ghi: <span className="font-mono">{selectedDetailLog.id}</span>
                     </p>
                   </div>
                 </div>
@@ -1359,25 +1317,21 @@ export const AttendanceManage: React.FC = () => {
               {/* Thông tin Cán bộ */}
               <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800">
                 <UserAvatar
-                  name={selectedDetailLog.nguoi_dung?.ho_ten || selectedDetailLog.userId?.fullName}
-                  avatarUrl={selectedDetailLog.nguoi_dung?.anh_dai_dien || selectedDetailLog.userId?.avatar}
-                  staffCode={selectedDetailLog.nguoi_dung?.ma_can_bo || selectedDetailLog.userId?.staffCode || selectedDetailLog.userId?._id}
+                  name={selectedDetailLog.nguoi_dung?.ho_ten}
+                  avatarUrl={selectedDetailLog.nguoi_dung?.anh_dai_dien}
+                  staffCode={selectedDetailLog.nguoi_dung?.ma_can_bo}
                   size="lg"
                   shape="circle"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">
-                    {selectedDetailLog.nguoi_dung?.ho_ten || selectedDetailLog.userId?.fullName}
+                    {selectedDetailLog.nguoi_dung?.ho_ten}
                   </div>
                   <div className="text-xs text-slate-500 font-mono truncate">
-                    Mã CB: <span className="font-semibold">{selectedDetailLog.nguoi_dung?.ma_can_bo || selectedDetailLog.userId?.staffCode || '--'}</span> | Email: {selectedDetailLog.nguoi_dung?.email || selectedDetailLog.userId?.email}
+                    Mã CB: <span className="font-semibold">{selectedDetailLog.nguoi_dung?.ma_can_bo || '--'}</span> | Email: {selectedDetailLog.nguoi_dung?.email}
                   </div>
                   <div className="text-xs text-brand-600 dark:text-brand-400 font-medium mt-0.5 truncate">
-                    Khoa/Bộ môn:{' '}
-                    {selectedDetailLog.nguoi_dung?.don_vi_chinh?.ten_phong_ban ||
-                      (typeof selectedDetailLog.userId?.departmentId === 'object'
-                        ? selectedDetailLog.userId?.departmentId?.name
-                        : '--')}
+                    Khoa/Bộ môn: {selectedDetailLog.nguoi_dung?.don_vi_chinh?.ten_phong_ban || '--'}
                   </div>
                 </div>
               </div>
@@ -1388,9 +1342,9 @@ export const AttendanceManage: React.FC = () => {
                   Ảnh Chụp Snapshot Thời Điểm Quẹt Thẻ
                 </label>
                 <KhungAnhMinhChung
-                  logId={selectedDetailLog.id || selectedDetailLog._id}
-                  initialUrl={selectedDetailLog.anh_minh_chung || selectedDetailLog.capturedImage || selectedDetailLog.evidencePhoto}
-                  checkInTimeText={formatTimeVN(selectedDetailLog.thoi_gian_vao || selectedDetailLog.checkInTime)}
+                  logId={selectedDetailLog.id}
+                  initialUrl={selectedDetailLog.anh_minh_chung}
+                  checkInTimeText={formatTimeVN(selectedDetailLog.thoi_gian_vao)}
                   resolveMediaUrl={resolveMediaUrl}
                 />
               </div>
@@ -1401,10 +1355,10 @@ export const AttendanceManage: React.FC = () => {
                   <span className="text-slate-400 block mb-1">Ngày công &amp; Trạng thái:</span>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                      {formatDateVN(selectedDetailLog.ngay_cong || selectedDetailLog.workDate)}
+                      {formatDateVN(selectedDetailLog.ngay_cong)}
                     </span>
                     <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                      {(STATUS_CONFIG[selectedDetailLog.trang_thai || selectedDetailLog.status] || STATUS_CONFIG.absent).label}
+                      {(STATUS_CONFIG[selectedDetailLog.trang_thai || ''] || STATUS_CONFIG.absent).label}
                     </span>
                   </div>
                 </div>
@@ -1412,21 +1366,21 @@ export const AttendanceManage: React.FC = () => {
                 <div className="p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                   <span className="text-slate-400 block mb-1">Tạo / Cập nhật bản ghi:</span>
                   <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300 block">
-                    Tạo: {selectedDetailLog.tao_luc || selectedDetailLog.createdAt ? new Date(selectedDetailLog.tao_luc || selectedDetailLog.createdAt!).toLocaleString('vi-VN') : '—'}
+                    Tạo: {selectedDetailLog.tao_luc ? new Date(selectedDetailLog.tao_luc).toLocaleString('vi-VN') : '—'}
                   </span>
                   <span className="font-mono text-[11px] text-slate-500 block">
-                    Sửa: {selectedDetailLog.cap_nhat_luc || selectedDetailLog.updatedAt ? new Date(selectedDetailLog.cap_nhat_luc || selectedDetailLog.updatedAt!).toLocaleString('vi-VN') : '—'}
+                    Sửa: {selectedDetailLog.cap_nhat_luc ? new Date(selectedDetailLog.cap_nhat_luc).toLocaleString('vi-VN') : '—'}
                   </span>
                 </div>
 
                 <div className="p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                   <span className="text-slate-400 block mb-1">Thời gian Check-in:</span>
                   <span className="font-mono font-bold text-slate-800 dark:text-slate-200 text-sm">
-                    {formatTimeVN(selectedDetailLog.thoi_gian_vao || selectedDetailLog.checkInTime)}
+                    {formatTimeVN(selectedDetailLog.thoi_gian_vao)}
                   </span>
-                  {(selectedDetailLog.di_muon_phut ?? selectedDetailLog.lateMinutes) && (selectedDetailLog.di_muon_phut ?? selectedDetailLog.lateMinutes)! > 0 ? (
+                  {selectedDetailLog.di_muon_phut && selectedDetailLog.di_muon_phut > 0 ? (
                     <span className="text-amber-600 text-[11px] block mt-0.5 font-bold">
-                      (Đi muộn {selectedDetailLog.di_muon_phut ?? selectedDetailLog.lateMinutes} phút)
+                      (Đi muộn {selectedDetailLog.di_muon_phut} phút)
                     </span>
                   ) : null}
                 </div>
@@ -1434,11 +1388,11 @@ export const AttendanceManage: React.FC = () => {
                 <div className="p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                   <span className="text-slate-400 block mb-1">Thời gian Check-out:</span>
                   <span className="font-mono font-bold text-slate-800 dark:text-slate-200 text-sm">
-                    {formatTimeVN(selectedDetailLog.thoi_gian_ra || selectedDetailLog.checkOutTime)}
+                    {formatTimeVN(selectedDetailLog.thoi_gian_ra)}
                   </span>
-                  {(selectedDetailLog.ve_som_phut ?? selectedDetailLog.earlyExitMinutes) && (selectedDetailLog.ve_som_phut ?? selectedDetailLog.earlyExitMinutes)! > 0 ? (
+                  {selectedDetailLog.ve_som_phut && selectedDetailLog.ve_som_phut > 0 ? (
                     <span className="text-orange-600 text-[11px] block mt-0.5 font-bold">
-                      (Về sớm {selectedDetailLog.ve_som_phut ?? selectedDetailLog.earlyExitMinutes} phút)
+                      (Về sớm {selectedDetailLog.ve_som_phut} phút)
                     </span>
                   ) : null}
                 </div>
@@ -1446,12 +1400,12 @@ export const AttendanceManage: React.FC = () => {
                 <div className="p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                   <span className="text-slate-400 block mb-1">Số giờ công / Số tiết / Chốt công:</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
-                    {(selectedDetailLog.thoi_luong_lam_viec_phut != null || selectedDetailLog.workDurationMinutes != null)
-                      ? formatMinutes(selectedDetailLog.thoi_luong_lam_viec_phut ?? selectedDetailLog.workDurationMinutes ?? 0)
-                      : `${selectedDetailLog.workHours ?? 0}h`}{' '}
-                    • {selectedDetailLog.so_tiet_thuc_day ?? (selectedDetailLog as any).actualTeachingPeriods ?? 0} tiết •{' '}
-                    <span className={(selectedDetailLog.da_chot ?? (selectedDetailLog as any).isClosed) ? 'text-emerald-600' : 'text-amber-600'}>
-                      {(selectedDetailLog.da_chot ?? (selectedDetailLog as any).isClosed) ? 'Đã chốt công' : 'Chưa chốt'}
+                    {selectedDetailLog.thoi_luong_lam_viec_phut != null
+                      ? formatMinutes(selectedDetailLog.thoi_luong_lam_viec_phut)
+                      : '0 phút'}{' '}
+                    • {selectedDetailLog.so_tiet_thuc_day ?? 0} tiết •{' '}
+                    <span className={selectedDetailLog.da_chot ? 'text-emerald-600' : 'text-amber-600'}>
+                      {selectedDetailLog.da_chot ? 'Đã chốt công' : 'Chưa chốt'}
                     </span>
                   </span>
                 </div>
@@ -1460,50 +1414,43 @@ export const AttendanceManage: React.FC = () => {
                   <span className="text-slate-400 block mb-1">Người hiệu chỉnh thủ công:</span>
                   <span className="font-semibold text-slate-800 dark:text-slate-200">
                     {selectedDetailLog.nguoi_ghi_de?.ho_ten ||
-                      ((selectedDetailLog as any).overrideBy
-                        ? typeof (selectedDetailLog as any).overrideBy === 'object'
-                          ? (selectedDetailLog as any).overrideBy?.fullName ||
-                            (selectedDetailLog as any).overrideBy?.ho_ten ||
-                            'Quản trị viên'
-                          : 'Quản trị viên'
-                        : 'Chấm công tự động')}
+                      (selectedDetailLog.ghi_de_thu_cong ? 'Quản trị viên' : 'Chấm công tự động')}
                   </span>
                 </div>
-                {(selectedDetailLog.lich_trinh || (selectedDetailLog as any).schedule || (selectedDetailLog as any).scheduleId) && (
+                {selectedDetailLog.lich_trinh && (
                   <div className="col-span-2 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                     <span className="text-slate-400 block mb-1">Lịch giảng dạy / Giảng đường:</span>
                     <span className="font-semibold text-slate-800 dark:text-slate-200">
                       {(() => {
-                        const sch = selectedDetailLog.lich_trinh || (selectedDetailLog as any).schedule || (selectedDetailLog as any).scheduleId;
-                        if (!sch || typeof sch !== 'object') return `Mã lịch: ${String((selectedDetailLog as any).scheduleId).slice(0, 8)}`;
+                        const sch = selectedDetailLog.lich_trinh;
                         const weekdayLabels = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
-                        const subj = sch.mon_hoc?.ten_mon || sch.subject?.name || '';
-                        const room = sch.phong_hoc || sch.roomId || 'Phòng làm việc';
-                        const wdIdx = sch.thu_trong_tuan ?? sch.weekday;
-                        const weekdayText = wdIdx !== undefined && wdIdx !== null ? weekdayLabels[Number(wdIdx)] || '' : '';
-                        const startP = sch.tiet_bat_dau ?? sch.startPeriod;
-                        const pCount = sch.so_tiet ?? sch.periodCount;
-                        const periodText = startP && pCount
-                          ? `Tiết ${startP}–${Number(startP) + Number(pCount) - 1}`
-                          : '';
+                        const subj = sch.mon_hoc?.ten_mon || '';
+                        const room = sch.phong_hoc || 'Phòng làm việc';
+                        const weekdayText =
+                          sch.thu_trong_tuan !== undefined && sch.thu_trong_tuan !== null
+                            ? weekdayLabels[Number(sch.thu_trong_tuan)] || ''
+                            : '';
+                        const periodText =
+                          sch.tiet_bat_dau && sch.so_tiet
+                            ? `Tiết ${sch.tiet_bat_dau}–${Number(sch.tiet_bat_dau) + Number(sch.so_tiet) - 1}`
+                            : '';
                         return [subj, room, weekdayText, periodText].filter(Boolean).join(' • ');
                       })()}
                     </span>
                   </div>
                 )}
-                {(selectedDetailLog.don_nghi_phep || selectedDetailLog.don_tu || (selectedDetailLog as any).leaveRequest || (selectedDetailLog as any).leaveRequestId) && (
+                {(selectedDetailLog.don_nghi_phep || selectedDetailLog.don_tu || selectedDetailLog.don_tu_id) && (
                   <div className="col-span-2 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20">
                     <span className="text-slate-400 block mb-0.5">Đơn từ liên kết (Nghỉ phép / Công tác):</span>
                     <span className="font-mono font-semibold text-indigo-700 dark:text-indigo-300">
                       {(() => {
-                        const lr = selectedDetailLog.don_nghi_phep || selectedDetailLog.don_tu || (selectedDetailLog as any).leaveRequest;
-                        if (!lr) return `Mã đơn: ${(selectedDetailLog as any).leaveRequestId}`;
-                        const startD = lr.ngay_bat_dau || lr.startDate;
-                        const endD = lr.ngay_ket_thuc || lr.endDate;
-                        const dateRange = startD && endD
-                          ? ` • ${String(startD).slice(0, 10)} → ${String(endD).slice(0, 10)}`
-                          : '';
-                        return `${lr.loai_don || lr.type || 'Đơn'} (${lr.trang_thai || lr.status || ''})${dateRange}`;
+                        const lr = selectedDetailLog.don_nghi_phep || selectedDetailLog.don_tu;
+                        if (!lr) return `Mã đơn: ${selectedDetailLog.don_tu_id}`;
+                        const dateRange =
+                          lr.ngay_bat_dau && lr.ngay_ket_thuc
+                            ? ` • ${String(lr.ngay_bat_dau).slice(0, 10)} → ${String(lr.ngay_ket_thuc).slice(0, 10)}`
+                            : '';
+                        return `${lr.loai_don || 'Đơn'} (${lr.trang_thai || ''})${dateRange}`;
                       })()}
                     </span>
                   </div>
@@ -1512,32 +1459,32 @@ export const AttendanceManage: React.FC = () => {
 
               {/* Chi tiết các lượt quẹt thô */}
               {(() => {
-                const rawPunches = selectedDetailLog.luot_quet || (selectedDetailLog as any).punches || selectedDetailLog.punchLogIds || [];
+                const rawPunches = selectedDetailLog.luot_quet || [];
                 return Array.isArray(rawPunches) && rawPunches.length > 0 ? (
                   <div className="space-y-2 text-xs">
                     <label className="block font-bold uppercase tracking-wider text-slate-500">
                       Lượt Quẹt Sinh Trắc Học ({rawPunches.length} lượt)
                     </label>
                     <div className="space-y-2">
-                      {rawPunches.map((p: any, idx: number) => {
-                        const isCheckIn = p.loai_quet === 'check_in' || p.loai_quet === 'vao' || p.punchType === 'check_in';
-                        const punchTimeVal = p.thoi_gian_quet || p.punchTime;
-                        const methodStr = p.phuong_thuc || p.method || 'face_ai';
-                        const deviceStr = p.ma_thiet_bi || p.deviceId || '—';
-                        const angleStr = p.goc_mat_nhan_dien || p.recognizedAngle;
-                        const distM = p.khoang_cach_met ?? p.distanceMeters;
-                        const gpsAcc = p.do_chinh_xac_gps ?? p.gpsAccuracy;
-                        const latVal = p.vi_do ?? p.latitude;
-                        const lngVal = p.kinh_do ?? p.longitude;
-                        const isMock = p.vi_tri_gia_lap ?? p.isMockLocation;
-                        const isValidLog = p.hop_le ?? p.isValid;
-                        const invalidMsg = p.ly_do_khong_hop_le || p.invalidReason;
-                        const aiConf = p.do_tin_cay_ai ?? p.confidenceScore;
-                        const liveness = p.diem_mat_that ?? p.livenessScore;
+                      {rawPunches.map((p, idx) => {
+                        const isCheckIn = p.loai_quet === 'check_in';
+                        const punchTimeVal = p.thoi_gian_quet;
+                        const methodStr = p.phuong_thuc || 'face_ai';
+                        const deviceStr = p.ma_thiet_bi || '—';
+                        const angleStr = p.goc_mat_nhan_dien;
+                        const distM = p.khoang_cach_met;
+                        const gpsAcc = p.do_chinh_xac_gps;
+                        const latVal = p.vi_do;
+                        const lngVal = p.kinh_do;
+                        const isMock = p.vi_tri_gia_lap;
+                        const isValidLog = p.hop_le;
+                        const invalidMsg = p.ly_do_khong_hop_le;
+                        const aiConf = p.do_tin_cay_ai;
+                        const liveness = p.diem_mat_that;
 
                         return (
                           <div
-                            key={p.id || p._id || idx}
+                            key={p.id || idx}
                             className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-start justify-between gap-3"
                           >
                             <div className="min-w-0">
@@ -1588,25 +1535,25 @@ export const AttendanceManage: React.FC = () => {
               })()}
 
               {/* Cảnh báo an ninh hoặc lý do ghi đè thủ công */}
-              {((selectedDetailLog.co_gian_lan ?? selectedDetailLog.isFraud) || ((selectedDetailLog.nguoi_ghi_de || (selectedDetailLog as any).overrideBy) && (selectedDetailLog.ly_do_gian_lan || selectedDetailLog.fraudReason || selectedDetailLog.ly_do_ghi_de))) && (
+              {(selectedDetailLog.co_gian_lan || (selectedDetailLog.nguoi_ghi_de && (selectedDetailLog.ly_do_gian_lan || selectedDetailLog.ly_do_ghi_de))) && (
                 <div
                   className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
-                    (selectedDetailLog.co_gian_lan ?? selectedDetailLog.isFraud)
+                    selectedDetailLog.co_gian_lan
                       ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300'
                       : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300'
                   }`}
                 >
                   <ShieldAlert
                     className={`w-4 h-4 shrink-0 mt-0.5 ${
-                      (selectedDetailLog.co_gian_lan ?? selectedDetailLog.isFraud) ? 'text-rose-600' : 'text-amber-600'
+                      selectedDetailLog.co_gian_lan ? 'text-rose-600' : 'text-amber-600'
                     }`}
                   />
                   <div>
                     <div className="font-bold">
-                      {(selectedDetailLog.co_gian_lan ?? selectedDetailLog.isFraud) ? 'Cảnh Báo Gian Lận / Vi Phạm An Ninh' : 'Lý Do Hiệu Chỉnh / Ghi Đè Công'}
+                      {selectedDetailLog.co_gian_lan ? 'Cảnh Báo Gian Lận / Vi Phạm An Ninh' : 'Lý Do Hiệu Chỉnh / Ghi Đè Công'}
                     </div>
                     <div>
-                      {selectedDetailLog.ly_do_gian_lan || selectedDetailLog.fraudReason || selectedDetailLog.ly_do_ghi_de || 'Phát hiện vị trí chấm công ngoài bán kính cho phép.'}
+                      {selectedDetailLog.ly_do_gian_lan || selectedDetailLog.ly_do_ghi_de || 'Phát hiện vị trí chấm công ngoài bán kính cho phép.'}
                     </div>
                   </div>
                 </div>
@@ -1640,7 +1587,7 @@ export const AttendanceManage: React.FC = () => {
                       Hiệu Chỉnh Bản Ghi Điểm Danh
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Cán bộ: <span className="font-semibold text-slate-800 dark:text-slate-200">{adjustingLog.nguoi_dung?.ho_ten || adjustingLog.userId?.fullName}</span>
+                      Cán bộ: <span className="font-semibold text-slate-800 dark:text-slate-200">{adjustingLog.nguoi_dung?.ho_ten || 'Cán bộ'}</span>
                     </p>
                   </div>
                 </div>
@@ -1665,6 +1612,7 @@ export const AttendanceManage: React.FC = () => {
                     <option value="on_time">Đúng Giờ</option>
                     <option value="late">Đi Muộn</option>
                     <option value="early_leave">Về Sớm</option>
+<option value="thieu_check_out">Thiếu Check-out</option>
                     <option value="excused_absence">Nghỉ Có Phép</option>
                     <option value="absent">Vắng Mặt</option>
                   </select>
@@ -1874,9 +1822,9 @@ export const AttendanceManage: React.FC = () => {
                   >
                     <option value="">-- Chọn cán bộ cần điểm danh --</option>
                     {userList.map((u) => {
-                      const uId = u.id || u._id;
-                      const uName = u.ho_ten || u.fullName;
-                      const uCode = u.ma_can_bo || u.staffCode || u.email;
+                      const uId = u.id;
+                      const uName = u.ho_ten;
+                      const uCode = u.ma_can_bo || u.email;
                       return (
                         <option key={uId} value={uId}>
                           {uName} ({uCode})

@@ -12,40 +12,61 @@ const {
   exportPayrollExcel,
   exportPayrollPdf,
 } = require('../controllers/phieuLuong.controller');
-const { verifyToken, verifyRole, requirePermission } = require('../middlewares/xacThuc.middleware');
+const { verifyToken, verifyRole, requirePermission, requireAnyPermission } = require('../middlewares/xacThuc.middleware');
 const { PERMISSIONS } = require('../config/permissions');
 
 router.use(verifyToken);
+
+const PAYROLL_VIEW_PERMS = [
+  PERMISSIONS.LUONG_XEM_BAN_THAN,
+  PERMISSIONS.LUONG_LAP_BANG,
+  PERMISSIONS.LUONG_DUYET,
+  PERMISSIONS.LUONG_KHOA,
+];
 
 // 1. Xem phiếu lương của chính mình
 router.get('/cua-toi', requirePermission(PERMISSIONS.LUONG_XEM_BAN_THAN), getMyPayroll);
 
 // 2. Thống kê tổng hợp quỹ lương tháng
-router.get('/tong-hop', verifyRole(['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']), getPayrollSummary);
+router.get(
+  '/tong-hop',
+  requireAnyPermission(PAYROLL_VIEW_PERMS),
+  verifyRole(['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']),
+  getPayrollSummary
+);
 
 // 3. Xuất dữ liệu báo cáo bảng lương Excel
-router.get('/xuat-excel', verifyRole(['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']), exportPayrollExcel);
+router.get(
+  '/xuat-excel',
+  requireAnyPermission(PAYROLL_VIEW_PERMS),
+  verifyRole(['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']),
+  exportPayrollExcel
+);
 
-// Xuất dữ liệu phiếu lương PDF theo ID
+// 4. Xuất dữ liệu phiếu lương PDF theo ID
+router.get('/:id/xuat-pdf', requireAnyPermission(PAYROLL_VIEW_PERMS), exportPayrollPdf);
 
-router.get('/:id/xuat-pdf', exportPayrollPdf);
+// 5. Khởi tạo & Tính toán bảng lương dự thảo (Admin / Kế toán)
+router.post(
+  '/khoi-tao',
+  requirePermission(PERMISSIONS.LUONG_LAP_BANG),
+  verifyRole(['admin', 'ke_toan']),
+  generatePayroll
+);
 
-// 5. Khởi tạo & Tính toán bảng lương dự thảo
-router.post('/khoi-tao', verifyRole(['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']), generatePayroll);
-
-// Khóa sổ lương tháng & chốt công (POST /khoa hoặc PUT /:id/khoa)
+// 6. Khóa sổ lương tháng & chốt công (POST /khoa hoặc PUT /:id/khoa)
 router.post('/khoa', requirePermission(PERMISSIONS.LUONG_KHOA), verifyRole(['admin', 'bgh', 'ke_toan']), lockPayroll);
 router.put('/:id/khoa', requirePermission(PERMISSIONS.LUONG_KHOA), verifyRole(['admin', 'bgh', 'ke_toan']), lockPayroll);
 
-// Mở khóa sổ lương tháng (POST /mo-khoa hoặc PUT /:id/mo-khoa)
+// 7. Mở khóa sổ lương tháng (POST /mo-khoa hoặc PUT /:id/mo-khoa)
 router.post('/mo-khoa', requirePermission(PERMISSIONS.LUONG_KHOA), verifyRole(['admin', 'bgh', 'ke_toan']), unlockPayroll);
 router.put('/:id/mo-khoa', requirePermission(PERMISSIONS.LUONG_KHOA), verifyRole(['admin', 'bgh', 'ke_toan']), unlockPayroll);
 
 // 8. Tra cứu danh sách bảng lương
-router.get('/', getPayrolls);
+router.get('/', requireAnyPermission(PAYROLL_VIEW_PERMS), getPayrolls);
 
 // 9. Xem chi tiết phiếu lương theo ID
-router.get('/:id', getPayrollById);
+router.get('/:id', requireAnyPermission(PAYROLL_VIEW_PERMS), getPayrollById);
 
 module.exports = router;
 

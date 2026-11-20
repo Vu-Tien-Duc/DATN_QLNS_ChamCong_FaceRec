@@ -67,29 +67,28 @@ const COLORS = {
   early: '#f97316', // orange-500
   excused: '#3b82f6', // blue-500
   absent: '#f43f5e', // rose-500
+  missingCheckout: '#9333ea', // purple-600
 };
 
-// Helper chuẩn nhận diện và loại trừ tài khoản Quản trị hệ thống IT & Lãnh đạo BGH khỏi báo cáo
+// Kiểm tra vai trò kỹ thuật Admin / BGH theo mã vai trò chuẩn
 const isSystemAdminUser = (u: any): boolean => {
   if (!u) return false;
-  const role = String(u.vai_tro_chinh || '').toLowerCase();
-  const code = String(u.ma_can_bo || '').toUpperCase();
-  const email = String(u.email || '').toLowerCase();
-  const name = String(u.ho_ten || '').toLowerCase();
-  return (
-    role === 'admin' ||
-    role === 'bgh' ||
-    role.includes('quản trị') ||
-    role.includes('giám hiệu') ||
-    code.startsWith('ADMIN') ||
-    code.startsWith('BGH') ||
-    email.startsWith('admin@') ||
-    email.includes('daihocdtd@') ||
-    email.startsWith('hieutruong@') ||
-    name.includes('quản trị viên') ||
-    name.includes('hiệu trưởng') ||
-    name.includes('ban giám hiệu')
-  );
+  const role = String(u.vai_tro_chinh || '').trim().toLowerCase();
+  return role === 'admin' || role === 'bgh';
+};
+
+// Chống Excel Formula Injection ở client cho các ô chuỗi
+const sanitizeExcelCell = (value: any): any => {
+  if (typeof value !== 'string') return value;
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+};
+
+const sanitizeExcelRowClient = (row: Record<string, any>): Record<string, any> => {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(row)) {
+    out[k] = sanitizeExcelCell(v);
+  }
+  return out;
 };
 
 // =============================================================================
@@ -152,28 +151,36 @@ export const Reports: React.FC = () => {
       const toStr = `${selectedYear}-${pad(selectedMonth)}-${pad(lastDay)}`;
 
       const deptParam = selectedDeptId && selectedDeptId !== 'ALL' ? selectedDeptId : undefined;
-      const [summaryRes, monthlyRes, exportRes] = await Promise.all([
+      const [summarySettled, monthlySettled, exportSettled] = await Promise.allSettled([
         reportApi.getAttendanceReport({
           don_vi_id: deptParam,
           tu_ngay: fromStr,
           den_ngay: toStr,
-        }).catch(() => null),
+        }),
         reportApi.getMonthlyReport({
           thang: selectedMonth,
           nam: selectedYear,
           don_vi_id: deptParam,
-          gioi_han: 200,
-        }).catch(() => null),
+          gioi_han: 1000,
+        }),
         reportApi.getExportReportData({
           thang: selectedMonth,
           nam: selectedYear,
           don_vi_id: deptParam,
-        }).catch(() => null),
+        }),
       ]);
 
-      setSummaryData(summaryRes);
-      setMonthlyData(monthlyRes);
-      setExportData(exportRes);
+      setSummaryData(summarySettled.status === 'fulfilled' ? summarySettled.value : null);
+      setMonthlyData(monthlySettled.status === 'fulfilled' ? monthlySettled.value : null);
+      setExportData(exportSettled.status === 'fulfilled' ? exportSettled.value : null);
+
+      const firstErr = [summarySettled, monthlySettled, exportSettled].find((r) => r.status === 'rejected') as
+        | PromiseRejectedResult
+        | undefined;
+      if (firstErr) {
+        const msg = firstErr.reason?.response?.data?.message || 'Một số dữ liệu báo cáo chưa thể tải từ máy chủ.';
+        toast.error(msg);
+      }
     } catch (err: any) {
       console.error('Lỗi khi tải dữ liệu báo cáo:', err);
       toast.error(err.response?.data?.message || 'Không thể tải dữ liệu báo cáo thống kê.');
@@ -199,6 +206,7 @@ export const Reports: React.FC = () => {
         earlyLeaveCount: 0,
         absentCount: 0,
         excusedAbsenceCount: 0,
+        thieuCheckOutCount: 0,
         approvedLeaveDays: 0,
         attendanceRate: 0,
         lateRate: 0,
@@ -212,11 +220,12 @@ export const Reports: React.FC = () => {
       earlyLeaveCount,
       absentCount,
       excusedAbsenceCount,
+      thieuCheckOutCount = 0,
       approvedLeaveDays,
     } = summaryData;
 
     const valid = onTimeCount + excusedAbsenceCount;
-    const attendanceRate = totalShifts > 0 ? Math.round((valid / totalShifts) * 100) : 100;
+    const attendanceRate = totalShifts > 0 ? Math.round((valid / totalShifts) * 100) : 0;
     const lateRate = totalShifts > 0 ? Math.round(((lateCount + earlyLeaveCount) / totalShifts) * 100) : 0;
 
     return {
@@ -226,6 +235,7 @@ export const Reports: React.FC = () => {
       earlyLeaveCount,
       absentCount,
       excusedAbsenceCount,
+      thieuCheckOutCount,
       approvedLeaveDays,
       attendanceRate,
       lateRate,
@@ -241,6 +251,7 @@ export const Reports: React.FC = () => {
       { name: 'Về Sớm', value: summaryData.earlyLeaveCount, color: COLORS.early },
       { name: 'Nghỉ Có Phép', value: summaryData.excusedAbsenceCount, color: COLORS.excused },
       { name: 'Vắng Mặt', value: summaryData.absentCount, color: COLORS.absent },
+      { name: 'Thiếu Check-out', value: summaryData.thieuCheckOutCount || 0, color: COLORS.missingCheckout },
     ].filter((item) => item.value > 0);
   }, [summaryData]);
 
@@ -291,7 +302,7 @@ export const Reports: React.FC = () => {
     });
 
     return Object.entries(deptMap).map(([deptName, val]) => {
-      const rate = val.totalShifts > 0 ? Math.round((val.onTime / val.totalShifts) * 100) : 100;
+      const rate = val.totalShifts > 0 ? Math.round((val.onTime / val.totalShifts) * 100) : 0;
       return {
         name: deptName,
         totalStaff: val.count,
@@ -322,8 +333,8 @@ export const Reports: React.FC = () => {
         ['Ứng dụng thị giác máy tính xây dựng hệ thống chấm công nhân sự - Đại Học Nguyễn Trãi (NTU)'],
         [],
         ['CHỈ TIÊU BÁO CÁO', 'GIÁ TRỊ'],
-        ['Kỳ báo cáo', tong_quan.ky_bao_cao || `Tháng ${selectedMonth}/${selectedYear}`],
-        ['Đơn vị áp dụng', tong_quan.don_vi || 'Toàn Trường'],
+        ['Kỳ báo cáo', sanitizeExcelCell(tong_quan.ky_bao_cao || `Tháng ${selectedMonth}/${selectedYear}`)],
+        ['Đơn vị áp dụng', sanitizeExcelCell(tong_quan.don_vi || 'Toàn Trường')],
         ['Tổng số nhân sự theo dõi', tong_quan.tong_so_nhan_su],
         ['Tổng số lượt ca làm việc / giảng dạy', tong_quan.tong_so_ca],
         ['Số ca đúng giờ', tong_quan.so_lan_dung_gio],
@@ -331,30 +342,34 @@ export const Reports: React.FC = () => {
         ['Số ca về sớm', tong_quan.so_lan_ve_som],
         ['Số ca vắng mặt không phép', tong_quan.so_lan_vang_mat],
         ['Số ca nghỉ có phép hợp lệ', tong_quan.so_lan_co_phep],
+        ['Số ca thiếu check-out', tong_quan.so_lan_thieu_check_out ?? 0],
         ['Tỷ lệ chuyên cần chung (%)', `${tong_quan.ty_le_chuyen_can}%`],
         ['Tổng số ngày nghỉ phép đã duyệt', `${tong_quan.so_ngay_nghi_phep_da_duyet} ngày`],
-        ['Thời điểm trích xuất dữ liệu', tong_quan.thoi_diem_xuat || new Date().toLocaleString('vi-VN')],
+        ['Thời điểm trích xuất dữ liệu', sanitizeExcelCell(tong_quan.thoi_diem_xuat || new Date().toLocaleString('vi-VN'))],
       ];
       const wsOverview = XLSX.utils.aoa_to_sheet(overviewRows);
       wsOverview['!cols'] = [{ wch: 38 }, { wch: 32 }];
 
       // 2. SHEET 2: BẢNG TỔNG HỢP CÔNG THEO NHÂN SỰ (Loại trừ Admin kỹ thuật)
       const cleanStaff = (thong_ke_nhan_su || []).filter((s: any) => !isSystemAdminUser(s));
-      const staffRows = cleanStaff.map((s: any, idx: number) => ({
-        'STT': idx + 1,
-        'Mã Cán Bộ': s.ma_can_bo || '',
-        'Họ Và Tên': s.ho_ten || '',
-        'Email': s.email || '',
-        'Khoa / Đơn Vị': s.ten_phong_ban || '',
-        'Chức Vụ / Vai Trò': s.vai_tro_chinh || '',
-        'Tổng Số Ca': s.tong_so_ca || 0,
-        'Đúng Giờ': s.so_lan_dung_gio || 0,
-        'Đi Muộn': s.so_lan_di_muon || 0,
-        'Về Sớm': s.so_lan_ve_som || 0,
-        'Vắng Mặt': s.so_lan_vang_mat || 0,
-        'Nghỉ Phép': s.so_lan_co_phep || 0,
-        'Tỷ Lệ Chuyên Cần (%)': `${s.ty_le_chuyen_can || 0}%`,
-      }));
+      const staffRows = cleanStaff.map((s: any, idx: number) =>
+        sanitizeExcelRowClient({
+          'STT': idx + 1,
+          'Mã Cán Bộ': s.ma_can_bo || '',
+          'Họ Và Tên': s.ho_ten || '',
+          'Email': s.email || '',
+          'Khoa / Đơn Vị': s.ten_phong_ban || '',
+          'Chức Vụ / Vai Trò': s.vai_tro_chinh || '',
+          'Tổng Số Ca': s.tong_so_ca || 0,
+          'Đúng Giờ': s.so_lan_dung_gio || 0,
+          'Đi Muộn': s.so_lan_di_muon || 0,
+          'Về Sớm': s.so_lan_ve_som || 0,
+          'Vắng Mặt': s.so_lan_vang_mat || 0,
+          'Nghỉ Phép': s.so_lan_co_phep || 0,
+          'Thiếu Check-out': s.so_lan_thieu_check_out || 0,
+          'Tỷ Lệ Chuyên Cần (%)': `${s.ty_le_chuyen_can || 0}%`,
+        })
+      );
       const wsStaff = XLSX.utils.json_to_sheet(staffRows);
       wsStaff['!cols'] = [
         { wch: 6 },
@@ -369,27 +384,30 @@ export const Reports: React.FC = () => {
         { wch: 10 },
         { wch: 10 },
         { wch: 10 },
+        { wch: 15 },
         { wch: 20 },
       ];
 
       // 3. SHEET 3: CHI TIẾT NHẬT KÝ ĐIỂM DANH FACE ID
-      const logsRows = (nhat_ky_cham_cong || []).map((l: any, idx: number) => ({
-        'STT': l.stt || idx + 1,
-        'Mã Cán Bộ': l.ma_can_bo || '',
-        'Họ Và Tên': l.ho_ten || '',
-        'Khoa / Đơn Vị': l.ten_phong_ban || '',
-        'Ngày': l.ngay || '',
-        'Thứ': l.thu || '',
-        'Ca Làm Việc': l.ten_ca || '',
-        'Khung Giờ Chuẩn': l.khung_gio_chuan || '',
-        'Giờ Check-in': l.thoi_gian_vao || '',
-        'Giờ Check-out': l.thoi_gian_ra || '',
-        'Trạng Thái': l.trang_thai || '',
-        'Độ Lệch Phút': l.so_phut_lech || 0,
-        'Phương Thức': l.phuong_thuc || '',
-        'Tọa Độ GPS': l.toa_do_gps || '',
-        'Ghi Chú': l.ghi_chu || '',
-      }));
+      const logsRows = (nhat_ky_cham_cong || []).map((l: any, idx: number) =>
+        sanitizeExcelRowClient({
+          'STT': l.stt || idx + 1,
+          'Mã Cán Bộ': l.ma_can_bo || '',
+          'Họ Và Tên': l.ho_ten || '',
+          'Khoa / Đơn Vị': l.ten_phong_ban || '',
+          'Ngày': l.ngay || '',
+          'Thứ': l.thu || '',
+          'Ca Làm Việc': l.ten_ca || '',
+          'Khung Giờ Chuẩn': l.khung_gio_chuan || '',
+          'Giờ Check-in': l.thoi_gian_vao || '',
+          'Giờ Check-out': l.thoi_gian_ra || '',
+          'Trạng Thái': l.trang_thai || '',
+          'Độ Lệch Phút': l.so_phut_lech || 0,
+          'Phương Thức': l.phuong_thuc || '',
+          'Tọa Độ GPS': l.toa_do_gps || '',
+          'Ghi Chú': l.ghi_chu || '',
+        })
+      );
       const wsLogs = XLSX.utils.json_to_sheet(logsRows);
       wsLogs['!cols'] = [
         { wch: 6 },
@@ -410,20 +428,22 @@ export const Reports: React.FC = () => {
       ];
 
       // 4. SHEET 4: CHI TIẾT ĐƠN NGHỈ PHÉP VÀ DẠY BÙ
-      const leavesRows = (don_nghi_phep || []).map((r: any, idx: number) => ({
-        'STT': r.stt || idx + 1,
-        'Mã Đơn': r.ma_don || '',
-        'Họ Và Tên': r.ho_ten || '',
-        'Khoa / Đơn Vị': r.ten_phong_ban || '',
-        'Loại Đơn': r.loai_don || '',
-        'Từ Ngày': r.ngay_bat_dau || '',
-        'Đến Ngày': r.ngay_ket_thuc || '',
-        'Số Ngày': r.so_ngay || 0,
-        'Lý Do': r.ly_do || '',
-        'Trạng Thái': r.trang_thai || '',
-        'Người Phê Duyệt': r.nguoi_duyet || '',
-        'Ghi Chú Phê Duyệt': r.ghi_chu_duyet || '',
-      }));
+      const leavesRows = (don_nghi_phep || []).map((r: any, idx: number) =>
+        sanitizeExcelRowClient({
+          'STT': r.stt || idx + 1,
+          'Mã Đơn': r.ma_don || '',
+          'Họ Và Tên': r.ho_ten || '',
+          'Khoa / Đơn Vị': r.ten_phong_ban || '',
+          'Loại Đơn': r.loai_don || '',
+          'Từ Ngày': r.ngay_bat_dau || '',
+          'Đến Ngày': r.ngay_ket_thuc || '',
+          'Số Ngày': r.so_ngay ?? 0,
+          'Lý Do': r.ly_do || '',
+          'Trạng Thái': r.trang_thai || '',
+          'Người Phê Duyệt': r.nguoi_duyet || '',
+          'Ghi Chú Phê Duyệt': r.ghi_chu_duyet || '',
+        })
+      );
       const wsLeaves = XLSX.utils.json_to_sheet(leavesRows);
       wsLeaves['!cols'] = [
         { wch: 6 },
@@ -441,18 +461,21 @@ export const Reports: React.FC = () => {
       ];
 
       // 5. SHEET 5: THỐNG KÊ CHUYÊN CẦN THEO TỪNG NGÀY TRONG THÁNG
-      const dailyRows = (thong_ke_theo_ngay || []).map((d: any, idx: number) => ({
-        'STT': d.stt || idx + 1,
-        'Ngày': d.ngay || '',
-        'Thứ': d.thu || '',
-        'Tổng Ca': d.tong_so_ca || 0,
-        'Đúng Giờ': d.so_lan_dung_gio || 0,
-        'Đi Muộn': d.so_lan_di_muon || 0,
-        'Về Sớm': d.so_lan_ve_som || 0,
-        'Vắng Mặt': d.so_lan_vang_mat || 0,
-        'Nghỉ Phép': d.so_lan_co_phep || 0,
-        'Tỷ Lệ Đạt (%)': `${d.ty_le_chuyen_can || 0}%`,
-      }));
+      const dailyRows = (thong_ke_theo_ngay || []).map((d: any, idx: number) =>
+        sanitizeExcelRowClient({
+          'STT': d.stt || idx + 1,
+          'Ngày': d.ngay || '',
+          'Thứ': d.thu || '',
+          'Tổng Ca': d.tong_so_ca || 0,
+          'Đúng Giờ': d.so_lan_dung_gio || 0,
+          'Đi Muộn': d.so_lan_di_muon || 0,
+          'Về Sớm': d.so_lan_ve_som || 0,
+          'Vắng Mặt': d.so_lan_vang_mat || 0,
+          'Nghỉ Phép': d.so_lan_co_phep || 0,
+          'Thiếu Check-out': d.so_lan_thieu_check_out || 0,
+          'Tỷ Lệ Đạt (%)': `${d.ty_le_chuyen_can || 0}%`,
+        })
+      );
       const wsDaily = XLSX.utils.json_to_sheet(dailyRows);
       wsDaily['!cols'] = [
         { wch: 6 },
@@ -464,6 +487,7 @@ export const Reports: React.FC = () => {
         { wch: 12 },
         { wch: 12 },
         { wch: 12 },
+        { wch: 16 },
         { wch: 16 },
       ];
 
@@ -619,7 +643,7 @@ export const Reports: React.FC = () => {
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                  <Bar dataKey="Tỷ Lệ Đúng Giờ (%)" fill={COLORS.onTime} radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="Tỷ Lệ Chuyên Cần (%)" fill={COLORS.onTime} radius={[6, 6, 0, 0]} />
                   <Bar dataKey="Đi Muộn (%)" fill={COLORS.late} radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -704,6 +728,11 @@ export const Reports: React.FC = () => {
               <span className="text-slate-600 dark:text-slate-400">Vắng mặt:</span>
               <span className="font-bold">{kpis.absentCount}</span>
             </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-600" />
+              <span className="text-slate-600 dark:text-slate-400">Thiếu C/O:</span>
+              <span className="font-bold">{kpis.thieuCheckOutCount}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -786,20 +815,21 @@ export const Reports: React.FC = () => {
                   <th className="py-3 px-4 text-center text-orange-600">Về Sớm</th>
                   <th className="py-3 px-4 text-center text-blue-600">Nghỉ Phép</th>
                   <th className="py-3 px-4 text-center text-rose-600">Vắng</th>
+                  <th className="py-3 px-4 text-center text-purple-600">Thiếu C/O</th>
                   <th className="py-3 px-4">Tỷ Lệ Chuyên Cần</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400">
+                    <td colSpan={10} className="py-12 text-center text-slate-400">
                       <RefreshCw className="w-6 h-6 mx-auto animate-spin mb-2 text-brand-600" />
                       Đang tổng hợp báo cáo chuyên cần cán bộ...
                     </td>
                   </tr>
                 ) : filteredStaffList.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-10 text-center text-slate-400">
+                    <td colSpan={10} className="py-10 text-center text-slate-400">
                       Không tìm thấy dữ liệu thống kê cán bộ trong tháng này.
                     </td>
                   </tr>
@@ -817,6 +847,7 @@ export const Reports: React.FC = () => {
                     const early = Number(item.so_lan_ve_som ?? 0);
                     const excused = Number(item.so_lan_co_phep ?? 0);
                     const absent = Number(item.so_lan_vang_mat ?? 0);
+                    const thieuCheckOut = Number(item.so_lan_thieu_check_out ?? 0);
 
                     const hasShifts = totalShifts > 0;
                     const calculatedRate = hasShifts ? Math.round(((onTime + excused) / totalShifts) * 100) : 0;
@@ -879,6 +910,11 @@ export const Reports: React.FC = () => {
                         {/* Vắng mặt */}
                         <td className="py-2.5 px-4 text-center font-bold text-rose-600">
                           {absent}
+                        </td>
+
+                        {/* Thiếu check-out */}
+                        <td className="py-2.5 px-4 text-center font-bold text-purple-600">
+                          {thieuCheckOut}
                         </td>
 
                         {/* Tỷ Lệ Chuyên Cần & Progress Bar */}
@@ -1044,6 +1080,7 @@ export const Reports: React.FC = () => {
                       <th className="py-2.5 px-3 text-center">Muộn</th>
                       <th className="py-2.5 px-3 text-center">Về Sớm</th>
                       <th className="py-2.5 px-3 text-center">Vắng</th>
+                      <th className="py-2.5 px-3 text-center">Thiếu C/O</th>
                       <th className="py-2.5 px-3 text-center">Tỷ Lệ %</th>
                     </tr>
                   </thead>
@@ -1060,6 +1097,7 @@ export const Reports: React.FC = () => {
                         <td className="py-2 px-3 text-center text-amber-600 font-bold">{s.so_lan_di_muon ?? 0}</td>
                         <td className="py-2 px-3 text-center text-orange-600 font-bold">{s.so_lan_ve_som ?? 0}</td>
                         <td className="py-2 px-3 text-center text-rose-600 font-bold">{s.so_lan_vang_mat ?? 0}</td>
+                        <td className="py-2 px-3 text-center text-purple-600 font-bold">{s.so_lan_thieu_check_out ?? 0}</td>
                         <td className="py-2 px-3 text-center font-bold">{s.ty_le_chuyen_can}%</td>
                       </tr>
                     ))}
@@ -1147,6 +1185,7 @@ export const Reports: React.FC = () => {
                       <th className="py-2.5 px-3 text-center text-amber-600">Đi Muộn</th>
                       <th className="py-2.5 px-3 text-center text-orange-600">Về Sớm</th>
                       <th className="py-2.5 px-3 text-center text-rose-600">Vắng</th>
+                      <th className="py-2.5 px-3 text-center text-purple-600">Thiếu C/O</th>
                       <th className="py-2.5 px-3 text-center font-bold">Tỷ Lệ %</th>
                     </tr>
                   </thead>
@@ -1161,6 +1200,7 @@ export const Reports: React.FC = () => {
                         <td className="py-2 px-3 text-center text-amber-600 font-bold">{d.so_lan_di_muon}</td>
                         <td className="py-2 px-3 text-center text-orange-600 font-bold">{d.so_lan_ve_som ?? 0}</td>
                         <td className="py-2 px-3 text-center text-rose-600 font-bold">{d.so_lan_vang_mat}</td>
+                        <td className="py-2 px-3 text-center text-purple-600 font-bold">{d.so_lan_thieu_check_out ?? 0}</td>
                         <td className="py-2 px-3 text-center font-bold">{d.ty_le_chuyen_can}%</td>
                       </tr>
                     ))}

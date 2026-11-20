@@ -79,7 +79,7 @@ export const App: React.FC = () => {
           <Route
             path="diem-danh-khuon-mat"
             element={
-              <ProtectedRoute excludeRoles={['kiem_toan']}>
+              <ProtectedRoute excludeRoles={['admin', 'kiem_toan']}>
                 <FaceAttendance />
               </ProtectedRoute>
             }
@@ -144,7 +144,21 @@ export const App: React.FC = () => {
           <Route
             path="bao-cao"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']}>
+              <ProtectedRoute
+                allowedRoles={[
+                  'admin',
+                  'bgh',
+                  'tccb',
+                  'ke_toan',
+                  'kiem_toan',
+                  'truong_khoa',
+                  'pho_khoa',
+                  'truong_bo_mon',
+                  'pho_bo_mon',
+                  'truong_phong',
+                  'pho_phong',
+                ]}
+              >
                 <Reports />
               </ProtectedRoute>
             }
@@ -154,7 +168,7 @@ export const App: React.FC = () => {
           <Route
             path="dang-ky-khuon-mat"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'tccb']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong']}>
                 <FaceRegistrationPage />
               </ProtectedRoute>
             }

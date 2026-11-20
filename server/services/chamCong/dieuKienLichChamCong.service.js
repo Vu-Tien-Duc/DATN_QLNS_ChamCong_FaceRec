@@ -16,6 +16,11 @@ const { getConfigSync } = require('../heThong/cauHinhHeThong.service');
 const { getVietnamTime, getVietnamDayRange, timeStringToMinutes } = require('../../utils/thoiGianChamCong.utils');
 const { isScheduleActiveOnDate } = require('../../utils/ngayLichTrinh.utils');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
+const {
+  gomKhoiCaDay,
+  NGUONG_GOP_KHOI_MAC_DINH_PHUT,
+  LOAI_GIANG_DAY,
+} = require('../../utils/gomKhoiCaDay.utils');
 
 // Đánh giá lịch giảng dạy/công tác và chọn ca phù hợp để thực hiện điểm danh vào ca
 const evaluateUserScheduleForCheckIn = async (
@@ -57,7 +62,7 @@ const evaluateUserScheduleForCheckIn = async (
     ngay_ket_thuc: { [Op.gte]: dateStr },
   };
 
-  if (specificShiftId && isValidUuid(String(specificShiftId)) && !(specificShiftId instanceof Date)) {
+  if (specificShiftId && isValidUuid(String(specificShiftId))) {
     where.ca_id = specificShiftId;
   }
 
@@ -176,7 +181,7 @@ const evaluateUserScheduleForCheckIn = async (
     }
 
     const shiftWhere = { kich_hoat: true };
-    if (specificShiftId && isValidUuid(String(specificShiftId)) && !(specificShiftId instanceof Date)) {
+    if (specificShiftId && isValidUuid(String(specificShiftId))) {
       shiftWhere.id = specificShiftId;
     }
     const adminShifts = await CaLamViec.findAll({ where: shiftWhere, order: [['gio_bat_dau', 'ASC']] });
@@ -206,6 +211,7 @@ const evaluateUserScheduleForCheckIn = async (
         where: {
           nguoi_dung_id: userId,
           ca_id: shift.id,
+          lich_trinh_id: null,
           [Op.or]: [
             { ngay_cong: dateStr },
             { thoi_gian_vao: { [Op.between]: [startOfDay, endOfDay] } },
@@ -214,7 +220,7 @@ const evaluateUserScheduleForCheckIn = async (
       });
 
       if (existingAdminLog) {
-        if (existingAdminLog.thoi_gian_ra) continue;
+        if (existingAdminLog.thoi_gian_ra || existingAdminLog.trang_thai === 'thieu_check_out') continue;
         if (existingAdminLog.thoi_gian_vao && !existingAdminLog.thoi_gian_ra) {
           alreadyCheckedInAdminLog = existingAdminLog;
           continue;
@@ -294,28 +300,48 @@ const evaluateUserScheduleForCheckIn = async (
     };
   }
 
-  // 2. Luồng Giảng viên có lịch giảng dạy
+  // 2. Luồng Giảng viên có lịch giảng dạy (các ca liền nhau cùng cơ sở gom thành một khối, mỗi khối check-in một lần)
   const cancelledSchedules = [];
   const absentSchedules = [];
   let eligibleSchedule = null;
   let upcomingSchedule = null;
   let alreadyCheckedInLog = null;
 
-  for (const sch of schedules) {
-    const shift = sch.ca;
-    if (!shift) continue;
-    if (!isScheduleActiveOnDate(sch, nowVN)) continue;
+  const activeSchedules = schedules.filter((sch) => sch.ca && isScheduleActiveOnDate(sch, nowVN));
+  const scheduleById = new Map(activeSchedules.map((sch) => [String(sch.id), sch]));
+  const nguongGopKhoi = Number(attendanceRules?.nguong_gop_khoi_phut);
+  const khoiList = gomKhoiCaDay(
+    activeSchedules.map((sch) => ({
+      id: String(sch.id),
+      loai: LOAI_GIANG_DAY,
+      ca_id: sch.ca_id,
+      gio_bat_dau: sch.gio_bat_dau || sch.ca.gio_bat_dau,
+      gio_ket_thuc: sch.gio_ket_thuc || sch.ca.gio_ket_thuc,
+      co_so: sch.co_so,
+      phong_hoc: sch.phong_hoc,
+      so_tiet: sch.so_tiet,
+    })),
+    Number.isFinite(nguongGopKhoi) ? nguongGopKhoi : NGUONG_GOP_KHOI_MAC_DINH_PHUT
+  );
 
-    const shiftStartStr = sch.gio_bat_dau || shift.gio_bat_dau;
-    const shiftEndStr = sch.gio_ket_thuc || shift.gio_ket_thuc;
+  for (const khoi of khoiList) {
+    const memberSchedules = khoi.ds_lich_trinh_id.map((id) => scheduleById.get(id)).filter(Boolean);
+    const sch = memberSchedules[0];
+    const shift = sch.ca;
+
+    const shiftStartStr = khoi.gio_bat_dau;
+    const shiftEndStr = khoi.gio_ket_thuc;
     const startMinutes = timeStringToMinutes(shiftStartStr);
+    // Cửa sổ check-in đối xứng: N phút trước đến N phút sau giờ bắt đầu ca đầu khối (N cài khi tạo ca, mặc định 15)
     const lateThreshold =
-      shift.nguong_di_muon_phut !== undefined ? shift.nguong_di_muon_phut : configuredDefaultLate;
+      shift.nguong_di_muon_phut !== undefined && shift.nguong_di_muon_phut !== null
+        ? shift.nguong_di_muon_phut
+        : configuredDefaultLate;
 
     const existingLog = await NhatKyChamCong.findOne({
       where: {
         nguoi_dung_id: userId,
-        lich_trinh_id: sch.id,
+        lich_trinh_id: { [Op.in]: khoi.ds_lich_trinh_id },
         [Op.or]: [
           { ngay_cong: dateStr },
           { thoi_gian_vao: { [Op.between]: [startOfDay, endOfDay] } },
@@ -337,7 +363,7 @@ const evaluateUserScheduleForCheckIn = async (
         });
         continue;
       }
-      if (existingLog.thoi_gian_ra) continue;
+      if (existingLog.thoi_gian_ra || existingLog.trang_thai === 'thieu_check_out') continue;
       if (existingLog.thoi_gian_vao && !existingLog.thoi_gian_ra) {
         alreadyCheckedInLog = existingLog;
         continue;
@@ -356,7 +382,12 @@ const evaluateUserScheduleForCheckIn = async (
         continue;
       }
 
-      const absentResult = await processScheduleAttendanceCheck(sch, dayRange);
+      // Quá hạn check-in của khối thì đánh vắng toàn bộ các ca trong khối
+      const absentResults = [];
+      for (const member of memberSchedules) {
+        absentResults.push(await processScheduleAttendanceCheck(member, dayRange));
+      }
+      const absentResult = absentResults[0];
       const shiftName = shift.ten_ca || 'Ca làm việc';
       cancelledSchedules.push({
         scheduleId: sch.id,
@@ -379,6 +410,7 @@ const evaluateUserScheduleForCheckIn = async (
           currentMinutes,
           lateMinutes: currentMinutes - startMinutes,
           lateThreshold,
+          scheduleIds: khoi.ds_lich_trinh_id,
           reason: `Quá hạn check-in (muộn quá ${lateThreshold} phút). Tự động hủy lịch và đánh vắng.`,
         },
       }).catch((error) => {
@@ -388,7 +420,7 @@ const evaluateUserScheduleForCheckIn = async (
       continue;
     }
 
-    const earlyLimitMinutes = Math.max(0, startMinutes - configuredCheckInWindow);
+    const earlyLimitMinutes = Math.max(0, startMinutes - lateThreshold);
     if (currentMinutes < earlyLimitMinutes) {
       if (!upcomingSchedule) {
         const openH = Math.floor(earlyLimitMinutes / 60).toString().padStart(2, '0');
@@ -399,6 +431,7 @@ const evaluateUserScheduleForCheckIn = async (
           startTime: shiftStartStr,
           endTime: shiftEndStr,
           openCheckInTime: `${openH}:${openM}`,
+          windowMinutes: lateThreshold,
         };
       }
       continue;
@@ -410,6 +443,7 @@ const evaluateUserScheduleForCheckIn = async (
     eligibleSchedule = {
       schedule: sch,
       shift,
+      khoi,
       status,
       lateMinutes,
       shiftStartStr,
@@ -423,6 +457,7 @@ const evaluateUserScheduleForCheckIn = async (
       canCheckIn: true,
       selectedSchedule: eligibleSchedule.schedule,
       shift: eligibleSchedule.shift,
+      khoi: eligibleSchedule.khoi,
       status: eligibleSchedule.status,
       lateMinutes: eligibleSchedule.lateMinutes,
       cancelledSchedules,
@@ -436,6 +471,103 @@ const evaluateUserScheduleForCheckIn = async (
       message: `${prefix} ${userName} đã check-in vào ca làm việc này rồi. Vui lòng sử dụng chức năng Check-out khi kết thúc ca.`,
       existingLog: alreadyCheckedInLog,
     };
+  }
+
+  // A3: Người dùng kiêm nhiệm (trưởng/phó khoa có cả lịch dạy lẫn ca hành chính)
+  // → Nếu không có khối giảng dạy nào đang mở, thử tìm ca hành chính phù hợp trong ngày
+  if (isFaculty && !isPureLecturer) {
+    const shiftWhere2 = { kich_hoat: true };
+    if (specificShiftId && isValidUuid(String(specificShiftId))) {
+      shiftWhere2.id = specificShiftId;
+    }
+    const adminShifts2 = await CaLamViec.findAll({ where: shiftWhere2, order: [['gio_bat_dau', 'ASC']] });
+
+    let chosenAdminShift = null;
+    let upcomingAdminShift = null;
+    let alreadyCheckedInAdmin = null;
+
+    for (const shift of adminShifts2) {
+      const startM = timeStringToMinutes(shift.gio_bat_dau);
+      const rawEndM = timeStringToMinutes(shift.gio_ket_thuc);
+      const isOvernight = rawEndM < startM;
+      const effectiveEndM = isOvernight ? rawEndM + 1440 : rawEndM;
+      const effectiveCurM = isOvernight && currentMinutes < rawEndM ? currentMinutes + 1440 : currentMinutes;
+
+      const existingAdminLog2 = await NhatKyChamCong.findOne({
+        where: {
+          nguoi_dung_id: userId,
+          ca_id: shift.id,
+          lich_trinh_id: null,
+          ngay_cong: dateStr,
+        },
+      });
+      if (existingAdminLog2) {
+        if (existingAdminLog2.thoi_gian_ra || existingAdminLog2.trang_thai === 'thieu_check_out') continue;
+        if (existingAdminLog2.thoi_gian_vao && !existingAdminLog2.thoi_gian_ra) {
+          alreadyCheckedInAdmin = existingAdminLog2;
+          continue;
+        }
+      }
+
+      const adminWindow = Math.max(configuredCheckInWindow, 60);
+      const earlyLimitM = Math.max(0, startM - adminWindow);
+      if (effectiveCurM < earlyLimitM) {
+        if (!upcomingAdminShift) {
+          const openH = Math.floor(earlyLimitM / 60).toString().padStart(2, '0');
+          const openMm = (earlyLimitM % 60).toString().padStart(2, '0');
+          upcomingAdminShift = {
+            shiftId: shift.id,
+            shiftName: shift.ten_ca,
+            startTime: shift.gio_bat_dau,
+            endTime: shift.gio_ket_thuc,
+            openCheckInTime: `${openH}:${openMm}`,
+          };
+        }
+        continue;
+      }
+      if (effectiveCurM > effectiveEndM) continue;
+
+      const shiftStatus = effectiveCurM > startM ? 'late' : 'on_time';
+      const shiftLateMin = shiftStatus === 'late' ? effectiveCurM - startM : 0;
+      chosenAdminShift = { shift, status: shiftStatus, lateMinutes: shiftLateMin };
+      break;
+    }
+
+    if (chosenAdminShift) {
+      return {
+        canCheckIn: true,
+        selectedSchedule: {
+          id: null,
+          ca_id: chosenAdminShift.shift.id,
+          gio_bat_dau: chosenAdminShift.shift.gio_bat_dau,
+          gio_ket_thuc: chosenAdminShift.shift.gio_ket_thuc,
+          phong_hoc: 'Văn phòng hành chính',
+        },
+        shift: chosenAdminShift.shift,
+        status: chosenAdminShift.status,
+        lateMinutes: chosenAdminShift.lateMinutes,
+        cancelledSchedules,
+        _sourceType: 'admin_shift_fallback',
+      };
+    }
+
+    if (alreadyCheckedInAdmin) {
+      return {
+        canCheckIn: false,
+        status: 'ALREADY_CHECKED_IN',
+        message: `${prefix} ${userName} đã check-in vào ca hành chính rồi. Vui lòng sử dụng chức năng Check-out khi kết thúc ca.`,
+        existingLog: alreadyCheckedInAdmin,
+      };
+    }
+
+    if (upcomingAdminShift) {
+      return {
+        canCheckIn: false,
+        status: 'TOO_EARLY',
+        message: `Chưa đến giờ chấm công cho ca hành chính ${upcomingAdminShift.shiftName} (${upcomingAdminShift.startTime}). Cổng mở lúc ${upcomingAdminShift.openCheckInTime}.`,
+        _sourceType: 'admin_shift_fallback',
+      };
+    }
   }
 
   if (cancelledSchedules.length > 0) {
@@ -465,7 +597,7 @@ const evaluateUserScheduleForCheckIn = async (
     return {
       canCheckIn: false,
       status: 'TOO_EARLY',
-      message: `Chưa đến giờ điểm danh cho ${upcomingSchedule.shiftName} (${upcomingSchedule.startTime}). Cổng check-in sẽ mở trước 30 phút (lúc ${upcomingSchedule.openCheckInTime}).`,
+      message: `Chưa đến giờ điểm danh cho ${upcomingSchedule.shiftName} (${upcomingSchedule.startTime}). Cổng check-in sẽ mở trước ${upcomingSchedule.windowMinutes} phút (lúc ${upcomingSchedule.openCheckInTime}).`,
       upcomingSchedule,
     };
   }

@@ -7,7 +7,8 @@ const {
   DonNghiPhep,
   VaiTroNguoiDung,
 } = require('../../models');
-const { buildAttendanceDateFilter, getVietnamTime } = require('../../utils/thoiGianChamCong.utils');
+const { buildAttendanceDateFilter } = require('../../utils/thoiGianChamCong.utils');
+const { isValidUuid } = require('../../utils/hoTroSequelize');
 const { getDeanDepartmentIds, getDeanScopedUserIds } = require('../../utils/phamViTruongKhoa');
 const { PERMISSIONS, hasPermission } = require('../../config/permissions');
 const { UNIT_LEADER_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
@@ -16,6 +17,8 @@ const {
   calculateCalendarDays,
   toDateKey,
   isSystemAdminUser,
+  resolveDepartmentIdsTree,
+  computeWeeklyTrendBuckets,
 } = require('./dinhDangBaoCao.helper');
 const { calculateLeaveDays, getHolidayDateSet } = require('../donNghiPhep/tinhPhepNam.helper');
 const xuatBaoCaoExcelService = require('./xuatBaoCaoExcel.service');
@@ -27,6 +30,14 @@ const getAttendanceReportData = async (payload = {}) => {
   const from = payload.tu_ngay;
   const to = payload.den_ngay;
   const currentUser = payload.currentUser;
+
+  if (userId && !isValidUuid(String(userId))) {
+    throw new ServiceError('Mã người dùng (nguoi_dung_id) không đúng định dạng UUID.', 400, 'INVALID_USER_ID');
+  }
+  if (departmentId && !isValidUuid(String(departmentId))) {
+    throw new ServiceError('Mã đơn vị (don_vi_id) không đúng định dạng UUID.', 400, 'INVALID_DEPARTMENT_ID');
+  }
+
   let targetUserIds = [];
   const canViewAll =
     hasPermission(currentUser, PERMISSIONS.CONG_XEM_TOAN_TRUONG) || hasAnyActiveRole(currentUser, ['admin', 'bgh']);
@@ -35,17 +46,19 @@ const getAttendanceReportData = async (payload = {}) => {
 
   if (canViewAll) {
     if (userId) {
-      targetUserIds = [userId];
-    } else if (departmentId) {
-      const childDepartments = await PhongBan.findAll({
-        where: { don_vi_cha_id: departmentId },
-        attributes: ['id'],
-        raw: true,
+      const targetUser = await NguoiDung.findByPk(userId, {
+        attributes: ['id', 'vai_tro_chinh', 'kich_hoat', 'trang_thai_lam_viec'],
+        include: [{ model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro'] }],
       });
-      const departmentIds = [departmentId, ...childDepartments.map((dept) => dept.id)];
+      targetUserIds =
+        targetUser && !isSystemAdminUser(targetUser) ? [targetUser.id] : [];
+    } else if (departmentId) {
+      const departmentIds = await resolveDepartmentIdsTree(departmentId);
       const departmentUsers = await NguoiDung.findAll({
         where: {
-          don_vi_chinh_id: { [Op.in]: departmentIds },
+          don_vi_chinh_id: { [Op.in]: departmentIds.length ? departmentIds : ['00000000-0000-0000-0000-000000000000'] },
+          kich_hoat: true,
+          trang_thai_lam_viec: { [Op.ne]: 'da_nghi_viec' },
           vai_tro_chinh: { [Op.notIn]: ['admin', 'bgh'] },
         },
         attributes: ['id', 'ma_can_bo', 'email', 'vai_tro_chinh', 'ho_ten'],
@@ -56,6 +69,7 @@ const getAttendanceReportData = async (payload = {}) => {
       const allUsers = await NguoiDung.findAll({
         where: {
           kich_hoat: true,
+          trang_thai_lam_viec: { [Op.ne]: 'da_nghi_viec' },
           vai_tro_chinh: { [Op.notIn]: ['admin', 'bgh'] },
         },
         attributes: ['id', 'ma_can_bo', 'email', 'vai_tro_chinh', 'ho_ten'],
@@ -64,14 +78,49 @@ const getAttendanceReportData = async (payload = {}) => {
       targetUserIds = allUsers.filter((u) => !isSystemAdminUser(u)).map((user) => user.id);
     }
   } else if (canViewDept) {
-    const scopedUserIds = await getDeanScopedUserIds(currentUser);
+    const [scopedDepartmentIds, scopedUserIds] = await Promise.all([
+      getDeanDepartmentIds(currentUser),
+      getDeanScopedUserIds(currentUser),
+    ]);
     if (userId) {
       if (!scopedUserIds.map(String).includes(String(userId))) {
         throw new ServiceError('Bạn không có quyền xem thống kê của nhân sự ngoài khoa / đơn vị.', 403);
       }
-      targetUserIds = [userId];
-    } else {
-      targetUserIds = scopedUserIds;
+      const targetUser = await NguoiDung.findByPk(userId, {
+        attributes: ['id', 'vai_tro_chinh'],
+        include: [{ model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro'] }],
+      });
+      targetUserIds = targetUser && !isSystemAdminUser(targetUser) ? [targetUser.id] : [];
+    } else if (departmentId) {
+      if (!scopedDepartmentIds.some((id) => String(id) === String(departmentId))) {
+        throw new ServiceError('Bạn không có quyền xem thống kê của đơn vị ngoài khoa.', 403);
+      }
+      const subDeptIds = await resolveDepartmentIdsTree(departmentId);
+      const allowedDeptSet = new Set(scopedDepartmentIds.map(String));
+      const filteredDeptIds = subDeptIds.filter((id) => allowedDeptSet.has(String(id)));
+      const deptUsers = await NguoiDung.findAll({
+        where: {
+          don_vi_chinh_id: { [Op.in]: filteredDeptIds.length ? filteredDeptIds : ['00000000-0000-0000-0000-000000000000'] },
+          kich_hoat: true,
+          trang_thai_lam_viec: { [Op.ne]: 'da_nghi_viec' },
+          vai_tro_chinh: { [Op.notIn]: ['admin', 'bgh'] },
+        },
+        attributes: ['id', 'vai_tro_chinh'],
+        include: [{ model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro'] }],
+      });
+      targetUserIds = deptUsers.filter((u) => !isSystemAdminUser(u)).map((u) => u.id);
+    } else if (scopedUserIds.length > 0) {
+      const deptUsers = await NguoiDung.findAll({
+        where: {
+          id: { [Op.in]: scopedUserIds },
+          kich_hoat: true,
+          trang_thai_lam_viec: { [Op.ne]: 'da_nghi_viec' },
+          vai_tro_chinh: { [Op.notIn]: ['admin', 'bgh'] },
+        },
+        attributes: ['id', 'vai_tro_chinh'],
+        include: [{ model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro'] }],
+      });
+      targetUserIds = deptUsers.filter((u) => !isSystemAdminUser(u)).map((u) => u.id);
     }
   } else {
     targetUserIds = [currentUser.id];
@@ -85,7 +134,7 @@ const getAttendanceReportData = async (payload = {}) => {
         ? new Date(`${from}T00:00:00.000+07:00`)
         : new Date(from);
     if (Number.isNaN(fromDate.getTime())) {
-      throw new ServiceError('Ngày bắt đầu (from) không đúng định dạng ngày hợp lệ (YYYY-MM-DD).', 400);
+      throw new ServiceError('Ngày bắt đầu (tu_ngay) không đúng định dạng ngày hợp lệ (YYYY-MM-DD).', 400);
     }
   }
   if (to) {
@@ -94,12 +143,12 @@ const getAttendanceReportData = async (payload = {}) => {
         ? new Date(`${to}T23:59:59.999+07:00`)
         : new Date(to);
     if (Number.isNaN(toDate.getTime())) {
-      throw new ServiceError('Ngày kết thúc (to) không đúng định dạng ngày hợp lệ (YYYY-MM-DD).', 400);
+      throw new ServiceError('Ngày kết thúc (den_ngay) không đúng định dạng ngày hợp lệ (YYYY-MM-DD).', 400);
     }
   }
   if (fromDate && toDate && fromDate > toDate) {
     throw new ServiceError(
-      'Khoảng thời gian không hợp lệ: Ngày bắt đầu (from) phải nhỏ hơn hoặc bằng ngày kết thúc (to).',
+      'Khoảng thời gian không hợp lệ: Ngày bắt đầu (tu_ngay) phải nhỏ hơn hoặc bằng ngày kết thúc (den_ngay).',
       400
     );
   }
@@ -118,42 +167,7 @@ const getAttendanceReportData = async (payload = {}) => {
   if (fromDate) leaveWhere.ngay_ket_thuc = { [Op.gte]: toDateKey(fromDate) };
   const approvedLeaves = await DonNghiPhep.findAll({ where: leaveWhere });
 
-  const vnFrom = fromDate ? getVietnamTime(fromDate) : getVietnamTime();
-  const year = vnFrom.getFullYear();
-  const month = vnFrom.getMonth();
-  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
-  const weekRanges = [
-    { label: 'Tuần 1', startDay: 1, endDay: 7 },
-    { label: 'Tuần 2', startDay: 8, endDay: 14 },
-    { label: 'Tuần 3', startDay: 15, endDay: 21 },
-    { label: 'Tuần 4', startDay: 22, endDay: lastDayOfMonth },
-  ];
-  const monthString = String(month + 1).padStart(2, '0');
-  const weeklyTrend = weekRanges.map((week) => {
-    const startDay = String(week.startDay).padStart(2, '0');
-    const endDay = String(week.endDay).padStart(2, '0');
-    const weekStart = new Date(`${year}-${monthString}-${startDay}T00:00:00.000+07:00`);
-    const weekEnd = new Date(`${year}-${monthString}-${endDay}T23:59:59.999+07:00`);
-    const logs = attendances.filter((attendance) => {
-      let date = attendance.thoi_gian_vao ? new Date(attendance.thoi_gian_vao) : null;
-      if (!date && attendance.ngay_cong) date = new Date(`${attendance.ngay_cong}T00:00:00.000+07:00`);
-      if (!date && attendance.tao_luc) date = new Date(attendance.tao_luc);
-      return date && date >= weekStart && date <= weekEnd;
-    });
-    const total = logs.length;
-    const onTime = logs.filter((attendance) => attendance.trang_thai === 'on_time').length;
-    const late = logs.filter((attendance) => ['late', 'early_leave'].includes(attendance.trang_thai)).length;
-    const excused = logs.filter((attendance) => attendance.trang_thai === 'excused_absence').length;
-    return {
-      label: week.label,
-      subLabel: `${startDay}/${monthString} - ${endDay}/${monthString}`,
-      rate: total ? Math.round(((onTime + excused) / total) * 100) : 0,
-      lateRate: total ? Math.round((late / total) * 100) : 0,
-      total,
-      onTime,
-      late,
-    };
-  });
+  const weeklyTrend = computeWeeklyTrendBuckets(attendances, fromDate, toDate);
 
   const reportRangeStartKey = fromDate ? toDateKey(fromDate) : null;
   const reportRangeEndKey = toDate ? toDateKey(toDate) : null;
@@ -165,13 +179,16 @@ const getAttendanceReportData = async (payload = {}) => {
       (reportRangeEndKey && lEndKey > reportRangeEndKey)
     );
   });
-  const holidaySet =
-    hasBoundaryOverlap && approvedLeaves.length > 0
-      ? await getHolidayDateSet(
-          reportRangeStartKey || approvedLeaves[0].ngay_bat_dau,
-          reportRangeEndKey || approvedLeaves[0].ngay_ket_thuc
-        )
-      : null;
+
+  let holidaySet = null;
+  if (hasBoundaryOverlap && approvedLeaves.length > 0) {
+    const leaveStartKeys = approvedLeaves.map((l) => String(l.ngay_bat_dau).slice(0, 10)).sort();
+    const leaveEndKeys = approvedLeaves.map((l) => String(l.ngay_ket_thuc).slice(0, 10)).sort();
+    holidaySet = await getHolidayDateSet(
+      reportRangeStartKey || leaveStartKeys[0],
+      reportRangeEndKey || leaveEndKeys[leaveEndKeys.length - 1]
+    );
+  }
 
   return {
     totalRecords: attendances.length,
@@ -180,6 +197,7 @@ const getAttendanceReportData = async (payload = {}) => {
     earlyLeaveCount: attendances.filter((attendance) => attendance.trang_thai === 'early_leave').length,
     absentCount: attendances.filter((attendance) => attendance.trang_thai === 'absent').length,
     excusedAbsenceCount: attendances.filter((attendance) => attendance.trang_thai === 'excused_absence').length,
+    thieuCheckOutCount: attendances.filter((attendance) => attendance.trang_thai === 'thieu_check_out').length,
     approvedLeaveDays: approvedLeaves.reduce((sum, leave) => {
       const lStartKey = String(leave.ngay_bat_dau).slice(0, 10);
       const lEndKey = String(leave.ngay_ket_thuc).slice(0, 10);
@@ -209,22 +227,14 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
 
   const userWhere = {
     kich_hoat: true,
+    trang_thai_lam_viec: { [Op.ne]: 'da_nghi_viec' },
     vai_tro_chinh: { [Op.notIn]: ['admin', 'bgh'] },
   };
   if (departmentId) {
-    if (Array.isArray(departmentId)) {
-      userWhere.don_vi_chinh_id = {
-        [Op.in]: departmentId.length ? departmentId : ['00000000-0000-0000-0000-000000000000'],
-      };
-    } else {
-      const childDepts = await PhongBan.findAll({
-        where: { don_vi_cha_id: departmentId },
-        attributes: ['id'],
-        raw: true,
-      });
-      const allDeptIds = [departmentId, ...childDepts.map((d) => d.id)];
-      userWhere.don_vi_chinh_id = { [Op.in]: allDeptIds };
-    }
+    const allDeptIds = await resolveDepartmentIdsTree(departmentId);
+    userWhere.don_vi_chinh_id = {
+      [Op.in]: allDeptIds.length ? allDeptIds : ['00000000-0000-0000-0000-000000000000'],
+    };
   }
 
   const allDepartments = await PhongBan.findAll({ attributes: ['id', 'ten_phong_ban'], raw: true });
@@ -245,24 +255,25 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
   });
 
   const eligibleUsers = candidateUsers.filter((u) => !isSystemAdminUser(u));
+  const eligibleUserIds = eligibleUsers.map((u) => u.id);
   const totalUsers = eligibleUsers.length;
   const offset = page && limit ? (page - 1) * limit : 0;
   const effectiveLimit = page && limit ? limit : 500;
-  const users = eligibleUsers.slice(offset, offset + effectiveLimit);
-  const userIds = users.map((u) => u.id);
+  const pagedUsers = eligibleUsers.slice(offset, offset + effectiveLimit);
 
   const dateFilter = buildAttendanceDateFilter(startDate, endDate);
-  const attendances = userIds.length
+  // Truy vấn trên toàn bộ eligibleUserIds để weeklyTrend luôn phản ánh đúng cả đơn vị/toàn trường bất kể phân trang
+  const allAttendances = eligibleUserIds.length
     ? await NhatKyChamCong.findAll({
-        where: { nguoi_dung_id: { [Op.in]: userIds }, ...dateFilter },
+        where: { nguoi_dung_id: { [Op.in]: eligibleUserIds }, ...dateFilter },
         attributes: ['id', 'nguoi_dung_id', 'trang_thai', 'thoi_gian_vao', 'tao_luc', 'ngay_cong'],
         raw: true,
       })
     : [];
 
-  const reportData = users.map((user) => {
+  const reportData = pagedUsers.map((user) => {
     const userIdStr = String(user.id);
-    const userAttendances = attendances.filter((a) => String(a.nguoi_dung_id) === userIdStr);
+    const userAttendances = allAttendances.filter((a) => String(a.nguoi_dung_id) === userIdStr);
     const uFullName = user.ho_ten || '';
     const uRole = user.vai_tro_chinh || '';
     const uDeptId = user.don_vi_chinh_id || null;
@@ -276,7 +287,8 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
     const early = userAttendances.filter((a) => a.trang_thai === 'early_leave').length;
     const absent = userAttendances.filter((a) => a.trang_thai === 'absent').length;
     const excused = userAttendances.filter((a) => a.trang_thai === 'excused_absence').length;
-    const attendanceRate = totalShifts > 0 ? Math.round(((onTime + excused) / totalShifts) * 100) : 100;
+    const thieuCheckOut = userAttendances.filter((a) => a.trang_thai === 'thieu_check_out').length;
+    const attendanceRate = totalShifts > 0 ? Math.round(((onTime + excused) / totalShifts) * 100) : 0;
 
     return {
       nguoi_dung_id: user.id,
@@ -293,45 +305,12 @@ const generateMonthlyReport = async (month, year, departmentId = null, options =
       so_lan_ve_som: early,
       so_lan_vang_mat: absent,
       so_lan_co_phep: excused,
+      so_lan_thieu_check_out: thieuCheckOut,
       ty_le_chuyen_can: attendanceRate,
     };
   });
 
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const weekRanges = [
-    { label: 'Tuần 1', start: 1, end: 7 },
-    { label: 'Tuần 2', start: 8, end: 14 },
-    { label: 'Tuần 3', start: 15, end: 21 },
-    { label: 'Tuần 4', start: 22, end: daysInMonth },
-  ];
-
-  const weeklyTrend = weekRanges.map(({ label, start, end }) => {
-    const startDayStr = String(start).padStart(2, '0');
-    const endDayStr = String(end).padStart(2, '0');
-    const wStart = new Date(`${year}-${mStr}-${startDayStr}T00:00:00.000+07:00`);
-    const wEnd = new Date(`${year}-${mStr}-${endDayStr}T23:59:59.999+07:00`);
-
-    const weekLogs = attendances.filter((a) => {
-      let t = a.thoi_gian_vao ? new Date(a.thoi_gian_vao) : null;
-      if (!t && a.ngay_cong) t = new Date(`${a.ngay_cong}T00:00:00.000+07:00`);
-      if (!t && a.tao_luc) t = new Date(a.tao_luc);
-      return t && t >= wStart && t <= wEnd;
-    });
-
-    const total = weekLogs.length;
-    const onTime = weekLogs.filter((a) => a.trang_thai === 'on_time' || a.trang_thai === 'excused_absence').length;
-    const late = weekLogs.filter((a) => a.trang_thai === 'late' || a.trang_thai === 'early_leave').length;
-
-    return {
-      label,
-      subLabel: `${String(start).padStart(2, '0')}/${mStr} - ${String(end).padStart(2, '0')}/${mStr}`,
-      rate: total > 0 ? Math.round((onTime / total) * 100) : 0,
-      lateRate: total > 0 ? Math.round((late / total) * 100) : 0,
-      total,
-      onTime,
-      late,
-    };
-  });
+  const weeklyTrend = computeWeeklyTrendBuckets(allAttendances, startDate, endDate);
 
   return {
     report: reportData,
@@ -354,13 +333,18 @@ const getMonthlyReportData = async (payload = {}) => {
   const page = payload.page ?? payload.trang;
   const limit = payload.limit ?? payload.gioi_han;
   const currentUser = payload.currentUser;
+
+  if (departmentId && !isValidUuid(String(departmentId))) {
+    throw new ServiceError('Mã đơn vị (don_vi_id) không đúng định dạng UUID.', 400, 'INVALID_DEPARTMENT_ID');
+  }
+
   const parsedMonth = monthInput !== undefined && monthInput !== '' ? parseInt(monthInput, 10) : null;
   if (parsedMonth !== null && (Number.isNaN(parsedMonth) || parsedMonth < 1 || parsedMonth > 12)) {
-    throw new ServiceError('Tháng (month) không hợp lệ. Vui lòng cung cấp số nguyên từ 1 đến 12.', 400);
+    throw new ServiceError('Tháng (thang) không hợp lệ. Vui lòng cung cấp số nguyên từ 1 đến 12.', 400);
   }
   const parsedYear = yearInput !== undefined && yearInput !== '' ? parseInt(yearInput, 10) : null;
   if (parsedYear !== null && (Number.isNaN(parsedYear) || parsedYear < 2000 || parsedYear > 2100)) {
-    throw new ServiceError('Năm (year) không hợp lệ. Vui lòng cung cấp năm từ 2000 đến 2100.', 400);
+    throw new ServiceError('Năm (nam) không hợp lệ. Vui lòng cung cấp năm từ 2000 đến 2100.', 400);
   }
   const nowVN = new Date(Date.now() + 7 * 60 * 60 * 1000);
   const month = parsedMonth || nowVN.getUTCMonth() + 1;
@@ -379,6 +363,9 @@ const getMonthlyReportData = async (payload = {}) => {
       if (!scopedDepartmentIds.some((id) => String(id) === String(departmentFilter))) {
         throw new ServiceError('Bạn không có quyền xem báo cáo của đơn vị ngoài khoa.', 403);
       }
+      const subDeptIds = await resolveDepartmentIdsTree(departmentFilter);
+      const allowedSet = new Set(scopedDepartmentIds.map(String));
+      departmentFilter = subDeptIds.filter((id) => allowedSet.has(String(id)));
     } else {
       departmentFilter = scopedDepartmentIds;
     }
@@ -394,7 +381,7 @@ const getMonthlyReportData = async (payload = {}) => {
 
   if (page !== undefined || limit !== undefined) {
     options.page = Math.max(1, parseInt(page, 10) || 1);
-    options.limit = Math.min(200, Math.max(1, parseInt(limit, 10) || 20));
+    options.limit = Math.min(1000, Math.max(1, parseInt(limit, 10) || 20));
   }
   return { month, year, result: await generateMonthlyReport(month, year, departmentFilter, options) };
 };

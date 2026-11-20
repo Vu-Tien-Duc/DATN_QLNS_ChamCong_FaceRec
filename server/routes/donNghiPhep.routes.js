@@ -6,6 +6,7 @@ const {
   getLeaveRequests,
   getLeaveRequestById,
   getLeaveBalance,
+  getSubstituteLecturers,
   approveLeaveRequest,
   rejectLeaveRequest,
   cancelLeaveRequest,
@@ -65,6 +66,7 @@ const LEAVE_APPROVER_ROLES = [
 router.post('/', requirePermission(PERMISSIONS.DON_TU_TAO), verifyRole(LEAVE_SELF_AND_LEADER_ROLES), optionalFileUpload, createLeaveRequest);
 router.get('/', requireAnyPermission(PERMISSIONS.DON_TU_XEM_BAN_THAN, PERMISSIONS.DON_TU_XEM_DON_VI), verifyRole(LEAVE_SELF_AND_LEADER_ROLES), getLeaveRequests);
 router.get('/so-du', requireAnyPermission(PERMISSIONS.DON_TU_XEM_BAN_THAN, PERMISSIONS.DON_TU_XEM_DON_VI), verifyRole(LEAVE_SELF_AND_LEADER_ROLES), getLeaveBalance);
+router.get('/giang-vien-day-thay', requireAnyPermission(PERMISSIONS.DON_TU_TAO, PERMISSIONS.DON_TU_XEM_BAN_THAN), verifyRole(LEAVE_SELF_AND_LEADER_ROLES), getSubstituteLecturers);
 router.get('/:id', requireAnyPermission(PERMISSIONS.DON_TU_XEM_BAN_THAN, PERMISSIONS.DON_TU_XEM_DON_VI), verifyRole(LEAVE_SELF_AND_LEADER_ROLES), getLeaveRequestById);
 
 // Hủy đơn (người tạo đơn hoặc admin/BGH)

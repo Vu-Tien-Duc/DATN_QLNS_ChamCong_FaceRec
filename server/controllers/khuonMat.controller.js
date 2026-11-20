@@ -6,6 +6,7 @@ const {
   callFaceService,
 } = require('../services/khuonMat/ketNoiDichVuKhuonMat');
 const {
+  assertCanManageFace,
   registerFaceDescriptorForUser,
   removeFaceDescriptorForUser,
   findTargetUserForFace,
@@ -15,6 +16,7 @@ const {
 const minioStorage = require('../config/minio');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 const { getActiveRoles } = require('../middlewares/xacThuc.middleware');
+const { UNIT_LEADER_ROLES } = require('../utils/vaiTro.utils');
 
 // POST /api/khuon-mat/phat-hien-tu-the - Nhận diện tư thế đầu 3D từ frame webcam
 const detectPose = async (req, res) => {
@@ -78,12 +80,16 @@ const detectPose = async (req, res) => {
 const enrollMultiAngleFace = async (req, res) => {
   try {
     const userRoles = getActiveRoles(req.user);
-    const canEnrollFace = userRoles.has('admin') || userRoles.has('bgh') || userRoles.has('tccb');
+    const canEnrollFace =
+      userRoles.has('admin') ||
+      userRoles.has('bgh') ||
+      userRoles.has('tccb') ||
+      UNIT_LEADER_ROLES.some((role) => userRoles.has(role));
     if (!canEnrollFace) {
       return res.status(403).json({
         success: false,
-        message: 'Chỉ có Quản trị viên (Admin / BGH) hoặc Cán bộ TCCB mới có quyền đăng ký khuôn mặt cho cán bộ, giảng viên. Cá nhân chỉ có thể điểm danh, không thể tự đăng ký.',
-        errorCode: 'FORBIDDEN_ADMIN_ONLY_FACE_ENROLL',
+        message: 'Chỉ cấp trên (Quản trị viên, BGH, TCCB hoặc trưởng/phó đơn vị) mới có quyền đăng ký khuôn mặt cho nhân sự cấp dưới. Cá nhân chỉ có thể điểm danh, không thể tự đăng ký.',
+        errorCode: 'FORBIDDEN_FACE_ENROLL',
       });
     }
 
@@ -108,6 +114,8 @@ const enrollMultiAngleFace = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy nhân sự tương ứng.' });
     }
 
+    // Kiểm tra quyền và phạm vi quản lý trước khi gọi AI hoặc lưu bất kỳ dữ liệu nào
+    await assertCanManageFace(req.user, targetUser, 'đăng ký');
     // Bắt buộc người dùng xác nhận đồng thuận thu thập sinh trắc học theo NĐ 13/2023/NĐ-CP
     const consentAgreed =
       dong_y_thu_thap === true ||
@@ -252,27 +260,15 @@ const getRegistrationStatus = async (req, res) => {
   }
 };
 
-// DELETE /api/khuon-mat/du-lieu/:nguoiDungId - Xóa dữ liệu khuôn mặt Face ID
+// DELETE /api/khuon-mat/du-lieu/:nguoiDungId - Xóa dữ liệu khuôn mặt Face ID (chỉ cấp trên trong phạm vi quản lý, không tự xóa)
 const deleteFaceData = async (req, res) => {
   try {
-    const targetUserId = req.params.nguoiDungId || req.user?._id?.toString();
-    const currentUserId = req.user?._id?.toString();
-    const isSelf = Boolean(currentUserId && targetUserId && String(currentUserId) === String(targetUserId));
-    const userRoles = getActiveRoles(req.user);
-    const isAuthorizedManager =
-      userRoles.has('admin') ||
-      userRoles.has('bgh') ||
-      userRoles.has('tccb') ||
-      userRoles.has('truong_khoa') ||
-      userRoles.has('pho_khoa');
-
-    if (!isSelf && !isAuthorizedManager) {
-      return res.status(403).json({
-        success: false,
-        message: 'Bạn không có quyền yêu cầu xóa dữ liệu sinh trắc học của người khác.',
-      });
+    const targetUserId = req.params.nguoiDungId;
+    if (!targetUserId) {
+      return sendError(res, 'Thiếu định danh người dùng cần xóa dữ liệu khuôn mặt.', null, 400);
     }
 
+    // Quyền (cấp trên, phạm vi quản lý, không tự xóa) được kiểm tra trong removeFaceDescriptorForUser
     const result = await removeFaceDescriptorForUser({
       id: targetUserId,
       currentUser: req.user,

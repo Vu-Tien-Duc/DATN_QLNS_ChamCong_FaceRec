@@ -55,20 +55,22 @@ const getAttendanceSummaryByUser = async (userId, startDate, endDate) => {
 
 // Tra cứu lịch sử chấm công có lọc theo đơn vị, ngày, trạng thái và phân trang
 const getAttendanceHistory = async (params = {}) => {
-  const vai_tro = params.vai_tro || params.role;
-  const nguoi_dung_id = params.nguoi_dung_id || params.userId;
-  const currentUserId = params.currentUserId;
-  const don_vi_chinh_id = params.don_vi_chinh_id || params.departmentId || params.don_vi_id;
-  const trang_thai = params.trang_thai || params.status;
-  const phuong_thuc = params.phuong_thuc || params.method;
-  const co_gian_lan = params.co_gian_lan !== undefined ? params.co_gian_lan : params.isFraud;
-  const from = params.from || params.tu_ngay;
-  const to = params.to || params.den_ngay;
+  const {
+    vai_tro,
+    nguoi_dung_id,
+    currentUserId,
+    don_vi_chinh_id,
+    trang_thai,
+    phuong_thuc,
+    co_gian_lan,
+    tu_ngay: from,
+    den_ngay: to,
+    currentUser,
+  } = params;
   const { page, limit, offset } = normalizePagination(params.page || 1, params.limit || 20, 100);
-  const currentUser = params.currentUser;
 
   const where = {};
-  const userRole = normalizeRole(vai_tro || currentUser?.vai_tro_chinh || currentUser?.role);
+  const userRole = normalizeRole(vai_tro || currentUser?.vai_tro_chinh);
 
   // 1. Phân quyền truy cập (Fail-closed: chỉ GLOBAL_ADMIN_ROLES được xem toàn trường)
   if (GLOBAL_ADMIN_ROLES.includes(userRole)) {

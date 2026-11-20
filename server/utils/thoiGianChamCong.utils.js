@@ -1,18 +1,6 @@
 // Tiện ích xử lý múi giờ Việt Nam, khung giờ ca, trạng thái vào/tan ca và bộ lọc ngày chấm công.
 const ServiceError = require('./loiNghiepVu');
 
-// Trả về đường dẫn API xem ảnh minh chứng chấm công của bản ghi
-const getAttendanceEvidenceUrl = (log) =>
-  log?.capturedImage ? `/attendance/${log._id}/evidence` : null;
-
-// Thay thế tên tệp ảnh minh chứng bằng đường dẫn API hoàn chỉnh
-const presentAttendanceEvidence = (log) => {
-  if (log?.capturedImage) {
-    log.capturedImage = getAttendanceEvidenceUrl(log);
-  }
-  return log;
-};
-
 // Chuyển mốc thời gian về múi giờ Asia/Ho_Chi_Minh (UTC+7) để tránh lệch giờ server
 const getVietnamTime = (date = new Date()) => {
   const d = date instanceof Date ? date : new Date(date);
@@ -86,25 +74,9 @@ const timeStringToMinutes = (timeStr) => {
   return h * 60 + m;
 };
 
-// Tính khung giờ vào ca hợp lệ (sớm tối đa 30 phút, muộn tối đa theo ngưỡng của ca)
-const getTodayScheduleWindow = (shift) => {
-  const startTime = shift?.gio_bat_dau || shift?.startTime;
-  const endTime = shift?.gio_ket_thuc || shift?.endTime;
-  if (!shift || !startTime || !endTime) return null;
-  const startMinutes = timeStringToMinutes(startTime);
-  const endMinutes = timeStringToMinutes(endTime);
-  const lateThreshold = shift.nguong_di_muon_phut !== undefined ? shift.nguong_di_muon_phut : (shift.lateThresholdMinutes !== undefined ? shift.lateThresholdMinutes : 15);
-  return {
-    startMinutes,
-    endMinutes,
-    windowStartMinutes: Math.max(0, startMinutes - 30),
-    windowEndMinutes: startMinutes + lateThreshold,
-  };
-};
-
 // Xác định trạng thái vào ca đúng giờ ('on_time') hay đi muộn ('late')
 const calculateAttendanceStatus = (checkInTime, shiftConfig, date = new Date()) => {
-  const startTime = shiftConfig?.gio_bat_dau || shiftConfig?.startTime;
+  const startTime = shiftConfig?.gio_bat_dau;
   if (!startTime) return 'on_time';
 
   const vnDate = getVietnamTime(checkInTime || date);
@@ -119,7 +91,7 @@ const calculateAttendanceStatus = (checkInTime, shiftConfig, date = new Date()) 
 
 // Tính trạng thái tan ca (về sớm hay giữ nguyên trạng thái vào ca)
 const calculateCheckOutStatus = (checkOutTime, shiftConfig, initialStatus = 'on_time') => {
-  const endTime = shiftConfig?.gio_ket_thuc || shiftConfig?.endTime;
+  const endTime = shiftConfig?.gio_ket_thuc;
   if (!endTime) {
     return { finalStatus: initialStatus, isEarlyLeave: false, earlyMinutes: 0 };
   }
@@ -127,7 +99,7 @@ const calculateCheckOutStatus = (checkOutTime, shiftConfig, initialStatus = 'on_
   const vnDate = getVietnamTime(checkOutTime);
   let checkOutMinutes = vnDate.getHours() * 60 + vnDate.getMinutes();
   let shiftEndMinutes = timeStringToMinutes(endTime);
-  const startTime = shiftConfig?.gio_bat_dau || shiftConfig?.startTime;
+  const startTime = shiftConfig?.gio_bat_dau;
   const shiftStartMinutes = startTime ? timeStringToMinutes(startTime) : null;
 
   // Hỗ trợ ca làm việc qua đêm (ví dụ 22:00 -> 06:00 hôm sau)
@@ -196,82 +168,6 @@ const buildAttendanceDateFilter = (startDate, endDate) => {
   };
 };
 
-// Tính lại giờ vào/ra, phút trễ/sớm và trạng thái cho một bản ghi chấm công tổng hợp
-const recalculateAttendanceSummary = async (attendanceLogId) => {
-  const { NhatKyChamCong, LuotQuetChamCong, CaLamViec } = require('../models');
-
-  const attendanceLog = await NhatKyChamCong.findByPk(attendanceLogId, {
-    include: [{ model: CaLamViec, as: 'ca' }],
-  });
-  if (!attendanceLog) {
-    throw new ServiceError('Không tìm thấy bản ghi chấm công tổng hợp.', 404);
-  }
-
-  const punches = await LuotQuetChamCong.findAll({
-    where: { cham_cong_id: attendanceLog.id, hop_le: true },
-    order: [['thoi_gian_quet', 'ASC']],
-  });
-
-  const checkIns = punches.filter((p) => p.loai_quet === 'check_in');
-  const checkOuts = punches.filter((p) => p.loai_quet === 'check_out');
-
-  const earliestCheckIn = checkIns.length > 0 ? checkIns[0].thoi_gian_quet : null;
-  const latestCheckOut = checkOuts.length > 0 ? checkOuts[checkOuts.length - 1].thoi_gian_quet : null;
-
-  const shift = attendanceLog.ca;
-  let lateMinutes = 0;
-  let earlyMinutes = 0;
-  let workingMinutes = 0;
-  let status = 'on_time';
-
-  if (attendanceLog.don_tu_id) {
-    status = 'excused_absence';
-  } else if (!earliestCheckIn) {
-    status = 'absent';
-  } else {
-    const shiftStartTime = shift?.gio_bat_dau;
-    const shiftStartMinutes = shiftStartTime ? timeStringToMinutes(shiftStartTime) : null;
-    if (shiftStartMinutes !== null) {
-      const vnCheckIn = getVietnamTime(earliestCheckIn);
-      const checkInMinutes = vnCheckIn.getHours() * 60 + vnCheckIn.getMinutes();
-      lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
-    }
-
-    const shiftEndTime = shift?.gio_ket_thuc;
-    if (latestCheckOut && shiftEndTime) {
-      const vnCheckOut = getVietnamTime(latestCheckOut);
-      let checkOutMinutes = vnCheckOut.getHours() * 60 + vnCheckOut.getMinutes();
-      let shiftEndMinutes = timeStringToMinutes(shiftEndTime);
-      if (shiftStartMinutes !== null && shiftEndMinutes < shiftStartMinutes) {
-        shiftEndMinutes += 1440;
-        if (checkOutMinutes < shiftStartMinutes) {
-          checkOutMinutes += 1440;
-        }
-      }
-      earlyMinutes = Math.max(0, shiftEndMinutes - checkOutMinutes);
-    }
-
-    if (earliestCheckIn && latestCheckOut) {
-      const diffMs = new Date(latestCheckOut).getTime() - new Date(earliestCheckIn).getTime();
-      workingMinutes = Math.max(0, Math.round(diffMs / 60000));
-    }
-
-    if (lateMinutes > 0) status = 'late';
-    else if (earlyMinutes > 0) status = 'early_leave';
-    else status = 'on_time';
-  }
-
-  attendanceLog.thoi_gian_vao = earliestCheckIn;
-  attendanceLog.thoi_gian_ra = latestCheckOut;
-  attendanceLog.di_muon_phut = lateMinutes;
-  attendanceLog.ve_som_phut = earlyMinutes;
-  attendanceLog.thoi_luong_lam_viec_phut = workingMinutes;
-  attendanceLog.trang_thai = status;
-
-  await attendanceLog.save();
-  return attendanceLog;
-};
-
 // Chuẩn hóa tên phương thức chấm công sang enum lưu trong CSDL
 const normalizeAttendanceMethod = (method) => {
   const raw = String(method || 'gps_mobile').trim().toLowerCase();
@@ -291,9 +187,10 @@ const normalizeAttendanceMethod = (method) => {
   return METHOD_MAP[raw] || 'gps_mobile';
 };
 
-// Tính số tiết thực dạy dựa trên lịch trình và thời lượng làm việc thực tế
+// Tính số tiết thực dạy dựa trên lịch trình và thời lượng làm việc thực tế.
+// Với khối nhiều ca liên tục, truyền lichTrinhIds để số tiết kế hoạch là tổng số tiết của mọi ca trong khối.
 const calculateActualTeachingPeriods = async (
-  { lichTrinhId, workingMinutes = 0, earlyMinutes = 0, lateMinutes = 0 },
+  { lichTrinhId, lichTrinhIds = null, workingMinutes = 0, earlyMinutes = 0, lateMinutes = 0 },
   LichTrinhModel
 ) => {
   let roundingMode = 'ROUND';
@@ -307,9 +204,17 @@ const calculateActualTeachingPeriods = async (
 
   const roundPeriods = (val) => (roundingMode === 'FLOOR' ? Math.floor(val) : Math.round(val));
 
-  if (lichTrinhId && LichTrinhModel) {
-    const sch = await LichTrinhModel.findByPk(lichTrinhId, { attributes: ['so_tiet'] });
-    const plannedPeriods = sch && sch.so_tiet ? Number(sch.so_tiet) : 3;
+  const scheduleIds =
+    Array.isArray(lichTrinhIds) && lichTrinhIds.length > 0 ? lichTrinhIds : lichTrinhId ? [lichTrinhId] : [];
+
+  if (scheduleIds.length > 0 && LichTrinhModel) {
+    const schedules = await Promise.all(
+      scheduleIds.map((id) => LichTrinhModel.findByPk(id, { attributes: ['so_tiet'] }))
+    );
+    const plannedPeriods = schedules.reduce(
+      (sum, sch) => sum + (sch && sch.so_tiet ? Number(sch.so_tiet) : 3),
+      0
+    );
     if ((earlyMinutes || 0) > 45 || (lateMinutes || 0) > 45) {
       const ratio = Math.max(0, Math.min(1, workingMinutes / (plannedPeriods * 45)));
       return Math.min(plannedPeriods, Math.max(0, roundPeriods(plannedPeriods * ratio)));
@@ -323,14 +228,10 @@ module.exports = {
   ServiceError,
   normalizeAttendanceMethod,
   calculateActualTeachingPeriods,
-  getAttendanceEvidenceUrl,
-  presentAttendanceEvidence,
   getVietnamTime,
   getVietnamDayRange,
   timeStringToMinutes,
-  getTodayScheduleWindow,
   calculateAttendanceStatus,
   calculateCheckOutStatus,
   buildAttendanceDateFilter,
-  recalculateAttendanceSummary,
 };

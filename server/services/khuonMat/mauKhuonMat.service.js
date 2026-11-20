@@ -30,6 +30,37 @@ const isValidVector512 = (vec) =>
   vec.length === VALID_DIMENSIONS &&
   vec.every((val) => typeof val === 'number' && Number.isFinite(val));
 
+// Chỉ cấp trên mới được đăng ký hoặc xóa khuôn mặt của cấp dưới; không ai được tự thao tác trên khuôn mặt của chính mình
+const assertCanManageFace = async (currentUser, targetUser, actionLabel = 'thao tác') => {
+  const actorId = String(currentUser?.id || currentUser?._id || '');
+  if (actorId && actorId === String(targetUser.id)) {
+    throw new ServiceError(
+      `Bạn không thể tự ${actionLabel} khuôn mặt của chính mình. Vui lòng nhờ cấp trên thực hiện.`,
+      403,
+      'FACE_SELF_MANAGE_FORBIDDEN'
+    );
+  }
+
+  const actorRole = normalizeRole(currentUser?.vai_tro_chinh || currentUser?.role);
+  if (['admin', 'bgh', 'tccb'].includes(actorRole)) return;
+
+  if (UNIT_LEADER_ROLES.includes(actorRole)) {
+    const inScope = await isUserInDeanScope(currentUser, targetUser.id);
+    if (inScope) return;
+    throw new ServiceError(
+      `Bạn chỉ được ${actionLabel} khuôn mặt cho nhân sự thuộc phạm vi đơn vị quản lý.`,
+      403,
+      'FACE_OUT_OF_SCOPE'
+    );
+  }
+
+  throw new ServiceError(
+    `Chỉ cấp trên mới có quyền ${actionLabel} khuôn mặt cho nhân sự cấp dưới.`,
+    403,
+    'FACE_MANAGE_FORBIDDEN'
+  );
+};
+
 // Đăng ký hoặc cập nhật mẫu vector khuôn mặt 512 chiều cho người dùng kèm chống trùng lặp
 const registerFaceDescriptorForUser = async ({
   id,
@@ -75,6 +106,10 @@ const registerFaceDescriptorForUser = async ({
   const targetUser = await NguoiDung.findByPk(id);
   if (!targetUser) {
     throw new ServiceError('Không tìm thấy thông tin nhân sự cần đăng ký Face ID.', 404);
+  }
+
+  if (currentUser) {
+    await assertCanManageFace(currentUser, targetUser, 'đăng ký');
   }
 
   // Chống trùng lặp sinh trắc học
@@ -244,19 +279,7 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
   }
 
   if (currentUser) {
-    const isSelf = String(currentUser.id || currentUser._id) === String(targetUser.id);
-    const actorRole = normalizeRole(currentUser.vai_tro_chinh || currentUser.role);
-    const isTopAdmin = ['admin', 'bgh', 'tccb'].includes(actorRole);
-    if (!isSelf && !isTopAdmin) {
-      if (UNIT_LEADER_ROLES.includes(actorRole)) {
-        const inScope = await isUserInDeanScope(currentUser, targetUser.id);
-        if (!inScope) {
-          throw new ServiceError('Bạn không có quyền xóa dữ liệu sinh trắc học của nhân sự ngoài phạm vi quản lý.', 403);
-        }
-      } else {
-        throw new ServiceError('Bạn không có quyền yêu cầu xóa dữ liệu sinh trắc học của người khác.', 403);
-      }
-    }
+    await assertCanManageFace(currentUser, targetUser, 'xóa');
   }
 
   const deletedCount = await MauKhuonMat.destroy({
@@ -369,6 +392,7 @@ const getFaceRegistrationStatusByUserId = async (targetId) => {
 };
 
 module.exports = {
+  assertCanManageFace,
   registerFaceDescriptorForUser,
   registerFaceImagesForUser,
   removeFaceDescriptorForUser,

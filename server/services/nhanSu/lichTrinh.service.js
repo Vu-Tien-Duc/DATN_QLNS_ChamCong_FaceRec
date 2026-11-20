@@ -322,6 +322,8 @@ const createNewSchedule = async (data, currentUser) => {
     tiet_bat_dau,
     so_tiet,
     phong_hoc,
+    co_so,
+    la_truc_tuyen = false,
     mon_hoc_id,
     vi_do,
     kinh_do,
@@ -387,6 +389,8 @@ const createNewSchedule = async (data, currentUser) => {
         tiet_bat_dau: resolvedStartPeriod,
         so_tiet: resolvedPeriodCount,
         phong_hoc: phong_hoc || '',
+        co_so: co_so || '',
+        la_truc_tuyen: Boolean(la_truc_tuyen),
         mon_hoc_id: mon_hoc_id || null,
         vi_do: vi_do ?? null,
         kinh_do: kinh_do ?? null,
@@ -482,13 +486,15 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
 
   await runInTransaction(async (transaction) => {
     const updatable = [
-      'nguoi_dung_id', 'ca_id', 'mon_hoc_id', 'phong_hoc', 'vi_do', 'kinh_do',
+      'nguoi_dung_id', 'ca_id', 'mon_hoc_id', 'phong_hoc', 'co_so', 'la_truc_tuyen', 'vi_do', 'kinh_do',
       'ban_kinh_met', 'thu_trong_tuan', 'gio_bat_dau', 'gio_ket_thuc',
       'ngay_bat_dau', 'ngay_ket_thuc', 'tiet_bat_dau', 'so_tiet',
       'lap_lai_hang_tuan', 'loai_lich', 'nam_hoc', 'hoc_ky',
     ];
     for (const field of updatable) {
-      if (data[field] !== undefined) schedule[field] = data[field];
+      if (data[field] !== undefined) {
+        schedule[field] = field === 'la_truc_tuyen' ? Boolean(data[field]) : data[field];
+      }
     }
     await schedule.save({ transaction });
 

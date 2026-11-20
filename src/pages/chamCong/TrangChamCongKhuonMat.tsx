@@ -69,6 +69,12 @@ export const FaceAttendance: React.FC = () => {
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const [recentPunches, setRecentPunches] = useState<AttendanceHistoryItem[]>([]);
   const [serviceHealth, setServiceHealth] = useState<{ status: string; ready?: boolean } | null>(null);
+  // C1: Khối ca hôm nay
+  const [khoiHomNay, setKhoiHomNay] = useState<{
+    co_the_check_in: boolean; trang_thai: string; thong_bao?: string;
+    khoi?: { ds_lich_trinh_id: string[]; gio_bat_dau: string; gio_ket_thuc: string; co_so?: string } | null;
+    ca?: { ten_ca: string; gio_bat_dau: string; gio_ket_thuc: string } | null;
+  } | null>(null);
   const [scanStatus, setScanStatus] = useState<{
     type: 'idle' | 'scanning' | 'success' | 'error';
     message: string;
@@ -86,12 +92,21 @@ export const FaceAttendance: React.FC = () => {
     startCamera();
     loadRecentHistory();
     loadAiHealth();
+    loadKhoiHomNay();
 
     return () => {
       isMountedRef.current = false;
       stopCamera();
     };
   }, []);
+
+  // C1: Tải thông tin khối ca hôm nay
+  const loadKhoiHomNay = async () => {
+    try {
+      const d = await attendanceApi.getKhoiHomNay();
+      if (isMountedRef.current) setKhoiHomNay(d);
+    } catch (_) {}
+  };
 
   // Kiểm tra trạng thái kết nối dịch vụ Face AI
   const loadAiHealth = async () => {
@@ -103,13 +118,13 @@ export const FaceAttendance: React.FC = () => {
     }
   };
 
-  // Tải danh sách lượt quét hôm nay
+  // Tải danh sách lượt quét hôm nay của chính tài khoản đang đăng nhập
   const loadRecentHistory = async () => {
     try {
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, '0');
       const todayIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-      const res = await attendanceApi.getAttendanceHistory({
+      const res = await attendanceApi.getMyAttendanceHistory({
         tu_ngay: todayIso,
         den_ngay: todayIso,
         gioi_han: 8,
@@ -134,7 +149,7 @@ export const FaceAttendance: React.FC = () => {
         streamRef.current = null;
       }
 
-      // Đảm bảo chỉ mở nếu đang ở đúng trang /face-attendance
+      // Đảm bảo chỉ mở nếu đang ở đúng trang /diem-danh-khuon-mat
       if (!isMountedRef.current || (typeof window !== 'undefined' && window.location.pathname !== '/diem-danh-khuon-mat')) {
         return;
       }
@@ -329,6 +344,7 @@ export const FaceAttendance: React.FC = () => {
           setLastResult(res);
           toast.success(res.message, { id: 'face-attendance-toast' });
           loadRecentHistory();
+          loadKhoiHomNay();
 
           setScanStatus({
             type: 'success',
@@ -522,6 +538,78 @@ export const FaceAttendance: React.FC = () => {
       />
 
       {/* =====================================================================
+          C1. BANNER KHỐI CA HÔM NAY
+      ===================================================================== */}
+      {khoiHomNay && (
+        <div
+          className={`flex items-start gap-3 px-4 py-3 rounded-2xl border text-xs font-medium shadow-xs transition-all ${
+            khoiHomNay.co_the_check_in
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+              : khoiHomNay.trang_thai === 'TOO_EARLY'
+                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                : khoiHomNay.trang_thai === 'ALREADY_CHECKED_IN'
+                  ? 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-200'
+                  : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+          }`}
+        >
+          {/* Icon trạng thái */}
+          <span
+            className={`mt-0.5 w-2.5 h-2.5 rounded-full shrink-0 ${
+              khoiHomNay.co_the_check_in
+                ? 'bg-emerald-500 animate-pulse'
+                : khoiHomNay.trang_thai === 'TOO_EARLY'
+                  ? 'bg-amber-400 animate-pulse'
+                  : khoiHomNay.trang_thai === 'ALREADY_CHECKED_IN'
+                    ? 'bg-sky-400'
+                    : 'bg-slate-400'
+            }`}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              {/* Tên ca */}
+              {khoiHomNay.ca && (
+                <span className="font-bold">
+                  🎯 {khoiHomNay.ca.ten_ca}
+                </span>
+              )}
+              {/* Giờ ca */}
+              {khoiHomNay.ca && (
+                <span className="opacity-80">
+                  {khoiHomNay.ca.gio_bat_dau} – {khoiHomNay.ca.gio_ket_thuc}
+                </span>
+              )}
+              {/* Giờ khối (nếu khác ca đơn) */}
+              {khoiHomNay.khoi && khoiHomNay.khoi.gio_bat_dau !== khoiHomNay.ca?.gio_bat_dau && (
+                <span className="opacity-70">
+                  (Khối: {khoiHomNay.khoi.gio_bat_dau} – {khoiHomNay.khoi.gio_ket_thuc})
+                </span>
+              )}
+              {/* Số lịch trình trong khối */}
+              {khoiHomNay.khoi && khoiHomNay.khoi.ds_lich_trinh_id.length > 1 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-white/60 dark:bg-black/20 font-semibold">
+                  {khoiHomNay.khoi.ds_lich_trinh_id.length} ca liên tục
+                </span>
+              )}
+              {/* Cơ sở */}
+              {khoiHomNay.khoi?.co_so && (
+                <span className="opacity-70">📍 {khoiHomNay.khoi.co_so}</span>
+              )}
+              {/* Trạng thái */}
+              <span className="ml-auto font-semibold">
+                {khoiHomNay.co_the_check_in
+                  ? '✅ Có thể điểm danh'
+                  : khoiHomNay.trang_thai === 'TOO_EARLY'
+                    ? '⏳ Chưa đến giờ'
+                    : khoiHomNay.trang_thai === 'ALREADY_CHECKED_IN'
+                      ? '✔ Đã vào ca'
+                      : khoiHomNay.thong_bao || khoiHomNay.trang_thai}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
           1.5. CHỌN PHƯƠNG THỨC ĐIỂM DANH (PHÂN QUYỀN THEO VAI TRÒ)
       ===================================================================== */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -601,6 +689,7 @@ export const FaceAttendance: React.FC = () => {
                 setLastResult(res);
                 setCapturedPreview(null);
                 loadRecentHistory();
+                loadKhoiHomNay();
               }}
             />
           ) : (
@@ -881,9 +970,9 @@ export const FaceAttendance: React.FC = () => {
               <div className="flex items-center gap-3.5 bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-emerald-200/80 dark:border-emerald-800/80 shadow-xs">
                 <UserAvatar
                   user={{
-                    ho_ten: lastResult.user?.ho_ten || lastResult.user?.fullName,
-                    anh_dai_dien: capturedPreview || lastResult.user?.anh_dai_dien || lastResult.user?.avatar,
-                    ma_can_bo: lastResult.user?.ma_can_bo || lastResult.user?.staffCode,
+                    ho_ten: lastResult.user?.ho_ten,
+                    anh_dai_dien: capturedPreview || lastResult.user?.anh_dai_dien,
+                    ma_can_bo: lastResult.user?.ma_can_bo,
                   }}
                   size="lg"
                   shape="circle"
@@ -891,38 +980,38 @@ export const FaceAttendance: React.FC = () => {
                 />
                 <div className="flex-1 min-w-0">
                   <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">
-                    {lastResult.user?.ho_ten || lastResult.user?.fullName}
+                    {lastResult.user?.ho_ten || 'Cán bộ'}
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                    {lastResult.user?.ma_can_bo
-                      ? `${lastResult.user.ma_can_bo} • `
-                      : lastResult.user?.staffCode
-                      ? `${lastResult.user.staffCode} • `
-                      : ''}
-                    {(lastResult.user?.vai_tro_chinh || lastResult.user?.role || 'GIẢNG VIÊN').toUpperCase()}
+                    {lastResult.user?.ma_can_bo ? `${lastResult.user.ma_can_bo} • ` : ''}
+                    {(lastResult.user?.vai_tro_chinh || 'GIẢNG VIÊN').toUpperCase()}
                   </p>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     {(() => {
-                      const st = lastResult.record?.status;
+                      const st = lastResult.record?.trang_thai;
                       const label =
                         st === 'on_time'
                           ? 'ĐÚNG GIỜ'
                           : st === 'late'
-                            ? `ĐI MUỘN${lastResult.record?.lateMinutes ? ` (${lastResult.record.lateMinutes}p)` : ''}`
+                            ? `ĐI MUỘN${lastResult.record?.di_muon_phut ? ` (${lastResult.record.di_muon_phut}p)` : ''}`
                             : st === 'early_leave'
-                              ? `VỀ SỚM${lastResult.record?.earlyExitMinutes ? ` (${lastResult.record.earlyExitMinutes}p)` : ''}`
-                              : 'GHI NHẬN';
+                              ? `VỀ SỚM${lastResult.record?.ve_som_phut ? ` (${lastResult.record.ve_som_phut}p)` : ''}`
+                              : st === 'thieu_check_out'
+                                ? 'THIẾU CHECK-OUT'
+                                : 'GHI NHẬN';
                       const cls =
                         st === 'on_time'
                           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
                           : st === 'late' || st === 'early_leave'
                             ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-                            : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300';
+                            : st === 'thieu_check_out'
+                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                              : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300';
                       return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cls}`}>{label}</span>;
                     })()}
-                    {lastResult.similarity !== undefined && lastResult.similarity !== null && (
+                    {lastResult.diem_tin_cay !== undefined && lastResult.diem_tin_cay !== null && (
                       <span className="text-[10px] text-slate-400 font-medium">
-                        Độ tin cậy: {(lastResult.similarity * 100).toFixed(1)}%
+                        Độ tin cậy: {(lastResult.diem_tin_cay * 100).toFixed(1)}%
                       </span>
                     )}
                   </div>
@@ -938,9 +1027,9 @@ export const FaceAttendance: React.FC = () => {
               <div className="flex items-center gap-3">
                 <UserAvatar
                   user={{
-                    ho_ten: authUser?.fullName,
-                    anh_dai_dien: authUser?.avatar,
-                    ma_can_bo: authUser?.staffCode,
+                    ho_ten: authUser?.ho_ten,
+                    anh_dai_dien: authUser?.anh_dai_dien,
+                    ma_can_bo: authUser?.ma_can_bo,
                   }}
                   size="md"
                   shape="circle"
@@ -948,10 +1037,10 @@ export const FaceAttendance: React.FC = () => {
                 />
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
-                    {authUser?.fullName || 'Cán Bộ Hệ Thống'}
+                    {authUser?.ho_ten || 'Cán Bộ Hệ Thống'}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                    {authUser?.staffCode ? `${authUser.staffCode} • ` : ''}
+                    {authUser?.ma_can_bo ? `${authUser.ma_can_bo} • ` : ''}
                     {authUser?.email || 'admin@university.edu.vn'}
                   </p>
                 </div>
@@ -996,8 +1085,8 @@ export const FaceAttendance: React.FC = () => {
             ) : (
               <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar text-xs">
                 {recentPunches.map((item) => {
-                  const timeStr = item.checkInTime
-                    ? new Date(item.checkInTime).toLocaleTimeString('vi-VN', {
+                  const timeStr = item.thoi_gian_vao
+                    ? new Date(item.thoi_gian_vao).toLocaleTimeString('vi-VN', {
                         hour: '2-digit',
                         minute: '2-digit',
                       })
@@ -1007,24 +1096,25 @@ export const FaceAttendance: React.FC = () => {
                     late: { label: 'ĐI MUỘN', cls: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400' },
                     early_leave: { label: 'VỀ SỚM', cls: 'bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400' },
                     excused_absence: { label: 'NGHỈ PHÉP', cls: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400' },
+                    thieu_check_out: { label: 'THIẾU CHECK-OUT', cls: 'bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400' },
                     absent: { label: 'VẮNG MẶT', cls: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400' },
                   };
-                  const stMeta = statusMap[item.status] || {
-                    label: String(item.status || 'GHI NHẬN').toUpperCase(),
+                  const stMeta = statusMap[item.trang_thai || ''] || {
+                    label: String(item.trang_thai || 'GHI NHẬN').toUpperCase(),
                     cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
                   };
 
                   return (
                     <div
-                      key={item._id}
+                      key={item.id}
                       className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/80 transition-colors hover:bg-slate-100/70"
                     >
                       <div className="min-w-0 flex items-center gap-2.5">
                         <UserAvatar
                           user={{
-                            ho_ten: item.userId?.fullName,
-                            anh_dai_dien: item.userId?.anh_dai_dien || item.userId?.avatar,
-                            ma_can_bo: item.userId?.ma_can_bo || item.userId?.staffCode,
+                            ho_ten: item.nguoi_dung?.ho_ten,
+                            anh_dai_dien: item.nguoi_dung?.anh_dai_dien,
+                            ma_can_bo: item.nguoi_dung?.ma_can_bo,
                           }}
                           size="sm"
                           shape="circle"
@@ -1032,10 +1122,10 @@ export const FaceAttendance: React.FC = () => {
                         />
                         <div className="min-w-0">
                           <p className="font-semibold text-slate-900 dark:text-white truncate">
-                            {item.userId?.fullName || 'Cán bộ'}
+                            {item.nguoi_dung?.ho_ten || 'Cán bộ'}
                           </p>
                           <span className="text-[10px] text-slate-400 block truncate">
-                            {item.shiftId?.name || 'Ca hành chính'}
+                            {item.ca?.ten_ca || 'Ca hành chính'}
                           </span>
                         </div>
                       </div>
@@ -1069,6 +1159,7 @@ export const FaceAttendance: React.FC = () => {
         }}
         onSuccess={() => {
           loadRecentHistory();
+          loadKhoiHomNay();
         }}
       />
 

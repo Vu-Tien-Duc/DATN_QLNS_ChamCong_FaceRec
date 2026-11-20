@@ -11,8 +11,8 @@ const {
   getFaceHealth,
   testFaceRecognition,
 } = require('../controllers/khuonMat.controller');
-const { verifyToken, verifyRole, verifyTerminalKey, getActiveRoles } = require('../middlewares/xacThuc.middleware');
-const { faceCheckInRateLimit, facePoseRateLimit } = require('../middlewares/gioiHanTruyCap.middleware');
+const { verifyToken, verifyRole, getActiveRoles } = require('../middlewares/xacThuc.middleware');
+const { facePoseRateLimit, faceCheckInRateLimit } = require('../middlewares/gioiHanTruyCap.middleware');
 const { isUserInDeanScope } = require('../utils/phamViTruongKhoa');
 const { UNIT_LEADER_ROLES } = require('../utils/vaiTro.utils');
 
@@ -52,17 +52,17 @@ const angleFields = [
 router.get('/suc-khoe', getFaceHealth);
 
 // Phát hiện tư thế đầu 3D realtime
-router.post('/phat-hien-tu-the', facePoseRateLimit, verifyTerminalKey, upload.single('image'), detectPose);
+router.post('/phat-hien-tu-the', facePoseRateLimit, verifyToken, upload.single('image'), detectPose);
 
 // Kiểm thử nhận diện khuôn mặt Realtime (chỉ Admin / BGH / TCCB)
 router.post('/kiem-thu-nhan-dien', verifyToken, verifyRole(['admin', 'bgh', 'tccb']), faceCheckInRateLimit, upload.single('image'), testFaceRecognition);
 
 
-// Đăng ký 5 góc khuôn mặt (Quản trị viên Admin / BGH / Cán bộ TCCB)
+// Đăng ký 5 góc khuôn mặt (Admin / BGH / TCCB hoặc trưởng/phó đơn vị trong phạm vi quản lý, không tự đăng ký)
 router.post(
   '/dang-ky-da-goc',
   verifyToken,
-  verifyRole(['admin', 'bgh', 'tccb']),
+  verifyRole(['admin', 'bgh', 'tccb', ...UNIT_LEADER_ROLES]),
   upload.fields(angleFields),
   enrollMultiAngleFace
 );
@@ -115,29 +115,11 @@ router.get(
   getRegistrationStatus
 );
 
-// Middleware phân quyền xóa FaceID: Admin / BGH / TCCB / Trưởng đơn vị cùng khoa hoặc tự xóa theo NĐ 13/2023/NĐ-CP
-const canDeleteFace = (req, res, next) =>
-  canAccessTargetFace(
-    req,
-    res,
-    next,
-    'FORBIDDEN_FACE_DELETE',
-    'Bạn không có quyền yêu cầu xóa dữ liệu sinh trắc học của người khác.'
-  );
-
-// Xóa dữ liệu khuôn mặt (Hỗ trợ Admin / BGH / TCCB / Trưởng khoa hoặc tự xóa theo Nghị định 13/2023/NĐ-CP)
+// Xóa dữ liệu khuôn mặt: chỉ cấp trên trong phạm vi quản lý được thực hiện, không ai được tự xóa (kiểm tra trong service)
 router.delete(
   '/du-lieu/:nguoiDungId',
   verifyToken,
-  canDeleteFace,
   deleteFaceData
 );
-router.delete('/du-lieu-cua-toi', verifyToken, deleteFaceData);
-
-const { faceRecognizeAttendance } = require('../controllers/chamCong.controller');
-
-// Điểm danh Camera Realtime qua Face ID (Bảo vệ bằng rate limit + JWT hoặc Terminal Key)
-router.post('/vao-ca', faceCheckInRateLimit, verifyTerminalKey, upload.single('image'), faceRecognizeAttendance);
-router.post('/tan-ca', faceCheckInRateLimit, verifyTerminalKey, upload.single('image'), faceRecognizeAttendance);
 
 module.exports = router;

@@ -1,6 +1,6 @@
 // Xử lý điểm danh vào ca (Check-in) kèm đối soát lịch/ca trực và xác thực vị trí GPS
 const { Op } = require('sequelize');
-const { NhatKyChamCong, LuotQuetChamCong, CaLamViec, NguoiDung } = require('../../models');
+const { NhatKyChamCong, LuotQuetChamCong, CaLamViec, NguoiDung, LichTrinh } = require('../../models');
 const { sendCheckInNotificationEmail } = require('../heThong/guiEmail.service');
 const { validateGeofence, resolveUserGeofenceTargets } = require('../../utils/hoTroChamCong');
 const { runInTransaction } = require('../../utils/giaoDichDb');
@@ -53,23 +53,6 @@ const performCheckIn = async ({
   const acc = do_chinh_xac !== undefined && do_chinh_xac !== null && do_chinh_xac !== '' ? Number(do_chinh_xac) : null;
   const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
 
-  if (!allowManual && !hasCoordinates) {
-    throw new ServiceError(
-      'Chấm công vào ca bắt buộc phải gửi tọa độ GPS hợp lệ.',
-      400,
-      'ATTENDANCE_GPS_REQUIRED'
-    );
-  }
-
-  if ((finalMethod === 'gps_mobile' || hasCoordinates) && acc !== null && Number.isFinite(acc) && acc > 150) {
-    throw new ServiceError(
-      `Độ chính xác GPS không đủ tin cậy (sai số ${acc}m vượt ngưỡng cho phép <= 150m). Vui lòng di chuyển ra nơi thoáng.`,
-      400,
-      'GPS_ACCURACY_UNRELIABLE',
-      { accuracy: acc }
-    );
-  }
-
   const now = new Date();
   const nowVN = getVietnamTime(now);
   const { dateStr } = getVietnamDayRange(now);
@@ -78,6 +61,7 @@ const performCheckIn = async ({
   let calculatedStatus = 'on_time';
   let lateMinutes = 0;
   let resolvedScheduleId = lich_trinh_id || null;
+  let khoi = null;
 
   if (allowManual && ca_id && isValidUuid(String(ca_id))) {
     effectiveShift = await CaLamViec.findByPk(ca_id);
@@ -104,6 +88,7 @@ const performCheckIn = async ({
     }
     effectiveShift = evalResult.shift;
     resolvedScheduleId = evalResult.selectedSchedule?.id || resolvedScheduleId;
+    khoi = evalResult.khoi || null;
     calculatedStatus = evalResult.status || 'on_time';
     lateMinutes = evalResult.lateMinutes || 0;
   }
@@ -116,13 +101,37 @@ const performCheckIn = async ({
   let fraudReason = null;
   let geofenceMeta = null;
 
-  if ((finalMethod === 'gps_mobile' || hasCoordinates) && hasCoordinates) {
-    const geoTargets = await resolveUserGeofenceTargets(nguoi_dung_id, resolvedScheduleId);
-    const geofenceResult = validateGeofence({ lat, lng, accuracy: acc }, geoTargets, null, dia_chi_ip);
-    geofenceMeta = geofenceResult;
-    if (!geofenceResult.valid) {
-      isFraud = true;
-      fraudReason = geofenceResult.fraudReason || `Tọa độ GPS nằm ngoài bán kính cho phép (${Math.round(geofenceResult.distance)}m so với tâm trường).`;
+  // A2: Lịch trực tuyến → bỏ qua kiểm tra bắt buộc GPS & geofence
+  let isOnlineSchedule = false;
+  if (resolvedScheduleId) {
+    const scheduleForOnlineCheck = await LichTrinh.findByPk(resolvedScheduleId, { attributes: ['id', 'la_truc_tuyen'] });
+    isOnlineSchedule = Boolean(scheduleForOnlineCheck?.la_truc_tuyen);
+  }
+
+  if (!isOnlineSchedule) {
+    if (!allowManual && !hasCoordinates) {
+      throw new ServiceError(
+        'Chấm công vào ca bắt buộc phải gửi tọa độ GPS hợp lệ.',
+        400,
+        'ATTENDANCE_GPS_REQUIRED'
+      );
+    }
+    if ((finalMethod === 'gps_mobile' || hasCoordinates) && acc !== null && Number.isFinite(acc) && acc > 150) {
+      throw new ServiceError(
+        `Độ chính xác GPS không đủ tin cậy (sai số ${acc}m vượt ngưỡng cho phép <= 150m). Vui lòng di chuyển ra nơi thoáng.`,
+        400,
+        'GPS_ACCURACY_UNRELIABLE',
+        { accuracy: acc }
+      );
+    }
+    if ((finalMethod === 'gps_mobile' || hasCoordinates) && hasCoordinates) {
+      const geoTargets = await resolveUserGeofenceTargets(nguoi_dung_id, resolvedScheduleId);
+      const geofenceResult = validateGeofence({ lat, lng, accuracy: acc }, geoTargets, null, dia_chi_ip);
+      geofenceMeta = geofenceResult;
+      if (!geofenceResult.valid) {
+        isFraud = true;
+        fraudReason = geofenceResult.fraudReason || `Tọa độ GPS nằm ngoài bán kính cho phép (${Math.round(geofenceResult.distance)}m so với tâm trường).`;
+      }
     }
   }
 
@@ -131,7 +140,7 @@ const performCheckIn = async ({
   const whereExisting = {
     nguoi_dung_id,
     ngay_cong: dateStr,
-    ...(resolvedScheduleId ? { lich_trinh_id: resolvedScheduleId } : finalShiftId ? { ca_id: finalShiftId } : {}),
+    ...(resolvedScheduleId ? { lich_trinh_id: resolvedScheduleId } : finalShiftId ? { ca_id: finalShiftId, lich_trinh_id: null } : {}),
   };
 
   let attendance = await NhatKyChamCong.findOne({ where: whereExisting });
@@ -153,31 +162,54 @@ const performCheckIn = async ({
     );
   }
 
-  const openAttendance = await NhatKyChamCong.findOne({
+  const openAttendances = await NhatKyChamCong.findAll({
     where: {
       nguoi_dung_id,
       ngay_cong: dateStr,
       thoi_gian_vao: { [Op.ne]: null },
       thoi_gian_ra: null,
+      trang_thai: { [Op.ne]: 'thieu_check_out' },
     },
   });
-  if (openAttendance) {
+  // Khối giảng dạy trước chưa check-out mà đã check-in khối sau thì khối trước chuyển thành thiếu check-out.
+  // Ca hành chính chạy song song với các khối giảng dạy nên được giữ nguyên.
+  const staleOpenAttendances = [];
+  for (const open of openAttendances) {
+    const isTeachingOpen = Boolean(open.lich_trinh_id);
+    const isTeachingNew = Boolean(resolvedScheduleId);
+    if (isTeachingOpen && isTeachingNew) {
+      const sameBlock =
+        String(open.lich_trinh_id) === String(resolvedScheduleId) ||
+        Boolean(khoi && khoi.ds_lich_trinh_id.includes(String(open.lich_trinh_id)));
+      if (!sameBlock) {
+        staleOpenAttendances.push(open);
+        continue;
+      }
+    } else if (!isTeachingOpen && isTeachingNew) {
+      continue;
+    }
     throw new ServiceError(
       'Bạn đang có một ca làm việc chưa hoàn thành tan ca. Vui lòng check-out trước khi bắt đầu ca làm việc mới.',
       400,
       'ATTENDANCE_ALREADY_CHECKED_IN',
-      { thoi_gian_vao: openAttendance.thoi_gian_vao }
+      { thoi_gian_vao: open.thoi_gian_vao }
     );
   }
 
   let punchLog = null;
   await runInTransaction(async (transaction) => {
+    for (const stale of staleOpenAttendances) {
+      stale.trang_thai = 'thieu_check_out';
+      await stale.save({ transaction });
+    }
+
     if (!attendance) {
       attendance = await NhatKyChamCong.create(
         {
           nguoi_dung_id,
           ca_id: finalShiftId,
           lich_trinh_id: resolvedScheduleId,
+          ds_lich_trinh_id: khoi ? khoi.ds_lich_trinh_id : null,
           ngay_cong: dateStr,
           thoi_gian_vao: now,
           trang_thai: calculatedStatus,
@@ -190,6 +222,7 @@ const performCheckIn = async ({
       attendance.thoi_gian_vao = now;
       attendance.ca_id = finalShiftId;
       if (resolvedScheduleId) attendance.lich_trinh_id = resolvedScheduleId;
+      if (khoi) attendance.ds_lich_trinh_id = khoi.ds_lich_trinh_id;
       attendance.trang_thai = calculatedStatus;
       attendance.di_muon_phut = lateMinutes;
       if (isFraud) attendance.co_gian_lan = true;
@@ -216,24 +249,27 @@ const performCheckIn = async ({
     );
   });
 
-  NguoiDung.findByPk(nguoi_dung_id, { attributes: ['email', 'ho_ten'] })
-    .then((user) => {
-      if (user && user.email) {
-        sendCheckInNotificationEmail({
-          to: user.email,
-          fullName: user.ho_ten || 'Cán bộ',
-          checkInTime: now,
-          status: calculatedStatus,
-          lateMinutes,
-          method: finalMethod,
-        }).catch(() => {});
-      }
-    })
-    .catch(() => {});
+  const attendanceOwner = await NguoiDung.findByPk(nguoi_dung_id, {
+    attributes: ['email', 'ho_ten', 'don_vi_chinh_id'],
+  }).catch(() => null);
+
+  if (attendanceOwner && attendanceOwner.email) {
+    sendCheckInNotificationEmail({
+      to: attendanceOwner.email,
+      fullName: attendanceOwner.ho_ten || 'Cán bộ',
+      checkInTime: now,
+      status: calculatedStatus,
+      lateMinutes,
+      method: finalMethod,
+    }).catch(() => {});
+  }
 
   try {
     const { emitAttendanceUpdate, emitFraudAlert } = require('../../config/socket');
-    emitAttendanceUpdate(attendance.toJSON ? attendance.toJSON() : attendance);
+    emitAttendanceUpdate({
+      ...(attendance.toJSON ? attendance.toJSON() : attendance),
+      don_vi_chinh_id: attendanceOwner?.don_vi_chinh_id || null,
+    });
     if (isFraud) {
       emitFraudAlert({
         type: 'GEOFENCE_CHECK_IN_ALERT',
