@@ -14,7 +14,8 @@ export const FacultyCard: React.FC<FacultyCardProps> = ({ faculty }) => {
     if (faculty.hoc_vi === 'tien_si' || faculty.danh_hieu.includes('TS')) return 'Tiến sĩ';
     if (faculty.hoc_vi === 'thac_si' || faculty.danh_hieu.includes('ThS')) return 'Thạc sĩ';
     if (faculty.hoc_vi === 'ky_su' || faculty.danh_hieu === 'KS') return 'Kỹ sư';
-    return 'Cử nhân';
+    if (faculty.hoc_vi === 'cu_nhan' || faculty.danh_hieu === 'CN') return 'Cử nhân';
+    return 'Giảng viên';
   };
 
   return (
@@ -72,10 +73,12 @@ export const FacultyCard: React.FC<FacultyCardProps> = ({ faculty }) => {
           <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <span className="truncate">{faculty.email}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <span className="truncate">{faculty.phong_lam_viec}</span>
-        </div>
+        {faculty.phong_lam_viec && (
+          <div className="flex items-center gap-2">
+            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="truncate">{faculty.phong_lam_viec}</span>
+          </div>
+        )}
       </div>
 
       {/* Action Link */}
@@ -84,7 +87,7 @@ export const FacultyCard: React.FC<FacultyCardProps> = ({ faculty }) => {
           {faculty.danh_hieu || getDegreeLabel()}
         </span>
         <Link
-          to={`/giang-vien/${faculty._id}`}
+          to={`/giang-vien/${faculty.id}`}
           className="inline-flex items-center gap-1 text-xs font-bold text-[#002b5c] hover:text-[#f37021] transition-colors"
         >
           <span>Xem lý lịch khoa học</span>

@@ -32,7 +32,7 @@ import {
   CreateSubjectPayload,
   UpdateSubjectPayload,
 } from '../../api/monHoc.api';
-import { isAdmin, hasRole } from '../../utils/phanQuyen';
+import { isAdmin, hasRole, canManageSubjects } from '../../utils/phanQuyen';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
@@ -74,10 +74,8 @@ export const Subjects: React.FC = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Role permissions
-  const canManage = useMemo(() => {
-    return hasRole(user, ['admin', 'bgh', 'dao_tao', 'truong_khoa', 'pho_khoa']);
-  }, [user]);
+  // Role permissions (đồng bộ 100% với quyền LICH:XEP_LICH | HE_THONG:CAU_HINH ở Backend)
+  const canManage = useMemo(() => canManageSubjects(user), [user]);
 
   const canDelete = useMemo(() => {
     return hasRole(user, ['admin', 'bgh']);
@@ -164,7 +162,7 @@ export const Subjects: React.FC = () => {
       subjects
         .map((s) => {
           if (!s.phong_ban_id) return '';
-          return typeof s.phong_ban_id === 'object' ? (s.phong_ban_id as any).id || (s.phong_ban_id as any)._id : s.phong_ban_id;
+          return typeof s.phong_ban_id === 'object' ? s.phong_ban_id.id : s.phong_ban_id;
         })
         .filter(Boolean)
     ).size;
@@ -190,13 +188,13 @@ export const Subjects: React.FC = () => {
 
   // Phân cấp danh sách Khoa & Bộ Môn
   const hierarchicalDepartments = useMemo(() => {
-    const faculties = departments.filter((d) => d.type === 'khoa').sort((a, b) => a.name.localeCompare(b.name, 'vi'));
-    const boMons = departments.filter((d) => d.type === 'bo_mon').sort((a, b) => a.name.localeCompare(b.name, 'vi'));
-    const functional = departments.filter((d) => d.type === 'phong_ban' || !d.type).sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+    const faculties = departments.filter((d) => d.loai_don_vi === 'khoa').sort((a, b) => a.ten_phong_ban.localeCompare(b.ten_phong_ban, 'vi'));
+    const boMons = departments.filter((d) => d.loai_don_vi === 'bo_mon').sort((a, b) => a.ten_phong_ban.localeCompare(b.ten_phong_ban, 'vi'));
+    const functional = departments.filter((d) => d.loai_don_vi === 'phong_ban' || !d.loai_don_vi).sort((a, b) => a.ten_phong_ban.localeCompare(b.ten_phong_ban, 'vi'));
 
     const boMonsByFaculty: Record<string, DepartmentItem[]> = {};
     boMons.forEach((bm) => {
-      const pId = typeof bm.parentId === 'object' ? bm.parentId?._id : bm.parentId;
+      const pId = typeof bm.don_vi_cha_id === 'object' ? bm.don_vi_cha_id?.id : bm.don_vi_cha_id;
       if (pId) {
         if (!boMonsByFaculty[pId]) boMonsByFaculty[pId] = [];
         boMonsByFaculty[pId].push(bm);
@@ -209,9 +207,14 @@ export const Subjects: React.FC = () => {
   // Helper lấy tên khoa / bộ môn
   const getDepartmentName = (dept: any) => {
     if (!dept) return 'Chưa phân công';
-    if (typeof dept === 'object' && dept.name) return dept.name;
-    const found = departments.find((d) => d._id === dept);
-    return found ? found.name : 'Chưa phân công';
+    if (typeof dept === 'object' && dept.ten_phong_ban) return dept.ten_phong_ban;
+    const found = departments.find((d) => d.id === dept);
+    return found ? found.ten_phong_ban : 'Chưa phân công';
+  };
+
+  const sanitizeExcelCell = (value: unknown): string => {
+    const str = String(value ?? '');
+    return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
   };
 
   // ===========================================================================
@@ -226,13 +229,13 @@ export const Subjects: React.FC = () => {
     try {
       const dataRows = displayedSubjects.map((s, idx) => ({
         'STT': idx + 1,
-        'Mã Môn Học': s.ma_mon || '--',
-        'Tên Môn Học': s.ten_mon || '--',
+        'Mã Môn Học': sanitizeExcelCell(s.ma_mon || '--'),
+        'Tên Môn Học': sanitizeExcelCell(s.ten_mon || '--'),
         'Số Tín Chỉ': s.so_tin_chi || 0,
         'Định Mức Giờ Chuẩn': `${(s.so_tin_chi || 0) * 15} tiết chuẩn`,
-        'Khoa / Bộ Môn Phụ Trách': getDepartmentName(s.phong_ban_id),
+        'Khoa / Bộ Môn Phụ Trách': sanitizeExcelCell(getDepartmentName(s.phong_ban_id)),
         'Trạng Thái Giảng Dạy': s.kich_hoat ? 'Đang giảng dạy' : 'Tạm ngưng',
-        'Mô Tả / Đề Cương': s.mo_ta || '',
+        'Mô Tả / Đề Cương': sanitizeExcelCell(s.mo_ta || ''),
       }));
 
       const ws = XLSX.utils.json_to_sheet(dataRows);
@@ -250,7 +253,13 @@ export const Subjects: React.FC = () => {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Danh Mục Môn Học');
 
-      const fileName = `Danh_Muc_Mon_Hoc_NTU_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const vnDateSlug = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+      const fileName = `Danh_Muc_Mon_Hoc_NTU_${vnDateSlug}.xlsx`;
       XLSX.writeFile(wb, fileName);
       toast.success('Đã xuất Danh mục môn học (.xlsx) thành công!');
     } catch (err) {
@@ -267,7 +276,7 @@ export const Subjects: React.FC = () => {
       ma_mon: '',
       ten_mon: '',
       so_tin_chi: 3,
-      phong_ban_id: departments.length > 0 ? departments[0]._id : '',
+      phong_ban_id: departments.length > 0 ? departments[0].id : '',
       mo_ta: '',
       kich_hoat: true,
     });
@@ -277,7 +286,7 @@ export const Subjects: React.FC = () => {
   const openEditModal = (subject: SubjectItem) => {
     const deptId =
       typeof subject.phong_ban_id === 'object' && subject.phong_ban_id
-        ? (subject.phong_ban_id as any).id || (subject.phong_ban_id as any)._id
+        ? subject.phong_ban_id.id
         : (subject.phong_ban_id as string) || '';
 
     setEditingSubject(subject);

@@ -1,6 +1,6 @@
 // Truy vấn danh bạ, hồ sơ và thống kê công khai của giảng viên.
 const { Op } = require('sequelize');
-const { NguoiDung, HoSoCanBo, PhongBan, LichTrinh, MonHoc } = require('../../models');
+const { sequelize, NguoiDung, HoSoCanBo, PhongBan, LichTrinh, MonHoc } = require('../../models');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
 const ServiceError = require('../../utils/loiNghiepVu');
 
@@ -12,7 +12,25 @@ const resolveAcademicTitle = (profile = {}) => {
   if (profile.hoc_vi === 'thac_si') return 'ThS';
   if (profile.hoc_vi === 'ky_su') return 'KS';
   if (profile.hoc_vi === 'cu_nhan') return 'CN';
-  return 'ThS';
+  return 'GV';
+};
+
+// Mở rộng danh sách đơn vị gồm đơn vị cha và các bộ môn trực thuộc
+const expandDepartmentIds = async (rootDeptId) => {
+  const allIds = [String(rootDeptId)];
+  let currentParents = [String(rootDeptId)];
+  while (currentParents.length > 0) {
+    const children = await PhongBan.findAll({
+      where: { don_vi_cha_id: { [Op.in]: currentParents } },
+      attributes: ['id'],
+      raw: true,
+    });
+    const nextIds = children.map((c) => String(c.id)).filter((id) => !allIds.includes(id));
+    if (nextIds.length === 0) break;
+    allIds.push(...nextIds);
+    currentParents = nextIds;
+  }
+  return allIds;
 };
 
 // Lấy danh sách giảng viên công khai có lọc theo từ khóa, đơn vị, học hàm, học vị và phân trang
@@ -31,8 +49,12 @@ const getPublicFacultyList = async ({
     trang_thai_lam_viec: 'dang_lam_viec',
   };
 
-  if (phong_ban_id && isValidUuid(phong_ban_id)) {
-    userWhere.don_vi_chinh_id = phong_ban_id;
+  if (phong_ban_id && phong_ban_id !== 'tat_ca') {
+    if (!isValidUuid(phong_ban_id)) {
+      throw new ServiceError('Mã đơn vị (phong_ban_id) không hợp lệ.', 400);
+    }
+    const scopedDeptIds = await expandDepartmentIds(phong_ban_id);
+    userWhere.don_vi_chinh_id = scopedDeptIds.length === 1 ? scopedDeptIds[0] : { [Op.in]: scopedDeptIds };
   }
 
   if (search && search.trim()) {
@@ -47,6 +69,13 @@ const getPublicFacultyList = async ({
   if (hoc_ham && hoc_ham !== 'tat_ca') profileWhere.hoc_ham = hoc_ham.toLowerCase();
   if (hoc_vi && hoc_vi !== 'tat_ca') profileWhere.hoc_vi = hoc_vi.toLowerCase();
 
+  const rankOrderExpr = sequelize.literal(
+    "CASE [ho_so].[hoc_ham] WHEN 'giao_su' THEN 1 WHEN 'pho_giao_su' THEN 2 ELSE 3 END"
+  );
+  const degreeOrderExpr = sequelize.literal(
+    "CASE [ho_so].[hoc_vi] WHEN 'tien_si' THEN 1 WHEN 'thac_si' THEN 2 WHEN 'ky_su' THEN 3 WHEN 'cu_nhan' THEN 4 ELSE 5 END"
+  );
+
   const { count: total, rows: facultyList } = await NguoiDung.findAndCountAll({
     where: userWhere,
     attributes: ['id', 'ho_ten', 'email', 'don_vi_chinh_id', 'anh_dai_dien', 'vai_tro_chinh'],
@@ -56,12 +85,13 @@ const getPublicFacultyList = async ({
         model: HoSoCanBo,
         as: 'ho_so',
         where: profileWhere,
+        required: true,
         attributes: ['hoc_ham', 'hoc_vi', 'chuc_vu', 'ngay_bat_dau_giang_day'],
       },
     ],
     order: [
-      [{ model: HoSoCanBo, as: 'ho_so' }, 'hoc_ham', 'ASC'],
-      [{ model: HoSoCanBo, as: 'ho_so' }, 'hoc_vi', 'ASC'],
+      [rankOrderExpr, 'ASC'],
+      [degreeOrderExpr, 'ASC'],
       ['ho_ten', 'ASC'],
     ],
     offset,
@@ -71,6 +101,7 @@ const getPublicFacultyList = async ({
 
   const data = facultyList.map((f) => {
     const profile = f.ho_so || {};
+    const deptName = f.don_vi_chinh?.ten_phong_ban || 'Chưa phân đơn vị';
     return {
       id: f.id,
       ho_ten: f.ho_ten,
@@ -79,11 +110,11 @@ const getPublicFacultyList = async ({
       hoc_ham: profile.hoc_ham || 'khong',
       hoc_vi: profile.hoc_vi || 'thac_si',
       chuc_vu: profile.chuc_vu || 'Giảng viên',
-      khoa: f.don_vi_chinh?.ten_phong_ban || 'Khoa Công nghệ Thông tin',
+      khoa: deptName,
       khoa_id: f.don_vi_chinh?.id || null,
       anh_dai_dien: f.anh_dai_dien || null,
       huong_nghien_cuu: [],
-      phong_lam_viec: 'Tòa nhà A1, ĐH Nguyễn Trãi (NTU)',
+      phong_lam_viec: f.don_vi_chinh?.ten_phong_ban ? `Văn phòng ${f.don_vi_chinh.ten_phong_ban}` : '',
       hoc_phan_giang_day: [],
       tieu_su: '',
     };
@@ -111,7 +142,13 @@ const getPublicFacultyById = async (id) => {
     attributes: ['id', 'ho_ten', 'email', 'don_vi_chinh_id', 'anh_dai_dien'],
     include: [
       { model: PhongBan, as: 'don_vi_chinh', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] },
-      { model: HoSoCanBo, as: 'ho_so', attributes: ['hoc_ham', 'hoc_vi', 'chuc_vu', 'ngay_bat_dau_giang_day'] },
+      {
+        model: HoSoCanBo,
+        as: 'ho_so',
+        where: { loai_nhan_su: 'giang_vien' },
+        required: true,
+        attributes: ['hoc_ham', 'hoc_vi', 'chuc_vu', 'ngay_bat_dau_giang_day'],
+      },
     ],
   });
 
@@ -140,6 +177,7 @@ const getPublicFacultyById = async (id) => {
   }
 
   const profile = faculty.ho_so || {};
+  const deptName = faculty.don_vi_chinh?.ten_phong_ban || 'Chưa phân đơn vị';
   return {
     id: faculty.id,
     ho_ten: faculty.ho_ten,
@@ -148,15 +186,14 @@ const getPublicFacultyById = async (id) => {
     hoc_ham: profile.hoc_ham || 'khong',
     hoc_vi: profile.hoc_vi || 'thac_si',
     chuc_vu: profile.chuc_vu || 'Giảng viên',
-    khoa: faculty.don_vi_chinh?.ten_phong_ban || 'Khoa Công nghệ Thông tin',
+    khoa: deptName,
     khoa_id: faculty.don_vi_chinh?.id || null,
     anh_dai_dien: faculty.anh_dai_dien || null,
     huong_nghien_cuu: [],
-    phong_lam_viec: 'Phòng 402, Tòa nhà A1, ĐH Nguyễn Trãi (NTU)',
+    phong_lam_viec: faculty.don_vi_chinh?.ten_phong_ban ? `Văn phòng ${faculty.don_vi_chinh.ten_phong_ban}` : '',
     hoc_phan_giang_day: distinctSubjects.map((s) => s.ten_mon),
     cac_mon_chi_tiet: distinctSubjects,
-    tieu_su:
-      'Giảng viên có nhiều năm kinh nghiệm giảng dạy và nghiên cứu khoa học, tích cực tham gia hướng dẫn sinh viên nghiên cứu và các dự án công nghệ thực tiễn.',
+    tieu_su: '',
     ngay_bat_dau_giang_day: profile.ngay_bat_dau_giang_day || null,
   };
 };

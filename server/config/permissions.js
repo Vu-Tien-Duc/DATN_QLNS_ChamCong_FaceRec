@@ -52,6 +52,8 @@ const CANONICAL_ROLE_PERMISSIONS = {
     PERMISSIONS.CONG_XEM_BAN_THAN,
     PERMISSIONS.CONG_XEM_TOAN_TRUONG,
     PERMISSIONS.LICH_XEM_DON_VI,
+    PERMISSIONS.LICH_XEP_LICH,
+    PERMISSIONS.LICH_DAY_BU,
     PERMISSIONS.LUONG_XEM_BAN_THAN,
     PERMISSIONS.LUONG_DUYET,
     PERMISSIONS.LUONG_KHOA,
@@ -90,11 +92,6 @@ const CANONICAL_ROLE_PERMISSIONS = {
     PERMISSIONS.LUONG_XEM_BAN_THAN,
     PERMISSIONS.LUONG_LAP_BANG,
     PERMISSIONS.LUONG_KHOA,
-  ],
-
-  kiem_toan: [
-    PERMISSIONS.CONG_XEM_TOAN_TRUONG,
-    PERMISSIONS.HE_THONG_KIEM_TOAN,
   ],
 
   truong_khoa: [
@@ -201,25 +198,7 @@ const CANONICAL_ROLE_PERMISSIONS = {
     PERMISSIONS.LUONG_XEM_BAN_THAN,
   ],
 
-  chuyen_vien: [
-    PERMISSIONS.DON_TU_TAO,
-    PERMISSIONS.DON_TU_XEM_BAN_THAN,
-    PERMISSIONS.DON_TU_HUY,
-    PERMISSIONS.CONG_QUET_MAT,
-    PERMISSIONS.CONG_XEM_BAN_THAN,
-    PERMISSIONS.CONG_GIAI_TRINH,
-    PERMISSIONS.LUONG_XEM_BAN_THAN,
-  ],
   nhan_vien: [
-    PERMISSIONS.DON_TU_TAO,
-    PERMISSIONS.DON_TU_XEM_BAN_THAN,
-    PERMISSIONS.DON_TU_HUY,
-    PERMISSIONS.CONG_QUET_MAT,
-    PERMISSIONS.CONG_XEM_BAN_THAN,
-    PERMISSIONS.CONG_GIAI_TRINH,
-    PERMISSIONS.LUONG_XEM_BAN_THAN,
-  ],
-  quan_ly_xe: [
     PERMISSIONS.DON_TU_TAO,
     PERMISSIONS.DON_TU_XEM_BAN_THAN,
     PERMISSIONS.DON_TU_HUY,
@@ -254,7 +233,7 @@ function getEffectivePermissions(user) {
     day: '2-digit',
   }).format(new Date());
 
-  const primaryRole = user.vai_tro_chinh || user.primaryRole || user.role;
+  const primaryRole = user.vai_tro_chinh;
   if (primaryRole) {
     const primaryCode = normalizeRole(primaryRole);
     for (const p of ROLE_PERMISSIONS[primaryCode] || []) {
@@ -262,7 +241,7 @@ function getEffectivePermissions(user) {
     }
   }
 
-  const rolesList = user.danh_sach_vai_tro || user.roles || [];
+  const rolesList = user.danh_sach_vai_tro || [];
 
   if (Array.isArray(rolesList) && rolesList.length > 0) {
     for (const r of rolesList) {
@@ -271,7 +250,7 @@ function getEffectivePermissions(user) {
         continue;
       }
 
-      const roleCode = normalizeRole(typeof r === 'string' ? r : r.ma_vai_tro || r.role);
+      const roleCode = normalizeRole(typeof r === 'string' ? r : r.ma_vai_tro);
       const rolePerms = ROLE_PERMISSIONS[roleCode] || [];
       for (const p of rolePerms) {
         permissions.add(p);
@@ -279,6 +258,9 @@ function getEffectivePermissions(user) {
 
       if (typeof r === 'object' && Boolean(r.duoc_uy_quyen) && ['pho_khoa', 'pho_bo_mon', 'pho_phong'].includes(roleCode)) {
         permissions.add(PERMISSIONS.DON_TU_DUYET_CAP_1);
+        if (['pho_khoa', 'pho_bo_mon'].includes(roleCode)) {
+          permissions.add(PERMISSIONS.LICH_XEP_LICH);
+        }
       }
     }
   }

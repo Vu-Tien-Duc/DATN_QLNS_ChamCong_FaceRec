@@ -7,10 +7,16 @@ const { uuidPk, uuidFk } = require('./modelHelpers');
 const PHAM_VI = ['toan_truong', 'khoa', 'bo_mon', 'phong_ban'];
 
 class VaiTroNguoiDung extends Model {
-  // Kiểm tra vai trò còn trong khoảng thời gian hiệu lực
+  // Kiểm tra vai trò còn trong khoảng thời gian hiệu lực theo múi giờ Việt Nam (Asia/Ho_Chi_Minh)
   conHieuLuc(at = new Date()) {
     const day = (d) => String(d).slice(0, 10);
-    const today = day(at.toISOString());
+    const refDate = at instanceof Date ? at : new Date(at);
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(refDate);
     if (this.tu_ngay && day(this.tu_ngay) > today) return false;
     if (this.den_ngay && day(this.den_ngay) < today) return false;
     return true;

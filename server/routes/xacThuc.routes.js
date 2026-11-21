@@ -11,7 +11,7 @@ const {
   forgotPassword,
   resetPassword,
 } = require('../controllers/xacThuc.controller');
-const { verifyToken } = require('../middlewares/xacThuc.middleware');
+const { verifyToken, attachOptionalUser } = require('../middlewares/xacThuc.middleware');
 const { upload } = require('../middlewares/taiTep.middleware');
 const { loginLimiter, passwordResetLimiter } = require('../middlewares/gioiHanTruyCap.middleware');
 
@@ -30,7 +30,7 @@ router.post('/dang-nhap', loginLimiter, login);
 
 // 2. Quản lý phiên & Token Rotation
 router.post('/lam-moi-token', refreshToken);
-router.post('/dang-xuat', logout);
+router.post('/dang-xuat', attachOptionalUser, logout);
 
 // 3. Thông tin cá nhân & Đổi mật khẩu
 router.get('/ho-so', verifyToken, getMe);

@@ -5,6 +5,7 @@ const { sendCheckOutNotificationEmail } = require('../heThong/guiEmail.service')
 const { validateGeofence, resolveUserGeofenceTargets } = require('../../utils/hoTroChamCong');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
+const { withDistributedLock } = require('../../utils/khoaPhanTan');
 const { kiemTraChoPhepCheckOut } = require('./khoiCaDay.service');
 const {
   ServiceError,
@@ -54,6 +55,7 @@ const performCheckOut = async ({
   const acc = do_chinh_xac !== undefined && do_chinh_xac !== null && do_chinh_xac !== '' ? Number(do_chinh_xac) : null;
   const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
 
+  return withDistributedLock(`attendance_punch:${nguoi_dung_id}`, 15, async () => {
   const now = new Date();
   const { dateStr } = getVietnamDayRange(now);
 
@@ -257,6 +259,7 @@ const performCheckOut = async ({
     co_gian_lan: isFraud,
     ly_do_gian_lan: fraudReason,
   };
+  });
 };
 
 module.exports = { performCheckOut };

@@ -29,7 +29,9 @@ import toast from 'react-hot-toast';
 import { faceApi, DetectPoseResponse } from '../../api/khuonMat.api';
 import { audioFeedback } from '../../utils/amThanh';
 import { Portal } from '../chung/CongDichChuyen';
+import { AnhBaoMat } from '../chung/AnhBaoMat';
 import { useAuthStore } from '../../stores/useXacThucStore';
+import { hasRole } from '../../utils/phanQuyen';
 import { cameraManager } from '../../utils/quanLyCamera';
 
 export interface AngleConfigItem {
@@ -285,6 +287,9 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
     capturedImagesRef.current = capturedImages;
   }, [capturedImages]);
 
+  const authUser = useAuthStore((s) => s.user);
+  const canTestRecognition = hasRole(authUser, ['admin', 'bgh', 'tccb']);
+
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [currentDetectedPose, setCurrentDetectedPose] = useState<string>('Chờ camera...');
   const [faceInFrame, setFaceInFrame] = useState<boolean>(false);
@@ -292,12 +297,14 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [deleting, setDeleting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [duplicateConflict, setDuplicateConflict] = useState<{ message: string; ho_ten_trung?: string } | null>(null);
   const [tabMode, setTabMode] = useState<'camera' | 'upload'>('camera');
   const [consentAgreed, setConsentAgreed] = useState<boolean>(true);
 
   // Chế độ chính của Modal: 'enroll' (Đăng ký 5 góc) hoặc 'test' (Kiểm thử nhận diện AI)
-  const [mainMode, setMainMode] = useState<'enroll' | 'test'>(initialMode);
-  const mainModeRef = useRef<'enroll' | 'test'>(initialMode);
+  const resolvedInitialMode = initialMode === 'test' && !canTestRecognition ? 'enroll' : initialMode;
+  const [mainMode, setMainMode] = useState<'enroll' | 'test'>(resolvedInitialMode);
+  const mainModeRef = useRef<'enroll' | 'test'>(resolvedInitialMode);
 
   // Kết quả kiểm thử nhận diện AI
   const [testResult, setTestResult] = useState<{
@@ -388,13 +395,13 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
       setTestResult(resObj);
 
       if (data.khop_khuon_mat) {
-        const isMatchedCurrent = !currentEmployee?._id || String(data.nguoi_dung?.id) === String(currentEmployee._id || currentEmployee.id);
+        const isMatchedCurrent = !currentEmployee?.id || String(data.nguoi_dung?.id) === String(currentEmployee.id);
         if (isMatchedCurrent) {
           audioFeedback.playSuccessChime();
           toast.success(`✓ Khớp đúng nhân sự: ${data.nguoi_dung?.ho_ten || 'Cán bộ'}!`);
         } else {
           audioFeedback.playWarningBeep();
-          toast(`⚠️ Nhận diện thấy: ${data.nguoi_dung?.ho_ten || 'Cán bộ'} (Khác với hồ sơ ${currentEmployee?.fullName || 'đang chọn'})`, {
+          toast(`⚠️ Nhận diện thấy: ${data.nguoi_dung?.ho_ten || 'Cán bộ'} (Khác với hồ sơ ${currentEmployee?.ho_ten || 'đang chọn'})`, {
             icon: '⚠️',
             duration: 6000,
           });
@@ -475,7 +482,7 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
         guidanceText: 'Đưa khuôn mặt vào giữa khung hình',
       });
     }
-  }, [isOpen, currentEmployee?._id]);
+  }, [isOpen, currentEmployee?.id]);
 
   useEffect(() => {
     activeStepRef.current = activeStep;
@@ -932,9 +939,10 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
       if (isTestMode) {
         if (isTestingRecognitionRef.current || isExecutingTestRef.current) {
           guidanceText = '⚡ Đang đối soát vector sinh trắc học với CSDL RAM FAISS...';
-        } else if (testResultRef.current?.matched) {
-          guidanceText = `✓ Đã khớp nhận diện: ${testResultRef.current.user?.fullName || 'Cán bộ'}${(testResultRef.current.similarity ?? testResultRef.current.confidence) !== undefined ? ` (${Math.round((testResultRef.current.similarity ?? testResultRef.current.confidence) * 100)}%)` : ''}`;
-        } else if (testResultRef.current && !testResultRef.current.matched) {
+        } else if (testResultRef.current?.khop_khuon_mat) {
+          const scoreVal = testResultRef.current.do_tuong_dong ?? testResultRef.current.do_tin_cay;
+          guidanceText = `✓ Đã khớp nhận diện: ${testResultRef.current.nguoi_dung?.ho_ten || 'Cán bộ'}${scoreVal !== undefined ? ` (${Math.round(scoreVal * 100)}%)` : ''}`;
+        } else if (testResultRef.current && !testResultRef.current.khop_khuon_mat) {
           guidanceText = '✕ Không tìm thấy khuôn mặt trùng khớp trong hệ thống';
         } else {
           guidanceText = '🎯 Hướng khuôn mặt vào khung hình để kiểm thử nhận diện';
@@ -953,7 +961,7 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
         yaw: Math.round(yawDeg),
         pitch: Math.round(pitchDeg),
         roll: Math.round(rollDeg),
-        isTargetMet: isTestMode ? Boolean(testResultRef.current?.matched) : (allAnglesDone || currentAngleCaptured || isTargetMet),
+        isTargetMet: isTestMode ? Boolean(testResultRef.current?.khop_khuon_mat) : (allAnglesDone || currentAngleCaptured || isTargetMet),
         progress: holdProgress,
         guidanceText,
       });
@@ -976,7 +984,7 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
     const cornerLen = Math.min(26, boxW * 0.2);
     const isMatchedTargetUser = Boolean(
       testResultRef.current?.khop_khuon_mat &&
-      (!currentEmployee?._id || String(testResultRef.current.nguoi_dung?.id) === String(currentEmployee._id || currentEmployee.id))
+      (!currentEmployee?.id || String(testResultRef.current.nguoi_dung?.id) === String(currentEmployee.id))
     );
     const testColor = testResultRef.current?.khop_khuon_mat
       ? (isMatchedTargetUser ? '#10b981' : '#f59e0b')
@@ -1393,7 +1401,7 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
   };
 
   // Lưu tất cả các góc khuôn mặt lên hệ thống
-  const handleSaveAllAngles = async () => {
+  const handleSaveAllAngles = async (forceOverride = false) => {
     const validCount = Object.values(capturedImages).filter((item) => Boolean(item?.blob)).length;
     if (validCount === 0) {
       setErrorMsg('Vui lòng chụp hoặc tải lên ít nhất 1 góc khuôn mặt mới.');
@@ -1407,23 +1415,22 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
 
     setSubmitting(true);
     setErrorMsg('');
+    setDuplicateConflict(null);
 
     try {
       const formData = new FormData();
       formData.append('ma_can_bo', currentEmployee.id || currentEmployee.email || currentEmployee.ma_can_bo);
       if (currentEmployee.ho_ten) formData.append('ho_ten', currentEmployee.ho_ten);
       formData.append('dong_y_thu_thap', 'true');
-      if (currentEmployee.da_dang_ky_face) {
+      if (forceOverride === true) {
         formData.append('ghi_de', 'true');
       }
 
       for (const [key, item] of Object.entries(capturedImages)) {
-        if (!item) continue;
-        if (item.blob) {
-          formData.append(`image_${key}`, item.blob, `${key}.jpg`);
-        } else if (item.existingUrl) {
-          formData.append(`image_${key}`, item.existingUrl);
-        }
+        if (!item?.blob) continue;
+        const mimeType = String(item.blob.type || '').toLowerCase();
+        const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
+        formData.append(`image_${key}`, item.blob, `${key}.${ext}`);
       }
 
       const res = await faceApi.enrollMultiAngle(formData);
@@ -1440,19 +1447,31 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
 
         if (onSuccess) onSuccess();
 
-        // Tự động chuyển sang tab Kiểm Thử Nhận Diện để test ngay!
-        setTimeout(() => {
-          setMainMode('test');
-          setTestResult(null);
-          testStableCountRef.current = 0;
-          isExecutingTestRef.current = false;
-          toast.success('Chuyển sang kiểm thử: Hãy nhìn vào camera để kiểm tra AI nhận diện bạn!');
-        }, 1200);
+        if (canTestRecognition) {
+          // Tự động chuyển sang tab Kiểm Thử Nhận Diện để test ngay!
+          setTimeout(() => {
+            setMainMode('test');
+            setTestResult(null);
+            testStableCountRef.current = 0;
+            isExecutingTestRef.current = false;
+            toast.success('Chuyển sang kiểm thử: Hãy nhìn vào camera để kiểm tra AI nhận diện bạn!');
+          }, 1200);
+        } else {
+          onClose();
+        }
       } else {
         throw new Error(res.message || 'Lỗi khi lưu dữ liệu khuôn mặt.');
       }
     } catch (err: any) {
+      const status = err.response?.status;
+      const errCode = err.response?.data?.errorCode;
       const msg = err.response?.data?.message || err.message || 'Lỗi kết nối máy chủ.';
+      if (status === 409 || errCode === 'USER_FACE_ALREADY_REGISTERED') {
+        setDuplicateConflict({
+          message: msg,
+          ho_ten_trung: err.response?.data?.data?.ho_ten_trung,
+        });
+      }
       setErrorMsg(msg);
       audioFeedback.playWarningBeep();
       toast.error(msg, { duration: 6000 });
@@ -1463,7 +1482,7 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
 
   // Xóa toàn bộ dữ liệu khuôn mặt theo Nghị định 13/2023/NĐ-CP
   const handleDeleteFace = async () => {
-    const targetId = currentEmployee?.id || currentEmployee?._id;
+    const targetId = currentEmployee?.id;
     if (!targetId) return;
     if (!window.confirm(`Xác nhận xóa sạch dữ liệu sinh trắc học khuôn mặt của "${currentEmployee.ho_ten}" khỏi hệ thống theo Nghị định 13/2023/NĐ-CP?`)) {
       return;
@@ -1573,23 +1592,25 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
                   <Camera className="w-3.5 h-3.5" />
                   <span>Đăng ký</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMainMode('test');
-                    setTestResult(null);
-                    testStableCountRef.current = 0;
-                    isExecutingTestRef.current = false;
-                  }}
-                  className={`h-7 px-2.5 rounded-lg text-xs font-semibold transition-all inline-flex items-center gap-1.5 cursor-pointer ${
-                    mainMode === 'test'
-                      ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                  }`}
-                >
-                  <ScanFace className="w-3.5 h-3.5" />
-                  <span>Kiểm thử</span>
-                </button>
+                {canTestRecognition && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMainMode('test');
+                      setTestResult(null);
+                      testStableCountRef.current = 0;
+                      isExecutingTestRef.current = false;
+                    }}
+                    className={`h-7 px-2.5 rounded-lg text-xs font-semibold transition-all inline-flex items-center gap-1.5 cursor-pointer ${
+                      mainMode === 'test'
+                        ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-2xs'
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    <ScanFace className="w-3.5 h-3.5" />
+                    <span>Kiểm thử</span>
+                  </button>
+                )}
               </div>
 
               {/* Chọn nguồn ảnh khi Đăng ký: Webcam / Tải ảnh */}
@@ -2093,8 +2114,8 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
                         testResult.khop_khuon_mat ? (
                           (() => {
                             const isMatchCurrent =
-                              !currentEmployee?._id ||
-                              String(testResult.nguoi_dung?.id) === String(currentEmployee._id || currentEmployee.id);
+                              !currentEmployee?.id ||
+                              String(testResult.nguoi_dung?.id) === String(currentEmployee.id);
                             return (
                               <div
                                 className={`p-4 rounded-2xl border space-y-3 ${
@@ -2121,16 +2142,21 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
                                   )}
                                 </div>
 
-                                {!isMatchCurrent && currentEmployee?.fullName && (
+                                {!isMatchCurrent && currentEmployee?.ho_ten && (
                                   <div className="p-2.5 rounded-xl bg-amber-100/70 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 text-[11px] leading-relaxed">
-                                    Đang kiểm thử hồ sơ <strong>{currentEmployee.fullName}</strong>, nhưng AI nhận diện người trước camera là <strong>{testResult.nguoi_dung?.ho_ten}</strong>.
+                                    Đang kiểm thử hồ sơ <strong>{currentEmployee.ho_ten}</strong>, nhưng AI nhận diện người trước camera là <strong>{testResult.nguoi_dung?.ho_ten}</strong>.
                                   </div>
                                 )}
 
                                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center gap-3">
                                   <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center shrink-0">
                                     {testResult.nguoi_dung?.anh_dai_dien ? (
-                                      <img src={testResult.nguoi_dung.anh_dai_dien} alt="Avatar" className="w-full h-full object-cover" />
+                                      <AnhBaoMat
+                                        src={testResult.nguoi_dung.anh_dai_dien}
+                                        alt="Avatar"
+                                        className="w-full h-full object-cover"
+                                        fallback={<User className="w-5 h-5 text-slate-400" />}
+                                      />
                                     ) : (
                                       <User className="w-5 h-5 text-slate-400" />
                                     )}
@@ -2260,6 +2286,26 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
               </label>
             )}
 
+            {/* Xác nhận ghi đè khi trùng sinh trắc học 409 */}
+            {duplicateConflict && mainMode === 'enroll' && (
+              <div className="px-3.5 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  <span>
+                    {duplicateConflict.message} Nếu chắc chắn đúng người cần cập nhật đè, vui lòng bấm xác nhận.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleSaveAllAngles(true)}
+                  className="h-8 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs shrink-0 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Xác nhận ghi đè
+                </button>
+              </div>
+            )}
+
             {/* Thông báo lỗi nếu có */}
             {errorMsg && (
               <div className="px-3.5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
@@ -2274,7 +2320,9 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
             {mainMode === 'enroll' ? (
               <>
                 <div>
-                  {currentEmployee?._id && currentEmployee?.isFaceRegistered && (
+                  {currentEmployee?.id &&
+                    currentEmployee?.da_dang_ky_face &&
+                    String(currentEmployee.id) !== String(authUser?.id) && (
                     <button
                       type="button"
                       onClick={handleDeleteFace}
@@ -2300,7 +2348,7 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={handleSaveAllAngles}
+                    onClick={() => handleSaveAllAngles(false)}
                     disabled={submitting || capturedCount === 0 || !consentAgreed}
                     className="h-9 px-5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs transition-colors shadow-xs cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
                   >

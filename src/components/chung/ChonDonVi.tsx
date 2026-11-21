@@ -11,23 +11,10 @@ import {
   Layers,
 } from 'lucide-react';
 import { normalizeRoleKey } from '../../utils/phanQuyen';
+import { DepartmentItem } from '../../types/phongBan.types';
 import { Portal } from './CongDichChuyen';
 
-export interface DepartmentItem {
-  id?: string;
-  _id: string;
-  ten_phong_ban?: string;
-  /** @deprecated Dùng ten_phong_ban */
-  name?: string;
-  code?: string;
-  loai_don_vi?: string;
-  /** @deprecated Dùng loai_don_vi */
-  type?: string;
-  don_vi_cha_id?: string | { id?: string; _id?: string; ten_phong_ban?: string; name?: string } | null;
-  /** @deprecated Dùng don_vi_cha_id */
-  parentId?: string | { _id: string; name?: string; ten_phong_ban?: string } | null;
-  [key: string]: any;
-}
+export type { DepartmentItem };
 
 export interface DepartmentSelectProps {
   departments: DepartmentItem[];
@@ -43,10 +30,10 @@ export interface DepartmentSelectProps {
   allLabel?: string;
 }
 
-export const getDeptCategory = (d?: DepartmentItem | any): 'bgh' | 'khoa' | 'bo_mon' | 'bomon' | 'phong_ban' | 'phongban' => {
+export const getDeptCategory = (d?: DepartmentItem | any): 'bgh' | 'khoa' | 'bo_mon' | 'phong_ban' => {
   if (!d) return 'khoa';
-  const name = String(d.name || d.ten_phong_ban || '').toLowerCase().trim();
-  const rawType = String(d.type || d.loai_don_vi || '').toLowerCase().trim();
+  const name = String(d.ten_phong_ban || '').toLowerCase().trim();
+  const rawType = String(d.loai_don_vi || '').toLowerCase().trim();
 
   // 1. Ban Giám Hiệu
   if (rawType === 'bgh' || name.includes('giám hiệu') || name.includes('hội đồng trường')) {
@@ -55,8 +42,8 @@ export const getDeptCategory = (d?: DepartmentItem | any): 'bgh' | 'khoa' | 'bo_
 
   // 2. Ưu tiên loại đơn vị chuẩn từ CSDL
   if (rawType === 'khoa') return 'khoa';
-  if (rawType === 'bo_mon' || rawType === 'bomon') return 'bo_mon';
-  if (rawType === 'phong_ban' || rawType === 'phongban') return 'phong_ban';
+  if (rawType === 'bo_mon') return 'bo_mon';
+  if (rawType === 'phong_ban') return 'phong_ban';
 
   // 3. Nhận diện các đơn vị khối phòng ban, ban chức năng (tránh nhầm lẫn "Khoa học công nghệ")
   if (
@@ -92,11 +79,11 @@ export const getDeptCategory = (d?: DepartmentItem | any): 'bgh' | 'khoa' | 'bo_
 };
 
 const getParentId = (d: DepartmentItem): string => {
-  if (!d.parentId) return '';
-  if (typeof d.parentId === 'object' && '_id' in d.parentId) {
-    return String(d.parentId._id);
+  if (!d.don_vi_cha_id) return '';
+  if (typeof d.don_vi_cha_id === 'object' && 'id' in d.don_vi_cha_id) {
+    return String(d.don_vi_cha_id.id);
   }
-  return String(d.parentId);
+  return String(d.don_vi_cha_id);
 };
 
 export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
@@ -179,7 +166,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
   // Tìm đơn vị hiện đang được chọn
   const selectedDept = useMemo(() => {
     if (!value) return null;
-    return departments.find((d) => String(d._id) === String(value)) || null;
+    return departments.find((d) => String(d.id) === String(value)) || null;
   }, [departments, value]);
 
   // Tự động mở rộng Khoa cha nếu đơn vị đang chọn là một Bộ môn con
@@ -207,14 +194,11 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
 
     const isNhanVien = [
       'nhan_vien',
-      'chuyen_vien',
       'tccb',
       'ke_toan',
       'dao_tao',
-      'kiem_toan',
       'truong_phong',
       'pho_phong',
-      'quan_ly_xe',
     ].includes(r);
     const isGiangVien = r === 'giang_vien';
     const isTruongKhoa = r === 'truong_khoa' || r === 'pho_khoa';
@@ -227,7 +211,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
     const allowBgh = isBGH || isAdmin || r === '';
     const bghList = allowBgh
       ? allBgh.filter((d) => {
-          if (q && !d.name.toLowerCase().includes(q)) return false;
+          if (q && !d.ten_phong_ban.toLowerCase().includes(q)) return false;
           return true;
         })
       : [];
@@ -245,18 +229,18 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
 
     if (allowKhoaAndBomon) {
       allKhoa.forEach((khoa) => {
-        const childBomons = allBomon.filter((bm) => getParentId(bm) === String(khoa._id));
+        const childBomons = allBomon.filter((bm) => getParentId(bm) === String(khoa.id));
         // Trưởng khoa / Phó khoa hoặc ở bộ lọc ngoài (r === '') được chọn Khoa.
         // Giảng viên & Trưởng bộ môn bắt buộc phải chọn Bộ môn trực thuộc Khoa (trừ khi Khoa chưa có bộ môn con).
         const canSelectKhoa = isTruongKhoa || r === '' || childBomons.length === 0;
 
         // Lọc theo tìm kiếm
-        const khoaMatches = q ? khoa.name.toLowerCase().includes(q) : true;
+        const khoaMatches = q ? khoa.ten_phong_ban.toLowerCase().includes(q) : true;
         const matchingBomons = childBomons.filter((bm) => {
           // Trưởng khoa / Phó khoa không cần hiển thị bộ môn con
           if (isTruongKhoa) return false;
           if (q) {
-            return bm.name.toLowerCase().includes(q) || khoa.name.toLowerCase().includes(q);
+            return bm.ten_phong_ban.toLowerCase().includes(q) || khoa.ten_phong_ban.toLowerCase().includes(q);
           }
           return true;
         });
@@ -276,13 +260,13 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
     // Chỉ hiển thị cho Giảng viên / Trưởng bộ môn hoặc khi chưa chọn role
     const assignedBomonIds = new Set(
       allKhoa.flatMap((khoa) =>
-        allBomon.filter((bm) => getParentId(bm) === String(khoa._id)).map((bm) => String(bm._id))
+        allBomon.filter((bm) => getParentId(bm) === String(khoa.id)).map((bm) => String(bm.id))
       )
     );
     const unassignedBomons = (isGiangVien || isTruongBoMon || r === '')
       ? allBomon.filter((bm) => {
-          if (assignedBomonIds.has(String(bm._id))) return false;
-          if (q && !bm.name.toLowerCase().includes(q)) return false;
+          if (assignedBomonIds.has(String(bm.id))) return false;
+          if (q && !bm.ten_phong_ban.toLowerCase().includes(q)) return false;
           return true;
         })
       : [];
@@ -293,7 +277,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
     const allowPhong = isNhanVien || isAdmin || r === '';
     const phongList = allowPhong
       ? allPhong.filter((d) => {
-          if (q && !d.name.toLowerCase().includes(q)) return false;
+          if (q && !d.ten_phong_ban.toLowerCase().includes(q)) return false;
           return true;
         })
       : [];
@@ -359,7 +343,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                 {selectedCategory === 'phong_ban' && <Building2 className="w-3.5 h-3.5 text-amber-500" />}
               </span>
               <span className={`font-medium text-slate-900 dark:text-white truncate ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
-                {selectedDept.name}
+                {selectedDept.ten_phong_ban}
               </span>
             </>
           ) : (
@@ -464,11 +448,11 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                       Ban Giám Hiệu
                     </div>
                     {filteredTree.bghList.map((dept) => {
-                      const isSelected = String(dept._id) === String(value);
+                      const isSelected = String(dept.id) === String(value);
                       return (
                         <div
-                          key={dept._id}
-                          onClick={() => handleSelect(dept._id)}
+                          key={dept.id}
+                          onClick={() => handleSelect(dept.id)}
                           className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
                             isSelected
                               ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-bold'
@@ -477,7 +461,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                         >
                           <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
                             <span className="text-sm shrink-0">⭐</span>
-                            <span className="leading-snug">{dept.name}</span>
+                            <span className="leading-snug">{dept.ten_phong_ban}</span>
                           </div>
                           {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
                         </div>
@@ -495,14 +479,14 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                     </div>
 
                     {filteredTree.khoaGroups.map(({ khoa, canSelectKhoa, bomons }) => {
-                      const isKhoaSelected = String(khoa._id) === String(value);
+                      const isKhoaSelected = String(khoa.id) === String(value);
                       const hasBomons = bomons.length > 0;
                       // Tự động mở nếu đang tìm kiếm hoặc nếu người dùng đã click mở
-                      const isExpanded = searchQuery.trim().length > 0 || Boolean(expandedKhoas[khoa._id]);
+                      const isExpanded = searchQuery.trim().length > 0 || Boolean(expandedKhoas[khoa.id]);
 
                       return (
                         <div
-                          key={khoa._id}
+                          key={khoa.id}
                           className="rounded-lg border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/40 dark:bg-slate-900/40 p-1 space-y-0.5"
                         >
                           {/* Header Khoa - Chọn Khoa hoặc Mở rộng bộ môn */}
@@ -516,16 +500,16 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                             <div
                               onClick={() => {
                                 if (canSelectKhoa) {
-                                  handleSelect(khoa._id);
+                                  handleSelect(khoa.id);
                                 } else if (hasBomons) {
-                                  setExpandedKhoas((prev) => ({ ...prev, [khoa._id]: !prev[khoa._id] }));
+                                  setExpandedKhoas((prev) => ({ ...prev, [khoa.id]: !prev[khoa.id] }));
                                 }
                               }}
                               className="flex items-center gap-2 min-w-0 flex-1 pr-2 cursor-pointer select-none"
-                              title={canSelectKhoa ? `Chọn ${khoa.name}` : `Bấm để mở danh sách bộ môn trực thuộc`}
+                              title={canSelectKhoa ? `Chọn ${khoa.ten_phong_ban}` : `Bấm để mở danh sách bộ môn trực thuộc`}
                             >
                               <span className="text-sm shrink-0">🏛️</span>
-                              <span className="leading-snug truncate">{khoa.name}</span>
+                              <span className="leading-snug truncate">{khoa.ten_phong_ban}</span>
                               {hasBomons && (
                                 <span className={`text-[10px] font-normal shrink-0 ${canSelectKhoa ? 'text-slate-400' : 'text-blue-500 font-medium'}`}>
                                   {canSelectKhoa ? `(${bomons.length})` : `(${bomons.length} bộ môn)`}
@@ -541,7 +525,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setExpandedKhoas((prev) => ({ ...prev, [khoa._id]: !prev[khoa._id] }));
+                                  setExpandedKhoas((prev) => ({ ...prev, [khoa.id]: !prev[khoa.id] }));
                                 }}
                                 className="p-1 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-100/60 dark:hover:bg-blue-900/40 transition-colors shrink-0 cursor-pointer"
                                 title={isExpanded ? 'Thu gọn danh sách bộ môn' : 'Xem các bộ môn trực thuộc'}
@@ -559,12 +543,12 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                           {hasBomons && isExpanded && (
                             <div className="pl-3 pr-1 space-y-0.5 border-l-2 border-blue-300 dark:border-blue-700 ml-3.5 my-1">
                               {bomons.map((bm, idx) => {
-                                const isBmSelected = String(bm._id) === String(value);
+                                const isBmSelected = String(bm.id) === String(value);
                                 const isLast = idx === bomons.length - 1;
                                 return (
                                   <div
-                                    key={bm._id}
-                                    onClick={() => handleSelect(bm._id)}
+                                    key={bm.id}
+                                    onClick={() => handleSelect(bm.id)}
                                     className={`px-2 py-1.5 rounded-md text-xs flex items-center justify-between cursor-pointer transition-colors ${
                                       isBmSelected
                                         ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 font-bold'
@@ -575,7 +559,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                                       <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] shrink-0 select-none">
                                         {isLast ? '└──' : '├──'}
                                       </span>
-                                      <span className="leading-snug truncate">{bm.name}</span>
+                                      <span className="leading-snug truncate">{bm.ten_phong_ban}</span>
                                     </div>
                                     {isBmSelected && (
                                       <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -599,11 +583,11 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                       Bộ Môn Khác
                     </div>
                     {filteredTree.unassignedBomons.map((bm) => {
-                      const isSelected = String(bm._id) === String(value);
+                      const isSelected = String(bm.id) === String(value);
                       return (
                         <div
-                          key={bm._id}
-                          onClick={() => handleSelect(bm._id)}
+                          key={bm.id}
+                          onClick={() => handleSelect(bm.id)}
                           className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
                             isSelected
                               ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-bold'
@@ -611,7 +595,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
-                            <span className="leading-snug truncate">{bm.name}</span>
+                            <span className="leading-snug truncate">{bm.ten_phong_ban}</span>
                           </div>
                           {isSelected && (
                             <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -630,11 +614,11 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                       Khối Ban Chức Năng NTU
                     </div>
                     {filteredTree.phongList.map((dept) => {
-                      const isSelected = String(dept._id) === String(value);
+                      const isSelected = String(dept.id) === String(value);
                       return (
                         <div
-                          key={dept._id}
-                          onClick={() => handleSelect(dept._id)}
+                          key={dept.id}
+                          onClick={() => handleSelect(dept.id)}
                           className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
                             isSelected
                               ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 font-bold'
@@ -643,7 +627,7 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                         >
                           <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
                             <span className="text-sm shrink-0">🏢</span>
-                            <span className="leading-snug">{dept.name}</span>
+                            <span className="leading-snug">{dept.ten_phong_ban}</span>
                           </div>
                           {isSelected && (
                             <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />

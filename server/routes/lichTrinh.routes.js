@@ -10,16 +10,26 @@ const {
   deleteSchedule,
   addException,
 } = require('../controllers/lichTrinh.controller');
-const { verifyToken, authorizeRoles } = require('../middlewares/xacThuc.middleware');
+const { verifyToken, requirePermission, requireAnyPermission } = require('../middlewares/xacThuc.middleware');
+const { PERMISSIONS } = require('../config/permissions');
 
 router.use(verifyToken);
 
 router.get('/', getSchedules);
 router.get('/hom-nay', getTodaySchedules);
 router.get('/:id', getScheduleById);
-router.post('/', authorizeRoles('admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao'), createSchedule);
-router.put('/:id', authorizeRoles('admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao'), updateSchedule);
-router.delete('/:id', authorizeRoles('admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao'), deleteSchedule);
-router.post('/:id/ngoai-le', authorizeRoles('admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao', 'giang_vien', 'nhan_vien'), addException);
+router.post('/', requirePermission(PERMISSIONS.LICH_XEP_LICH), createSchedule);
+router.put('/:id', requirePermission(PERMISSIONS.LICH_XEP_LICH), updateSchedule);
+router.delete('/:id', requirePermission(PERMISSIONS.LICH_XEP_LICH), deleteSchedule);
+router.post(
+  '/:id/ngoai-le',
+  requireAnyPermission(
+    PERMISSIONS.LICH_DAY_BU,
+    PERMISSIONS.LICH_XEP_LICH,
+    PERMISSIONS.LICH_XEM_BAN_THAN,
+    PERMISSIONS.CONG_XEM_BAN_THAN
+  ),
+  addException
+);
 
 module.exports = router;

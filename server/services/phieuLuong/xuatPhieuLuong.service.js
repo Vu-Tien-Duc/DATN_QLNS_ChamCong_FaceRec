@@ -3,7 +3,7 @@ const { Op } = require('sequelize');
 const { PhieuLuong } = require('../../models');
 const { TRANG_THAI_LUONG } = require('../../models/phieuLuong.model');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
-const { getDeanScopedUserIds } = require('../../utils/phamViTruongKhoa');
+const { getDeanDepartmentIds, getDeanScopedUserIds } = require('../../utils/phamViTruongKhoa');
 const { UNIT_LEADER_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
 const { sanitizeExcelRow } = require('../baoCao/dinhDangBaoCao.helper');
 const {
@@ -63,6 +63,18 @@ const fetchPayrolls = async ({ thang, nam, don_vi_id, trang_thai, nguoi_dung_id,
           throw new ServiceError('Bạn không có quyền xem bảng lương của nhân sự ngoài đơn vị.', 403);
         }
         where.nguoi_dung_id = nguoi_dung_id;
+      } else if (don_vi_id) {
+        if (!isValidUuid(String(don_vi_id))) {
+          throw new ServiceError('Mã đơn vị (don_vi_id) không đúng định dạng UUID.', 400, 'INVALID_DEPARTMENT_ID');
+        }
+        const deanDeptIds = await getDeanDepartmentIds(currentUser);
+        if (!deanDeptIds.map(String).includes(String(don_vi_id))) {
+          throw new ServiceError('Bạn không có quyền xem bảng lương của đơn vị ngoài phạm vi quản lý.', 403);
+        }
+        const deptUserIds = await resolveDepartmentUserIdsFilter(don_vi_id);
+        const deanSet = new Set(deanUserIds.map(String));
+        const filteredIds = (deptUserIds || []).filter((uid) => deanSet.has(String(uid)));
+        where.nguoi_dung_id = { [Op.in]: filteredIds.length ? filteredIds : ['00000000-0000-0000-0000-000000000000'] };
       } else {
         where.nguoi_dung_id = { [Op.in]: deanUserIds.length ? deanUserIds : ['00000000-0000-0000-0000-000000000000'] };
       }

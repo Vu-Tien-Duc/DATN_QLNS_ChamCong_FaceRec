@@ -4,6 +4,7 @@ const { NhatKyChamCong, LuotQuetChamCong, LichTrinh, CaLamViec, NguoiDung } = re
 const { validateGeofence, verifyDynamicQRCode, resolveUserGeofenceTargets } = require('../../utils/hoTroChamCong');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
+const { withDistributedLock } = require('../../utils/khoaPhanTan');
 const { redisGet, redisSet } = require('../../config/redis');
 const {
   ServiceError,
@@ -59,6 +60,7 @@ const processScanQRCode = async ({
   const acc = do_chinh_xac !== undefined && do_chinh_xac !== null && do_chinh_xac !== '' ? Number(do_chinh_xac) : null;
   const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
 
+  return withDistributedLock(`attendance_punch:${nguoi_dung_id}`, 15, async () => {
   const now = new Date();
   const { dateStr } = getVietnamDayRange(now);
   const yesterdayStr = getVietnamDayRange(new Date(now.getTime() - 24 * 60 * 60 * 1000)).dateStr;
@@ -385,6 +387,7 @@ const processScanQRCode = async ({
     nhat_ky_cham_cong: savedAttendance,
     luot_quet: punchLog,
   };
+  });
 };
 
 module.exports = { processScanQRCode };

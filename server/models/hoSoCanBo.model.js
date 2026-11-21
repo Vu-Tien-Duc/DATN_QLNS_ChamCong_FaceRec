@@ -56,7 +56,7 @@ HoSoCanBo.init(
       },
     },
     ngach_luong: { type: DataTypes.STRING(50), allowNull: false, defaultValue: 'V.07.01.03' },
-    he_so_luong: { ...decimalColumn('he_so_luong', 5, 2, 2.34), validate: { min: 0.01 } },
+    he_so_luong: { ...decimalColumn('he_so_luong', 5, 2, 2.34), validate: { min: 0 } },
     ngay_bat_dau_giang_day: { type: DataTypes.DATEONLY, allowNull: true, defaultValue: null },
     so_nguoi_phu_thuoc: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, validate: { min: 0 } },
     so_cccd: { type: DataTypes.STRING(50), allowNull: true, defaultValue: null },

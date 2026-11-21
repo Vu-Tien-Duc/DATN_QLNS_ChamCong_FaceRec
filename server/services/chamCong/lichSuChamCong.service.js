@@ -264,7 +264,7 @@ const getAttendanceEvidence = async ({ id, currentUser }) => {
 
   // Phân quyền: Admin xem mọi bản ghi, Trưởng khoa xem trong khoa, Cán bộ xem chính mình
   if (currentUser) {
-    const curRole = normalizeRole(currentUser.role || currentUser.vai_tro_chinh);
+    const curRole = normalizeRole(currentUser.vai_tro_chinh);
     if (!GLOBAL_ADMIN_ROLES.includes(curRole)) {
       if (UNIT_LEADER_ROLES.includes(curRole)) {
         const inScope = await isUserInDeanScope(currentUser, ownerId);
@@ -345,7 +345,7 @@ const getAttendanceById = async ({ id, currentUser }) => {
   // Phân quyền: Admin xem mọi bản ghi, Trưởng khoa xem trong khoa, Cán bộ xem chính mình
   const ownerId = String(log.nguoi_dung_id);
   if (currentUser) {
-    const curRole = normalizeRole(currentUser.role || currentUser.vai_tro_chinh);
+    const curRole = normalizeRole(currentUser.vai_tro_chinh);
     if (!GLOBAL_ADMIN_ROLES.includes(curRole)) {
       if (UNIT_LEADER_ROLES.includes(curRole)) {
         const inScope = await isUserInDeanScope(currentUser, ownerId);

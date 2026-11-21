@@ -3,7 +3,8 @@ const path = require('path');
 const { sendSuccess, sendError, getBaseUrl } = require('../utils/phanHoiHttp');
 const minioStorage = require('../config/minio');
 const { verifyToken } = require('../middlewares/xacThuc.middleware');
-const { normalizeRole } = require('../utils/vaiTro.utils');
+const { validateFileMagicBytes } = require('../middlewares/taiTep.middleware');
+const { hasAnyActiveRole } = require('../utils/vaiTro.utils');
 const taiTepService = require('../services/heThong/taiTep.service');
 
 // Tải lên một tệp đính kèm lên MinIO hoặc lưu trữ cục bộ
@@ -15,6 +16,15 @@ const uploadSingleFile = async (req, res, next) => {
     }
     if (!file.buffer || file.buffer.length === 0) {
       return sendError(res, 'Nội dung tệp rỗng hoặc không đọc được.', null, 400);
+    }
+    if (!validateFileMagicBytes(file.buffer, file.mimetype)) {
+      return sendError(
+        res,
+        'Nội dung nhị phân của tệp không khớp với định dạng được khai báo (Magic Bytes không hợp lệ).',
+        null,
+        400,
+        'INVALID_FILE_MAGIC_BYTES'
+      );
     }
 
     const saved = await taiTepService.saveUploadedAttachment(file, req.user?.id || 'anonymous');
@@ -31,7 +41,7 @@ const uploadSingleFile = async (req, res, next) => {
         kich_thuoc: saved.size,
         duong_dan_tep: saved.fileUrl,
         duong_dan_day_du: fullUrl,
-        url: saved.presignedUrl || fullUrl,
+        url: fullUrl,
         luu_tru: saved.storage,
       },
       201
@@ -61,24 +71,35 @@ const downloadFile = async (req, res, next) => {
     if (policy.access === 'face') {
       return verifyToken(req, res, (authError) => {
         if (authError) return next(authError);
-        const currentUser = req.user;
-        if (
-          ['admin', 'bgh', 'tccb'].includes(normalizeRole(currentUser.vai_tro_chinh)) ||
-          (policy.ownerId && policy.ownerId === String(currentUser.id))
-        ) {
-          return streamMinioFile(res, policy.objectKey, false);
-        }
-        return sendError(res, 'Bạn không có quyền truy cập ảnh sinh trắc học này.', null, 403);
+        taiTepService
+          .canAccessFaceImage(req.user, policy.ownerId)
+          .then((result) => {
+            if (!result.allowed) {
+              return sendError(res, 'Bạn không có quyền truy cập ảnh sinh trắc học này.', null, 403);
+            }
+            return streamMinioFile(res, policy.objectKey, false);
+          })
+          .catch(next);
       });
     }
     if (policy.access === 'restricted_admin') {
       return verifyToken(req, res, (authError) => {
         if (authError) return next(authError);
-        const currentRole = normalizeRole(req.user.vai_tro_chinh);
-        if (['admin', 'bgh'].includes(currentRole)) {
+        if (hasAnyActiveRole(req.user, ['admin', 'bgh'])) {
           return streamMinioFile(res, policy.objectKey, false);
         }
         return sendError(res, 'Bạn không có quyền truy cập tệp nội bộ chưa liên kết này.', null, 403);
+      });
+    }
+
+    if (policy.access === 'pending_attachment') {
+      return verifyToken(req, res, (authError) => {
+        if (authError) return next(authError);
+        const isUploader = policy.ownerId && String(req.user?.id) === policy.ownerId;
+        if (isUploader || hasAnyActiveRole(req.user, ['admin', 'bgh'])) {
+          return streamMinioFile(res, policy.objectKey, false);
+        }
+        return sendError(res, 'Bạn không có quyền xem trước tệp đính kèm tạm thời của người khác.', null, 403);
       });
     }
 

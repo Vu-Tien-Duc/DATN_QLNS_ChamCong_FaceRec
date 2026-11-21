@@ -29,6 +29,11 @@ function formatBytes(bytes?: number): string {
   return `${(kb / 1024).toFixed(2)} MB`;
 }
 
+const isMaskedSecretValue = (val: string): boolean => {
+  const trimmed = val.trim();
+  return trimmed.length > 0 && (/^\*+$/.test(trimmed) || /\*{4}/.test(trimmed));
+};
+
 export const QuanLyAiVaTaiLieuRag: React.FC = () => {
   const [providers, setProviders] = useState<AIProviderInfo[]>([]);
   const [defaultProvider, setDefaultProvider] = useState('gemini');
@@ -38,6 +43,8 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
   const [groqModel, setGroqModel] = useState('llama-3.3-70b-versatile');
   const [deepseekKey, setDeepseekKey] = useState('');
   const [deepseekModel, setDeepseekModel] = useState('deepseek-chat');
+  const [configuredMasks, setConfiguredMasks] = useState<Record<string, string>>({});
+  const [pendingClearKeys, setPendingClearKeys] = useState<Record<string, boolean>>({});
   const [showKeys, setShowKeys] = useState(false);
   const [savingAiConfig, setSavingAiConfig] = useState(false);
 
@@ -66,17 +73,25 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
       }
 
       const map: Record<string, string> = {};
+      const masks: Record<string, string> = {};
       for (const item of cfgList) {
-        const k = String(item.key || item.khoa_cau_hinh || '').toUpperCase();
-        if (k) map[k] = String(item.value ?? item.gia_tri ?? '');
+        const k = String(item.khoa_cau_hinh || '').toUpperCase();
+        if (!k) continue;
+        const valStr = item.gia_tri !== null && item.gia_tri !== undefined ? String(item.gia_tri) : '';
+        map[k] = valStr;
+        if (['GEMINI_API_KEY', 'GROQ_API_KEY', 'DEEPSEEK_API_KEY'].includes(k) && valStr) {
+          masks[k] = valStr;
+        }
       }
+      setConfiguredMasks(masks);
+      setPendingClearKeys({});
       if (map.AI_DEFAULT_PROVIDER) setDefaultProvider(map.AI_DEFAULT_PROVIDER);
-      if (map.GEMINI_API_KEY) setGeminiKey(map.GEMINI_API_KEY);
       if (map.GEMINI_MODEL) setGeminiModel(map.GEMINI_MODEL);
-      if (map.GROQ_API_KEY) setGroqKey(map.GROQ_API_KEY);
       if (map.GROQ_MODEL) setGroqModel(map.GROQ_MODEL);
-      if (map.DEEPSEEK_API_KEY) setDeepseekKey(map.DEEPSEEK_API_KEY);
       if (map.DEEPSEEK_MODEL) setDeepseekModel(map.DEEPSEEK_MODEL);
+      setGeminiKey('');
+      setGroqKey('');
+      setDeepseekKey('');
 
       if (docRes?.success && docRes.data) {
         setDocuments(docRes.data.documents || []);
@@ -92,6 +107,15 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
 
   const handleSaveAiConfig = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (
+      isMaskedSecretValue(geminiKey) ||
+      isMaskedSecretValue(groqKey) ||
+      isMaskedSecretValue(deepseekKey)
+    ) {
+      toast.error('Vui lòng nhập API Key thật mới hoặc bấm Xóa Key thay vì giữ chuỗi che dấu (****).');
+      return;
+    }
+
     setSavingAiConfig(true);
     try {
       const payload: Array<{ khoa_cau_hinh: string; gia_tri: string }> = [
@@ -100,15 +124,24 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
         { khoa_cau_hinh: 'GROQ_MODEL', gia_tri: groqModel.trim() || 'llama-3.3-70b-versatile' },
         { khoa_cau_hinh: 'DEEPSEEK_MODEL', gia_tri: deepseekModel.trim() || 'deepseek-chat' },
       ];
-      if (geminiKey.trim()) payload.push({ khoa_cau_hinh: 'GEMINI_API_KEY', gia_tri: geminiKey.trim() });
-      if (groqKey.trim()) payload.push({ khoa_cau_hinh: 'GROQ_API_KEY', gia_tri: groqKey.trim() });
-      if (deepseekKey.trim()) payload.push({ khoa_cau_hinh: 'DEEPSEEK_API_KEY', gia_tri: deepseekKey.trim() });
+      if (pendingClearKeys.GEMINI_API_KEY) {
+        payload.push({ khoa_cau_hinh: 'GEMINI_API_KEY', gia_tri: '' });
+      } else if (geminiKey.trim()) {
+        payload.push({ khoa_cau_hinh: 'GEMINI_API_KEY', gia_tri: geminiKey.trim() });
+      }
+      if (pendingClearKeys.GROQ_API_KEY) {
+        payload.push({ khoa_cau_hinh: 'GROQ_API_KEY', gia_tri: '' });
+      } else if (groqKey.trim()) {
+        payload.push({ khoa_cau_hinh: 'GROQ_API_KEY', gia_tri: groqKey.trim() });
+      }
+      if (pendingClearKeys.DEEPSEEK_API_KEY) {
+        payload.push({ khoa_cau_hinh: 'DEEPSEEK_API_KEY', gia_tri: '' });
+      } else if (deepseekKey.trim()) {
+        payload.push({ khoa_cau_hinh: 'DEEPSEEK_API_KEY', gia_tri: deepseekKey.trim() });
+      }
 
       await systemConfigApi.bulkUpdateConfigs(payload);
-      const provRes = await aiApi.getProviders();
-      if (provRes?.success && provRes.data) {
-        setProviders(provRes.data.providers || []);
-      }
+      await loadAiSettingsAndDocs();
       toast.success('Đã lưu cấu hình Model AI & API Key vào hệ thống!');
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Lưu cấu hình AI thất bại.');
@@ -126,8 +159,13 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
     try {
       const res = await aiApi.uploadDocument(file, { scope: uploadScope });
       if (res.success && res.data) {
-        setDocuments((prev) => [res.data, ...prev]);
-        toast.success(`Đã nạp tài liệu "${res.data.tieu_de}" vào Kho tri thức RAG!`);
+        const isDuplicate = Boolean((res as any).isDuplicate);
+        setDocuments((prev) => [res.data, ...prev.filter((d) => d.id !== res.data.id)]);
+        toast.success(
+          isDuplicate
+            ? res.message || `Tài liệu "${res.data.tieu_de}" đã có sẵn trong Kho tri thức RAG.`
+            : `Đã nạp tài liệu "${res.data.tieu_de}" vào Kho tri thức RAG!`
+        );
       } else {
         toast.error(res.message || 'Nạp tài liệu thất bại.');
       }
@@ -142,10 +180,10 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
   const handleDeleteDocument = async (doc: AIDocumentItem) => {
     if (!window.confirm(`Xóa tài liệu "${doc.tieu_de}" khỏi Kho tri thức RAG?`)) return;
     try {
-      const res = await aiApi.deleteDocument(doc._id);
+      const res = await aiApi.deleteDocument(doc.id);
       if (res.success) {
-        setDocuments((prev) => prev.filter((d) => d._id !== doc._id));
-        if (selectedDocDetail?._id === doc._id) setSelectedDocDetail(null);
+        setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+        if (selectedDocDetail?.id === doc.id) setSelectedDocDetail(null);
         toast.success('Đã xóa tài liệu khỏi Kho tri thức RAG.');
       }
     } catch (err: any) {
@@ -154,7 +192,7 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
   };
 
   const handleViewDocumentChunks = async (doc: AIDocumentItem) => {
-    const docId = doc._id || (doc as any).id;
+    const docId = doc.id;
     setSelectedDocDetail(doc);
     setLoadingDocDetail(true);
     try {
@@ -244,17 +282,44 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                    Google Gemini API Key
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      Google Gemini API Key
+                    </label>
+                    {configuredMasks.GEMINI_API_KEY && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPendingClearKeys((prev) => ({
+                            ...prev,
+                            GEMINI_API_KEY: !prev.GEMINI_API_KEY,
+                          }))
+                        }
+                        className={`text-[10px] font-medium cursor-pointer ${
+                          pendingClearKeys.GEMINI_API_KEY
+                            ? 'text-amber-600 dark:text-amber-400 underline'
+                            : 'text-rose-600 dark:text-rose-400 hover:underline'
+                        }`}
+                      >
+                        {pendingClearKeys.GEMINI_API_KEY ? 'Hoàn tác xóa key' : 'Xóa key đã lưu'}
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type={showKeys ? 'text' : 'password'}
                       value={geminiKey}
+                      disabled={Boolean(pendingClearKeys.GEMINI_API_KEY)}
                       onChange={(e) => setGeminiKey(e.target.value)}
-                      placeholder="AIzaSy... (Để trống nếu giữ nguyên key trong .env)"
-                      className="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px]"
+                      placeholder={
+                        pendingClearKeys.GEMINI_API_KEY
+                          ? 'Sẽ xóa key khi bấm Lưu...'
+                          : configuredMasks.GEMINI_API_KEY
+                            ? `Đã cấu hình (${configuredMasks.GEMINI_API_KEY}) — nhập mới để thay thế`
+                            : 'AIzaSy... (Để trống nếu giữ nguyên key trong .env)'
+                      }
+                      className="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px] disabled:opacity-50"
                     />
                   </div>
                 </div>
@@ -274,15 +339,42 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                    Groq Cloud API Key
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      Groq Cloud API Key
+                    </label>
+                    {configuredMasks.GROQ_API_KEY && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPendingClearKeys((prev) => ({
+                            ...prev,
+                            GROQ_API_KEY: !prev.GROQ_API_KEY,
+                          }))
+                        }
+                        className={`text-[10px] font-medium cursor-pointer ${
+                          pendingClearKeys.GROQ_API_KEY
+                            ? 'text-amber-600 dark:text-amber-400 underline'
+                            : 'text-rose-600 dark:text-rose-400 hover:underline'
+                        }`}
+                      >
+                        {pendingClearKeys.GROQ_API_KEY ? 'Hoàn tác xóa key' : 'Xóa key đã lưu'}
+                      </button>
+                    )}
+                  </div>
                   <input
                     type={showKeys ? 'text' : 'password'}
                     value={groqKey}
+                    disabled={Boolean(pendingClearKeys.GROQ_API_KEY)}
                     onChange={(e) => setGroqKey(e.target.value)}
-                    placeholder="gsk_... (Tùy chọn)"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px]"
+                    placeholder={
+                      pendingClearKeys.GROQ_API_KEY
+                        ? 'Sẽ xóa key khi bấm Lưu...'
+                        : configuredMasks.GROQ_API_KEY
+                          ? `Đã cấu hình (${configuredMasks.GROQ_API_KEY}) — nhập mới để thay thế`
+                          : 'gsk_... (Tùy chọn)'
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px] disabled:opacity-50"
                   />
                 </div>
                 <div>
@@ -301,15 +393,42 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                    DeepSeek API Key
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      DeepSeek API Key
+                    </label>
+                    {configuredMasks.DEEPSEEK_API_KEY && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPendingClearKeys((prev) => ({
+                            ...prev,
+                            DEEPSEEK_API_KEY: !prev.DEEPSEEK_API_KEY,
+                          }))
+                        }
+                        className={`text-[10px] font-medium cursor-pointer ${
+                          pendingClearKeys.DEEPSEEK_API_KEY
+                            ? 'text-amber-600 dark:text-amber-400 underline'
+                            : 'text-rose-600 dark:text-rose-400 hover:underline'
+                        }`}
+                      >
+                        {pendingClearKeys.DEEPSEEK_API_KEY ? 'Hoàn tác xóa key' : 'Xóa key đã lưu'}
+                      </button>
+                    )}
+                  </div>
                   <input
                     type={showKeys ? 'text' : 'password'}
                     value={deepseekKey}
+                    disabled={Boolean(pendingClearKeys.DEEPSEEK_API_KEY)}
                     onChange={(e) => setDeepseekKey(e.target.value)}
-                    placeholder="sk-... (Tùy chọn)"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px]"
+                    placeholder={
+                      pendingClearKeys.DEEPSEEK_API_KEY
+                        ? 'Sẽ xóa key khi bấm Lưu...'
+                        : configuredMasks.DEEPSEEK_API_KEY
+                          ? `Đã cấu hình (${configuredMasks.DEEPSEEK_API_KEY}) — nhập mới để thay thế`
+                          : 'sk-... (Tùy chọn)'
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px] disabled:opacity-50"
                   />
                 </div>
                 <div>
@@ -411,7 +530,7 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
                 const chunkCount = Number(doc.tong_so_doan ?? (doc as any).so_doan ?? 0);
                 return (
                   <div
-                    key={doc._id}
+                    key={doc.id}
                     className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/70"
                   >
                     <div className="min-w-0 flex-1">
@@ -566,13 +685,13 @@ export const QuanLyAiVaTaiLieuRag: React.FC = () => {
                   <div>
                     <span className="text-slate-400 font-sans block">Ngày tải lên:</span>
                     <span className="text-slate-700 dark:text-slate-200">
-                      {(selectedDocDetail as any).createdAt ? new Date((selectedDocDetail as any).createdAt).toLocaleString('vi-VN') : '—'}
+                      {selectedDocDetail.tao_luc ? new Date(selectedDocDetail.tao_luc).toLocaleString('vi-VN') : '—'}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-400 font-sans block">Cập nhật gần nhất:</span>
                     <span className="text-slate-700 dark:text-slate-200">
-                      {(selectedDocDetail as any).updatedAt ? new Date((selectedDocDetail as any).updatedAt).toLocaleString('vi-VN') : '—'}
+                      {selectedDocDetail.cap_nhat_luc ? new Date(selectedDocDetail.cap_nhat_luc).toLocaleString('vi-VN') : '—'}
                     </span>
                   </div>
                   {(selectedDocDetail as any).duong_dan && (

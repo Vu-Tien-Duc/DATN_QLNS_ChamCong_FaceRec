@@ -41,7 +41,7 @@ export const ModalPheDuyetDon: React.FC<ModalPheDuyetDonProps> = ({
 }) => {
   if (!isOpen || !selectedRequest) return null;
 
-  const attachmentUrl = selectedRequest.tep_dinh_kem;
+  const attachmentUrl = selectedRequest.tep_dinh_kem || undefined;
 
   return (
     <Portal>

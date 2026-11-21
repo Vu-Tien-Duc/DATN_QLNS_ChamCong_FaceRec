@@ -20,6 +20,8 @@ NgoaiLeLichTrinh.init(
       validate: { isIn: { args: [TRANG_THAI_NGOAI_LE], msg: 'Trạng thái ngoại lệ không hợp lệ' } },
     },
     ngay_day_bu: { type: DataTypes.DATEONLY, allowNull: true, defaultValue: null },
+    giang_vien_day_thay_id: uuidFk(true),
+    ca_thay_the_id: uuidFk(true),
   },
   {
     sequelize,

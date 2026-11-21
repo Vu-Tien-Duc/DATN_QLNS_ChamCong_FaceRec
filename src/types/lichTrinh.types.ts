@@ -5,133 +5,65 @@ export type ScheduleExceptionStatus = 'nghi' | 'huy' | 'day_bu' | 'doi_ca';
 
 export interface ScheduleExceptionItem {
   id?: string;
-  ngay?: string;
+  ngay: string;
   ly_do?: string;
-  trang_thai?: ScheduleExceptionStatus;
-  ngay_day_bu?: string;
-  /** @deprecated Dùng id */
-  _id?: string;
-  /** @deprecated Dùng ngay */
-  date?: string;
-  /** @deprecated Dùng ly_do */
-  reason?: string;
-  /** @deprecated Dùng trang_thai */
-  status?: ScheduleExceptionStatus;
-  /** @deprecated Dùng ngay_day_bu */
-  makeupDate?: string;
+  trang_thai: ScheduleExceptionStatus;
+  ngay_day_bu?: string | null;
+  tao_luc?: string;
 }
 
 export interface SubjectItem {
-  id?: string;
-  ten_mon?: string;
-  ma_mon?: string;
+  id: string;
+  ten_mon: string;
+  ma_mon: string;
   so_tin_chi?: number;
-  phong_ban_id?: string | { id?: string; _id?: string; ten_phong_ban?: string; name?: string };
+  phong_ban_id?: string | { id: string; ten_phong_ban: string };
+  phong_ban?: { id: string; ten_phong_ban: string; loai_don_vi?: string; don_vi_cha_id?: string | null };
   mo_ta?: string;
   kich_hoat?: boolean;
-  /** @deprecated Dùng id */
-  _id: string;
-  /** @deprecated Dùng ten_mon */
-  name: string;
-  /** @deprecated Dùng ma_mon */
-  code: string;
-  /** @deprecated Dùng so_tin_chi */
-  credits?: number;
-  /** @deprecated Dùng phong_ban_id */
-  departmentId?: string | { _id: string; name: string; ten_phong_ban?: string };
-  /** @deprecated Dùng mo_ta */
-  description?: string;
-  /** @deprecated Dùng kich_hoat */
-  isActive?: boolean;
+}
+
+export interface ScheduleLecturerRef {
+  id: string;
+  ho_ten: string;
+  email: string;
+  ma_can_bo?: string;
+  vai_tro_chinh?: string;
+  anh_dai_dien?: string | null;
+  don_vi_chinh_id?: string | { id: string; ten_phong_ban: string } | null;
 }
 
 export interface ScheduleItem {
-  id?: string;
-  nguoi_dung_id?: any;
+  id: string;
+  nguoi_dung_id: ScheduleLecturerRef | string;
+  giang_vien?: ScheduleLecturerRef;
+  nguoi_dung?: ScheduleLecturerRef;
   ca_id?: ShiftItem | string;
+  ca?: ShiftItem;
   mon_hoc_id?: SubjectItem | string;
-  phong_hoc?: string;
-  thu_trong_tuan?: number;
-  gio_bat_dau?: string;
-  gio_ket_thuc?: string;
+  mon_hoc?: SubjectItem;
+  phong_hoc: string;
+  co_so?: string;
+  thu_trong_tuan: number;
+  gio_bat_dau: string;
+  gio_ket_thuc: string;
   tiet_bat_dau?: number;
   so_tiet?: number;
-  lap_lai_hang_tuan?: boolean;
-  ngay_bat_dau?: string;
-  ngay_ket_thuc?: string;
+  lap_lai_hang_tuan: boolean;
+  ngay_bat_dau: string;
+  ngay_ket_thuc: string;
   loai_lich?: ScheduleType;
   ngay_day_bu?: string | null;
   danh_sach_tuan?: number[];
   nam_hoc?: string;
   hoc_ky?: number;
+  la_truc_tuyen?: boolean;
   ngoai_le?: ScheduleExceptionItem[];
   vi_do?: number | null;
   kinh_do?: number | null;
   ban_kinh_met?: number;
   tao_luc?: string;
   cap_nhat_luc?: string;
-  /** @deprecated Dùng id */
-  _id: string;
-  /** @deprecated Dùng nguoi_dung_id */
-  userId?: {
-    id?: string;
-    _id: string;
-    ho_ten?: string;
-    fullName: string;
-    email: string;
-    ma_can_bo?: string;
-    staffCode?: string;
-    vai_tro_chinh?: string;
-    role?: string;
-    anh_dai_dien?: string;
-    avatarUrl?: string;
-    don_vi_chinh_id?: string | { id?: string; _id?: string; ten_phong_ban?: string; name?: string };
-    departmentId?: string | { _id: string; name: string; ten_phong_ban?: string };
-  };
-  /** @deprecated Dùng ca_id */
-  shiftId?: ShiftItem | string;
-  /** @deprecated Dùng mon_hoc_id */
-  subjectId?: SubjectItem | string;
-  /** @deprecated Dùng phong_hoc */
-  roomId: string;
-  /** @deprecated Dùng thu_trong_tuan */
-  weekday: number;
-  /** @deprecated Dùng gio_bat_dau */
-  startTime: string;
-  /** @deprecated Dùng gio_ket_thuc */
-  endTime: string;
-  /** @deprecated Dùng tiet_bat_dau */
-  startPeriod?: number;
-  /** @deprecated Dùng so_tiet */
-  periodCount?: number;
-  /** @deprecated Dùng lap_lai_hang_tuan */
-  isRecurring: boolean;
-  /** @deprecated Dùng ngay_bat_dau */
-  startDate: string;
-  /** @deprecated Dùng ngay_ket_thuc */
-  endDate: string;
-  /** @deprecated Dùng loai_lich */
-  scheduleType?: ScheduleType;
-  /** @deprecated Dùng ngay_day_bu */
-  makeupDate?: string | null;
-  /** @deprecated Dùng danh_sach_tuan */
-  weekNumbers?: number[];
-  /** @deprecated Dùng nam_hoc */
-  academicYear?: string;
-  /** @deprecated Dùng hoc_ky */
-  semester?: number;
-  /** @deprecated Dùng ngoai_le */
-  exceptions?: ScheduleExceptionItem[];
-  /** @deprecated Dùng vi_do */
-  latitude?: number | null;
-  /** @deprecated Dùng kinh_do */
-  longitude?: number | null;
-  /** @deprecated Dùng ban_kinh_met */
-  radiusMeters?: number;
-  /** @deprecated Dùng tao_luc */
-  createdAt?: string;
-  /** @deprecated Dùng cap_nhat_luc */
-  updatedAt?: string;
 }
 
 export interface ScheduleQueryParams {
@@ -148,21 +80,21 @@ export interface ScheduleQueryParams {
 }
 
 export interface CreateSchedulePayload {
-  userId: string;
-  shiftId?: string;
-  subjectId?: string;
-  roomId: string;
-  weekday: number;
-  startTime?: string;
-  endTime?: string;
-  startPeriod?: number;
-  periodCount?: number;
-  isRecurring?: boolean;
-  startDate: string;
-  endDate: string;
-  scheduleType?: ScheduleType;
-  makeupDate?: string;
-  weekNumbers?: number[];
-  academicYear?: string;
-  semester?: number;
+  nguoi_dung_id: string;
+  ca_id?: string;
+  mon_hoc_id?: string;
+  phong_hoc: string;
+  thu_trong_tuan: number;
+  gio_bat_dau?: string;
+  gio_ket_thuc?: string;
+  tiet_bat_dau?: number;
+  so_tiet?: number;
+  lap_lai_hang_tuan?: boolean;
+  ngay_bat_dau: string;
+  ngay_ket_thuc: string;
+  loai_lich?: ScheduleType;
+  ngay_day_bu?: string;
+  danh_sach_tuan?: number[];
+  nam_hoc?: string;
+  hoc_ky?: number;
 }

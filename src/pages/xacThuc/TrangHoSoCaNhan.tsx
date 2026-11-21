@@ -42,7 +42,7 @@ import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
 
 export const Profile: React.FC = () => {
   const navigate = useNavigate();
-  const { user, fetchMe } = useAuthStore();
+  const { user, fetchMe, logout } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<'info' | 'hrm' | 'face' | 'security'>('info');
   const [isEditing, setIsEditing] = useState(false);
@@ -112,15 +112,15 @@ export const Profile: React.FC = () => {
     setPreviewAvatar(localUrl);
 
     const formDataUpload = new FormData();
-    formDataUpload.append('avatar', file);
+    formDataUpload.append('anh_dai_dien', file);
 
     setUploadingAvatar(true);
     const toastId = toast.loading('Đang xử lý và tải lên ảnh đại diện...');
     try {
       const res = await authApi.updateAvatar(formDataUpload);
       await fetchMe();
-      if ((res.data as any)?.anh_dai_dien || res.data?.avatar) {
-        setPreviewAvatar((res.data as any).anh_dai_dien || res.data.avatar);
+      if (res.data?.anh_dai_dien) {
+        setPreviewAvatar(res.data.anh_dai_dien);
       }
       toast.success('Cập nhật ảnh đại diện thành công!', { id: toastId });
     } catch (err: any) {
@@ -143,7 +143,7 @@ export const Profile: React.FC = () => {
     setUploadingAvatar(true);
     const toastId = toast.loading('Đang gỡ ảnh đại diện...');
     try {
-      await authApi.updateAvatar({ avatar: null });
+      await authApi.updateAvatar({ anh_dai_dien: null });
       setPreviewAvatar(null);
       await fetchMe();
       toast.success('Đã gỡ ảnh đại diện thành công!', { id: toastId });
@@ -157,7 +157,7 @@ export const Profile: React.FC = () => {
   // Cập nhật thông tin hồ sơ
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    const targetId = user?.id || user?._id;
+    const targetId = user?.id;
     if (!targetId) return;
 
     setLoading(true);
@@ -201,11 +201,13 @@ export const Profile: React.FC = () => {
     setChangingPassword(true);
     try {
       await authApi.changePassword({
-        currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword,
+        mat_khau_hien_tai: passwordData.currentPassword,
+        mat_khau_moi: passwordData.newPassword,
       });
-      toast.success('Đổi mật khẩu thành công!');
+      toast.success('Đổi mật khẩu thành công! Vui lòng đăng nhập lại với mật khẩu mới.');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      await logout();
+      navigate('/dang-nhap', { replace: true });
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Đổi mật khẩu thất bại. Vui lòng kiểm tra lại mật khẩu cũ.');
     } finally {
@@ -269,12 +271,6 @@ export const Profile: React.FC = () => {
           tag: 'KẾ TOÁN',
           color: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60',
         };
-      case 'kiem_toan':
-        return {
-          label: 'Khảo Thí / Kiểm Toán',
-          tag: 'KIỂM TOÁN',
-          color: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-800/60',
-        };
       case 'truong_phong':
         return {
           label: 'Trưởng Phòng Chức Năng',
@@ -287,12 +283,6 @@ export const Profile: React.FC = () => {
           tag: 'PHÓ PHÒNG',
           color: 'bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/60',
         };
-      case 'quan_ly_xe':
-        return {
-          label: 'Quản Lý Phương Tiện',
-          tag: 'QUẢN LÝ XE',
-          color: 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700',
-        };
       case 'giang_vien':
         return {
           label: 'Giảng viên Giảng dạy',
@@ -300,7 +290,6 @@ export const Profile: React.FC = () => {
           color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/60',
         };
       case 'nhan_vien':
-      case 'chuyen_vien':
         return {
           label: 'Chuyên viên / Nhân viên',
           tag: 'NHÂN VIÊN',
@@ -776,22 +765,22 @@ export const Profile: React.FC = () => {
                 <span className="text-slate-500">Hạn hợp đồng / Phép năm:</span>
                 <span className="font-bold text-emerald-600 dark:text-emerald-400">
                   {userExtra.ngay_het_han_hop_dong ? `${formatDateVi(userExtra.ngay_het_han_hop_dong)} • ` : ''}
-                  {user?.annualLeaveQuota ?? 12} ngày / năm
+                  {user?.han_muc_phep_nam ?? 12} ngày / năm
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
                 <span className="text-slate-500">Ngạch bậc & Hệ số lương:</span>
                 <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                  {user?.salaryScale || 'Chưa cập nhật'} • HS{' '}
-                  {user?.salaryCoefficient !== undefined ? Number(user.salaryCoefficient).toFixed(2) : '—'}
+                  {user?.ngach_luong || 'Chưa cập nhật'} • HS{' '}
+                  {user?.he_so_luong !== undefined ? Number(user.he_so_luong).toFixed(2) : '—'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
                 <span className="text-slate-500">Số CCCD / Người phụ thuộc:</span>
                 <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                  {userExtra.so_cccd || 'Chưa cập nhật'} • {user?.dependentsCount ?? 0} NPT
+                  {userExtra.so_cccd || 'Chưa cập nhật'} • {user?.so_nguoi_phu_thuoc ?? 0} NPT
                 </span>
               </div>
 
@@ -820,22 +809,22 @@ export const Profile: React.FC = () => {
           </div>
 
           {/* Danh sách vai trò & phạm vi phân quyền */}
-          {Array.isArray(userExtra.roles) && userExtra.roles.length > 0 && (
+          {Array.isArray(userExtra.danh_sach_vai_tro) && userExtra.danh_sach_vai_tro.length > 0 && (
             <div className="md:col-span-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-6 shadow-sm space-y-4">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                <span>Vai Trò &amp; Phạm Vi Phân Quyền ({userExtra.roles.length})</span>
+                <span>Vai Trò &amp; Phạm Vi Phân Quyền ({userExtra.danh_sach_vai_tro.length})</span>
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                {userExtra.roles.map((r: any, idx: number) => {
+                {userExtra.danh_sach_vai_tro.map((r: any, idx: number) => {
                   const scopeMap: Record<string, string> = {
                     toan_truong: 'Toàn trường',
                     khoa: 'Cấp Khoa',
                     bo_mon: 'Cấp Bộ môn',
                     phong_ban: 'Phòng ban',
                   };
-                  const scopeKey = r?.scope || 'toan_truong';
-                  const deptName = r?.department?.name || '';
+                  const scopeKey = r?.pham_vi || 'toan_truong';
+                  const deptName = r?.don_vi?.ten_phong_ban || '';
                   return (
                     <div
                       key={r?.id || idx}
@@ -931,14 +920,14 @@ export const Profile: React.FC = () => {
                     className={`font-bold px-3 py-1 rounded-full text-xs ${
                       !isFaceRegistered
                         ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                        : userExtra.faceStatus === 'bi_khoa'
+                        : userExtra.trang_thai_khuon_mat === 'bi_khoa'
                           ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
                           : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
                     }`}
                   >
                     {!isFaceRegistered
                       ? 'Chưa đăng ký mẫu'
-                      : userExtra.faceStatus === 'bi_khoa'
+                      : userExtra.trang_thai_khuon_mat === 'bi_khoa'
                         ? `Tạm khóa (${userExtra.so_luong_mau || 5} mẫu)`
                         : `✓ Đã kích hoạt (${userExtra.so_luong_mau || 5} mẫu)`}
                   </span>
@@ -948,7 +937,7 @@ export const Profile: React.FC = () => {
                   <span className="text-slate-500">Mô hình AI nhận diện:</span>
                   <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
                     {isFaceRegistered
-                      ? `${userExtra.mo_hinh_ai || 'buffalo_s'} (${userExtra.vectorDimension || userExtra.so_chieu_vector || 512}D${userExtra.isDefaultFace === false ? ' • Phụ' : ' • Mặc định'})`
+                      ? `${userExtra.mo_hinh_ai || 'buffalo_s'} (${userExtra.so_chieu_vector || 512}D${userExtra.mac_dinh === false ? ' • Phụ' : ' • Mặc định'})`
                       : 'Chưa kích hoạt'}
                   </span>
                 </div>
@@ -957,7 +946,7 @@ export const Profile: React.FC = () => {
                   <span className="text-slate-500">Ngày đăng ký / Xác nhận NĐ 13:</span>
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400">
                     {isFaceRegistered
-                      ? `Đã đăng ký (${formatDateVi(user?.faceRegisteredAt)})`
+                      ? `Đã đăng ký (${formatDateVi(user?.ngay_dang_ky_face)})`
                       : 'Chưa xác nhận'}
                   </span>
                 </div>
@@ -993,29 +982,29 @@ export const Profile: React.FC = () => {
             <div>
               <span className="text-slate-500 block">Đăng nhập gần nhất:</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 block">
-                {(userExtra.lastLoginAt || userExtra.lan_dang_nhap_cuoi)
-                  ? new Date(userExtra.lastLoginAt || userExtra.lan_dang_nhap_cuoi).toLocaleString('vi-VN')
+                {userExtra.lan_dang_nhap_cuoi
+                  ? new Date(userExtra.lan_dang_nhap_cuoi).toLocaleString('vi-VN')
                   : 'Chưa ghi nhận'}
               </span>
             </div>
             <div>
               <span className="text-slate-500 block">Đổi mật khẩu gần nhất:</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 block">
-                {(userExtra.passwordChangedAt || userExtra.doi_mat_khau_luc)
-                  ? new Date(userExtra.passwordChangedAt || userExtra.doi_mat_khau_luc).toLocaleString('vi-VN')
+                {userExtra.doi_mat_khau_luc
+                  ? new Date(userExtra.doi_mat_khau_luc).toLocaleString('vi-VN')
                   : 'Chưa thay đổi'}
               </span>
             </div>
             <div>
               <span className="text-slate-500 block">Ngày tạo tài khoản:</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 block">
-                {user?.createdAt ? new Date(user.createdAt).toLocaleString('vi-VN') : 'Chưa ghi nhận'}
+                {userExtra.tao_luc ? new Date(userExtra.tao_luc).toLocaleString('vi-VN') : 'Chưa ghi nhận'}
               </span>
             </div>
             <div>
               <span className="text-slate-500 block">Cập nhật hồ sơ gần nhất:</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 block">
-                {user?.updatedAt ? new Date(user.updatedAt).toLocaleString('vi-VN') : 'Chưa ghi nhận'}
+                {userExtra.cap_nhat_luc ? new Date(userExtra.cap_nhat_luc).toLocaleString('vi-VN') : 'Chưa ghi nhận'}
               </span>
             </div>
           </div>

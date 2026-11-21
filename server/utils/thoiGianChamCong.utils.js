@@ -1,8 +1,11 @@
 // Tiện ích xử lý múi giờ Việt Nam, khung giờ ca, trạng thái vào/tan ca và bộ lọc ngày chấm công.
 const ServiceError = require('./loiNghiepVu');
 
-// Chuyển mốc thời gian về múi giờ Asia/Ho_Chi_Minh (UTC+7) để tránh lệch giờ server
+// Chuyển mốc thời gian về múi giờ Asia/Ho_Chi_Minh (UTC+7) để tránh lệch giờ server (idempotent nếu đã chuẩn hóa)
 const getVietnamTime = (date = new Date()) => {
+  if (date instanceof Date && date._isVietnamTime) {
+    return date;
+  }
   const d = date instanceof Date ? date : new Date(date);
   const validDate = isNaN(d.getTime()) ? new Date() : d;
 
@@ -163,7 +166,7 @@ const buildAttendanceDateFilter = (startDate, endDate) => {
     [Op.or]: [
       { thoi_gian_vao: cond },
       { ngay_cong: workDateCond },
-      { thoi_gian_vao: null, tao_luc: cond },
+      { ngay_cong: null, thoi_gian_vao: null, tao_luc: cond },
     ],
   };
 };

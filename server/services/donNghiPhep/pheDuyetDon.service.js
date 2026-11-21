@@ -203,8 +203,8 @@ const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong,
       const quota = applicantUser?.ho_so?.han_muc_phep_nam !== undefined ? Number(applicantUser.ho_so.han_muc_phep_nam) : 12;
 
       for (let targetYear = startYear; targetYear <= endYear; targetYear += 1) {
-        const yearStart = new Date(targetYear, 0, 1);
-        const yearEnd = new Date(targetYear, 11, 31, 23, 59, 59, 999);
+        const yearStart = new Date(`${targetYear}-01-01T00:00:00+07:00`);
+        const yearEnd = new Date(`${targetYear}-12-31T23:59:59.999+07:00`);
         const targetYearLeavesStart = new Date(Math.max(startDate.getTime(), yearStart.getTime()));
         const targetYearLeavesEnd = new Date(Math.min(endDate.getTime(), yearEnd.getTime()));
         const requestedDays = isHalfDay
@@ -448,10 +448,20 @@ const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong,
             continue;
           }
 
-          const existing = await NhatKyChamCong.findOne({
+          let existing = await NhatKyChamCong.findOne({
             where: { nguoi_dung_id: request.nguoi_dung_id, ngay_cong: workDateStr, lich_trinh_id: sch.id },
             transaction,
           });
+          if (!existing) {
+            existing = await NhatKyChamCong.findOne({
+              where: {
+                nguoi_dung_id: request.nguoi_dung_id,
+                ngay_cong: workDateStr,
+                ds_lich_trinh_id: { [Op.like]: `%${sch.id}%` },
+              },
+              transaction,
+            });
+          }
 
           if (isHalfDayLeave && !isExplanationReq && existing?.thoi_gian_vao) {
             // Đơn nghỉ nửa ngày không xóa công ca mà giảng viên thực tế đã đi dạy
@@ -865,20 +875,26 @@ const cancelLeaveRequestDomain = async ({ id, phien_ban_ky_vong, currentUser, di
 
       if (punches.length === 0) {
         const isCreatedSolelyByApproval =
-          log.ly_do_ghi_de === 'Nghỉ phép có đơn được duyệt (Tạo mới hồi tố)' &&
+          (log.ly_do_ghi_de === 'Nghỉ phép có đơn được duyệt (Tạo mới hồi tố)' ||
+            (request.loai_don === 'giai_trinh_cong' &&
+              String(log.ly_do_ghi_de || '').startsWith(`Duyệt đơn giải trình công #${request.id}`))) &&
           !log.thoi_gian_vao &&
           !log.thoi_gian_ra &&
-          !log.nguoi_ghi_de_id;
+          (request.loai_don === 'giai_trinh_cong' || !log.nguoi_ghi_de_id);
         if (isCreatedSolelyByApproval) {
           await log.destroy({ transaction });
         } else {
           log.trang_thai = 'absent';
           log.don_tu_id = null;
+          log.nguoi_ghi_de_id = null;
           log.so_tiet_thuc_day = 0;
           log.thoi_luong_lam_viec_phut = 0;
           log.di_muon_phut = 0;
           log.ve_som_phut = 0;
-          log.ly_do_ghi_de = 'Đơn nghỉ phép đã bị hủy (Khôi phục trạng thái vắng)';
+          log.ly_do_ghi_de =
+            request.loai_don === 'giai_trinh_cong'
+              ? 'Đơn giải trình công đã bị hủy (Khôi phục trạng thái vắng)'
+              : 'Đơn nghỉ phép đã bị hủy (Khôi phục trạng thái vắng)';
           await log.save({ transaction });
         }
       } else {
@@ -930,9 +946,13 @@ const cancelLeaveRequestDomain = async ({ id, phien_ban_ky_vong, currentUser, di
             );
           }
         } else {
-          log.trang_thai = baseStatus;
+          log.trang_thai = restoredIn ? 'thieu_check_out' : baseStatus;
+          log.thoi_luong_lam_viec_phut = 0;
+          log.so_tiet_thuc_day = 0;
+          log.ve_som_phut = 0;
         }
         log.don_tu_id = null;
+        log.nguoi_ghi_de_id = null;
         log.ly_do_ghi_de = 'Phục hồi tính công từ lượt quẹt thực tế sau khi hủy đơn';
         await log.save({ transaction });
       }

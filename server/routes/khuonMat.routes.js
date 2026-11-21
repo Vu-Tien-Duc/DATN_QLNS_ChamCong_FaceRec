@@ -73,7 +73,7 @@ router.get('/trang-thai-dang-ky', verifyToken, getRegistrationStatus);
 // Kiểm tra quyền truy cập dữ liệu khuôn mặt của chính chủ hoặc quản trị nhân sự
 const canAccessTargetFace = async (req, res, next, forbiddenCode, forbiddenMessage) => {
   try {
-    const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
+    const currentUserId = req.user?.id?.toString();
     const targetUserId = req.params.nguoiDungId;
     if (currentUserId && targetUserId && currentUserId === targetUserId) {
       return next();

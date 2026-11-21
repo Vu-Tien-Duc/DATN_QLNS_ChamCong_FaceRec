@@ -79,7 +79,7 @@ export const App: React.FC = () => {
           <Route
             path="diem-danh-khuon-mat"
             element={
-              <ProtectedRoute excludeRoles={['admin', 'kiem_toan']}>
+              <ProtectedRoute excludeRoles={['admin']}>
                 <FaceAttendance />
               </ProtectedRoute>
             }
@@ -87,7 +87,7 @@ export const App: React.FC = () => {
           <Route
             path="cham-cong-ca-nhan"
             element={
-              <ProtectedRoute excludeRoles={['admin', 'kiem_toan']}>
+              <ProtectedRoute excludeRoles={['admin']}>
                 <AttendanceMe />
               </ProtectedRoute>
             }
@@ -95,7 +95,7 @@ export const App: React.FC = () => {
           <Route
             path="quan-ly-cham-cong"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb', 'ke_toan', 'kiem_toan']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb', 'ke_toan']}>
                 <AttendanceManage />
               </ProtectedRoute>
             }
@@ -103,21 +103,26 @@ export const App: React.FC = () => {
 
           {/* Hồ sơ, Đơn từ & Lịch trình */}
           <Route path="ho-so" element={<Profile />} />
-          <Route
-            path="don-nghi-phep"
-            element={
-              <ProtectedRoute excludeRoles={['kiem_toan']}>
-                <LeaveRequests />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="don-nghi-phep" element={<LeaveRequests />} />
           <Route path="lich-trinh" element={<Schedules />} />
 
           {/* Nhân sự & Tổ chức */}
           <Route
             path="nguoi-dung"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'tccb']}>
+              <ProtectedRoute
+                allowedRoles={[
+                  'admin',
+                  'bgh',
+                  'tccb',
+                  'truong_khoa',
+                  'pho_khoa',
+                  'truong_bo_mon',
+                  'pho_bo_mon',
+                  'truong_phong',
+                  'pho_phong',
+                ]}
+              >
                 <Users />
               </ProtectedRoute>
             }
@@ -133,14 +138,7 @@ export const App: React.FC = () => {
           />
 
           {/* Tài chính Lương & Báo cáo */}
-          <Route
-            path="phieu-luong"
-            element={
-              <ProtectedRoute excludeRoles={['kiem_toan']}>
-                <Payroll />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="phieu-luong" element={<Payroll />} />
           <Route
             path="bao-cao"
             element={
@@ -150,7 +148,6 @@ export const App: React.FC = () => {
                   'bgh',
                   'tccb',
                   'ke_toan',
-                  'kiem_toan',
                   'truong_khoa',
                   'pho_khoa',
                   'truong_bo_mon',
@@ -185,7 +182,7 @@ export const App: React.FC = () => {
           <Route
             path="nhat-ky-kiem-toan"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'kiem_toan']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh']}>
                 <AuditLogs />
               </ProtectedRoute>
             }

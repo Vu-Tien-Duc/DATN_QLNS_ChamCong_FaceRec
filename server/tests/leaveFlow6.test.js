@@ -149,6 +149,8 @@ describe('Luồng 6 - Tạo đơn, Quỹ phép năm & Bảo mật tạo đơn', 
       tuan_hoc: [],
     }));
     stub(models.LichTrinh, 'findAll', async () => []);
+    stub(models.NgoaiLeLichTrinh, 'findAll', async () => []);
+    stub(models.DonNghiPhep, 'findAll', async () => []);
     stub(models.DonNghiPhep, 'findOne', async ({ where }) => {
       overlapWhere = where;
       return null;
@@ -598,16 +600,18 @@ describe('Luồng 6 - Integration Express Routes, RBAC, Optimistic Locking & Gi�
     });
   };
 
+  const BGH_UUID = 'bbbbbbbb-0000-4000-8000-000000000001';
   const signUser = (role, id = USER_GV) =>
-    jwt.sign({ id, vai_tro_chinh: role }, process.env.JWT_SECRET, { expiresIn: '10m' });
+    jwt.sign({ id, vai_tro_chinh: role, phien_ban_token: 1 }, process.env.JWT_SECRET, { expiresIn: '10m' });
 
   it('RBAC tạo đơn, route GET /giang-vien-day-thay cho giảng viên và Optimistic Locking 409', async () => {
     stub(models.NguoiDung, 'findByPk', async (id) => ({
       id,
       ho_ten: 'Test User',
-      vai_tro_chinh: id === 'bgh-id' ? 'bgh' : 'giang_vien',
+      vai_tro_chinh: id === BGH_UUID ? 'bgh' : 'giang_vien',
       kich_hoat: true,
       trang_thai_lam_viec: 'dang_lam_viec',
+      phien_ban_token: 1,
       danh_sach_vai_tro: [],
     }));
     stub(models.NguoiDung, 'findAll', async () => [{ id: USER_SUB, ho_ten: 'GV B', ma_can_bo: 'GV02' }]);
@@ -619,7 +623,7 @@ describe('Luồng 6 - Integration Express Routes, RBAC, Optimistic Locking & Gi�
     }));
 
     const app = createTestApp();
-    const bghToken = signUser('bgh', 'bgh-id');
+    const bghToken = signUser('bgh', BGH_UUID);
     const gvToken = signUser('giang_vien', USER_GV);
 
     // 1. BGH không có DON_TU:TAO -> bị middleware chặn 403

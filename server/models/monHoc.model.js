@@ -24,7 +24,11 @@ MonHoc.init(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 3,
-      validate: { min: 1 },
+      validate: {
+        isInt: { msg: 'Số tín chỉ phải là số nguyên' },
+        min: { args: [1], msg: 'Số tín chỉ tối thiểu là 1' },
+        max: { args: [30], msg: 'Số tín chỉ tối đa là 30' },
+      },
     },
     phong_ban_id: uuidFk(true),
     mo_ta: { type: DataTypes.STRING(500), allowNull: true, defaultValue: '' },

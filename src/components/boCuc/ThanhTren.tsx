@@ -32,6 +32,7 @@ import { hasRole, getRoleLabel } from '../../utils/phanQuyen';
 import { attendanceApi, AttendanceHistoryItem } from '../../api/chamCong.api';
 import { leaveRequestApi } from '../../api/donNghiPhep.api';
 import { thongBaoApi } from '../../api/thongBao.api';
+import { useSocketEvent } from '../../api/socket';
 
 interface NavbarProps {
   onMobileOpen: () => void;
@@ -72,7 +73,7 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/quan-ly-cham-cong',
     icon: Clock,
     description: 'Bảng tổng hợp công tháng, đi muộn, về sớm toàn trường & theo khoa',
-    roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb', 'ke_toan', 'kiem_toan'],
+    roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb', 'ke_toan'],
   },
   {
     id: 'profile',
@@ -89,7 +90,7 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/cham-cong-ca-nhan',
     icon: Clock,
     description: 'Lịch sử vào - ra, ngày công cá nhân và gửi đơn giải trình công',
-    excludeRoles: ['admin', 'kiem_toan'],
+    excludeRoles: ['admin'],
   },
   {
     id: 'users',
@@ -98,7 +99,7 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/nguoi-dung',
     icon: UsersIcon,
     description: 'Hồ sơ nhân sự, mã cán bộ, học hàm, học vị và ảnh sinh trắc học',
-    roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'tccb'],
+    roles: ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong'],
   },
   {
     id: 'depts',
@@ -123,7 +124,6 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/don-nghi-phep',
     icon: FileText,
     description: 'Quy trình gửi đơn và phê duyệt nghỉ phép 2 cấp',
-    excludeRoles: ['kiem_toan'],
   },
   {
     id: 'settings',
@@ -165,41 +165,48 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
   const searchBoxRef = useRef<HTMLDivElement | null>(null);
   const dropdownGroupRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    const loadNotifications = async () => {
-      try {
-        const lastReadAt = localStorage.getItem('ntu_notif_read_at') || undefined;
-        const result = await thongBaoApi.getNotifications(lastReadAt);
-        if (!active) return;
-        const mapped = result.danh_sach_thong_bao.map((item, idx) => {
-          const rawType = String(item.loai || 'cham_cong');
-          const type: 'attendance' | 'leave' | 'schedule' = rawType.includes('don')
-            ? 'leave'
-            : rawType.includes('lich')
-            ? 'schedule'
-            : 'attendance';
-          const defaultPath = type === 'leave' ? '/don-nghi-phep' : type === 'schedule' ? '/lich-trinh' : '/cham-cong-ca-nhan';
-          return {
-            id: String(item.id || `tb-${idx}`),
-            title: item.tieu_de || 'Thông báo hệ thống',
-            detail: item.noi_dung || '',
-            time: item.thoi_gian ? new Date(item.thoi_gian).toLocaleString('vi-VN') : '',
-            path: item.duong_dan || defaultPath,
-            type,
-          };
-        });
-        setNotifications(mapped);
-        setUnreadCount(result.so_chua_doc);
-      } catch {
-        // Bỏ qua lỗi mạng khi tải thông báo nền
-      }
-    };
-    if (user) loadNotifications();
-    return () => {
-      active = false;
-    };
+  const loadNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const lastReadAt = localStorage.getItem('ntu_notif_read_at') || undefined;
+      const result = await thongBaoApi.getNotifications(lastReadAt);
+      const mapped = result.danh_sach_thong_bao.map((item, idx) => {
+        const rawType = String(item.loai || 'cham_cong');
+        const type: 'attendance' | 'leave' | 'schedule' = rawType.includes('don')
+          ? 'leave'
+          : rawType.includes('lich')
+          ? 'schedule'
+          : 'attendance';
+        const defaultPath = type === 'leave' ? '/don-nghi-phep' : type === 'schedule' ? '/lich-trinh' : '/cham-cong-ca-nhan';
+        return {
+          id: String(item.id || `tb-${idx}`),
+          title: item.tieu_de || 'Thông báo hệ thống',
+          detail: item.noi_dung || '',
+          time: item.thoi_gian
+            ? new Date(item.thoi_gian).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+            : '',
+          path: item.duong_dan || defaultPath,
+          type,
+        };
+      });
+      setNotifications(mapped);
+      setUnreadCount(result.so_chua_doc);
+    } catch {
+      // Bỏ qua lỗi mạng khi tải thông báo nền
+    }
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    loadNotifications();
+    const intervalId = setInterval(loadNotifications, 60000);
+    return () => clearInterval(intervalId);
+  }, [user, loadNotifications]);
+
+  useSocketEvent('leave:status-changed', loadNotifications);
+  useSocketEvent('attendance:new-punch', loadNotifications);
+  useSocketEvent('attendance:update', loadNotifications);
+  useSocketEvent('security:fraud-alert', loadNotifications);
 
   // Real-time Clock Timer
   useEffect(() => {
@@ -262,7 +269,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
     'pho_phong',
     'tccb',
     'ke_toan',
-    'kiem_toan',
   ]);
   const roleLabel = getRoleLabel(user?.vai_tro_chinh);
 

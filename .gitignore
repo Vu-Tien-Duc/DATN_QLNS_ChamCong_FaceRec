@@ -37,7 +37,8 @@ uploads/
 /uploads/
 
 # Python face service environment and local configuration
+.venv/
 /face-service/.venv/
 /face-service/.env
-/face-service/__pycache__/
-/face-service/*.py[cod]
+**/__pycache__/
+*.py[cod]

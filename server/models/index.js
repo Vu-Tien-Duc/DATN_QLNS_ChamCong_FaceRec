@@ -74,6 +74,8 @@ LichTrinhTuan.belongsTo(LichTrinh, { foreignKey: 'lich_trinh_id', as: 'lich_trin
 // Alias ngoai_le dùng bởi utils/ngayLichTrinh.utils.js
 LichTrinh.hasMany(NgoaiLeLichTrinh, { foreignKey: 'lich_trinh_id', as: 'ngoai_le', ...cascade });
 NgoaiLeLichTrinh.belongsTo(LichTrinh, { foreignKey: 'lich_trinh_id', as: 'lich_trinh', ...cascade });
+NgoaiLeLichTrinh.belongsTo(NguoiDung, { foreignKey: 'giang_vien_day_thay_id', as: 'giang_vien_day_thay', ...noAction });
+NgoaiLeLichTrinh.belongsTo(CaLamViec, { foreignKey: 'ca_thay_the_id', as: 'ca_thay_the', ...noAction });
 
 // Chấm công
 NguoiDung.hasMany(NhatKyChamCong, { foreignKey: 'nguoi_dung_id', as: 'nhat_ky_cham_cong', ...noAction });

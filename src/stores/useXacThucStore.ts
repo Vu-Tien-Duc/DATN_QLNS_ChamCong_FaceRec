@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import toast from 'react-hot-toast';
 import { UserProfile, UserRoleLegacy } from '../types';
+import { clearApiClientAuthHeader } from '../api/apiClient';
 import { authApi, LoginPayload } from '../api/xacThuc.api';
-import { normalizeBackendData } from '../utils/chuanHoaDuLieu';
+import { disconnectSocket, updateSocketAuthToken } from '../api/socket';
 
 export const SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 const LAST_ACTIVITY_KEY = 'ntu_last_activity';
@@ -83,7 +84,7 @@ const getStoredUser = (): UserProfile | null => {
   }
   try {
     const raw = sessionStorage.getItem('user') || localStorage.getItem('user');
-    return raw ? normalizeBackendData<UserProfile>(JSON.parse(raw)) : null;
+    return raw ? (JSON.parse(raw) as UserProfile) : null;
   } catch {
     return null;
   }
@@ -111,8 +112,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (token) {
       storage.setItem('token', token);
       storage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+      updateSocketAuthToken(token);
     } else {
+      disconnectSocket();
       clearAllAuthStorage();
+      clearApiClientAuthHeader();
     }
     set({ token, isAuthenticated: !!token });
   },
@@ -120,8 +124,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   checkIdleTimeout: () => {
     if (!get().isAuthenticated) return false;
     if (isSessionIdleExpired()) {
+      const staleRefreshToken = getStoredRefreshToken();
+      const staleAccessToken =
+        get().token ||
+        (typeof window !== 'undefined'
+          ? sessionStorage.getItem('accessToken') ||
+            sessionStorage.getItem('token') ||
+            localStorage.getItem('accessToken') ||
+            localStorage.getItem('token')
+          : null);
+      disconnectSocket();
       clearAllAuthStorage();
+      clearApiClientAuthHeader();
       set({ user: null, token: null, refreshToken: null, isAuthenticated: false });
+      if (staleRefreshToken || staleAccessToken) {
+        authApi.logout(staleRefreshToken, staleAccessToken).catch(() => {});
+      }
       toast.error('Phiên đăng nhập đã hết hạn sau 15 phút không thao tác. Vui lòng đăng nhập lại.', {
         id: 'idle-timeout',
       });
@@ -136,9 +154,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const res = await authApi.login(payload);
       if (res.success && res.data) {
-        const { token, refreshToken, user } = res.data;
+        const token = res.data.token;
+        const refreshToken = res.data.ma_lam_moi;
+        const user = res.data.nguoi_dung;
 
         clearAllAuthStorage();
+        clearApiClientAuthHeader();
         const storage = rememberMe ? localStorage : sessionStorage;
         storage.setItem('token', token);
         if (refreshToken) {
@@ -154,6 +175,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isAuthenticated: true,
           isLoading: false,
         });
+        updateSocketAuthToken(token);
 
         const displayName = user.ho_ten || 'Quý Thầy/Cô';
         toast.success(`Chào mừng ${displayName} đăng nhập thành công!`);
@@ -180,8 +202,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const res = await authApi.getMe();
-      const userData = ((res.data as any)?.user || res.data) as UserProfile;
-      if (res.success && userData && (userData._id || (userData as any).id || userData.email)) {
+      const userData = res.data;
+      if (res.success && userData && (userData.id || userData.email)) {
         getActiveAuthStorage().setItem('user', JSON.stringify(userData));
         set({ user: userData, isAuthenticated: true });
       }
@@ -191,13 +213,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    const currentRefreshToken = getStoredRefreshToken() || get().refreshToken;
     try {
-      await authApi.logout();
+      await authApi.logout(currentRefreshToken);
     } catch {
       // Bỏ qua lỗi mạng khi logout
     } finally {
+      disconnectSocket();
       clearAllAuthStorage();
-
+      clearApiClientAuthHeader();
       set({
         user: null,
         token: null,
@@ -220,65 +244,38 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     };
 
     const targetEmail = roleEmails[role];
-    if (targetEmail) {
-      const ok = await get().login({ email: targetEmail, password: '123456' });
-      if (ok) {
-        toast.success(`Đã đăng nhập xác thực thành công vai trò: ${role.toUpperCase()}`);
-        return;
-      }
+    if (!targetEmail) {
+      toast.error(`Không tìm thấy tài khoản thử nghiệm cho vai trò ${role}.`);
+      return;
     }
 
-    const roleProfiles: Partial<Record<UserRoleLegacy, Partial<UserProfile>>> = {
-      bgh: {
-        ho_ten: 'PGS.TS. Nguyễn Văn Hiệu',
-        email: 'hieutruong@ntu.edu.vn',
-        vai_tro_chinh: 'bgh',
-        ten_phong_ban: 'Ban Giám Hiệu',
-        danh_sach_vai_tro: [{ ma_vai_tro: 'bgh', pham_vi: 'toan_truong' }],
-      },
-      admin: {
-        ho_ten: 'Quản trị viên Hệ thống',
-        email: 'admin@ntu.edu.vn',
-        vai_tro_chinh: 'admin',
-        ten_phong_ban: 'Ban Giám Hiệu',
-        danh_sach_vai_tro: [{ ma_vai_tro: 'admin', pham_vi: 'toan_truong' }],
-      },
-      truong_khoa: {
-        ho_ten: 'TS. Trần Minh Tuấn',
-        email: 'truongkhoa.cntt@ntu.edu.vn',
-        vai_tro_chinh: 'truong_khoa',
-        ten_phong_ban: 'Khoa Công nghệ Thông tin',
-        danh_sach_vai_tro: [{ ma_vai_tro: 'truong_khoa', pham_vi: 'khoa' }],
-      },
-      giang_vien: {
-        ho_ten: 'ThS. Vũ Tiến Đức',
-        email: 'ducvt.gv@ntu.edu.vn',
-        vai_tro_chinh: 'giang_vien',
-        ten_phong_ban: 'Khoa Công nghệ Thông tin',
-        danh_sach_vai_tro: [{ ma_vai_tro: 'giang_vien', pham_vi: 'khoa' }],
-      },
-      tccb: {
-        ho_ten: 'Lê Thị Hương',
-        email: 'tccb@ntu.edu.vn',
-        vai_tro_chinh: 'tccb',
-        ten_phong_ban: 'Phòng Tổ chức Cán bộ',
-        danh_sach_vai_tro: [{ ma_vai_tro: 'tccb', pham_vi: 'toan_truong' }],
-      },
-      ke_toan: {
-        ho_ten: 'Phạm Thu Hà',
-        email: 'ketoan@ntu.edu.vn',
-        vai_tro_chinh: 'ke_toan',
-        ten_phong_ban: 'Phòng Kế toán - Tài chính',
-        danh_sach_vai_tro: [{ ma_vai_tro: 'ke_toan', pham_vi: 'toan_truong' }],
-      },
-    };
-
-    const currentUser = get().user;
-    const updated = currentUser
-      ? { ...currentUser, ...(roleProfiles[role] || {}) }
-      : (roleProfiles[role] as UserProfile);
-    getActiveAuthStorage().setItem('user', JSON.stringify(updated));
-    set({ user: updated });
-    toast.success(`Đã chuyển thử nghiệm sang vai trò: ${role.toUpperCase()}`);
+    const ok = await get().login({ email: targetEmail, mat_khau: '123456' });
+    if (ok) {
+      toast.success(`Đã đăng nhập xác thực thành công vai trò: ${role.toUpperCase()}`);
+    }
   },
 }));
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('auth:tokens-updated', (event: Event) => {
+    const detail = (event as CustomEvent<{ token?: string; refreshToken?: string }>).detail;
+    if (detail?.token) {
+      updateSocketAuthToken(detail.token);
+      useAuthStore.setState({
+        token: detail.token,
+        ...(detail.refreshToken ? { refreshToken: detail.refreshToken } : {}),
+        isAuthenticated: true,
+      });
+    }
+  });
+
+  window.addEventListener('auth:session-cleared', () => {
+    disconnectSocket();
+    useAuthStore.setState({
+      user: null,
+      token: null,
+      refreshToken: null,
+      isAuthenticated: false,
+    });
+  });
+}

@@ -14,14 +14,52 @@ const handleServiceError = (res, error, next) => {
   next(error);
 };
 
-// GET /api/phong-ban - Danh sách Khoa / Phòng ban (phẳng hoặc dạng cây)
+// GET /api/phong-ban/cay - Cây cơ cấu tổ chức phân cấp
+const getDepartmentTree = async (req, res, next) => {
+  try {
+    const { loai_don_vi, don_vi_cha_id } = req.query;
+    const result = await departmentService.getAllDepartments({
+      loai_don_vi,
+      don_vi_cha_id,
+      cay: 'true',
+    });
+    return sendSuccess(res, 'Lấy danh sách Khoa / Phòng ban dạng cây thành công.', result.data);
+  } catch (error) {
+    handleServiceError(res, error, next);
+  }
+};
+
+// GET /api/phong-ban - Danh sách Khoa / Phòng ban (phẳng, cây hoặc phân trang)
 const getAllDepartments = async (req, res, next) => {
   try {
-    const { loai_don_vi: type, don_vi_cha_id: parentId, cay: tree = 'false', trang: page, gioi_han: limit } = req.query;
-    const result = await departmentService.getAllDepartments({ type, parentId, tree, page, limit });
+    const {
+      loai_don_vi,
+      don_vi_cha_id,
+      cay = 'false',
+      trang,
+      gioi_han,
+    } = req.query;
+    const result = await departmentService.getAllDepartments({
+      loai_don_vi,
+      don_vi_cha_id,
+      cay,
+      trang,
+      gioi_han,
+    });
 
     if (result.isTree) {
       return sendSuccess(res, 'Lấy danh sách Khoa / Phòng ban dạng cây thành công.', result.data);
+    }
+    if (result.isPaginated) {
+      return sendSuccess(res, 'Lấy danh sách Khoa / Phòng ban thành công.', {
+        departments: result.departments,
+        pagination: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: result.totalPages,
+        },
+      });
     }
     return sendSuccess(res, 'Lấy danh sách Khoa / Phòng ban thành công.', result.data);
   } catch (error) {
@@ -43,31 +81,28 @@ const getDepartmentById = async (req, res, next) => {
 const createDepartment = async (req, res, next) => {
   try {
     const {
-      ten_phong_ban: resolvedName,
-      loai_don_vi: resolvedType,
-      don_vi_cha_id: resolvedParentId,
-      truong_don_vi_id: resolvedManagerId,
+      ten_phong_ban,
+      loai_don_vi,
+      don_vi_cha_id,
+      truong_don_vi_id,
       toa_do,
       vi_do,
       kinh_do,
       ban_kinh_met,
     } = req.body || {};
 
-    const resolvedRadius = ban_kinh_met !== undefined ? ban_kinh_met : 200;
-    const resolvedLat = toa_do?.vi_do ?? vi_do ?? null;
-    const resolvedLng = toa_do?.kinh_do ?? kinh_do ?? null;
     const ipAddress = req.ip || req.connection?.remoteAddress || null;
 
     const department = await departmentService.createDepartment({
-      name: resolvedName,
-      type: resolvedType,
-      parentId: resolvedParentId,
-      managerId: resolvedManagerId,
-      location: toa_do || { lat: resolvedLat, lng: resolvedLng },
-      latitude: resolvedLat,
-      longitude: resolvedLng,
-      radiusMeters: resolvedRadius,
-      actorId: req.user._id,
+      ten_phong_ban,
+      loai_don_vi,
+      don_vi_cha_id,
+      truong_don_vi_id,
+      toa_do,
+      vi_do,
+      kinh_do,
+      ban_kinh_met,
+      actorId: req.user.id,
       ipAddress,
     });
 
@@ -85,7 +120,7 @@ const updateDepartment = async (req, res, next) => {
     const department = await departmentService.updateDepartment({
       id: req.params.id,
       body: req.body,
-      actorId: req.user._id,
+      actorId: req.user.id,
       ipAddress,
     });
 
@@ -102,7 +137,7 @@ const deleteDepartment = async (req, res, next) => {
 
     const result = await departmentService.deleteDepartment({
       id: req.params.id,
-      actorId: req.user._id,
+      actorId: req.user.id,
       ipAddress,
     });
 
@@ -114,6 +149,7 @@ const deleteDepartment = async (req, res, next) => {
 
 module.exports = {
   getAllDepartments,
+  getDepartmentTree,
   getDepartmentById,
   createDepartment,
   updateDepartment,

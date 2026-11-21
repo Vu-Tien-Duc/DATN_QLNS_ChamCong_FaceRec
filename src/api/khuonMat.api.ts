@@ -65,6 +65,7 @@ export interface RegistrationStatusResponse {
 export interface EnrollResponse {
   success: boolean;
   message: string;
+  errorCode?: string;
   data?: {
     nguoi_dung_id: string;
     ho_ten: string;
@@ -72,6 +73,7 @@ export interface EnrollResponse {
     da_dang_ky_face?: boolean;
     cac_goc_chup: string[];
     so_luong_mau: number;
+    anh_khuon_mat?: string | null;
     mau_khuon_mat_id?: string;
   };
 }
@@ -115,18 +117,8 @@ export const faceApi = {
    * Xóa toàn bộ dữ liệu mẫu khuôn mặt (Nghị định 13/2023/NĐ-CP). Chỉ cấp trên trong phạm vi quản lý được xóa, không tự xóa.
    */
   async deleteFaceData(userId: string): Promise<{ success: boolean; message: string }> {
-    const endpoint = `/khuon-mat/du-lieu/${userId}`;
-    try {
-      const res = await apiClient.delete<{ success: boolean; message: string }>(endpoint);
-      return res.data;
-    } catch (err: any) {
-      if (err.response?.status === 404) {
-        // Fallback sang endpoint /api/users/:id/face nếu /api/face/faces/:id không tìm thấy
-        const fallbackRes = await apiClient.delete<{ success: boolean; message: string }>(`/nguoi-dung/${userId}/khuon-mat`);
-        return fallbackRes.data;
-      }
-      throw err;
-    }
+    const res = await apiClient.delete<{ success: boolean; message: string }>(`/khuon-mat/du-lieu/${userId}`);
+    return res.data;
   },
 
   /**

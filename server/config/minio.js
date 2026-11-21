@@ -15,13 +15,13 @@ const MINIO_BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'datn-qlns-storage';
 const MINIO_REGION = process.env.MINIO_REGION || 'us-east-1';
 const STORAGE_DRIVER = (process.env.STORAGE_DRIVER || 'minio').toLowerCase();
 
-// Thư mục lưu cục bộ bên ngoài repo khi fallback
-const LOCAL_STORAGE_ROOT = process.env.STORAGE_LOCAL_DIR
-  ? path.resolve(process.env.STORAGE_LOCAL_DIR)
-  : path.resolve('D:/DATN_VuTienDuc_2310900023/storage-uploads');
+// Thư mục lưu cục bộ di động tương đối theo thư mục dự án khi fallback
+const LOCAL_STORAGE_ROOT = path.resolve(
+  process.env.STORAGE_LOCAL_DIR || path.resolve(__dirname, '../../storage-uploads')
+);
 // Lấy đường dẫn lưu ảnh minh chứng điểm danh cục bộ
 const getLocalEvidenceDir = () =>
-  path.resolve(process.env.ATTENDANCE_EVIDENCE_DIR || 'D:/DATN_VuTienDuc_2310900023/attendance-evidence');
+  path.resolve(process.env.ATTENDANCE_EVIDENCE_DIR || path.resolve(__dirname, '../../private/attendance-evidence'));
 
 for (const dir of [LOCAL_STORAGE_ROOT, getLocalEvidenceDir(), path.join(LOCAL_STORAGE_ROOT, 'faces'), path.join(LOCAL_STORAGE_ROOT, 'attachments')]) {
   if (!fs.existsSync(dir)) {
@@ -90,22 +90,49 @@ const ensureBucketExists = async (bucketName = MINIO_BUCKET_NAME) => {
   }
 };
 
-// Quy đổi objectKey thành đường dẫn lưu trữ cục bộ an toàn
+const assertPathWithinRoot = (rootDir, targetPath) => {
+  const resolvedRoot = path.resolve(rootDir);
+  const resolvedTarget = path.resolve(targetPath);
+  if (resolvedTarget !== resolvedRoot && !resolvedTarget.startsWith(resolvedRoot + path.sep)) {
+    throw new Error('Phát hiện truy cập tệp vượt quá phạm vi thư mục lưu trữ cho phép.');
+  }
+  return resolvedTarget;
+};
+
+const sanitizeObjectKey = (objectKey) => {
+  if (typeof objectKey !== 'string' || !objectKey.trim()) {
+    throw new Error('Đường dẫn tệp (objectKey) không hợp lệ.');
+  }
+  if (objectKey.includes('\0') || /^[a-zA-Z]:/.test(objectKey.trim())) {
+    throw new Error('Đường dẫn tệp (objectKey) chứa ký tự không hợp lệ.');
+  }
+  const normalized = objectKey.replace(/\\/g, '/').replace(/^\/+/, '');
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.length === 0 || segments.some((seg) => seg === '..' || seg === '.')) {
+    throw new Error('Đường dẫn tệp (objectKey) chứa phân đoạn traversal không hợp lệ.');
+  }
+  return segments.join('/');
+};
+
+// Quy đổi objectKey thành đường dẫn lưu trữ cục bộ an toàn (chống Path Traversal)
 const resolveLocalPath = (objectKey) => {
-  const cleanKey = objectKey.replace(/^[/\\]+/, '');
+  const cleanKey = sanitizeObjectKey(objectKey);
   if (cleanKey.startsWith('evidence/')) {
-    const filename = cleanKey.replace(/^evidence[/\\]+/, '');
-    const customEvidencePath = path.join(getLocalEvidenceDir(), filename);
+    const filename = cleanKey.slice('evidence/'.length);
+    const evidenceRoot = getLocalEvidenceDir();
+    const customEvidencePath = assertPathWithinRoot(evidenceRoot, path.join(evidenceRoot, filename));
     if (fs.existsSync(customEvidencePath)) return customEvidencePath;
-    const internalEvidencePath = path.resolve(__dirname, '../../private/attendance-evidence', filename);
+    const internalEvidenceRoot = path.resolve(__dirname, '../../private/attendance-evidence');
+    const internalEvidencePath = assertPathWithinRoot(internalEvidenceRoot, path.join(internalEvidenceRoot, filename));
     if (fs.existsSync(internalEvidencePath)) return internalEvidencePath;
     return customEvidencePath;
   }
-  const externalPath = path.join(LOCAL_STORAGE_ROOT, cleanKey);
+  const externalPath = assertPathWithinRoot(LOCAL_STORAGE_ROOT, path.join(LOCAL_STORAGE_ROOT, cleanKey));
   if (fs.existsSync(externalPath)) {
     return externalPath;
   }
-  const internalPath = path.resolve(__dirname, '../../uploads', cleanKey);
+  const internalRoot = path.resolve(__dirname, '../../uploads');
+  const internalPath = assertPathWithinRoot(internalRoot, path.join(internalRoot, cleanKey));
   if (fs.existsSync(internalPath)) {
     return internalPath;
   }
@@ -118,7 +145,7 @@ const putObject = async (objectKey, buffer, contentType = 'application/octet-str
     throw new Error('Dữ liệu tải lên phải là một Buffer nhị phân.');
   }
 
-  const cleanKey = objectKey.replace(/^[/\\]+/, '');
+  const cleanKey = sanitizeObjectKey(objectKey);
   const hasMinio = await ensureBucketExists();
 
   if (hasMinio && minioClient) {
@@ -164,7 +191,7 @@ const putObject = async (objectKey, buffer, contentType = 'application/octet-str
 
 // Đọc tệp thành Buffer từ MinIO hoặc thư mục cục bộ
 const getObject = async (objectKey) => {
-  const cleanKey = objectKey.replace(/^[/\\]+/, '');
+  const cleanKey = sanitizeObjectKey(objectKey);
   const hasMinio = await ensureBucketExists();
 
   if (hasMinio && minioClient) {
@@ -224,7 +251,7 @@ const getObject = async (objectKey) => {
 
 // Lấy luồng đọc (Readable Stream) để stream trực tiếp về client
 const getObjectStream = async (objectKey) => {
-  const cleanKey = objectKey.replace(/^[/\\]+/, '');
+  const cleanKey = sanitizeObjectKey(objectKey);
   const hasMinio = await ensureBucketExists();
 
   if (hasMinio && minioClient) {
@@ -277,7 +304,7 @@ const getObjectStream = async (objectKey) => {
 
 // Xóa tệp trên cả MinIO và bản sao cục bộ (nếu có)
 const deleteObject = async (objectKey) => {
-  const cleanKey = objectKey.replace(/^[/\\]+/, '');
+  const cleanKey = sanitizeObjectKey(objectKey);
   const hasMinio = await ensureBucketExists();
 
   if (hasMinio && minioClient) {
@@ -356,7 +383,7 @@ const deleteUserFaceFiles = async (userId, staffCode = null, photoPath = null) =
 
 // Tạo URL tải tệp có thời hạn (mặc định 15 phút); fallback về endpoint proxy nội bộ khi MinIO offline
 const getPresignedUrl = async (objectKey, expirySeconds = 900) => {
-  const cleanKey = objectKey.replace(/^[/\\]+/, '');
+  const cleanKey = sanitizeObjectKey(objectKey);
   const hasMinio = await ensureBucketExists();
 
   if (hasMinio && minioClient) {

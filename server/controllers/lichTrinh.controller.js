@@ -19,9 +19,40 @@ const handleServiceError = (res, error, next) => {
   next(error);
 };
 
-// Chuẩn hóa giang_vien_id sang nguoi_dung_id từ request body
+const SCHEDULE_WHITELIST_FIELDS = [
+  'nguoi_dung_id',
+  'ca_id',
+  'mon_hoc_id',
+  'phong_hoc',
+  'co_so',
+  'la_truc_tuyen',
+  'vi_do',
+  'kinh_do',
+  'ban_kinh_met',
+  'thu_trong_tuan',
+  'gio_bat_dau',
+  'gio_ket_thuc',
+  'ngay_bat_dau',
+  'ngay_ket_thuc',
+  'tiet_bat_dau',
+  'so_tiet',
+  'lap_lai_hang_tuan',
+  'loai_lich',
+  'ngay_day_bu',
+  'danh_sach_tuan',
+  'nam_hoc',
+  'hoc_ky',
+];
+
+// Chuẩn hóa trường đầu vào và lọc whitelist cho lịch trình
 const mapScheduleBodyToCanonical = (body = {}) => {
-  const data = { ...body };
+  if (!body || typeof body !== 'object') return {};
+  const data = {};
+  for (const field of SCHEDULE_WHITELIST_FIELDS) {
+    if (body[field] !== undefined) {
+      data[field] = body[field];
+    }
+  }
   if (body.giang_vien_id && !data.nguoi_dung_id) {
     data.nguoi_dung_id = body.giang_vien_id;
   }

@@ -17,6 +17,7 @@ const {
   DonNghiPhep,
   NhatKyKiemToan,
   NguoiDung,
+  VaiTroNguoiDung,
   PhongBan,
   CaLamViec,
   MonHoc,
@@ -28,6 +29,10 @@ const { sendAbsentWarningEmail, sendDailyAttendanceSummaryEmail } = require('./g
 const { getVietnamTime, getVietnamDayRange, timeStringToMinutes } = require('../../utils/thoiGianChamCong.utils');
 const { withDistributedLock } = require('../../utils/khoaPhanTan');
 const { isScheduleActiveOnDate } = require('../../utils/ngayLichTrinh.utils');
+const { hasAnyActiveRole } = require('../../utils/vaiTro.utils');
+
+const path = require('path');
+const scheduledCronTasks = [];
 
 // Kiểm tra email có phải địa chỉ thật để gửi thư
 const isDeliverableEmail = (email) => {
@@ -127,7 +132,7 @@ const getTodayActiveSchedules = async (targetDate = new Date()) => {
       }
     }
 
-    return combined.filter((sch) => isScheduleActiveOnDate(sch, vnTime));
+    return combined.filter((sch) => isScheduleActiveOnDate(sch, targetDate));
   } catch (error) {
     console.error('[Cron Service] Lỗi khi truy vấn getTodayActiveSchedules:', error);
     throw error;
@@ -294,6 +299,16 @@ const processScheduleAttendanceCheck = async (schedule, dayRange) => {
 };
 
 // Kiểm tra điểm danh cuối ngày cho khối nhân sự hành chính (làm việc Thứ 2 - Thứ 6)
+const ADMIN_STAFF_EXCLUDED_ROLES = [
+  'admin',
+  'bgh',
+  'giang_vien',
+  'truong_khoa',
+  'pho_khoa',
+  'truong_bo_mon',
+  'pho_bo_mon',
+];
+
 const processAdminStaffDailyAttendance = async (targetDate, dayRange, scheduledUserIds = new Set()) => {
   const vnTime = getVietnamTime(targetDate);
   const weekday = vnTime.getDay();
@@ -302,8 +317,13 @@ const processAdminStaffDailyAttendance = async (targetDate, dayRange, scheduledU
     return [];
   }
 
+  const activeShifts = await CaLamViec.findAll({
+    where: { kich_hoat: true },
+    order: [['gio_bat_dau', 'ASC']],
+  });
   const defaultShift =
-    (await CaLamViec.findOne({ where: { kich_hoat: true }, order: [['gio_bat_dau', 'ASC']] })) ||
+    activeShifts.find((s) => /hành\s*chính|hanh\s*chinh|văn\s*phòng|van\s*phong|ca\s*ngày/i.test(String(s.ten_ca || ''))) ||
+    activeShifts[0] ||
     (await CaLamViec.findOne({ order: [['gio_bat_dau', 'ASC']] }));
   if (!defaultShift) return [];
 
@@ -312,16 +332,24 @@ const processAdminStaffDailyAttendance = async (targetDate, dayRange, scheduledU
       kich_hoat: true,
       trang_thai_lam_viec: 'dang_lam_viec',
       vai_tro_chinh: {
-        [Op.notIn]: ['admin', 'bgh', 'giang_vien', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon'],
+        [Op.notIn]: ADMIN_STAFF_EXCLUDED_ROLES,
       },
     },
     attributes: ['id', 'ho_ten', 'email', 'vai_tro_chinh'],
-    include: [{ model: HoSoCanBo, as: 'ho_so', attributes: ['loai_nhan_su'] }],
+    include: [
+      { model: HoSoCanBo, as: 'ho_so', attributes: ['loai_nhan_su'] },
+      {
+        model: VaiTroNguoiDung,
+        as: 'danh_sach_vai_tro',
+        attributes: ['ma_vai_tro', 'tu_ngay', 'den_ngay'],
+      },
+    ],
   });
 
   const results = [];
   for (const staff of staffUsers) {
     if (scheduledUserIds.has(String(staff.id))) continue;
+    if (hasAnyActiveRole(staff, ADMIN_STAFF_EXCLUDED_ROLES)) continue;
     if ((staff.ho_so?.loai_nhan_su || '').toLowerCase() === 'giang_vien') continue;
 
     const existingLog = await NhatKyChamCong.findOne({
@@ -548,7 +576,7 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
             attributes: ['id', 'phong_hoc', 'thu_trong_tuan', 'mon_hoc_id'],
             include: [{ model: MonHoc, as: 'mon_hoc', attributes: ['id', 'ten_mon', 'ma_mon'] }],
           },
-          { model: LuotQuetChamCong, as: 'luot_quet', attributes: ['phuong_thuc'], limit: 1 },
+          { model: LuotQuetChamCong, as: 'luot_quet', attributes: ['phuong_thuc'], limit: 1, separate: true },
         ],
       });
 
@@ -610,6 +638,10 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
           item.earlyMinutes = earlyMins;
           item.earlyTimeFormatted = earlyHours > 0 ? `${earlyHours}h ${remMins}p` : `${earlyMins} phút`;
           earlyList.push(item);
+        } else if (log.trang_thai === 'thieu_check_out') {
+          item.lateMinutes = 0;
+          item.lateTimeFormatted = 'Thiếu Check-out';
+          lateList.push(item);
         } else if (log.trang_thai === 'absent') {
           absentList.push(item);
         } else if (log.trang_thai === 'excused_absence') {
@@ -617,13 +649,22 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
         }
       }
 
-      const adminUsers = await NguoiDung.findAll({
-        where: { vai_tro_chinh: { [Op.in]: ['admin', 'bgh'] }, kich_hoat: true },
-        attributes: ['id', 'email'],
+      const activeUsersForReport = await NguoiDung.findAll({
+        where: { kich_hoat: true },
+        attributes: ['id', 'email', 'vai_tro_chinh'],
+        include: [
+          {
+            model: VaiTroNguoiDung,
+            as: 'danh_sach_vai_tro',
+            attributes: ['ma_vai_tro', 'tu_ngay', 'den_ngay'],
+          },
+        ],
       });
       const recipientEmails = new Set();
-      adminUsers.forEach((a) => {
-        if (isDeliverableEmail(a.email)) recipientEmails.add(a.email.trim());
+      activeUsersForReport.forEach((u) => {
+        if (hasAnyActiveRole(u, ['admin', 'bgh']) && isDeliverableEmail(u.email)) {
+          recipientEmails.add(u.email.trim());
+        }
       });
       if (isDeliverableEmail(process.env.EMAIL_USER)) recipientEmails.add(process.env.EMAIL_USER.trim());
 
@@ -663,7 +704,7 @@ const runDailyAbsentCheck = async (targetDate = new Date()) => {
   }
 };
 
-// Quét định kỳ các ca đã quá ngưỡng đi muộn trong ngày (mỗi 5 phút)
+// Quét định kỳ các ca đã kết thúc hoàn toàn trong ngày (mỗi 5 phút) — không đánh vắng sớm giữa giờ để giữ luồng check-in muộn
 const scanAndMarkExpiredShiftsAbsent = async (targetDate = new Date()) => {
   try {
     const vnTime = getVietnamTime(targetDate);
@@ -681,20 +722,21 @@ const scanAndMarkExpiredShiftsAbsent = async (targetDate = new Date()) => {
     });
     if (holiday) return;
 
-    const defaultLateThreshold = await systemConfigService.getConfig('DEFAULT_LATE_THRESHOLD_MINUTES', 15);
     const activeSchedules = await getTodayActiveSchedules(targetDate);
 
     for (const schedule of activeSchedules) {
       try {
         const shift = schedule.ca;
         const effectiveStartTime = schedule.gio_bat_dau || shift?.gio_bat_dau;
-        if (!effectiveStartTime) continue;
+        const effectiveEndTime = schedule.gio_ket_thuc || shift?.gio_ket_thuc;
+        if (!effectiveStartTime || !effectiveEndTime) continue;
 
         const startMinutes = timeStringToMinutes(effectiveStartTime);
-        const lateThreshold =
-          shift?.nguong_di_muon_phut !== undefined ? shift.nguong_di_muon_phut : defaultLateThreshold;
+        const endMinutes = timeStringToMinutes(effectiveEndTime);
+        const isOvernightShift = endMinutes < startMinutes;
 
-        if (currentMinutes > startMinutes + lateThreshold) {
+        // Chỉ tự động đánh vắng sau khi ca thường trong ngày đã thực sự kết thúc (bỏ qua ca qua đêm sang ngày hôm sau)
+        if (!isOvernightShift && currentMinutes > endMinutes) {
           await processScheduleAttendanceCheck(schedule, dayRange);
         }
       } catch (itemErr) {
@@ -787,7 +829,7 @@ const cleanupExpiredRetentionData = async (referenceDate = new Date()) => {
           path.join(rootDir, 'evidence', fileName),
           path.join(rootDir, 'faces', fileName),
         ]) {
-          if (candidate.startsWith(rootDir) && fs.existsSync(candidate)) {
+          if ((candidate === rootDir || candidate.startsWith(rootDir + path.sep)) && fs.existsSync(candidate)) {
             try {
               fs.unlinkSync(candidate);
             } catch (_) {}
@@ -828,6 +870,7 @@ const initCronJobs = () => {
             where: {
               trang_thai: { [Op.in]: ['absent', 'excused_absence'] },
               thoi_gian_vao: null,
+              don_tu_id: null,
               ngay_cong: { [Op.gt]: todayStr },
             },
           });
@@ -847,37 +890,47 @@ const initCronJobs = () => {
     }
   }, 2000);
 
-  cron.schedule(
-    '*/5 * * * *',
-    async () => {
-      await withDistributedLock(
-        'cron_periodic_scan',
-        240,
-        async () => {
-          await scanAndMarkExpiredShiftsAbsent();
-        },
-        { logPrefix: '[Cron Job 5m Lock]' }
-      );
-    },
-    { scheduled: true, timezone: 'Asia/Ho_Chi_Minh' }
+  scheduledCronTasks.push(
+    cron.schedule(
+      '*/5 * * * *',
+      async () => {
+        await withDistributedLock(
+          'cron_periodic_scan',
+          240,
+          async () => {
+            await scanAndMarkExpiredShiftsAbsent();
+          },
+          { logPrefix: '[Cron Job 5m Lock]' }
+        );
+      },
+      { scheduled: true, timezone: 'Asia/Ho_Chi_Minh' }
+    )
   );
 
-  cron.schedule(
-    '59 23 * * *',
-    async () => {
-      await withDistributedLock(
-        'cron_daily_absent_check',
-        600,
-        async () => {
-          console.log(`[Cron Job] Kích hoạt tác vụ quét vắng mặt tự động lúc 23:59 (${new Date().toISOString()})`);
-          await danhDauThieuCheckOut();
-          await runDailyAbsentCheck();
-          await cleanupExpiredRetentionData();
-        },
-        { logPrefix: '[Cron Job 23:59 Lock]' }
-      );
-    },
-    { scheduled: true, timezone: 'Asia/Ho_Chi_Minh' }
+  scheduledCronTasks.push(
+    cron.schedule(
+      '59 23 * * *',
+      async () => {
+        await withDistributedLock(
+          'cron_daily_absent_check',
+          600,
+          async () => {
+            console.log(`[Cron Job] Kích hoạt tác vụ quét vắng mặt tự động lúc 23:59 (${new Date().toISOString()})`);
+            await danhDauThieuCheckOut();
+            await runDailyAbsentCheck();
+            await cleanupExpiredRetentionData();
+            await systemConfigService
+              .updateConfig('CRON_LAST_RUN', {
+                thoi_gian_chay: new Date().toISOString(),
+                trang_thai: 'thanh_cong',
+              })
+              .catch((err) => console.warn('[Cron Service] Không thể cập nhật CRON_LAST_RUN:', err.message));
+          },
+          { logPrefix: '[Cron Job 23:59 Lock]' }
+        );
+      },
+      { scheduled: true, timezone: 'Asia/Ho_Chi_Minh' }
+    )
   );
 
   console.log(
@@ -885,12 +938,24 @@ const initCronJobs = () => {
   );
 };
 
+// Dừng toàn bộ tiến trình node-cron khi tắt máy chủ
+const stopCronJobs = () => {
+  for (const task of scheduledCronTasks) {
+    try {
+      task?.stop?.();
+    } catch (_) {}
+  }
+  scheduledCronTasks.length = 0;
+};
+
 module.exports = {
   getTodayActiveSchedules,
+  processAdminStaffDailyAttendance,
   runDailyAbsentCheck,
   processScheduleAttendanceCheck,
   scanAndMarkExpiredShiftsAbsent,
   danhDauThieuCheckOut,
   cleanupExpiredRetentionData,
   initCronJobs,
+  stopCronJobs,
 };

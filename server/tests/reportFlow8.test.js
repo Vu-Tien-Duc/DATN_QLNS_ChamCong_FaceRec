@@ -32,7 +32,7 @@ const ID_TCCB = '22222222-2222-4222-8222-222222222222';
 const ID_DEAN = '33333333-3333-4333-8333-333333333333';
 const ID_GV_1 = '44444444-4444-4444-8444-444444444444';
 const ID_GV_2 = '55555555-5555-4555-8555-555555555555';
-const ID_KIEM_TOAN = '66666666-6666-4666-8666-666666666666';
+const ID_KE_TOAN = '66666666-6666-4666-8666-666666666666';
 const ID_DEPT_KHOA = '77777777-7777-4777-8777-777777777777';
 const ID_DEPT_BO_MON = '88888888-8888-4888-8888-888888888888';
 const ID_DEPT_OUTSIDE = '99999999-9999-4999-8999-999999999999';
@@ -98,13 +98,13 @@ const dispatchExpress = (app, { method = 'GET', url, headers = {} }) => {
 };
 
 const makeToken = (id, role) =>
-  jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  jwt.sign({ id, vai_tro_chinh: role, phien_ban_token: 1 }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
 describe('Luồng 8 — Helpers & Chống crash P0', () => {
   it('getRoleLabel không crash ReferenceError(normalizeRole) và nhận diện đủ nhãn chuẩn', () => {
     assert.equal(getRoleLabel('admin'), 'Quản trị viên');
     assert.equal(getRoleLabel('truong_khoa'), 'Trưởng Khoa');
-    assert.equal(getRoleLabel('quan_ly_xe'), 'Quản lý xe');
+    assert.equal(getRoleLabel('nhan_vien'), 'Nhân viên');
     assert.equal(getMethodLabel('system_auto'), 'Hệ thống tự động');
     assert.equal(getLeaveStatusLabel('cancelled'), 'Đã hủy');
     assert.equal(getLeaveStatusLabel('pending_bgh'), 'Chờ duyệt');
@@ -319,10 +319,10 @@ describe('Luồng 8 — Ngày công hồi tố, so_phut_lech, Phân trang & Đa 
 });
 
 describe('Luồng 8 — RBAC Routes & Phạm vi Trưởng khoa lọc đơn vị con', () => {
-  it('RBAC routes khớp permissions.js (tccb, kiem_toan vào /hang-thang; chặn nhân viên thường) & validate UUID 400', async () => {
+  it('RBAC routes khớp permissions.js (tccb, ke_toan vào /hang-thang; chặn nhân viên thường) & validate UUID 400', async () => {
     const users = {
       [ID_TCCB]: { id: ID_TCCB, vai_tro_chinh: 'tccb', don_vi_chinh_id: null, kich_hoat: true, trang_thai_lam_viec: 'dang_lam_viec', danh_sach_vai_tro: [] },
-      [ID_KIEM_TOAN]: { id: ID_KIEM_TOAN, vai_tro_chinh: 'kiem_toan', don_vi_chinh_id: null, kich_hoat: true, trang_thai_lam_viec: 'dang_lam_viec', danh_sach_vai_tro: [] },
+      [ID_KE_TOAN]: { id: ID_KE_TOAN, vai_tro_chinh: 'ke_toan', don_vi_chinh_id: null, kich_hoat: true, trang_thai_lam_viec: 'dang_lam_viec', danh_sach_vai_tro: [] },
       [ID_GV_1]: { id: ID_GV_1, vai_tro_chinh: 'giang_vien', don_vi_chinh_id: ID_DEPT_KHOA, kich_hoat: true, trang_thai_lam_viec: 'dang_lam_viec', danh_sach_vai_tro: [] },
     };
     stub(models.NguoiDung, 'findByPk', async (id) => users[String(id)] || null);
@@ -339,18 +339,18 @@ describe('Luồng 8 — RBAC Routes & Phạm vi Trưởng khoa lọc đơn vị 
     });
     assert.equal(resGvMonthly.status, 403);
 
-    // 2. TCCB và Kiểm toán có CONG_XEM_TOAN_TRUONG -> 200 trên /hang-thang
+    // 2. TCCB và Kế toán có CONG_XEM_TOAN_TRUONG -> 200 trên /hang-thang
     const resTccbMonthly = await dispatchExpress(app, {
       url: '/api/bao-cao/hang-thang?thang=10&nam=2026',
       headers: { authorization: `Bearer ${makeToken(ID_TCCB, 'tccb')}` },
     });
     assert.equal(resTccbMonthly.status, 200);
 
-    const resAuditMonthly = await dispatchExpress(app, {
+    const resKeToanMonthly = await dispatchExpress(app, {
       url: '/api/bao-cao/hang-thang?thang=10&nam=2026',
-      headers: { authorization: `Bearer ${makeToken(ID_KIEM_TOAN, 'kiem_toan')}` },
+      headers: { authorization: `Bearer ${makeToken(ID_KE_TOAN, 'ke_toan')}` },
     });
-    assert.equal(resAuditMonthly.status, 200);
+    assert.equal(resKeToanMonthly.status, 200);
 
     // 3. Truyền don_vi_id sai định dạng UUID -> trả 400 (không crash 500 SQL)
     const resBadUuid = await dispatchExpress(app, {

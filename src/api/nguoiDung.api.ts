@@ -17,29 +17,6 @@ export interface UserListResponse {
   };
 }
 
-const USER_QUERY_KEY_MAP: Record<string, string> = {
-  role: 'vai_tro',
-  departmentId: 'don_vi_id',
-  isActive: 'kich_hoat',
-  dang_hoat_dong: 'kich_hoat',
-  search: 'tim_kiem',
-  page: 'trang',
-  limit: 'gioi_han',
-};
-
-const mapUserQueryParams = (params?: UserQueryParams): Record<string, any> | undefined => {
-  if (!params) return undefined;
-  const out: Record<string, any> = {};
-  for (const [key, value] of Object.entries(params as Record<string, any>)) {
-    if (value === undefined) continue;
-    const targetKey = USER_QUERY_KEY_MAP[key] || key;
-    if (out[targetKey] === undefined) {
-      out[targetKey] = value;
-    }
-  }
-  return out;
-};
-
 export const userApi = {
   /**
    * 1. Lấy danh sách cán bộ, giảng viên (Phân trang, tìm kiếm, lọc theo khoa/vai trò/trạng thái)
@@ -104,10 +81,10 @@ export const userApi = {
   /**
    * 8. Tải lên ảnh đại diện (Avatar) lên MinIO Object Storage
    */
-  uploadAvatar: async (file: File): Promise<ApiResponse<{ fileUrl: string; fullUrl: string; url: string }>> => {
+  uploadAvatar: async (file: File): Promise<ApiResponse<{ ten_tep: string; duong_dan_tep: string; duong_dan_day_du: string }>> => {
     const formData = new FormData();
     formData.append('avatar', file);
-    const res = await apiClient.post<ApiResponse<{ fileUrl: string; fullUrl: string; url: string }>>(
+    const res = await apiClient.post<ApiResponse<{ ten_tep: string; duong_dan_tep: string; duong_dan_day_du: string }>>(
       '/tai-tep',
       formData,
       {

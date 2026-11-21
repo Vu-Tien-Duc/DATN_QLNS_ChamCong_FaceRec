@@ -6,8 +6,8 @@ const { verifyToken, verifyRole } = require('../middlewares/xacThuc.middleware')
 
 router.use(verifyToken);
 
-// Chỉ Admin, Ban Giám Hiệu và Kiểm toán mới được tra cứu nhật ký kiểm toán hệ thống
-router.get('/xac-minh-toan-ven', verifyRole(['admin', 'bgh', 'kiem_toan']), verifyAuditIntegrity);
-router.get('/', verifyRole(['admin', 'bgh', 'kiem_toan']), getAuditLogs);
+// Chỉ Admin và Ban Giám Hiệu mới được tra cứu nhật ký kiểm toán hệ thống
+router.get('/xac-minh-toan-ven', verifyRole(['admin', 'bgh']), verifyAuditIntegrity);
+router.get('/', verifyRole(['admin', 'bgh']), getAuditLogs);
 
 module.exports = router;

@@ -14,14 +14,13 @@ const handleError = (res, error, next) => {
 // Lọc các trường hợp lệ của ngày nghỉ lễ từ request body
 const mapHolidayBodyToCanonical = (body) => {
   if (!body || typeof body !== 'object') return {};
-  const { ten_ngay_le, ngay_bat_dau, ngay_ket_thuc, huong_luong, mo_ta, nam } = body;
+  const { ten_ngay_le, ngay_bat_dau, ngay_ket_thuc, huong_luong, mo_ta } = body;
   const res = {};
   if (ten_ngay_le !== undefined) res.ten_ngay_le = ten_ngay_le;
   if (ngay_bat_dau !== undefined) res.ngay_bat_dau = ngay_bat_dau;
   if (ngay_ket_thuc !== undefined) res.ngay_ket_thuc = ngay_ket_thuc;
   if (huong_luong !== undefined) res.huong_luong = huong_luong;
   if (mo_ta !== undefined) res.mo_ta = mo_ta;
-  if (nam !== undefined) res.nam = nam;
   return res;
 };
 
@@ -69,7 +68,7 @@ const updateHoliday = async (req, res, next) => {
 // Xóa ngày nghỉ lễ
 const deleteHoliday = async (req, res, next) => {
   try {
-    const holiday = await holidayService.deleteHoliday(req.params.id);
+    const holiday = await holidayService.deleteHoliday(req.params.id, req.user);
     return sendSuccess(res, `Đã xóa ngày nghỉ lễ "${holiday.ten_ngay_le}" thành công.`, holiday);
   } catch (error) {
     return handleError(res, error, next);

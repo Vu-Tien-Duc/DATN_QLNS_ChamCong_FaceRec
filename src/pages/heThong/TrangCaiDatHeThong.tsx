@@ -304,18 +304,13 @@ export const Settings: React.FC = () => {
       const numVal = Number(c.gia_tri);
       if (c.khoa_cau_hinh === 'LUONG_CO_SO' && Number.isFinite(numVal) && numVal > 0) {
         baseSalary = numVal;
-      } else if (c.khoa_cau_hinh === 'GEOFENCE_TRUONG' || c.khoa_cau_hinh === 'CAMPUS_GEOFENCE') {
-        if (c.gia_tri?.radiusMeters) gpsRadius = Number(c.gia_tri.radiusMeters);
-        else if (c.gia_tri?.ban_kinh_met) gpsRadius = Number(c.gia_tri.ban_kinh_met);
-      } else if (c.khoa_cau_hinh === 'CAMPUS_GPS_RADIUS_METERS' && Number.isFinite(numVal) && numVal > 0) {
-        gpsRadius = numVal;
+      } else if (c.khoa_cau_hinh === 'GEOFENCE_TRUONG') {
+        if (c.gia_tri?.ban_kinh_met) gpsRadius = Number(c.gia_tri.ban_kinh_met);
       } else if (c.khoa_cau_hinh === 'NGUONG_AI' && c.gia_tri && typeof c.gia_tri === 'object') {
-        if (c.gia_tri.mo_hinh || c.gia_tri.model) aiModel = c.gia_tri.mo_hinh || c.gia_tri.model;
-        if (c.gia_tri.cosine_min !== undefined || c.gia_tri.minCosine !== undefined) {
-          cosineMin = Number(c.gia_tri.cosine_min ?? c.gia_tri.minCosine);
+        if (c.gia_tri.mo_hinh) aiModel = c.gia_tri.mo_hinh;
+        if (c.gia_tri.cosine_min !== undefined) {
+          cosineMin = Number(c.gia_tri.cosine_min);
         }
-      } else if (c.khoa_cau_hinh === 'FACE_SIMILARITY_THRESHOLD' && Number.isFinite(numVal) && numVal > 0) {
-        cosineMin = numVal;
       }
     });
 
@@ -393,27 +388,43 @@ export const Settings: React.FC = () => {
     }
   };
 
-  // Xuất cấu hình hệ thống ra file Excel (.xlsx) chuẩn hóa phục vụ bàn giao và kiểm toán
+  const sanitizeExcelCell = (value: unknown): string => {
+    const str = String(value ?? '');
+    return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  };
+
+  const getVietnamDateSlug = (): string =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+  // Xuất cấu hình hệ thống ra file Excel (.xlsx) chuẩn hóa phục vụ bàn giao và kiểm toán (loại bỏ các khóa bí mật AI)
   const handleExportExcel = () => {
-    if (configs.length === 0) {
+    const exportableConfigs = configs.filter(
+      (c) => !HIDDEN_dedicated_AI_KEYS.has(String(c.khoa_cau_hinh || '').toUpperCase())
+    );
+    if (exportableConfigs.length === 0) {
       toast.error('Không có dữ liệu cấu hình để xuất file Excel.');
       return;
     }
 
     try {
-      const dataRows = configs.map((c, idx) => {
+      const dataRows = exportableConfigs.map((c, idx) => {
         const val = draftValues[c.khoa_cau_hinh] !== undefined ? draftValues[c.khoa_cau_hinh] : c.gia_tri;
-        const groupMeta = GROUP_METAS[c.nhom] || GROUP_METAS.SYSTEM;
+        const groupMeta = (c.nhom ? GROUP_METAS[c.nhom] : undefined) || GROUP_METAS.SYSTEM;
         const valString = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '');
 
         return {
           'STT': idx + 1,
-          'Mã Cấu Hình': c.khoa_cau_hinh,
-          'Nhóm Tham Số': groupMeta.label,
-          'Mô Tả / Ý Nghĩa': c.mo_ta || '--',
-          'Giá Trị Thiết Lập': valString,
+          'Mã Cấu Hình': sanitizeExcelCell(c.khoa_cau_hinh),
+          'Nhóm Tham Số': sanitizeExcelCell(groupMeta.label),
+          'Mô Tả / Ý Nghĩa': sanitizeExcelCell(c.mo_ta || '--'),
+          'Giá Trị Thiết Lập': sanitizeExcelCell(valString),
           'Kiểu Dữ Liệu': typeof val === 'object' ? (Array.isArray(val) ? 'Mảng (Array)' : 'Đối tượng (Object)') : typeof val,
-          'Người Cập Nhật': (c as any).updatedBy?.fullName || 'Quản trị hệ thống',
+          'Người Cập Nhật': sanitizeExcelCell((c as any).nguoi_cap_nhat?.ho_ten || 'Quản trị hệ thống'),
           'Thời Điểm Cập Nhật': c.cap_nhat_luc ? formatDateTimeVN(c.cap_nhat_luc) : '--',
         };
       });
@@ -433,7 +444,7 @@ export const Settings: React.FC = () => {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Tham Số Cấu Hình');
 
-      const fileName = `Cau_Hinh_He_Thong_NTU_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const fileName = `Cau_Hinh_He_Thong_NTU_${getVietnamDateSlug()}.xlsx`;
       XLSX.writeFile(wb, fileName);
       toast.success('Đã xuất Báo cáo Cấu hình (.xlsx) thành công!');
     } catch (err) {
@@ -444,6 +455,10 @@ export const Settings: React.FC = () => {
 
   const handleExportJSON = () => {
     const exportData = configs.reduce((acc: any, cur) => {
+      const upperKey = String(cur.khoa_cau_hinh || '').toUpperCase();
+      if (HIDDEN_dedicated_AI_KEYS.has(upperKey)) {
+        return acc;
+      }
       acc[cur.khoa_cau_hinh] = {
         value: draftValues[cur.khoa_cau_hinh] !== undefined ? draftValues[cur.khoa_cau_hinh] : cur.gia_tri,
         group: cur.nhom,
@@ -457,7 +472,7 @@ export const Settings: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `SystemConfig_Backup_${new Date().toISOString().slice(0, 10)}.json`);
+    link.setAttribute('download', `SystemConfig_Backup_${getVietnamDateSlug()}.json`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -955,8 +970,8 @@ export const Settings: React.FC = () => {
                 <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                   <div className="text-[10px] text-slate-400 min-w-0">
                     <div className="truncate">Cập nhật: {formatDateTimeVN(config.cap_nhat_luc)}</div>
-                    {(config as any).createdAt && (
-                      <div className="truncate">Tạo lúc: {formatDateTimeVN((config as any).createdAt)}</div>
+                    {(config as any).tao_luc && (
+                      <div className="truncate">Tạo lúc: {formatDateTimeVN((config as any).tao_luc)}</div>
                     )}
                   </div>
 

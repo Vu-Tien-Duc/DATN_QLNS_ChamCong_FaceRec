@@ -6,12 +6,9 @@ export interface SubjectItem {
   ten_mon: string;
   so_tin_chi: number;
   phong_ban_id?: {
-    id?: string;
-    _id?: string;
-    ten_phong_ban?: string;
-    name?: string;
+    id: string;
+    ten_phong_ban: string;
     loai_don_vi?: string;
-    type?: string;
   } | string | null;
   phong_ban?: {
     id: string;
@@ -88,7 +85,7 @@ export const subjectApi = {
     const availableCredits = Array.isArray(raw?.availableCredits)
       ? raw.availableCredits
       : Array.from(
-          new Set(subjects.map((s: any) => Number(s.so_tin_chi)).filter((n: number) => !isNaN(n) && n > 0))
+          new Set<number>(subjects.map((s: any) => Number(s.so_tin_chi)).filter((n: number) => !isNaN(n) && n > 0))
         ).sort((a: number, b: number) => a - b);
 
     return {

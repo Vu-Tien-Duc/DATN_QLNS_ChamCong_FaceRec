@@ -36,6 +36,7 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { DepartmentSelect } from '../../components/chung/ChonDonVi';
 import { scheduleApi } from '../../api/lichTrinh.api';
+import { holidayApi, HolidayItem } from '../../api/ngayNghiLe.api';
 import { apiClient, extractArray } from '../../api/apiClient';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { Button } from '../../components/chung/NutBam';
@@ -45,164 +46,22 @@ import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import { ThanhPhanTrang } from '../../components/chung/ThanhPhanTrang';
 import { ModalNgoaiLeLichTrinh } from './components/ModalNgoaiLeLichTrinh';
+import {
+  ScheduleItem,
+  ScheduleType,
+  ScheduleExceptionStatus,
+  ShiftItem,
+  SubjectItem,
+  UserProfile,
+  DepartmentItem,
+} from '../../types/index';
 
 // =============================================================================
 // TYPES & DATA STRUCTURES
 // =============================================================================
 
-export type ScheduleType = 'chinh_khoa' | 'day_bu';
-export type ScheduleExceptionStatus = 'nghi' | 'day_bu' | 'doi_ca' | 'huy';
+export type { ScheduleType, ScheduleExceptionStatus };
 export type ViewMode = 'matrix' | 'lecturer' | 'table' | 'calendar';
-
-interface ScheduleItem {
-  id?: string;
-  _id: string;
-  nguoi_dung_id?: string;
-  nguoi_dung?: {
-    id?: string;
-    _id?: string;
-    ho_ten?: string;
-    email?: string;
-    ma_can_bo?: string;
-    don_vi_chinh?: any;
-    vai_tro_chinh?: string;
-  } | string;
-  ca_id?: string;
-  ca?: {
-    id?: string;
-    _id?: string;
-    ten_ca?: string;
-    gio_bat_dau?: string;
-    gio_ket_thuc?: string;
-    nguong_di_muon_phut?: number;
-  } | string;
-  mon_hoc_id?: string;
-  mon_hoc?: {
-    id?: string;
-    _id?: string;
-    ten_mon?: string;
-    ma_mon?: string;
-    so_tin_chi?: number;
-  } | string;
-  userId?: {
-    _id: string;
-    fullName?: string;
-    email?: string;
-    staffCode?: string;
-    departmentName?: string;
-    departmentId?: any;
-    role?: string;
-    position?: string;
-  } | string;
-  shiftId?: {
-    _id: string;
-    name?: string;
-    ten_ca?: string;
-    startTime?: string;
-    gio_bat_dau?: string;
-    endTime?: string;
-    gio_ket_thuc?: string;
-    lateThresholdMinutes?: number;
-    nguong_di_muon_phut?: number;
-  } | string;
-  subjectId?: {
-    _id: string;
-    name?: string;
-    ten_mon?: string;
-    code?: string;
-  type?: string;
-  loai_don_vi?: string;
-  parentId?: string | { _id: string; name: string } | null;
-  [key: string]: any;
-    ma_mon?: string;
-    credits?: number;
-    so_tin_chi?: number;
-  } | string;
-  roomId?: string;
-  phong_hoc?: string;
-  co_so?: string;
-  weekday: number;
-  thu_trong_tuan?: number;
-  startTime?: string;
-  gio_bat_dau?: string;
-  endTime?: string;
-  gio_ket_thuc?: string;
-  startDate?: string;
-  ngay_bat_dau?: string;
-  endDate?: string;
-  ngay_ket_thuc?: string;
-  startPeriod?: number;
-  tiet_bat_dau?: number;
-  periodCount?: number;
-  so_tiet?: number;
-  isRecurring?: boolean;
-  lap_lai_hang_tuan?: boolean;
-  scheduleType?: ScheduleType;
-  loai_lich?: string;
-  makeupDate?: string;
-  ngay_day_bu?: string;
-  academicYear?: string;
-  nam_hoc?: string;
-  semester?: number;
-  hoc_ky?: number;
-  /** Lịch trực tuyến – bỏ qua kiểm tra GPS khi chấm công */
-  la_truc_tuyen?: boolean;
-  exceptions?: any[];
-  ngoai_le?: any[];
-  weekNumbers?: number[];
-  danh_sach_tuan?: number[];
-  latitude?: number;
-  vi_do?: number;
-  longitude?: number;
-  kinh_do?: number;
-  radiusMeters?: number;
-  ban_kinh_met?: number;
-  location?: { latitude?: number; longitude?: number; lat?: number; lng?: number };
-}
-
-interface ShiftItem {
-  _id: string;
-  name: string;
-  startTime: string;
-  endTime: string;
-  lateThresholdMinutes: number;
-  isActive?: boolean;
-}
-
-interface SubjectItem {
-  _id: string;
-  name?: string;
-  ten_mon?: string;
-  code?: string;
-  type?: string;
-  loai_don_vi?: string;
-  parentId?: string | { _id: string; name: string } | null;
-  [key: string]: any;
-  ma_mon?: string;
-  credits?: number;
-  so_tin_chi?: number;
-}
-
-interface UserProfile {
-  _id: string;
-  fullName: string;
-  email: string;
-  staffCode?: string;
-  departmentName?: string;
-  departmentId?: any;
-  role?: string;
-  position?: string;
-}
-
-interface DepartmentItem {
-  _id: string;
-  name: string;
-  code?: string;
-  type?: string;
-  loai_don_vi?: string;
-  parentId?: string | { _id: string; name: string } | null;
-  [key: string]: any;
-}
 
 // 7 Days of week in chronological order Monday -> Sunday
 const WEEKDAYS = [
@@ -237,19 +96,73 @@ function toIsoDateString(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function parseIsoDateOnly(val?: string | Date): Date | null {
+  if (!val) return null;
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? null : new Date(val.getFullYear(), val.getMonth(), val.getDate());
+  }
+  const str = String(val).trim();
+  const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+}
+
+function toSafeIsoDateOnly(val?: string | Date | null): string {
+  if (!val) return '';
+  if (typeof val === 'string') {
+    const m = val.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+  }
+  const d = parseIsoDateOnly(val);
+  return d ? toIsoDateString(d) : '';
+}
+
+function sanitizeExcelCell(val: unknown): string | number {
+  if (typeof val === 'number') return val;
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+}
+
+function getScheduleLecturer(item: ScheduleItem, lecturers: UserProfile[] = []): any {
+  if (item.giang_vien && typeof item.giang_vien === 'object') return item.giang_vien;
+  if (item.nguoi_dung && typeof item.nguoi_dung === 'object') return item.nguoi_dung;
+  if (item.nguoi_dung_id && typeof item.nguoi_dung_id === 'object') return item.nguoi_dung_id;
+  if (typeof item.nguoi_dung_id === 'string') {
+    return lecturers.find((l) => String(l.id) === String(item.nguoi_dung_id)) || null;
+  }
+  return null;
+}
+
+function getScheduleLecturerId(item: ScheduleItem): string {
+  if (typeof item.nguoi_dung_id === 'string') return item.nguoi_dung_id;
+  if (item.nguoi_dung_id && typeof item.nguoi_dung_id === 'object') return item.nguoi_dung_id.id || '';
+  return item.giang_vien?.id || item.nguoi_dung?.id || '';
+}
+
+function getScheduleShift(item: ScheduleItem, shifts: ShiftItem[] = []): ShiftItem | null {
+  if (item.ca && typeof item.ca === 'object') return item.ca;
+  if (item.ca_id && typeof item.ca_id === 'object') return item.ca_id;
+  if (typeof item.ca_id === 'string') {
+    return shifts.find((s) => String(s.id) === String(item.ca_id)) || null;
+  }
+  return null;
+}
+
 function formatDayMonth(d?: string | Date): string {
-  if (!d) return '--/--';
-  const dateObj = new Date(d);
-  if (isNaN(dateObj.getTime())) return '--/--';
+  const dateObj = parseIsoDateOnly(d);
+  if (!dateObj) return '--/--';
   const day = String(dateObj.getDate()).padStart(2, '0');
   const month = String(dateObj.getMonth() + 1).padStart(2, '0');
   return `${day}/${month}`;
 }
 
 function formatDateFull(d?: string | Date): string {
-  if (!d) return '--/--/----';
-  const dateObj = new Date(d);
-  if (isNaN(dateObj.getTime())) return '--/--/----';
+  const dateObj = parseIsoDateOnly(d);
+  if (!dateObj) return '--/--/----';
   const day = String(dateObj.getDate()).padStart(2, '0');
   const month = String(dateObj.getMonth() + 1).padStart(2, '0');
   const year = dateObj.getFullYear();
@@ -264,31 +177,27 @@ function resolveSubject(
   let target: any = null;
 
   if (typeof subjectRaw === 'object' && subjectRaw !== null) {
-    if (subjectRaw.ten_mon || subjectRaw.name) {
+    if (subjectRaw.ten_mon) {
       target = subjectRaw;
-    } else {
-      const sId = subjectRaw.id || subjectRaw._id;
-      if (sId) {
-        target = subjectList.find((s) => String(s.id || s._id) === String(sId));
-      }
+    } else if (subjectRaw.id) {
+      target = subjectList.find((s) => String(s.id) === String(subjectRaw.id));
     }
   } else if (typeof subjectRaw === 'string') {
-    target = subjectList.find((s) => String(s.id || s._id) === String(subjectRaw));
+    target = subjectList.find((s) => String(s.id) === String(subjectRaw));
   }
 
   if (!target) return null;
-  const name = target.ten_mon || target.name || '';
-  const code = target.ma_mon || target.code || '';
-  const credits = target.so_tin_chi ?? target.credits;
+  const name = target.ten_mon || '';
+  const code = target.ma_mon || '';
+  const credits = target.so_tin_chi;
 
   if (!name && !code) return null;
   return { name, code, credits };
 }
 
 function getWeekDateString(startDateStr: string, weekNum: number): string {
-  if (!startDateStr) return '';
-  const d = new Date(startDateStr);
-  if (isNaN(d.getTime())) return '';
+  const d = parseIsoDateOnly(startDateStr);
+  if (!d) return '';
   d.setDate(d.getDate() + (weekNum - 1) * 7);
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -296,15 +205,11 @@ function getWeekDateString(startDateStr: string, weekNum: number): string {
 }
 
 function calculateEndDateFromWeeks(startDateStr: string, weekNumbers: number[]): string {
-  if (!startDateStr) return '';
-  const d = new Date(startDateStr);
-  if (isNaN(d.getTime())) return '';
+  const d = parseIsoDateOnly(startDateStr);
+  if (!d) return '';
   const maxWeek = weekNumbers && weekNumbers.length > 0 ? Math.max(...weekNumbers) : 15;
   d.setDate(d.getDate() + (maxWeek - 1) * 7 + 6);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return toIsoDateString(d);
 }
 
 function formatWeeksSummary(weeks?: number[]): string {
@@ -346,56 +251,53 @@ function parseWeeksInput(input: string): number[] {
   return Array.from(result).sort((a, b) => a - b);
 }
 
+function toMinutesOfDay(hhmm?: string): number {
+  if (!hhmm || typeof hhmm !== 'string') return 0;
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
 function matchScheduleToShift(item: ScheduleItem, shift: ShiftItem): boolean {
-  // 1. Direct shiftId match (Bắt buộc phải ưu tiên tuyệt đối nếu có shiftId)
-  const itemShiftId = typeof item.ca === 'object' && item.ca?.id
-    ? item.ca.id
-    : typeof item.shiftId === 'object'
-    ? (item.shiftId as any)?.id || (item.shiftId as any)?._id
-    : item.shiftId;
-  const shiftIdVal = (shift as any).id || shift._id;
+  // 1. Direct ca_id match (Ưu tiên tuyệt đối nếu có ca_id / ca.id)
+  const itemShiftId =
+    typeof item.ca === 'object' && item.ca?.id
+      ? item.ca.id
+      : typeof item.ca_id === 'object'
+      ? item.ca_id?.id
+      : item.ca_id;
+  const shiftIdVal = shift.id;
   if (itemShiftId && shiftIdVal) {
     return String(itemShiftId) === String(shiftIdVal);
   }
 
-  // 2. Name & Time Matching (Chỉ dùng khi item KHÔNG có shiftId)
-  const shiftNameLower = (shift.name || (shift as any).ten_ca || '').toLowerCase();
-  const sStart = item.gio_bat_dau || item.startTime || '07:00';
-  const sEnd = item.gio_ket_thuc || item.endTime;
-  const startHour = parseInt(sStart.split(':')[0], 10) || 7;
-  const shiftStartTime = (shift as any).gio_bat_dau || shift.startTime;
-  const shiftEndTime = (shift as any).gio_ket_thuc || shift.endTime;
+  // 2. So khớp khung giờ khi item không có ca_id
+  const sStart = (item.gio_bat_dau || '07:00').slice(0, 5);
+  const sEnd = (item.gio_ket_thuc || '11:30').slice(0, 5);
+  const shiftStartTime = String((shift as any).gio_bat_dau || shift.gio_bat_dau || '').slice(0, 5);
+  const shiftEndTime = String((shift as any).gio_ket_thuc || shift.gio_ket_thuc || '').slice(0, 5);
 
   if (sStart === shiftStartTime && sEnd === shiftEndTime) return true;
+  if (shiftStartTime && shiftEndTime) {
+    const aStart = toMinutesOfDay(sStart);
+    const aEnd = toMinutesOfDay(sEnd);
+    const bStart = toMinutesOfDay(shiftStartTime);
+    const bEnd = toMinutesOfDay(shiftEndTime);
+    if (bEnd > bStart && aStart >= bStart && aEnd <= bEnd) return true;
+  }
 
-  // Administrative shift: 08:00 to 17:00
+  const shiftNameLower = (shift.ten_ca || '').toLowerCase();
+  const startHour = parseInt(sStart.split(':')[0], 10) || 7;
   if (shiftNameLower.includes('hành chính') || shiftNameLower.includes('hanh chinh')) {
-    if (startHour === 8 && sEnd === '17:00') return true;
-    return false;
+    return startHour === 8 && sEnd === '17:00';
   }
-
-  // Evening shift (ưu tiên xét ca tối trước)
   if (shiftNameLower.includes('tối') || shiftNameLower.includes('toi')) {
-    if (startHour >= 17) return true;
-    const startPeriodVal = item.tiet_bat_dau || item.startPeriod;
-    if (startPeriodVal && startPeriodVal >= 9) return true;
-    return false;
+    return startHour >= 17 || (item.tiet_bat_dau ? item.tiet_bat_dau >= 9 : false);
   }
-
-  // Afternoon shift
   if (shiftNameLower.includes('chiều') || shiftNameLower.includes('chieu')) {
-    if (startHour >= 12 && startHour < 17) return true;
-    const startPeriodVal = item.tiet_bat_dau || item.startPeriod;
-    if (startPeriodVal && startPeriodVal >= 5 && startPeriodVal <= 8) return true;
-    return false;
+    return (startHour >= 12 && startHour < 17) || (item.tiet_bat_dau ? item.tiet_bat_dau >= 5 && item.tiet_bat_dau <= 8 : false);
   }
-
-  // Morning shift
   if (shiftNameLower.includes('sáng') || shiftNameLower.includes('sang')) {
-    if (startHour < 12 && startHour !== 8) return true;
-    const startPeriodVal = item.tiet_bat_dau || item.startPeriod;
-    if (startPeriodVal && startPeriodVal <= 4 && startHour < 12) return true;
-    return false;
+    return startHour < 12 || (item.tiet_bat_dau ? item.tiet_bat_dau <= 4 && startHour < 12 : false);
   }
 
   return false;
@@ -411,51 +313,66 @@ interface ScheduleActiveStatus {
 function isScheduleActiveOnDate(
   item: ScheduleItem,
   targetIsoDate: string,
-  targetWeekday: number
+  targetWeekday: number,
+  holidayDatesSet?: Set<string>
 ): ScheduleActiveStatus {
-  const exceptions = item.ngoai_le || item.exceptions || [];
+  if (holidayDatesSet && holidayDatesSet.has(targetIsoDate)) {
+    return { active: false, isException: true, exceptionReason: 'Ngày nghỉ lễ toàn trường' };
+  }
+
+  const exceptions = item.ngoai_le || [];
 
   // 1. Ngoại lệ dạy bù vào đúng ngày targetIsoDate
   const makeupExc = exceptions.find((e: any) => {
-    if (e.trang_thai !== 'day_bu' && e.status !== 'day_bu') return false;
-    const mDate = e.ngay_day_bu || e.makeupDate;
-    return mDate ? toIsoDateString(new Date(mDate)) === targetIsoDate : false;
+    if (e.trang_thai !== 'day_bu') return false;
+    const mDate = e.ngay_day_bu || e.ngay;
+    return mDate ? toSafeIsoDateOnly(mDate) === targetIsoDate : false;
   });
   if (makeupExc) {
-    return { active: true, isMakeup: true, exceptionReason: makeupExc.ly_do || makeupExc.reason || 'Dạy bù' };
+    return { active: true, isMakeup: true, exceptionReason: makeupExc.ly_do || 'Dạy bù' };
   }
 
-  // 2. Nếu là Lịch Dạy Bù (day_bu): Chỉ xuất hiện đúng vào ngày bù hoặc khoảng [startDate, endDate]
-  const sType = item.loai_lich || item.scheduleType;
+  // 2. Nếu là Lịch Dạy Bù (day_bu): hiển thị đúng vào ngày bù hoặc khoảng [startDate, endDate]
+  const sType = item.loai_lich;
   if (sType === 'day_bu') {
-    const makeupDateVal = item.ngay_day_bu || item.makeupDate;
-    const makeupIso = makeupDateVal ? toIsoDateString(new Date(makeupDateVal)) : '';
-    if (makeupIso && makeupIso === targetIsoDate) {
-      return { active: true, isMakeup: true };
+    const makeupIso = toSafeIsoDateOnly(item.ngay_day_bu);
+    if (makeupIso) {
+      return makeupIso === targetIsoDate ? { active: true, isMakeup: true } : { active: false };
     }
-    const startIsoOnly = (item.ngay_bat_dau || item.startDate)
-      ? toIsoDateString(new Date(item.ngay_bat_dau || item.startDate!))
-      : '';
-    const itemWeekdayOnly = item.thu_trong_tuan ?? item.weekday ?? 1;
-    if (!makeupIso && startIsoOnly === targetIsoDate && itemWeekdayOnly === targetWeekday) {
+    const startIsoOnly = toSafeIsoDateOnly(item.ngay_bat_dau);
+    const endIsoOnly = toSafeIsoDateOnly(item.ngay_ket_thuc) || startIsoOnly;
+    const itemWeekdayOnly = item.thu_trong_tuan ?? 1;
+    if (startIsoOnly && targetIsoDate >= startIsoOnly && targetIsoDate <= endIsoOnly && itemWeekdayOnly === targetWeekday) {
       return { active: true, isMakeup: true };
     }
     return { active: false };
   }
 
-  // 3. Lịch Chính Khóa: Thứ trong tuần phải khớp
-  const itemWeekday = item.thu_trong_tuan ?? item.weekday ?? 1;
+  // 3. Kiểm tra ngoại lệ gốc vào ngày targetIsoDate (Nghỉ, Hủy, Dạy bù dời sang ngày khác, Đổi ca dời ngày)
+  const exc = exceptions.find((e: any) => toSafeIsoDateOnly(e.ngay) === targetIsoDate);
+  if (exc) {
+    const excStatus = exc.trang_thai;
+    const excMakeup = toSafeIsoDateOnly(exc.ngay_day_bu);
+    if (excStatus === 'nghi' || excStatus === 'huy') {
+      return { active: false, isException: true, exceptionReason: exc.ly_do || 'Báo nghỉ' };
+    }
+    if (excStatus === 'day_bu' && excMakeup && excMakeup !== targetIsoDate) {
+      return { active: false, isException: true, exceptionReason: exc.ly_do || 'Đã dời sang ngày dạy bù' };
+    }
+    if (excStatus === 'doi_ca' && excMakeup && excMakeup !== targetIsoDate) {
+      return { active: false, isException: true, exceptionReason: exc.ly_do || 'Đã đổi ca sang ngày khác' };
+    }
+  }
+
+  // 4. Lịch Chính Khóa: Thứ trong tuần phải khớp
+  const itemWeekday = item.thu_trong_tuan ?? 1;
   if (itemWeekday !== targetWeekday) {
     return { active: false };
   }
 
-  // 4. Kiểm tra khoảng ngày hiệu lực [startDate, endDate]
-  const startIso = (item.ngay_bat_dau || item.startDate)
-    ? toIsoDateString(new Date(item.ngay_bat_dau || item.startDate!))
-    : '';
-  const endIso = (item.ngay_ket_thuc || item.endDate)
-    ? toIsoDateString(new Date(item.ngay_ket_thuc || item.endDate!))
-    : '';
+  // 5. Kiểm tra khoảng ngày hiệu lực [startDate, endDate]
+  const startIso = toSafeIsoDateOnly(item.ngay_bat_dau);
+  const endIso = toSafeIsoDateOnly(item.ngay_ket_thuc);
 
   if (startIso && targetIsoDate < startIso) {
     return { active: false };
@@ -464,31 +381,16 @@ function isScheduleActiveOnDate(
     return { active: false };
   }
 
-  // 5. Kiểm tra danh sách tuần học (nếu có)
-  const weekNums = Array.isArray(item.danh_sach_tuan || item.weekNumbers)
-    ? (item.danh_sach_tuan || item.weekNumbers)!
-    : [];
+  // 6. Kiểm tra danh sách tuần học (nếu có) dùng UTC calendar midnight tránh lệch DST/UTC
+  const weekNums = Array.isArray(item.danh_sach_tuan) ? item.danh_sach_tuan : [];
   if (startIso && weekNums.length > 0) {
-    const diffMs = new Date(targetIsoDate).getTime() - new Date(startIso).getTime();
+    const [ty, tm, td] = targetIsoDate.split('-').map(Number);
+    const [sy, sm, sd] = startIso.split('-').map(Number);
+    const diffMs = Date.UTC(ty, tm - 1, td) - Date.UTC(sy, sm - 1, sd);
     const weekNumber = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1;
     if (!weekNums.includes(weekNumber)) {
       return { active: false };
     }
-  }
-
-  // 6. Kiểm tra ngoại lệ (Báo nghỉ / Hủy) vào ngày targetIsoDate
-  const exc = exceptions.find((e: any) => {
-    const eDate = e.ngay || e.date ? toIsoDateString(new Date(e.ngay || e.date)) : '';
-    return eDate === targetIsoDate;
-  });
-
-  const excStatus = exc?.trang_thai || exc?.status;
-  if (exc && (excStatus === 'nghi' || excStatus === 'huy')) {
-    return {
-      active: false,
-      isException: true,
-      exceptionReason: exc.ly_do || exc.reason || 'Báo nghỉ',
-    };
   }
 
   return { active: true };
@@ -501,7 +403,7 @@ function isScheduleActiveOnDate(
 export const Schedules: React.FC = () => {
   const { user } = useAuthStore();
   const isAdminOrDean = useMemo(() => {
-    return hasRole(user, ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao']);
+    return hasRole(user, ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'dao_tao']);
   }, [user]);
 
   // 1. View Mode: 'matrix' (Thời khóa biểu tuần) | 'lecturer' (Theo giảng viên) | 'table' (Dạng bảng) | 'calendar' (Lịch tháng)
@@ -550,6 +452,7 @@ export const Schedules: React.FC = () => {
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
   const [lecturers, setLecturers] = useState<UserProfile[]>([]);
   const [departments, setDepartments] = useState<DepartmentItem[]>([]);
+  const [holidays, setHolidays] = useState<HolidayItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Modals state
@@ -571,8 +474,8 @@ export const Schedules: React.FC = () => {
     periodCount: 4,
     startTime: '07:00',
     endTime: '11:30',
-    startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date(new Date().setMonth(new Date().getMonth() + 4)).toISOString().split('T')[0],
+    startDate: toIsoDateString(new Date()),
+    endDate: toIsoDateString(new Date(new Date().setMonth(new Date().getMonth() + 4))),
     isRecurring: true,
     scheduleType: 'chinh_khoa' as ScheduleType,
     makeupDate: '',
@@ -595,7 +498,7 @@ export const Schedules: React.FC = () => {
 
   // Exception Form State
   const [exceptionData, setExceptionData] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: toIsoDateString(new Date()),
     status: 'nghi' as ScheduleExceptionStatus,
     reason: '',
     makeupDate: '',
@@ -623,12 +526,13 @@ export const Schedules: React.FC = () => {
 
   const loadMeta = useCallback(async () => {
     try {
-      const canFetchUsers = hasRole(user, ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']);
-      const [shiftsRes, subjectsRes, usersRes, deptsRes] = await Promise.all([
+      const canFetchUsers = hasRole(user, ['admin', 'bgh', 'tccb', 'dao_tao', 'truong_khoa', 'pho_khoa', 'truong_bo_mon']);
+      const [shiftsRes, subjectsRes, usersRes, deptsRes, holidaysList] = await Promise.all([
         scheduleApi.getShifts().catch(() => ({ data: [] })),
         scheduleApi.getSubjects().catch(() => ({ data: [] })),
-        canFetchUsers ? scheduleApi.getUsers({ gioi_han: 100 }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+        canFetchUsers ? scheduleApi.getUsers({ gioi_han: 500 }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
         apiClient.get('/phong-ban').catch(() => ({ data: [] })),
+        holidayApi.getHolidays().catch(() => []),
       ]);
 
       const shiftList = extractArray<ShiftItem>(shiftsRes);
@@ -642,6 +546,8 @@ export const Schedules: React.FC = () => {
 
       const deptList = extractArray<DepartmentItem>(deptsRes);
       if (deptList.length > 0) setDepartments(deptList);
+
+      if (Array.isArray(holidaysList)) setHolidays(holidaysList);
     } catch (err) {
       console.error('Error fetching meta:', err);
     }
@@ -659,27 +565,69 @@ export const Schedules: React.FC = () => {
   const departmentMap = useMemo(() => {
     const map = new Map<string, string>();
     departments.forEach((d) => {
-      if (d._id) map.set(d._id, d.name);
+      if (d.id) map.set(d.id, d.ten_phong_ban);
     });
     return map;
   }, [departments]);
 
+  // Tập các ngày nghỉ lễ dạng YYYY-MM-DD để ẩn tiết dạy trên lịch tuần/tháng
+  const holidayDatesSet = useMemo(() => {
+    const set = new Set<string>();
+    holidays.forEach((h) => {
+      const start = parseIsoDateOnly(h.ngay_bat_dau);
+      const end = parseIsoDateOnly(h.ngay_ket_thuc);
+      if (!start || !end || start > end) return;
+      const cur = new Date(start);
+      let guard = 0;
+      while (cur <= end && guard < 90) {
+        set.add(toIsoDateString(cur));
+        cur.setDate(cur.getDate() + 1);
+        guard++;
+      }
+    });
+    return set;
+  }, [holidays]);
+
+  // Kiểm tra 1 đơn vị có nằm trong cây đơn vị được chọn (hỗ trợ đa cấp Khoa -> Bộ môn -> Tổ)
+  const isDepartmentInTargetTree = useCallback(
+    (deptIdRaw: any, targetDeptId: string): boolean => {
+      if (!deptIdRaw || !targetDeptId) return false;
+      let curId: string | null = typeof deptIdRaw === 'object' ? deptIdRaw?.id || null : String(deptIdRaw);
+      const visited = new Set<string>();
+      while (curId && !visited.has(curId)) {
+        if (curId === targetDeptId) return true;
+        visited.add(curId);
+        const dept = departments.find((d) => String(d.id) === curId);
+        const rawParent = dept?.don_vi_cha_id;
+        curId = rawParent
+          ? typeof rawParent === 'object' && 'id' in rawParent
+            ? String((rawParent as any).id)
+            : String(rawParent)
+          : null;
+      }
+      return false;
+    },
+    [departments]
+  );
+
   // Helper to resolve user's department name
   const getUserDepartmentName = useCallback(
     (u?: any): string => {
-      if (!u) return 'Khoa Công Nghệ Thông Tin';
-      if (typeof u === 'string') return 'Khoa Công Nghệ Thông Tin';
-      if (u.departmentName) return u.departmentName;
-      if (u.departmentId) {
-        if (typeof u.departmentId === 'object' && u.departmentId?.name) {
-          return u.departmentId.name;
+      if (!u || typeof u === 'string') return 'Chưa phân đơn vị';
+      if (u.ten_phong_ban) return u.ten_phong_ban;
+      if (u.don_vi_chinh && typeof u.don_vi_chinh === 'object' && u.don_vi_chinh.ten_phong_ban) {
+        return u.don_vi_chinh.ten_phong_ban;
+      }
+      if (u.don_vi_chinh_id) {
+        if (typeof u.don_vi_chinh_id === 'object' && u.don_vi_chinh_id?.ten_phong_ban) {
+          return u.don_vi_chinh_id.ten_phong_ban;
         }
-        const deptId = typeof u.departmentId === 'string' ? u.departmentId : u.departmentId?._id;
+        const deptId = typeof u.don_vi_chinh_id === 'string' ? u.don_vi_chinh_id : u.don_vi_chinh_id?.id;
         if (deptId && departmentMap.has(deptId)) {
           return departmentMap.get(deptId)!;
         }
       }
-      return 'Khoa Công Nghệ Thông Tin';
+      return 'Chưa phân đơn vị';
     },
     [departmentMap]
   );
@@ -698,7 +646,7 @@ export const Schedules: React.FC = () => {
       if (n.includes('tối') || n.includes('toi')) return 4;
       return 5;
     };
-    return [...shifts].sort((a, b) => orderRank(a.name) - orderRank(b.name));
+    return [...shifts].sort((a, b) => orderRank(a.ten_ca || '') - orderRank(b.ten_ca || ''));
   }, [shifts]);
 
   // Filtered Shifts to display in the Matrix view
@@ -706,7 +654,7 @@ export const Schedules: React.FC = () => {
     if (!selectedShiftFilter || selectedShiftFilter === 'all') {
       return sortedShifts;
     }
-    return sortedShifts.filter((s) => s._id === selectedShiftFilter);
+    return sortedShifts.filter((s) => s.id === selectedShiftFilter);
   }, [sortedShifts, selectedShiftFilter]);
 
   // Cascaded Lecturers based on Department Filter
@@ -714,25 +662,20 @@ export const Schedules: React.FC = () => {
     if (!selectedDepartmentFilter || selectedDepartmentFilter === 'all') {
       return lecturers;
     }
-    const targetDept = departments.find((d) => d._id === selectedDepartmentFilter);
+    const targetDept = departments.find((d) => d.id === selectedDepartmentFilter);
     return lecturers.filter((lec) => {
-      const deptId = typeof lec.departmentId === 'object' ? lec.departmentId?._id : lec.departmentId;
+      const deptId = typeof lec.don_vi_chinh_id === 'object' ? lec.don_vi_chinh_id?.id : lec.don_vi_chinh_id;
       const deptName = getUserDepartmentName(lec);
-      if (deptId === selectedDepartmentFilter) return true;
-      if (targetDept && deptName.toLowerCase() === targetDept.name.toLowerCase()) return true;
-      const userDept = departments.find((d) => String(d._id) === String(deptId));
-      const parentId = userDept?.parentId
-        ? (typeof userDept.parentId === 'object' && '_id' in userDept.parentId ? String(userDept.parentId._id) : String(userDept.parentId))
-        : '';
-      if (parentId === selectedDepartmentFilter) return true;
+      if (isDepartmentInTargetTree(deptId, selectedDepartmentFilter)) return true;
+      if (targetDept && deptName.toLowerCase() === targetDept.ten_phong_ban.toLowerCase()) return true;
       return false;
     });
-  }, [lecturers, selectedDepartmentFilter, departments, getUserDepartmentName]);
+  }, [lecturers, selectedDepartmentFilter, departments, getUserDepartmentName, isDepartmentInTargetTree]);
 
   // Reset Lecturer filter if current selected lecturer is not in the filtered department
   useEffect(() => {
     if (selectedDepartmentFilter !== 'all' && selectedLecturerFilter !== 'all') {
-      const exists = filteredLecturerOptions.some((l) => l._id === selectedLecturerFilter);
+      const exists = filteredLecturerOptions.some((l) => l.id === selectedLecturerFilter);
       if (!exists) {
         setSelectedLecturerFilter('all');
       }
@@ -747,7 +690,7 @@ export const Schedules: React.FC = () => {
     return schedules.filter((item) => {
       // 1. Filter by Shift
       if (selectedShiftFilter && selectedShiftFilter !== 'all') {
-        const targetShift = shifts.find((s) => s._id === selectedShiftFilter);
+        const targetShift = shifts.find((s) => s.id === selectedShiftFilter);
         if (targetShift && !matchScheduleToShift(item, targetShift)) {
           return false;
         }
@@ -755,39 +698,33 @@ export const Schedules: React.FC = () => {
 
       // 2. Filter by Department / Ngành
       if (selectedDepartmentFilter && selectedDepartmentFilter !== 'all') {
-        const lec = typeof item.userId === 'object' ? item.userId : null;
+        const lec = getScheduleLecturer(item, lecturers);
         if (!lec) return false;
-        const deptId = typeof lec.departmentId === 'object' ? lec.departmentId?._id : lec.departmentId;
+        const deptId = typeof lec.don_vi_chinh_id === 'object' ? lec.don_vi_chinh_id?.id : lec.don_vi_chinh_id;
         const deptName = getUserDepartmentName(lec);
-        const targetDept = departments.find((d) => d._id === selectedDepartmentFilter);
-        const matchId = deptId === selectedDepartmentFilter;
-        const matchName = targetDept ? deptName.toLowerCase() === targetDept.name.toLowerCase() : false;
-        let matchParent = false;
-        const userDept = departments.find((d) => String(d._id) === String(deptId));
-        const parentId = userDept?.parentId
-          ? (typeof userDept.parentId === 'object' && '_id' in userDept.parentId ? String(userDept.parentId._id) : String(userDept.parentId))
-          : '';
-        if (parentId === selectedDepartmentFilter) matchParent = true;
+        const targetDept = departments.find((d) => d.id === selectedDepartmentFilter);
+        const matchTree = isDepartmentInTargetTree(deptId, selectedDepartmentFilter);
+        const matchName = targetDept ? deptName.toLowerCase() === targetDept.ten_phong_ban.toLowerCase() : false;
 
-        if (!matchId && !matchName && !matchParent) return false;
+        if (!matchTree && !matchName) return false;
       }
 
       // 3. Filter by Lecturer
       if (selectedLecturerFilter && selectedLecturerFilter !== 'all') {
-        const uId = typeof item.userId === 'object' ? item.userId?._id : item.userId;
+        const uId = getScheduleLecturerId(item);
         if (uId !== selectedLecturerFilter) return false;
       }
 
       // 4. Keyword Search (Course name, course code, teacher name, staff code, room)
       if (searchKeyword.trim()) {
         const q = searchKeyword.trim().toLowerCase();
-        const sub = typeof item.subjectId === 'object' ? item.subjectId : null;
-        const lec = typeof item.userId === 'object' ? item.userId : null;
-        const subName = (sub?.name || '').toLowerCase();
-        const subCode = (sub?.code || '').toLowerCase();
-        const lecName = (lec?.fullName || '').toLowerCase();
-        const lecCode = (lec?.staffCode || '').toLowerCase();
-        const room = (item.roomId || '').toLowerCase();
+        const subInfo = resolveSubject(item.mon_hoc || item.mon_hoc_id, subjects);
+        const lec = getScheduleLecturer(item, lecturers);
+        const subName = (subInfo?.name || '').toLowerCase();
+        const subCode = (subInfo?.code || '').toLowerCase();
+        const lecName = (lec?.ho_ten || '').toLowerCase();
+        const lecCode = (lec?.ma_can_bo || '').toLowerCase();
+        const room = (item.phong_hoc || '').toLowerCase();
 
         const match =
           subName.includes(q) ||
@@ -809,16 +746,19 @@ export const Schedules: React.FC = () => {
     searchKeyword,
     shifts,
     departments,
+    lecturers,
+    subjects,
     getUserDepartmentName,
+    isDepartmentInTargetTree,
   ]);
 
   const scheduleStats = useMemo(() => {
     const total = filteredSchedules.length;
-    const makeupCount = filteredSchedules.filter((s) => s.scheduleType === 'day_bu').length;
+    const makeupCount = filteredSchedules.filter((s) => s.loai_lich === 'day_bu').length;
     const regularCount = total - makeupCount;
     const lecturerIds = new Set(
       filteredSchedules
-        .map((s) => (typeof s.userId === 'object' ? s.userId?._id : s.userId))
+        .map((s) => getScheduleLecturerId(s))
         .filter(Boolean)
     );
     const regularRate = total > 0 ? Math.round((regularCount / total) * 100) : 0;
@@ -962,8 +902,8 @@ export const Schedules: React.FC = () => {
     const weekdayVal = initWeekday !== undefined ? initWeekday : 1;
     const targetShift = initShift || sortedShifts[0];
 
-    const sTime = targetShift?.startTime || '07:00';
-    const eTime = targetShift?.endTime || '11:30';
+    const sTime = targetShift?.gio_bat_dau || '07:00';
+    const eTime = targetShift?.gio_ket_thuc || '11:30';
     const sHour = parseInt(sTime.split(':')[0], 10) || 7;
     let initialStartPeriod = 1;
     let initialPeriodCount = 4;
@@ -983,11 +923,15 @@ export const Schedules: React.FC = () => {
     setIsFormLecturerOpen(false);
     setFormLecturerSearch('');
 
+    const nowMonth = new Date().getMonth() + 1;
+    const nowYear = new Date().getFullYear();
+    const startAcYear = nowMonth >= 8 ? nowYear : nowYear - 1;
+
     setFormData({
-      userId: initUserId || filteredLecturerOptions[0]?._id || lecturers[0]?._id || user?._id || '',
-      shiftId: targetShift?._id || '',
-      subjectId: subjects[0]?._id || '',
-      roomId: 'Giảng đường CNTT A2-301',
+      userId: initUserId || filteredLecturerOptions[0]?.id || lecturers[0]?.id || user?.id || '',
+      shiftId: targetShift?.id || '',
+      subjectId: subjects[0]?.id || '',
+      roomId: '',
       co_so: '',
       weekday: weekdayVal,
       startPeriod: initialStartPeriod,
@@ -1000,8 +944,8 @@ export const Schedules: React.FC = () => {
       scheduleType: 'chinh_khoa',
       makeupDate: '',
       weekNumbers: defaultWeeks,
-      academicYear: '2026-2027',
-      semester: 1,
+      academicYear: `${startAcYear}-${startAcYear + 1}`,
+      semester: nowMonth >= 8 ? 1 : 2,
       latitude: 20.9752,
       longitude: 105.7628,
       radiusMeters: 100,
@@ -1017,39 +961,39 @@ export const Schedules: React.FC = () => {
     setSelectedSchedule(item);
     setConflictError(null);
 
-    const uId = typeof item.userId === 'object' ? item.userId?._id : item.userId;
-    const shId = typeof item.shiftId === 'object' ? item.shiftId?._id : item.shiftId;
-    const subId = typeof item.subjectId === 'object' ? item.subjectId?._id : item.subjectId;
+    const uId = getScheduleLecturerId(item);
+    const shId = getScheduleShift(item, shifts)?.id || (typeof item.ca_id === 'string' ? item.ca_id : item.ca_id?.id);
+    const subId = item.mon_hoc?.id || (typeof item.mon_hoc_id === 'object' ? item.mon_hoc_id?.id : item.mon_hoc_id);
 
     const editWeeks =
-      item.weekNumbers && item.weekNumbers.length > 0
-        ? item.weekNumbers
+      item.danh_sach_tuan && item.danh_sach_tuan.length > 0
+        ? item.danh_sach_tuan
         : Array.from({ length: 15 }, (_, i) => i + 1);
-    const editStartDate = item.startDate ? new Date(item.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-    const editEndDate = item.endDate ? new Date(item.endDate).toISOString().split('T')[0] : calculateEndDateFromWeeks(editStartDate, editWeeks);
+    const editStartDate = toSafeIsoDateOnly(item.ngay_bat_dau) || toIsoDateString(new Date());
+    const editEndDate = toSafeIsoDateOnly(item.ngay_ket_thuc) || calculateEndDateFromWeeks(editStartDate, editWeeks);
 
     setFormData({
-      userId: uId || user?._id || '',
+      userId: uId || user?.id || '',
       shiftId: shId || '',
       subjectId: subId || '',
-      roomId: item.roomId || item.phong_hoc || '',
+      roomId: item.phong_hoc || '',
       co_so: item.co_so || '',
-      weekday: item.weekday ?? item.thu_trong_tuan ?? 1,
-      startPeriod: item.startPeriod || item.tiet_bat_dau || 1,
-      periodCount: item.periodCount || item.so_tiet || 4,
-      startTime: item.startTime || item.gio_bat_dau || '07:00',
-      endTime: item.endTime || item.gio_ket_thuc || '11:30',
+      weekday: item.thu_trong_tuan ?? 1,
+      startPeriod: item.tiet_bat_dau || 1,
+      periodCount: item.so_tiet || 4,
+      startTime: item.gio_bat_dau || '07:00',
+      endTime: item.gio_ket_thuc || '11:30',
       startDate: editStartDate,
       endDate: editEndDate,
-      isRecurring: item.isRecurring ?? item.lap_lai_hang_tuan ?? true,
-      scheduleType: (item.scheduleType || item.loai_lich || 'chinh_khoa') as ScheduleType,
-      makeupDate: item.makeupDate ? new Date(item.makeupDate).toISOString().split('T')[0] : '',
+      isRecurring: item.lap_lai_hang_tuan ?? true,
+      scheduleType: (item.loai_lich || 'chinh_khoa') as ScheduleType,
+      makeupDate: toSafeIsoDateOnly(item.ngay_day_bu),
       weekNumbers: editWeeks,
-      academicYear: item.academicYear || item.nam_hoc || '2026-2027',
-      semester: item.semester || item.hoc_ky || 1,
-      latitude: item.latitude ?? item.vi_do ?? 20.9752,
-      longitude: item.longitude ?? item.kinh_do ?? 105.7628,
-      radiusMeters: item.radiusMeters ?? item.ban_kinh_met ?? 100,
+      academicYear: item.nam_hoc || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+      semester: item.hoc_ky || 1,
+      latitude: item.vi_do ?? 20.9752,
+      longitude: item.kinh_do ?? 105.7628,
+      radiusMeters: item.ban_kinh_met ?? 100,
       la_truc_tuyen: item.la_truc_tuyen ?? false,
     });
     setWeeksInput(formatWeeksSummary(editWeeks));
@@ -1067,7 +1011,7 @@ export const Schedules: React.FC = () => {
     if (e) e.stopPropagation();
     setSelectedSchedule(item);
     setExceptionData({
-      date: new Date().toISOString().split('T')[0],
+      date: toIsoDateString(new Date()),
       status: 'nghi',
       reason: '',
       makeupDate: '',
@@ -1139,7 +1083,7 @@ export const Schedules: React.FC = () => {
       };
 
       if (isEditing && selectedSchedule) {
-        await scheduleApi.updateSchedule(selectedSchedule._id, payload);
+        await scheduleApi.updateSchedule(selectedSchedule.id, payload);
         toast.success('Cập nhật lịch phân công thành công');
       } else {
         await scheduleApi.createSchedule(payload);
@@ -1151,7 +1095,13 @@ export const Schedules: React.FC = () => {
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Lưu lịch thất bại';
       const code = err.response?.data?.errorCode;
-      if (code === 'SCHEDULE_LECTURER_CONFLICT' || code === 'SCHEDULE_ROOM_CONFLICT' || code === 'SCHEDULE_002') {
+      if (
+        err.response?.status === 409 ||
+        code === 'SCHEDULE_LECTURER_CONFLICT' ||
+        code === 'SCHEDULE_ROOM_CONFLICT' ||
+        code === 'SCHEDULE_HOLIDAY_CONFLICT' ||
+        code === 'SCHEDULE_002'
+      ) {
         setConflictError(msg);
       } else {
         toast.error(msg);
@@ -1168,7 +1118,7 @@ export const Schedules: React.FC = () => {
     try {
       await scheduleApi.deleteSchedule(id);
       toast.success('Đã xóa lịch phân công');
-      if (selectedSchedule?._id === id) {
+      if (selectedSchedule?.id === id) {
         setIsDetailModalOpen(false);
       }
       loadSchedules();
@@ -1183,7 +1133,7 @@ export const Schedules: React.FC = () => {
 
     setExceptionSubmitting(true);
     try {
-      await scheduleApi.addException(selectedSchedule._id, {
+      await scheduleApi.addException(selectedSchedule.id, {
         ngay: exceptionData.date,
         trang_thai: exceptionData.status,
         ly_do: exceptionData.reason || 'Báo nghỉ / bù từ giao diện lịch trình',
@@ -1211,31 +1161,31 @@ export const Schedules: React.FC = () => {
     try {
       // 1. Sheet 1: Danh Sách Chi Tiết Phân Công
       const detailRows = filteredSchedules.map((item, idx) => {
-        const subInfo = resolveSubject(item.subjectId, subjects);
-        const lec = typeof item.userId === 'object' ? item.userId : null;
-        const shiftObj = typeof item.shiftId === 'object' ? item.shiftId : null;
-        const shiftName = shiftObj?.name || shiftObj?.ten_ca || 'Ca học';
-        const wObj = WEEKDAYS.find((w) => w.value === item.weekday);
+        const subInfo = resolveSubject(item.mon_hoc || item.mon_hoc_id, subjects);
+        const lec = getScheduleLecturer(item, lecturers);
+        const shiftObj = getScheduleShift(item, shifts);
+        const shiftName = shiftObj?.ten_ca || 'Ca học';
+        const wObj = WEEKDAYS.find((w) => w.value === item.thu_trong_tuan);
 
         return {
           'STT': idx + 1,
-          'Thứ Trong Tuần': wObj?.label || `Thứ ${item.weekday}`,
-          'Ca Giảng Dạy': shiftName,
-          'Khung Giờ': `${item.startTime || ''} - ${item.endTime || ''}`,
-          'Tiết Học': `Tiết ${item.startPeriod || 1} - ${(item.startPeriod || 1) + (item.periodCount || 4) - 1}`,
-          'Môn Học': subInfo?.name || 'Hành chính / Sinh hoạt',
-          'Mã Môn': subInfo?.code || '--',
+          'Thứ Trong Tuần': sanitizeExcelCell(wObj?.label || `Thứ ${item.thu_trong_tuan}`),
+          'Ca Giảng Dạy': sanitizeExcelCell(shiftName),
+          'Khung Giờ': sanitizeExcelCell(`${item.gio_bat_dau || ''} - ${item.gio_ket_thuc || ''}`),
+          'Tiết Học': sanitizeExcelCell(`Tiết ${item.tiet_bat_dau || 1} - ${(item.tiet_bat_dau || 1) + (item.so_tiet || 4) - 1}`),
+          'Môn Học': sanitizeExcelCell(subInfo?.name || 'Hành chính / Sinh hoạt'),
+          'Mã Môn': sanitizeExcelCell(subInfo?.code || '--'),
           'Số Tín Chỉ': subInfo?.credits || 0,
-          'Giảng Viên / Cán Bộ': lec?.fullName || 'Chưa phân công',
-          'Mã Cán Bộ': lec?.staffCode || '--',
-          'Email': lec?.email || '--',
-          'Khoa / Phòng Ban': getUserDepartmentName(lec),
-          'Phòng Học': item.roomId || item.phong_hoc || '--',
-          'Danh Sách Tuần': Array.isArray(item.weekNumbers) ? item.weekNumbers.join(', ') : '1-15',
-          'Ngày Bắt Đầu': formatDateFull(item.startDate),
-          'Ngày Kết Thúc': formatDateFull(item.endDate),
-          'Loại Lịch': item.scheduleType === 'day_bu' ? 'Dạy bù' : 'Chính khóa',
-          'Ngày Bù (nếu có)': item.makeupDate ? formatDateFull(item.makeupDate) : '',
+          'Giảng Viên / Cán Bộ': sanitizeExcelCell(lec?.ho_ten || 'Chưa phân công'),
+          'Mã Cán Bộ': sanitizeExcelCell(lec?.ma_can_bo || '--'),
+          'Email': sanitizeExcelCell(lec?.email || '--'),
+          'Khoa / Phòng Ban': sanitizeExcelCell(getUserDepartmentName(lec)),
+          'Phòng Học': sanitizeExcelCell(item.phong_hoc || '--'),
+          'Danh Sách Tuần': sanitizeExcelCell(Array.isArray(item.danh_sach_tuan) ? item.danh_sach_tuan.join(', ') : '1-15'),
+          'Ngày Bắt Đầu': sanitizeExcelCell(formatDateFull(item.ngay_bat_dau)),
+          'Ngày Kết Thúc': sanitizeExcelCell(formatDateFull(item.ngay_ket_thuc)),
+          'Loại Lịch': item.loai_lich === 'day_bu' ? 'Dạy bù' : 'Chính khóa',
+          'Ngày Bù (nếu có)': sanitizeExcelCell(item.ngay_day_bu ? formatDateFull(item.ngay_day_bu) : ''),
         };
       });
 
@@ -1267,10 +1217,10 @@ export const Schedules: React.FC = () => {
       matrixRows.push(matrixHeaders);
 
       sortedShifts.forEach((sh) => {
-        const row = [sh.name];
+        const row = [sanitizeExcelCell(sh.ten_ca)];
         weekDaysList.forEach((day) => {
           const cellSchedules = filteredSchedules.filter((item) => {
-            const { active } = isScheduleActiveOnDate(item, day.isoDate, day.weekday);
+            const { active } = isScheduleActiveOnDate(item, day.isoDate, day.weekday, holidayDatesSet);
             if (!active) return false;
             return matchScheduleToShift(item, sh);
           });
@@ -1279,11 +1229,11 @@ export const Schedules: React.FC = () => {
             row.push('-');
           } else {
             const desc = cellSchedules.map((item) => {
-              const sub = resolveSubject(item.subjectId, subjects);
-              const lec = typeof item.userId === 'object' ? item.userId : null;
-              return `${sub?.name || 'Lớp học'} (${lec?.fullName || 'GV'}) [${item.roomId || 'Phòng'}]`;
+              const sub = resolveSubject(item.mon_hoc || item.mon_hoc_id, subjects);
+              const lec = getScheduleLecturer(item, lecturers);
+              return `${sub?.name || 'Lớp học'} (${lec?.ho_ten || 'GV'}) [${item.phong_hoc || 'Phòng'}]`;
             }).join('\n---\n');
-            row.push(desc);
+            row.push(sanitizeExcelCell(desc));
           }
         });
         matrixRows.push(row);
@@ -1305,7 +1255,7 @@ export const Schedules: React.FC = () => {
       XLSX.utils.book_append_sheet(wb, wsDetail, 'Chi Tiết Phân Công');
       XLSX.utils.book_append_sheet(wb, wsMatrix, 'Ma Trận TKB Tuần');
 
-      XLSX.writeFile(wb, `Thoi_Khoa_Bieu_${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(wb, `Thoi_Khoa_Bieu_${toIsoDateString(new Date())}.xlsx`);
       toast.success('Đã xuất Thời khóa biểu (.xlsx) thành công!');
     } catch (err) {
       console.error('Lỗi khi xuất Thời khóa biểu:', err);
@@ -1430,22 +1380,22 @@ export const Schedules: React.FC = () => {
               </tr>
             ) : (
               displayedShifts.map((shift) => {
-                const cardStyle = getCardStyle(shift.name);
+                const cardStyle = getCardStyle(shift.ten_ca || '');
 
                 return (
-                  <tr key={shift._id} className="divide-x divide-slate-200/80 dark:divide-slate-800">
+                  <tr key={shift.id} className="divide-x divide-slate-200/80 dark:divide-slate-800">
                     {/* Left Cell: Shift Info */}
                     <td className="p-3.5 bg-slate-50/50 dark:bg-slate-850/40 align-top">
                       <div className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-snug">
-                        {shift.name}
+                        {shift.ten_ca}
                       </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-1 font-mono">
                         <Clock className="w-3.5 h-3.5 shrink-0 opacity-70" />
-                        <span>{shift.startTime} - {shift.endTime}</span>
+                        <span>{shift.gio_bat_dau} - {shift.gio_ket_thuc}</span>
                       </div>
                       <div className="mt-2">
                         <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800">
-                          Trễ {shift.lateThresholdMinutes || 15}p
+                          Trễ {shift.nguong_di_muon_phut || 15}p
                         </span>
                       </div>
                     </td>
@@ -1454,7 +1404,7 @@ export const Schedules: React.FC = () => {
                     {displayedDays.map((day) => {
                       // Filtered schedules for this day of week and this shift
                       const cellSchedules = filteredSchedules.filter((item) => {
-                        const { active } = isScheduleActiveOnDate(item, day.isoDate, day.weekday);
+                        const { active } = isScheduleActiveOnDate(item, day.isoDate, day.weekday, holidayDatesSet);
                         if (!active) return false;
                         return matchScheduleToShift(item, shift);
                       });
@@ -1470,7 +1420,7 @@ export const Schedules: React.FC = () => {
                             /* Empty Cell: Centered "Trống" + Hover Add Button */
                             <div
                               onClick={() => openCreateModal(day.weekday, shift)}
-                              title={`Thêm lịch vào ${day.label} (${shift.name})`}
+                              title={`Thêm lịch vào ${day.label} (${shift.ten_ca})`}
                               className="h-full min-h-[110px] flex flex-col items-center justify-center text-center p-2 rounded-xl border border-transparent hover:border-dashed hover:border-blue-300 dark:hover:border-blue-700/60 hover:bg-blue-50/20 dark:hover:bg-blue-950/20 cursor-pointer group/empty transition-all"
                             >
                               <span className="text-xs font-medium text-slate-400 group-hover/empty:hidden">
@@ -1485,17 +1435,17 @@ export const Schedules: React.FC = () => {
                             /* Occupied Cell: Stacked Cards */
                             <div className="space-y-2">
                               {cellSchedules.map((item) => {
-                                const subInfo = resolveSubject(item.subjectId, subjects);
+                                const subInfo = resolveSubject(item.mon_hoc || item.mon_hoc_id, subjects);
                                 const subName = subInfo?.name;
                                 const subCode = subInfo?.code;
-                                const lec = typeof item.userId === 'object' ? item.userId : null;
-                                const teacherName = lec?.fullName || 'Chưa phân công';
+                                const lec = getScheduleLecturer(item, lecturers);
+                                const teacherName = lec?.ho_ten || 'Chưa phân công';
                                 const deptName = getUserDepartmentName(lec);
-                                const roomName = item.roomId || 'Phòng học';
-                                const dateStatus = isScheduleActiveOnDate(item, day.isoDate, day.weekday);
+                                const roomName = item.phong_hoc || 'Phòng học';
+                                const dateStatus = isScheduleActiveOnDate(item, day.isoDate, day.weekday, holidayDatesSet);
                                 return (
                                   <div
-                                    key={item._id}
+                                    key={item.id}
                                     onClick={(e) => openDetailModal(item, e)}
                                     className={`rounded-2xl p-2.5 border transition-all text-xs cursor-pointer shadow-2xs hover:shadow-md relative group/card ${
                                       dateStatus.isException
@@ -1528,7 +1478,7 @@ export const Schedules: React.FC = () => {
                                         <button
                                           type="button"
                                           title="Xóa lịch"
-                                          onClick={(e) => handleDeleteSchedule(item._id, e)}
+                                          onClick={(e) => handleDeleteSchedule(item.id, e)}
                                           className="p-1 text-slate-500 hover:text-rose-600 rounded transition-colors"
                                         >
                                           <Trash2 className="w-3.5 h-3.5" />
@@ -1577,19 +1527,19 @@ export const Schedules: React.FC = () => {
                                     {/* Bottom: Time & Recurring Badge (Không bao giờ rớt dòng) */}
                                     <div className="flex items-center justify-between gap-1.5 mt-2 pt-1.5 border-t border-black/5 dark:border-white/5 text-[10px] whitespace-nowrap overflow-hidden">
                                       <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold text-[10px] tracking-tight shrink-0 whitespace-nowrap">
-                                        {item.startTime} - {item.endTime}
+                                        {item.gio_bat_dau} - {item.gio_ket_thuc}
                                       </span>
                                       <div className="flex items-center gap-1 shrink-0">
-                                        {Array.isArray(item.exceptions) && item.exceptions.length > 0 && (
+                                        {Array.isArray(item.ngoai_le) && item.ngoai_le.length > 0 && (
                                           <span className="px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 text-[9px] font-bold">
-                                            {item.exceptions.length} NL
+                                            {item.ngoai_le.length} NL
                                           </span>
                                         )}
                                         <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold whitespace-nowrap shrink-0 ${cardStyle.badgeColor}`}>
-                                          {item.scheduleType === 'day_bu'
+                                          {item.loai_lich === 'day_bu'
                                             ? 'Dạy bù'
-                                            : Array.isArray(item.weekNumbers) && item.weekNumbers.length > 0
-                                              ? `T${formatWeeksSummary(item.weekNumbers)}`
+                                            : Array.isArray(item.danh_sach_tuan) && item.danh_sach_tuan.length > 0
+                                              ? `T${formatWeeksSummary(item.danh_sach_tuan)}`
                                               : 'Cả kỳ'}
                                         </span>
                                       </div>
@@ -1631,7 +1581,7 @@ export const Schedules: React.FC = () => {
   const renderLecturerView = () => {
     // Only show lecturers matching department filter or keyword, or having scheduled items
     const relevantLecturers = filteredLecturerOptions.filter((lec) => {
-      if (selectedLecturerFilter !== 'all' && lec._id !== selectedLecturerFilter) return false;
+      if (selectedLecturerFilter !== 'all' && lec.id !== selectedLecturerFilter) return false;
       return true;
     });
 
@@ -1660,12 +1610,11 @@ export const Schedules: React.FC = () => {
             {relevantLecturers.map((lec) => {
               // Get schedules for this lecturer
               const lecSchedules = filteredSchedules.filter((item) => {
-                const uId = typeof item.userId === 'object' ? item.userId?._id : item.userId;
-                return uId === lec._id;
+                return getScheduleLecturerId(item) === lec.id;
               });
 
               const deptName = getUserDepartmentName(lec);
-              const initials = (lec.fullName || 'GV')
+              const initials = (lec.ho_ten || 'GV')
                 .split(' ')
                 .map((n) => n[0])
                 .slice(-2)
@@ -1674,7 +1623,7 @@ export const Schedules: React.FC = () => {
 
               return (
                 <div
-                  key={lec._id}
+                  key={lec.id}
                   className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-all overflow-hidden"
                 >
                   {/* Card Header: Lecturer Profile */}
@@ -1685,14 +1634,14 @@ export const Schedules: React.FC = () => {
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{lec.fullName}</h3>
-                          {lec.staffCode && (
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{lec.ho_ten}</h3>
+                          {lec.ma_can_bo && (
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                              {lec.staffCode}
+                              {lec.ma_can_bo}
                             </span>
                           )}
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
-                            {lec.role || 'Giảng viên'}
+                            {lec.vai_tro_chinh || 'Giảng viên'}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -1711,7 +1660,7 @@ export const Schedules: React.FC = () => {
                       {isAdminOrDean && (
                         <button
                           type="button"
-                          onClick={() => openCreateModal(1, undefined, lec._id)}
+                          onClick={() => openCreateModal(1, undefined, lec.id)}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-colors"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1725,7 +1674,7 @@ export const Schedules: React.FC = () => {
                   <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                     {weekDaysList.map((day) => {
                       const daySchedules = lecSchedules.filter((item) => {
-                        const { active } = isScheduleActiveOnDate(item, day.isoDate, day.weekday);
+                        const { active } = isScheduleActiveOnDate(item, day.isoDate, day.weekday, holidayDatesSet);
                         return active;
                       });
 
@@ -1756,16 +1705,16 @@ export const Schedules: React.FC = () => {
                               </div>
                             ) : (
                               daySchedules.map((item) => {
-                                const subInfo = resolveSubject(item.subjectId, subjects);
+                                const subInfo = resolveSubject(item.mon_hoc || item.mon_hoc_id, subjects);
                                 const subName = subInfo?.name || 'Phân công công tác';
-                                const roomName = item.roomId || item.phong_hoc || 'Phòng học';
-                                const sh = typeof item.shiftId === 'object' ? item.shiftId : null;
-                                const shName = sh?.name || (sh as any)?.ten_ca || 'Ca học';
+                                const roomName = item.phong_hoc || 'Phòng học';
+                                const sh = getScheduleShift(item, shifts);
+                                const shName = sh?.ten_ca || 'Ca học';
                                 const cardStyle = getCardStyle(shName);
 
                                 return (
                                   <div
-                                    key={item._id}
+                                    key={item.id}
                                     onClick={() => openDetailModal(item)}
                                     className={`p-1.5 rounded-lg border text-[11px] cursor-pointer shadow-2xs transition-all hover:scale-[1.02] ${cardStyle.bg} ${cardStyle.hoverBorder}`}
                                     title="Nhấp để xem chi tiết"
@@ -1778,15 +1727,15 @@ export const Schedules: React.FC = () => {
                                       <span className="truncate">{roomName}</span>
                                     </div>
                                     <div className="flex items-center justify-between text-[9px] mt-1 text-slate-400 font-mono">
-                                      <span>{item.startTime} - {item.endTime}</span>
+                                      <span>{item.gio_bat_dau} - {item.gio_ket_thuc}</span>
                                       <span className="font-sans font-bold text-blue-600 truncate">
                                         {shName}
-                                        {Array.isArray(item.exceptions) && item.exceptions.length > 0 ? ` • ${item.exceptions.length} NL` : ''}
+                                        {Array.isArray(item.ngoai_le) && item.ngoai_le.length > 0 ? ` • ${item.ngoai_le.length} NL` : ''}
                                       </span>
                                     </div>
-                                    {Array.isArray(item.weekNumbers) && item.weekNumbers.length > 0 && (
+                                    {Array.isArray(item.danh_sach_tuan) && item.danh_sach_tuan.length > 0 && (
                                       <div className="text-[9px] text-slate-400 font-mono truncate mt-0.5">
-                                        Tuần: {formatWeeksSummary(item.weekNumbers)}
+                                        Tuần: {formatWeeksSummary(item.danh_sach_tuan)}
                                       </div>
                                     )}
                                   </div>
@@ -1799,7 +1748,7 @@ export const Schedules: React.FC = () => {
                           {isAdminOrDean && (
                             <button
                               type="button"
-                              onClick={() => openCreateModal(day.weekday, undefined, lec._id)}
+                              onClick={() => openCreateModal(day.weekday, undefined, lec.id)}
                               className="mt-2 w-full py-0.5 text-[10px] font-semibold text-slate-400 hover:text-blue-600 border border-dashed border-slate-200 hover:border-blue-300 rounded flex items-center justify-center gap-0.5"
                             >
                               <Plus className="w-2.5 h-2.5" /> Thêm
@@ -1864,20 +1813,20 @@ export const Schedules: React.FC = () => {
               </tr>
             ) : (
               paginatedSchedules.map((item, idx) => {
-                const subInfo = resolveSubject(item.subjectId, subjects);
-                const lec = typeof item.userId === 'object' ? item.userId : null;
-                const sh = typeof item.shiftId === 'object' ? item.shiftId : null;
-                const teacherName = lec?.fullName || 'Chưa phân công';
+                const subInfo = resolveSubject(item.mon_hoc || item.mon_hoc_id, subjects);
+                const lec = getScheduleLecturer(item, lecturers);
+                const sh = getScheduleShift(item, shifts);
+                const teacherName = lec?.ho_ten || 'Chưa phân công';
                 const deptName = getUserDepartmentName(lec);
-                const roomName = item.roomId || 'Phòng học';
+                const roomName = item.phong_hoc || 'Phòng học';
                 const subName = subInfo?.name || 'Phân công công tác chung';
                 const subCode = subInfo?.code;
-                const shiftName = sh?.name || 'Ca học tiêu chuẩn';
-                const weekdayObj = WEEKDAYS.find((w) => w.value === (item.weekday ?? item.thu_trong_tuan));
+                const shiftName = sh?.ten_ca || 'Ca học tiêu chuẩn';
+                const weekdayObj = WEEKDAYS.find((w) => w.value === (item.thu_trong_tuan));
 
                 return (
                   <tr
-                    key={item._id}
+                    key={item.id}
                     onClick={() => openDetailModal(item)}
                     className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                   >
@@ -1896,8 +1845,8 @@ export const Schedules: React.FC = () => {
                     {/* Lecturer */}
                     <td className="p-3.5">
                       <div className="font-bold text-slate-800 dark:text-slate-100">{teacherName}</div>
-                      {lec?.staffCode && (
-                        <div className="text-[10px] font-mono text-slate-400">{lec.staffCode}</div>
+                      {lec?.ma_can_bo && (
+                        <div className="text-[10px] font-mono text-slate-400">{lec.ma_can_bo}</div>
                       )}
                     </td>
 
@@ -1916,11 +1865,11 @@ export const Schedules: React.FC = () => {
                       </div>
                       <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1 mt-0.5">
                         <Clock className="w-3 h-3 text-slate-400 shrink-0" />
-                        {item.startTime} - {item.endTime}
+                        {item.gio_bat_dau} - {item.gio_ket_thuc}
                       </div>
-                      {Array.isArray(item.weekNumbers) && item.weekNumbers.length > 0 && (
+                      {Array.isArray(item.danh_sach_tuan) && item.danh_sach_tuan.length > 0 && (
                         <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                          Tuần: {formatWeeksSummary(item.weekNumbers)}
+                          Tuần: {formatWeeksSummary(item.danh_sach_tuan)}
                         </div>
                       )}
                     </td>
@@ -1945,16 +1894,16 @@ export const Schedules: React.FC = () => {
                       <div className="flex flex-col items-center gap-1">
                         <span
                           className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            item.scheduleType === 'day_bu'
+                            item.loai_lich === 'day_bu'
                               ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300'
                               : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300'
                           }`}
                         >
-                          {item.scheduleType === 'day_bu' ? 'Dạy bù' : 'Chính khóa'}
+                          {item.loai_lich === 'day_bu' ? 'Dạy bù' : 'Chính khóa'}
                         </span>
-                        {Array.isArray(item.exceptions) && item.exceptions.length > 0 && (
+                        {Array.isArray(item.ngoai_le) && item.ngoai_le.length > 0 && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                            {item.exceptions.length} ngoại lệ
+                            {item.ngoai_le.length} ngoại lệ
                           </span>
                         )}
                       </div>
@@ -1983,7 +1932,7 @@ export const Schedules: React.FC = () => {
                           <button
                             type="button"
                             title="Xóa"
-                            onClick={(e) => handleDeleteSchedule(item._id, e)}
+                            onClick={(e) => handleDeleteSchedule(item.id, e)}
                             className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -2070,7 +2019,7 @@ export const Schedules: React.FC = () => {
         {calendarDays.map((cd) => {
           // Schedules matching this day of week
           const daySchedules = filteredSchedules.filter((item) => {
-            const { active } = isScheduleActiveOnDate(item, cd.isoDate, cd.weekday);
+            const { active } = isScheduleActiveOnDate(item, cd.isoDate, cd.weekday, holidayDatesSet);
             return active;
           });
 
@@ -2111,19 +2060,19 @@ export const Schedules: React.FC = () => {
               {/* Schedules inside calendar cell */}
               <div className="space-y-1 flex-1 overflow-y-auto max-h-[70px] custom-scrollbar">
                 {daySchedules.slice(0, 3).map((item) => {
-                  const subInfo = resolveSubject(item.subjectId, subjects);
-                  const sh = typeof item.shiftId === 'object' ? item.shiftId : null;
-                  const shName = sh?.name || 'Ca';
+                  const subInfo = resolveSubject(item.mon_hoc || item.mon_hoc_id, subjects);
+                  const sh = getScheduleShift(item, shifts);
+                  const shName = sh?.ten_ca || 'Ca';
                   const cardStyle = getCardStyle(shName);
 
                   return (
                     <div
-                      key={item._id}
+                      key={item.id}
                       onClick={() => openDetailModal(item)}
                       className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border truncate cursor-pointer transition-transform hover:scale-[1.02] ${cardStyle.bg} ${cardStyle.hoverBorder}`}
-                      title={`${subInfo?.name || 'Lịch'} (${item.startTime} - ${item.endTime})`}
+                      title={`${subInfo?.name || 'Lịch'} (${item.gio_bat_dau} - ${item.gio_ket_thuc})`}
                     >
-                      <span className="font-mono">{item.startTime}</span> {subInfo?.name || 'Công tác'}
+                      <span className="font-mono">{item.gio_bat_dau}</span> {subInfo?.name || 'Công tác'}
                     </div>
                   );
                 })}
@@ -2384,8 +2333,8 @@ export const Schedules: React.FC = () => {
                   {selectedShiftFilter === 'all'
                     ? 'Tất cả các ca'
                     : (() => {
-                        const sel = sortedShifts.find((s) => s._id === selectedShiftFilter);
-                        return sel ? `${sel.name} (${sel.startTime} - ${sel.endTime})` : 'Ca đã chọn';
+                        const sel = sortedShifts.find((s) => s.id === selectedShiftFilter);
+                        return sel ? `${sel.ten_ca} (${sel.gio_bat_dau} - ${sel.gio_ket_thuc})` : 'Ca đã chọn';
                       })()}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -2431,13 +2380,13 @@ export const Schedules: React.FC = () => {
                   </button>
 
                   {sortedShifts.map((s) => {
-                    const isSelected = selectedShiftFilter === s._id;
+                    const isSelected = selectedShiftFilter === s.id;
                     return (
                       <button
-                        key={s._id}
+                        key={s.id}
                         type="button"
                         onClick={() => {
-                          setSelectedShiftFilter(s._id);
+                          setSelectedShiftFilter(s.id || 'all');
                           setIsShiftFilterOpen(false);
                         }}
                         className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
@@ -2447,9 +2396,9 @@ export const Schedules: React.FC = () => {
                         }`}
                       >
                         <div>
-                          <div className="font-semibold text-slate-800 dark:text-slate-200">{s.name}</div>
+                          <div className="font-semibold text-slate-800 dark:text-slate-200">{s.ten_ca}</div>
                           <div className="text-[10px] font-mono text-slate-400">
-                            {s.startTime} - {s.endTime}
+                            {s.gio_bat_dau} - {s.gio_ket_thuc}
                           </div>
                         </div>
                         {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
@@ -2495,8 +2444,8 @@ export const Schedules: React.FC = () => {
                   {selectedLecturerFilter === 'all'
                     ? 'Tất cả giảng viên'
                     : (() => {
-                        const sel = lecturers.find((l) => l._id === selectedLecturerFilter);
-                        return sel ? `${sel.fullName} (${sel.staffCode || 'GV'})` : 'Giảng viên đã chọn';
+                        const sel = lecturers.find((l) => l.id === selectedLecturerFilter);
+                        return sel ? `${sel.ho_ten} (${sel.ma_can_bo || 'GV'})` : 'Giảng viên đã chọn';
                       })()}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -2558,18 +2507,18 @@ export const Schedules: React.FC = () => {
                       .filter((lec) => {
                         if (!lecturerSearchQuery.trim()) return true;
                         const q = lecturerSearchQuery.toLowerCase();
-                        const name = (lec.fullName || '').toLowerCase();
-                        const code = (lec.staffCode || '').toLowerCase();
+                        const name = (lec.ho_ten || '').toLowerCase();
+                        const code = (lec.ma_can_bo || '').toLowerCase();
                         return name.includes(q) || code.includes(q);
                       })
                       .map((lec) => {
-                        const isSelected = selectedLecturerFilter === lec._id;
+                        const isSelected = selectedLecturerFilter === lec.id;
                         return (
                           <button
-                            key={lec._id}
+                            key={lec.id}
                             type="button"
                             onClick={() => {
-                              setSelectedLecturerFilter(lec._id);
+                              setSelectedLecturerFilter(lec.id);
                               setIsLecturerFilterOpen(false);
                             }}
                             className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
@@ -2580,11 +2529,11 @@ export const Schedules: React.FC = () => {
                           >
                             <div className="truncate pr-2">
                               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                {lec.fullName}
+                                {lec.ho_ten}
                               </span>
-                              {lec.staffCode && (
+                              {lec.ma_can_bo && (
                                 <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400">
-                                  {lec.staffCode}
+                                  {lec.ma_can_bo}
                                 </span>
                               )}
                               <div className="text-[10px] text-slate-400 truncate">
@@ -2749,9 +2698,9 @@ export const Schedules: React.FC = () => {
                   >
                     <span>
                       {(() => {
-                        const sel = lecturers.find((l) => l._id === formData.userId);
+                        const sel = lecturers.find((l) => l.id === formData.userId);
                         return sel
-                          ? `${sel.fullName} (${sel.staffCode || 'N/A'}) - ${getUserDepartmentName(sel)}`
+                          ? `${sel.ho_ten} (${sel.ma_can_bo || 'N/A'}) - ${getUserDepartmentName(sel)}`
                           : '-- Chọn nhân sự / giảng viên --';
                       })()}
                     </span>
@@ -2783,18 +2732,18 @@ export const Schedules: React.FC = () => {
                               if (!formLecturerSearch.trim()) return true;
                               const q = formLecturerSearch.toLowerCase();
                               return (
-                                (lec.fullName || '').toLowerCase().includes(q) ||
-                                (lec.staffCode || '').toLowerCase().includes(q)
+                                (lec.ho_ten || '').toLowerCase().includes(q) ||
+                                (lec.ma_can_bo || '').toLowerCase().includes(q)
                               );
                             })
                             .map((lec) => {
-                              const isSelected = formData.userId === lec._id;
+                              const isSelected = formData.userId === lec.id;
                               return (
                                 <button
-                                  key={lec._id}
+                                  key={lec.id}
                                   type="button"
                                   onClick={() => {
-                                    setFormData({ ...formData, userId: lec._id });
+                                    setFormData({ ...formData, userId: lec.id });
                                     setIsFormLecturerOpen(false);
                                   }}
                                   className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition-colors ${
@@ -2805,10 +2754,10 @@ export const Schedules: React.FC = () => {
                                 >
                                   <div>
                                     <div className="font-semibold text-slate-800 dark:text-slate-200">
-                                      {lec.fullName}
-                                      {lec.staffCode && (
+                                      {lec.ho_ten}
+                                      {lec.ma_can_bo && (
                                         <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400">
-                                          {lec.staffCode}
+                                          {lec.ma_can_bo}
                                         </span>
                                       )}
                                     </div>
@@ -2836,8 +2785,8 @@ export const Schedules: React.FC = () => {
                   <select
                     value={formData.shiftId}
                     onChange={(e) => {
-                      const sh = shifts.find((s) => s._id === e.target.value);
-                      const sTime = sh?.startTime || formData.startTime;
+                      const sh = shifts.find((s) => s.id === e.target.value);
+                      const sTime = sh?.gio_bat_dau || formData.startTime;
                       const sHour = parseInt((sTime || '07:00').split(':')[0], 10) || 7;
                       let sp = 1;
                       if (sHour >= 17) sp = 9;
@@ -2847,7 +2796,7 @@ export const Schedules: React.FC = () => {
                         ...formData,
                         shiftId: e.target.value,
                         startTime: sTime,
-                        endTime: sh?.endTime || formData.endTime,
+                        endTime: sh?.gio_ket_thuc || formData.endTime,
                         startPeriod: sp,
                       });
                     }}
@@ -2856,8 +2805,8 @@ export const Schedules: React.FC = () => {
                   >
                     <option value="">-- Chọn ca làm việc --</option>
                     {sortedShifts.map((s) => (
-                      <option key={s._id} value={s._id}>
-                        {s.name} ({s.startTime} - {s.endTime})
+                      <option key={s.id} value={s.id}>
+                        {s.ten_ca} ({s.gio_bat_dau} - {s.gio_ket_thuc})
                       </option>
                     ))}
                   </select>
@@ -2922,11 +2871,11 @@ export const Schedules: React.FC = () => {
                   >
                     <option value="">-- Không gắn môn học (Hành chính / Sinh hoạt) --</option>
                     {subjects.map((sub) => {
-                      const sName = sub.name || sub.ten_mon || 'Môn học';
-                      const sCode = sub.code || sub.ma_mon;
-                      const sCredits = sub.credits || sub.so_tin_chi || 3;
+                      const sName = sub.ten_mon || 'Môn học';
+                      const sCode = sub.ma_mon;
+                      const sCredits = sub.so_tin_chi || 3;
                       return (
-                        <option key={sub._id} value={sub._id}>
+                        <option key={sub.id} value={sub.id}>
                           {sCode ? `[${sCode}] ` : ''}{sName} ({sCredits} TC)
                         </option>
                       );
@@ -3188,21 +3137,21 @@ export const Schedules: React.FC = () => {
         MODAL 2: SCHEDULE DETAIL MODAL
        ========================================================================= */}
     {isDetailModalOpen && selectedSchedule && (() => {
-      const subInfo = resolveSubject(selectedSchedule.subjectId, subjects);
-      const lec = typeof selectedSchedule.userId === 'object' ? selectedSchedule.userId : null;
-      const sh = typeof selectedSchedule.shiftId === 'object' ? selectedSchedule.shiftId : shifts.find((s) => s._id === selectedSchedule.shiftId);
-      const wObj = WEEKDAYS.find((w) => w.value === (selectedSchedule.weekday ?? selectedSchedule.thu_trong_tuan ?? 1)) || WEEKDAYS[0];
+      const subInfo = resolveSubject(selectedSchedule.mon_hoc || selectedSchedule.mon_hoc_id, subjects);
+      const lec = getScheduleLecturer(selectedSchedule, lecturers);
+      const sh = getScheduleShift(selectedSchedule, shifts);
+      const wObj = WEEKDAYS.find((w) => w.value === (selectedSchedule.thu_trong_tuan ?? 1)) || WEEKDAYS[0];
 
-      const startP = selectedSchedule.startPeriod || selectedSchedule.tiet_bat_dau || 1;
-      const countP = selectedSchedule.periodCount || selectedSchedule.so_tiet || 4;
+      const startP = selectedSchedule.tiet_bat_dau || 1;
+      const countP = selectedSchedule.so_tiet || 4;
       const endP = startP + countP - 1;
 
-      const startDate = selectedSchedule.startDate || selectedSchedule.ngay_bat_dau;
-      const endDate = selectedSchedule.endDate || selectedSchedule.ngay_ket_thuc;
-      const isMakeup = selectedSchedule.scheduleType === 'day_bu';
-      const makeupDate = selectedSchedule.makeupDate || selectedSchedule.ngay_day_bu;
-      const isRecurring = selectedSchedule.isRecurring ?? selectedSchedule.lap_lai_hang_tuan ?? true;
-      const exceptions = selectedSchedule.exceptions || selectedSchedule.ngoai_le || [];
+      const startDate = selectedSchedule.ngay_bat_dau;
+      const endDate = selectedSchedule.ngay_ket_thuc;
+      const isMakeup = selectedSchedule.loai_lich === 'day_bu';
+      const makeupDate = selectedSchedule.ngay_day_bu;
+      const isRecurring = selectedSchedule.lap_lai_hang_tuan ?? true;
+      const exceptions = selectedSchedule.ngoai_le || [];
 
       return (
         <Portal>
@@ -3221,7 +3170,7 @@ export const Schedules: React.FC = () => {
                     </span>
                     {sh && (
                       <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
-                        {sh.name} ({sh.startTime} - {sh.endTime})
+                        {sh.ten_ca} ({sh.gio_bat_dau} - {sh.gio_ket_thuc})
                       </span>
                     )}
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800">
@@ -3261,11 +3210,11 @@ export const Schedules: React.FC = () => {
                     <div className="space-y-1.5 pl-6 text-slate-600 dark:text-slate-300">
                       <div className="flex justify-between">
                         <span className="text-slate-400">Họ và tên:</span>
-                        <span className="font-bold text-slate-900 dark:text-slate-100">{lec?.fullName || 'Chưa phân công'}</span>
+                        <span className="font-bold text-slate-900 dark:text-slate-100">{lec?.ho_ten || 'Chưa phân công'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Mã cán bộ:</span>
-                        <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">{lec?.staffCode || 'N/A'}</span>
+                        <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">{lec?.ma_can_bo || 'N/A'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Khoa / Phòng:</span>
@@ -3289,7 +3238,7 @@ export const Schedules: React.FC = () => {
                       <div className="flex justify-between">
                         <span className="text-slate-400">Khung giờ:</span>
                         <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
-                          {selectedSchedule.startTime} - {selectedSchedule.endTime}
+                          {selectedSchedule.gio_bat_dau} - {selectedSchedule.gio_ket_thuc}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -3300,7 +3249,7 @@ export const Schedules: React.FC = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Ca phân công:</span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{sh?.name || 'Theo khung giờ'}</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{sh?.ten_ca || 'Theo khung giờ'}</span>
                       </div>
                     </div>
                   </div>
@@ -3315,7 +3264,7 @@ export const Schedules: React.FC = () => {
                   <div className="space-y-1.5 pl-6 text-slate-600 dark:text-slate-300">
                     <div className="flex justify-between">
                       <span className="text-slate-400">Phòng học:</span>
-                      <span className="font-bold text-slate-900 dark:text-slate-100">{selectedSchedule.roomId || 'Chưa xếp phòng'}</span>
+                      <span className="font-bold text-slate-900 dark:text-slate-100">{selectedSchedule.phong_hoc || 'Chưa xếp phòng'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Số tín chỉ:</span>
@@ -3324,7 +3273,7 @@ export const Schedules: React.FC = () => {
                     <div className="flex justify-between">
                       <span className="text-slate-400">Tọa độ GPS Geofence:</span>
                       <span className="font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        {selectedSchedule.latitude ?? 20.9752}, {selectedSchedule.longitude ?? 105.7628} (R: {selectedSchedule.radiusMeters ?? 100}m)
+                        {selectedSchedule.vi_do ?? 20.9752}, {selectedSchedule.kinh_do ?? 105.7628} (R: {selectedSchedule.ban_kinh_met ?? 100}m)
                       </span>
                     </div>
                   </div>
@@ -3351,30 +3300,30 @@ export const Schedules: React.FC = () => {
                       <span className="text-slate-400">Đến hết ngày: </span>
                       <strong className="text-slate-800 dark:text-slate-200 font-mono">{formatDateFull(endDate)}</strong>
                     </div>
-                    {(selectedSchedule.academicYear || selectedSchedule.semester) && (
+                    {(selectedSchedule.nam_hoc || selectedSchedule.hoc_ky) && (
                       <div className="sm:col-span-2">
                         <span className="text-slate-400">Năm học / Học kỳ: </span>
                         <strong className="text-slate-800 dark:text-slate-200 font-mono">
-                          {selectedSchedule.academicYear || '—'}{selectedSchedule.semester ? ` • Học kỳ ${selectedSchedule.semester}` : ''}
+                          {selectedSchedule.nam_hoc || '—'}{selectedSchedule.hoc_ky ? ` • Học kỳ ${selectedSchedule.hoc_ky}` : ''}
                         </strong>
                       </div>
                     )}
                     <div className="sm:col-span-2">
                       <span className="text-slate-400">Tuần học áp dụng: </span>
                       <strong className="text-slate-800 dark:text-slate-200 font-mono">
-                        {formatWeeksSummary(selectedSchedule.weekNumbers)}
+                        {formatWeeksSummary(selectedSchedule.danh_sach_tuan)}
                       </strong>
                     </div>
                     <div>
                       <span className="text-slate-400">Ngày tạo: </span>
                       <strong className="text-slate-800 dark:text-slate-200 font-mono">
-                        {(selectedSchedule as any).createdAt ? new Date((selectedSchedule as any).createdAt).toLocaleString('vi-VN') : '—'}
+                        {selectedSchedule.tao_luc ? new Date(selectedSchedule.tao_luc).toLocaleString('vi-VN') : '—'}
                       </strong>
                     </div>
                     <div>
                       <span className="text-slate-400">Cập nhật gần nhất: </span>
                       <strong className="text-slate-800 dark:text-slate-200 font-mono">
-                        {(selectedSchedule as any).updatedAt ? new Date((selectedSchedule as any).updatedAt).toLocaleString('vi-VN') : '—'}
+                        {selectedSchedule.cap_nhat_luc ? new Date(selectedSchedule.cap_nhat_luc).toLocaleString('vi-VN') : '—'}
                       </strong>
                     </div>
                   </div>
@@ -3406,9 +3355,9 @@ export const Schedules: React.FC = () => {
                             {ex.makeupDate ? `→ Bù ngày ${formatDateFull(ex.makeupDate)} ` : ''}
                             {ex.reason ? `(${ex.reason})` : ''}
                           </span>
-                          {ex.createdAt && (
+                          {ex.tao_luc && (
                             <span className="text-[10px] font-mono text-amber-700/80 dark:text-amber-300/80">
-                              Ghi nhận: {new Date(ex.createdAt).toLocaleDateString('vi-VN')}
+                              Ghi nhận: {new Date(ex.tao_luc).toLocaleDateString('vi-VN')}
                             </span>
                           )}
                         </div>
@@ -3425,7 +3374,7 @@ export const Schedules: React.FC = () => {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={(e) => handleDeleteSchedule(selectedSchedule._id, e)}
+                        onClick={(e) => handleDeleteSchedule(selectedSchedule.id, e)}
                         className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 dark:border-rose-900/60"
                       >
                         <Trash2 className="w-3.5 h-3.5 mr-1" />

@@ -1,23 +1,79 @@
 // Cổng gọi đa mô hình AI (Gemini, Groq, DeepSeek) kèm tự chuyển đổi dự phòng (failover) và embedding RAG
 
 const DEFAULT_TIMEOUT_MS = 25000;
+const SAFE_MODEL_NAME_REGEX = /^[a-zA-Z0-9._-]{1,100}$/;
+
+const sanitizeModelName = (modelInput, fallbackModel = null) => {
+  if (modelInput === null || modelInput === undefined || modelInput === '') {
+    return fallbackModel;
+  }
+  const trimmed = String(modelInput).trim();
+  if (!trimmed) return fallbackModel;
+  if (
+    !SAFE_MODEL_NAME_REGEX.test(trimmed) ||
+    trimmed.includes('..') ||
+    trimmed.startsWith('.') ||
+    trimmed.endsWith('.')
+  ) {
+    const err = new Error('Tên mô hình AI (mo_hinh) không hợp lệ.');
+    err.statusCode = 400;
+    err.status = 400;
+    throw err;
+  }
+  return trimmed;
+};
+
+const safeParseJsonResponse = async (response, providerLabel) => {
+  const rawText = await response.text();
+  if (!rawText || !rawText.trim()) {
+    return {};
+  }
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    const err = new Error(
+      `Lỗi ${providerLabel} API (${response.status}): Máy chủ upstream trả về phản hồi không phải JSON.`
+    );
+    err.status = response.status || 502;
+    err.statusCode = response.status || 502;
+    throw err;
+  }
+};
 
 // Xây dựng danh sách model Gemini thử tuần tự khi model chính bị lỗi hoặc hết hạn mức
-const getGeminiChatModelChain = (explicitModel = null) =>
-  Array.from(
+const getGeminiChatModelChain = (explicitModel = null) => {
+  const safeExplicit = explicitModel ? sanitizeModelName(explicitModel, null) : null;
+  const safeEnvModel = process.env.GEMINI_MODEL
+    ? (() => {
+        try {
+          return sanitizeModelName(process.env.GEMINI_MODEL, null);
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
+  return Array.from(
     new Set(
       [
-        explicitModel,
-        process.env.GEMINI_MODEL,
+        safeExplicit,
+        safeEnvModel,
         'gemini-2.5-flash',
-        'gemini-3.5-flash-lite',
-        'gemini-3.8-flash',
+        'gemini-2.0-flash',
+        'gemini-2.5-flash-lite',
       ].filter(Boolean)
     )
   );
+};
 
 // Lấy tên model embedding Gemini mặc định
-const getDefaultEmbeddingModel = () => process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
+const getDefaultEmbeddingModel = () => {
+  try {
+    return sanitizeModelName(process.env.GEMINI_EMBEDDING_MODEL, 'gemini-embedding-001');
+  } catch {
+    return 'gemini-embedding-001';
+  }
+};
 
 // Gọi Google Gemini API (hỗ trợ ảnh/PDF qua attachments inline_data)
 const callGemini = async ({
@@ -35,8 +91,10 @@ const callGemini = async ({
     throw new Error('Chưa cấu hình GEMINI_API_KEY.');
   }
 
+  const safeModel = sanitizeModelName(model, getGeminiChatModelChain()[0]);
+
   // Sử dụng endpoint REST và truyền key qua header x-goog-api-key (hỗ trợ cả key dạng mới AQ.* và key AIzaSy*)
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${safeModel}:generateContent`;
 
   // Chuẩn hóa contents theo cấu trúc Gemini REST API
   const contents = [];
@@ -94,7 +152,7 @@ const callGemini = async ({
     signal: AbortSignal.timeout(attachments?.length > 0 ? 45000 : DEFAULT_TIMEOUT_MS),
   });
 
-  const data = await response.json();
+  const data = await safeParseJsonResponse(response, 'Gemini');
 
   if (!response.ok) {
     const errorMsg = data?.error?.message || `Lỗi Gemini API (${response.status}): ${response.statusText}`;
@@ -112,7 +170,7 @@ const callGemini = async ({
   return {
     text: replyText.trim(),
     provider: 'gemini',
-    model,
+    model: safeModel,
     tokens: data?.usageMetadata?.totalTokenCount || null,
   };
 };
@@ -124,7 +182,7 @@ const embedTextWithGemini = async ({ text, apiKey, model } = {}) => {
     return null;
   }
 
-  const targetModel = model || getDefaultEmbeddingModel();
+  const targetModel = sanitizeModelName(model, getDefaultEmbeddingModel());
   try {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:embedContent`;
     const response = await fetch(endpoint, {
@@ -223,6 +281,8 @@ const callGroq = async ({ prompt, systemInstruction = '', history = [], apiKey, 
 
   messages.push({ role: 'user', content: prompt });
 
+  const safeModel = sanitizeModelName(model, 'llama-3.3-70b-versatile');
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -230,7 +290,7 @@ const callGroq = async ({ prompt, systemInstruction = '', history = [], apiKey, 
       Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
-      model,
+      model: safeModel,
       messages,
       temperature,
       max_tokens: maxTokens,
@@ -238,7 +298,7 @@ const callGroq = async ({ prompt, systemInstruction = '', history = [], apiKey, 
     signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
   });
 
-  const data = await response.json();
+  const data = await safeParseJsonResponse(response, 'Groq');
 
   if (!response.ok) {
     const errorMsg = data?.error?.message || `Lỗi Groq API (${response.status}): ${response.statusText}`;
@@ -256,7 +316,7 @@ const callGroq = async ({ prompt, systemInstruction = '', history = [], apiKey, 
   return {
     text: replyText.trim(),
     provider: 'groq',
-    model,
+    model: safeModel,
     tokens: data?.usage?.total_tokens || null,
   };
 };
@@ -287,6 +347,8 @@ const callDeepSeek = async ({ prompt, systemInstruction = '', history = [], apiK
 
   messages.push({ role: 'user', content: prompt });
 
+  const safeModel = sanitizeModelName(model, 'deepseek-chat');
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -294,7 +356,7 @@ const callDeepSeek = async ({ prompt, systemInstruction = '', history = [], apiK
       Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
-      model,
+      model: safeModel,
       messages,
       temperature,
       max_tokens: maxTokens,
@@ -302,7 +364,7 @@ const callDeepSeek = async ({ prompt, systemInstruction = '', history = [], apiK
     signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
   });
 
-  const data = await response.json();
+  const data = await safeParseJsonResponse(response, 'DeepSeek');
 
   if (!response.ok) {
     const errorMsg = data?.error?.message || `Lỗi DeepSeek API (${response.status}): ${response.statusText}`;
@@ -320,7 +382,7 @@ const callDeepSeek = async ({ prompt, systemInstruction = '', history = [], apiK
   return {
     text: replyText.trim(),
     provider: 'deepseek',
-    model,
+    model: safeModel,
     tokens: data?.usage?.total_tokens || null,
   };
 };
@@ -383,6 +445,7 @@ const generateAIResponse = async ({
   temperature = 0.7,
   maxTokens = 2048,
 }) => {
+  const validatedExplicitModel = model ? sanitizeModelName(model, null) : null;
   const hasMultimodalAttachments = Array.isArray(attachments) && attachments.length > 0;
   const preferred = hasMultimodalAttachments
     ? 'gemini'
@@ -404,9 +467,23 @@ const generateAIResponse = async ({
   const errors = [];
 
   for (const currentProvider of executionOrder) {
+    // Chỉ truyền model tường minh cho đúng nhà cung cấp được chọn; khi failover sang provider khác phải dùng model mặc định của provider đó
+    const providerExplicitModel = currentProvider === preferred ? validatedExplicitModel : null;
+
     try {
+      if (currentProvider === 'offline_mock') {
+        return callOfflineMock({
+          prompt,
+          systemInstruction,
+          mode,
+          mockContext,
+          ragChunks,
+          inlineDocument,
+          hasImageAttachment,
+        });
+      }
       if (currentProvider === 'gemini' && process.env.GEMINI_API_KEY) {
-        const geminiModels = getGeminiChatModelChain(model);
+        const geminiModels = getGeminiChatModelChain(providerExplicitModel);
         let lastGeminiErr = null;
         for (const candidateModel of geminiModels) {
           try {
@@ -433,10 +510,24 @@ const generateAIResponse = async ({
         if (lastGeminiErr) throw lastGeminiErr;
       }
       if (!hasMultimodalAttachments && currentProvider === 'groq' && process.env.GROQ_API_KEY) {
-        return await callGroq({ prompt, systemInstruction, history, model: model || 'llama-3.3-70b-versatile', temperature, maxTokens });
+        return await callGroq({
+          prompt,
+          systemInstruction,
+          history,
+          model: providerExplicitModel || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          temperature,
+          maxTokens,
+        });
       }
       if (!hasMultimodalAttachments && currentProvider === 'deepseek' && process.env.DEEPSEEK_API_KEY) {
-        return await callDeepSeek({ prompt, systemInstruction, history, model: model || 'deepseek-chat', temperature, maxTokens });
+        return await callDeepSeek({
+          prompt,
+          systemInstruction,
+          history,
+          model: providerExplicitModel || process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+          temperature,
+          maxTokens,
+        });
       }
     } catch (err) {
       console.warn(`[AI Gateway Warning] Nhà cung cấp ${currentProvider} gặp lỗi (${err.message}). Đang chuyển đổi dự phòng...`);
@@ -460,6 +551,8 @@ const generateAIResponse = async ({
 };
 
 module.exports = {
+  SAFE_MODEL_NAME_REGEX,
+  sanitizeModelName,
   getGeminiChatModelChain,
   getDefaultEmbeddingModel,
   callGemini,

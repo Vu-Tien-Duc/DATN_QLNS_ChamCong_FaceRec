@@ -422,7 +422,7 @@ export const attendanceApi = {
   async verifyLivenessChallenge(
     imageBlob: Blob,
     challengeToken: string
-  ): Promise<{ passed: boolean; detectedPose: string; expectedChallenge: string }> {
+  ): Promise<{ passed: boolean; detectedPose: string; expectedChallenge: string; livenessTicket?: string }> {
     const formData = new FormData();
     formData.append('image', imageBlob, 'liveness.jpg');
     formData.append('challengeToken', challengeToken);

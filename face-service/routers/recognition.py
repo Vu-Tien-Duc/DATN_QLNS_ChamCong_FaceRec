@@ -19,7 +19,8 @@ router = APIRouter(tags=["Recognition"])
 @router.post("/v1/face/recognize", response_model=FaceRecognizeResponse, summary="Chấm công nhận diện 1:N (Face Recognition)")
 async def recognize_face(
     image: Annotated[UploadFile, File(description="Ảnh chụp camera chấm công")],
-    threshold: float = Query(MATCH_THRESHOLD, description="Ngưỡng tương đồng cosine"),
+    threshold: float = Query(MATCH_THRESHOLD, ge=0.0, le=1.0, description="Ngưỡng tương đồng cosine"),
+    margin: float = Query(MARGIN_TOP1_TOP2, ge=0.0, le=1.0, description="Biên độ chênh lệch tối thiểu Top 1 - Top 2"),
     check_liveness: bool = Query(True, description="Kiểm tra chống giả mạo liveness"),
     check_quality: bool = Query(True, description="Kiểm tra chất lượng ảnh"),
 ) -> FaceRecognizeResponse:
@@ -103,11 +104,11 @@ async def recognize_face(
     if is_matched and len(candidates) > 1:
         second_match = candidates[1]
         if second_match.userId != best_match.userId and second_match.employee_id != best_match.employee_id:
-            margin = best_match.similarity - second_match.similarity
-            if margin < MARGIN_TOP1_TOP2:
+            top_gap = best_match.similarity - second_match.similarity
+            if top_gap < margin:
                 is_matched = False
                 reasons.append(
-                    f"AMBIGUOUS_MATCH: Độ chênh lệch giữa Top 1 ({best_match.similarity:.3f}) và Top 2 ({second_match.similarity:.3f}) là {margin:.3f} < ngưỡng {MARGIN_TOP1_TOP2}. Hệ thống từ chối để chống nhận diện nhầm người."
+                    f"AMBIGUOUS_MATCH: Độ chênh lệch giữa Top 1 ({best_match.similarity:.3f}) và Top 2 ({second_match.similarity:.3f}) là {top_gap:.3f} < ngưỡng {margin}. Hệ thống từ chối để chống nhận diện nhầm người."
                 )
 
     if not is_matched and best_match.similarity < threshold:

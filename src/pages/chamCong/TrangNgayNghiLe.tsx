@@ -394,14 +394,12 @@ export const Holidays: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const year = Number(formData.ngay_bat_dau.slice(0, 4));
       const payload: CreateHolidayPayload = {
         ten_ngay_le: formData.ten_ngay_le.trim(),
         ngay_bat_dau: formData.ngay_bat_dau,
         ngay_ket_thuc: formData.ngay_ket_thuc,
-        nam: year,
         huong_luong: formData.huong_luong,
-        mo_ta: formData.mo_ta.trim(),
+        mo_ta: formData.mo_ta.trim() || undefined,
       };
 
       if (isEditModalOpen && activeHoliday) {
@@ -1181,7 +1179,7 @@ export const Holidays: React.FC = () => {
                     Ngày tạo
                   </span>
                   <span className="font-mono text-slate-700">
-                    {(activeHoliday as any).createdAt ? new Date((activeHoliday as any).createdAt).toLocaleString('vi-VN') : '—'}
+                    {activeHoliday.tao_luc ? new Date(activeHoliday.tao_luc).toLocaleString('vi-VN') : '—'}
                   </span>
                 </div>
                 <div>
@@ -1189,7 +1187,7 @@ export const Holidays: React.FC = () => {
                     Cập nhật gần nhất
                   </span>
                   <span className="font-mono text-slate-700">
-                    {(activeHoliday as any).updatedAt ? new Date((activeHoliday as any).updatedAt).toLocaleString('vi-VN') : '—'}
+                    {activeHoliday.cap_nhat_luc ? new Date(activeHoliday.cap_nhat_luc).toLocaleString('vi-VN') : '—'}
                   </span>
                 </div>
               </div>

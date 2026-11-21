@@ -1,7 +1,7 @@
 import { apiClient, ApiResponse } from '../apiClient';
 
 export interface PublicFacultyItem {
-  _id: string;
+  id: string;
   ho_ten: string;
   email: string;
   danh_hieu: string; // GS.TS, PGS.TS, TS, ThS...
@@ -18,7 +18,7 @@ export interface PublicFacultyItem {
 }
 
 export interface SubjectTaught {
-  _id: string;
+  id: string;
   ma_mon: string;
   ten_mon: string;
   so_tin_chi: number;
@@ -31,7 +31,7 @@ export interface PublicFacultyDetail extends PublicFacultyItem {
 }
 
 export interface DepartmentSummary {
-  _id: string;
+  id: string;
   ten_khoa: string;
 }
 

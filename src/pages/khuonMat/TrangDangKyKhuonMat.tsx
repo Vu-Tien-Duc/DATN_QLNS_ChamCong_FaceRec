@@ -236,6 +236,10 @@ export const FaceRegistrationPage: React.FC = () => {
   }, [canManageOthers]);
 
   const handleOpenEmployeeEnroll = (emp: any) => {
+    if (authUser?.id && String(emp?.id) === String(authUser.id)) {
+      toast.error('Bạn không thể tự đăng ký khuôn mặt của chính mình. Vui lòng nhờ cấp trên thực hiện.');
+      return;
+    }
     setSelectedEmployee(emp);
     setIsEnrollModalOpen(true);
   };
@@ -243,7 +247,7 @@ export const FaceRegistrationPage: React.FC = () => {
   const handleOpenEmployeeDetail = async (emp: any) => {
     setDetailEmployee(emp);
     setDetailFaceStatus(null);
-    const targetId = emp?._id || emp?.id;
+    const targetId = emp?.id;
     if (!targetId) return;
     try {
       setLoadingDetailFace(true);
@@ -263,6 +267,10 @@ export const FaceRegistrationPage: React.FC = () => {
       toast.error('Thiếu mã định danh của nhân sự cần xóa.');
       return;
     }
+    if (authUser?.id && String(targetId) === String(authUser.id)) {
+      toast.error('Bạn không thể tự xóa dữ liệu sinh trắc học của chính mình. Vui lòng nhờ cấp trên thực hiện.');
+      return;
+    }
 
     if (!window.confirm(`Xác nhận xóa sạch dữ liệu mẫu Face ID của "${targetName}" theo Nghị định 13/2023/NĐ-CP?`)) {
       return;
@@ -273,7 +281,7 @@ export const FaceRegistrationPage: React.FC = () => {
       if (res.success) {
         toast.success(`Đã xóa dữ liệu Face ID của ${targetName}`);
         if (canManageOthers) searchEmployees(employeeSearch);
-        const currentUserId = authUser?._id || (authUser as any)?.id;
+        const currentUserId = authUser?.id;
         if (targetId === currentUserId) {
           loadStatus();
           fetchMe();
@@ -343,7 +351,7 @@ export const FaceRegistrationPage: React.FC = () => {
     }
     const deptId = getEmpDepartmentId(emp);
     if (deptId && departments.length > 0) {
-      const found = departments.find((d) => String(d.id || d._id) === deptId);
+      const found = departments.find((d) => String(d.id) === deptId);
       if (found) return found.ten_phong_ban || 'Văn phòng / Ban';
     }
     return 'Văn phòng / Ban';
@@ -360,7 +368,7 @@ export const FaceRegistrationPage: React.FC = () => {
       // 2. Lọc theo Khoa / Bộ môn
       if (departmentFilter !== 'ALL') {
         const empDeptId = getEmpDepartmentId(emp);
-        const selectedDept = departments.find((d) => String(d.id || d._id) === String(departmentFilter));
+        const selectedDept = departments.find((d) => String(d.id) === String(departmentFilter));
         const isBghFilter = selectedDept
           ? String(selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
             String(selectedDept.ten_phong_ban || '').toLowerCase().includes('giám hiệu')
@@ -370,28 +378,35 @@ export const FaceRegistrationPage: React.FC = () => {
           const isUserBgh = String(emp.vai_tro_chinh || '').toLowerCase().includes('bgh') || empDeptId === departmentFilter;
           if (!isUserBgh) return false;
         } else {
-          // Khớp trực tiếp đơn vị
-          const matchesDirect = empDeptId === departmentFilter;
-
-          // Khớp đơn vị cha (khi lọc theo Khoa mà cán bộ thuộc Bộ môn trực thuộc)
-          const empDept = departments.find((d) => String(d.id || d._id) === empDeptId);
-          const empParentId = empDept?.don_vi_cha_id
-            ? typeof empDept.don_vi_cha_id === 'object' && empDept.don_vi_cha_id !== null
-              ? String((empDept.don_vi_cha_id as any).id || (empDept.don_vi_cha_id as any)._id || '')
-              : String(empDept.don_vi_cha_id)
-            : '';
-          const matchesParent = Boolean(empParentId && empParentId === departmentFilter);
+          // Khớp trực tiếp hoặc theo cây đơn vị đa cấp (Khoa -> Bộ môn -> Tổ)
+          let matchesTree = false;
+          let curId: string | null = empDeptId || null;
+          const visited = new Set<string>();
+          while (curId && !visited.has(curId)) {
+            if (curId === String(departmentFilter)) {
+              matchesTree = true;
+              break;
+            }
+            visited.add(curId);
+            const curDept = departments.find((d) => String(d.id) === curId);
+            const rawParent = curDept?.don_vi_cha_id;
+            curId = rawParent
+              ? typeof rawParent === 'object' && rawParent !== null
+                ? String((rawParent as any).id || '')
+                : String(rawParent)
+              : null;
+          }
 
           // Khớp roles phân quyền
           const roleList = Array.isArray(emp.danh_sach_vai_tro) ? emp.danh_sach_vai_tro : [];
           const matchesRoles = roleList.some((r: any) => {
             const rDept = r.don_vi_id;
             if (!rDept) return false;
-            const rId = typeof rDept === 'object' && rDept !== null ? String(rDept.id || rDept._id || '') : String(rDept);
+            const rId = typeof rDept === 'object' && rDept !== null ? String(rDept.id || '') : String(rDept);
             return rId === departmentFilter;
           });
 
-          if (!matchesDirect && !matchesParent && !matchesRoles) {
+          if (!matchesTree && !matchesRoles) {
             return false;
           }
         }
@@ -449,6 +464,13 @@ export const FaceRegistrationPage: React.FC = () => {
       return;
     }
     try {
+      const sanitizeExcelCell = (val: unknown): string | number => {
+        if (typeof val === 'number') return val;
+        if (val === null || val === undefined) return '';
+        const str = String(val);
+        return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+      };
+
       const dataRows = filteredEmployees.map((emp, i) => {
         const { name } = formatNameAndTitle(emp.ho_ten || '');
         const deptName = getEmpDepartmentName(emp);
@@ -458,16 +480,16 @@ export const FaceRegistrationPage: React.FC = () => {
 
         return {
           'STT': i + 1,
-          'Mã Cán Bộ': emp.ma_can_bo || '--',
-          'Họ Và Tên': name,
-          'Khoa / Phòng Ban': deptName,
-          'Chức Vụ': emp.chuc_vu || '--',
-          'Email Công Vụ': emp.email || '--',
-          'Số Điện Thoại': emp.so_dien_thoai || '--',
+          'Mã Cán Bộ': sanitizeExcelCell(emp.ma_can_bo || '--'),
+          'Họ Và Tên': sanitizeExcelCell(name),
+          'Khoa / Phòng Ban': sanitizeExcelCell(deptName),
+          'Chức Vụ': sanitizeExcelCell(emp.chuc_vu || '--'),
+          'Email Công Vụ': sanitizeExcelCell(emp.email || '--'),
+          'Số Điện Thoại': sanitizeExcelCell(emp.so_dien_thoai || '--'),
           'Trạng Thái Face ID': isReg ? 'Đã kích hoạt' : 'Chưa đăng ký',
           'Số Góc Mặt Đã Thu Thập': isReg ? `${posesCount}/5 góc` : '0/5 góc',
           'Chuẩn Trích Xuất': isReg ? 'InsightFace 512D' : '--',
-          'Ngày Đăng Ký Mẫu': registeredAt,
+          'Ngày Đăng Ký Mẫu': sanitizeExcelCell(registeredAt),
           'Trạng Thái Tài Khoản': emp.kich_hoat !== false ? 'Đang hoạt động' : 'Đã khóa',
         };
       });
@@ -491,7 +513,9 @@ export const FaceRegistrationPage: React.FC = () => {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Danh Sách Face ID');
 
-      XLSX.writeFile(wb, `Danh_Sach_Face_ID_NTU_${new Date().toISOString().split('T')[0]}.xlsx`);
+      const now = new Date();
+      const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      XLSX.writeFile(wb, `Danh_Sach_Face_ID_NTU_${todayIso}.xlsx`);
       toast.success('Đã xuất Danh sách Face ID (.xlsx) thành công!');
     } catch (err) {
       console.error('Lỗi khi xuất Danh sách Face ID:', err);
@@ -808,7 +832,7 @@ export const FaceRegistrationPage: React.FC = () => {
               {/* Body Danh Sách */}
               <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {paginatedEmployees.map((emp) => {
-                  const empId = emp.id || emp._id;
+                  const empId = emp.id;
                   const isRegistered = Boolean(emp.da_dang_ky_face);
                   const parsed = formatNameAndTitle(emp.ho_ten || '');
                   const staffCodeVal = emp.ma_can_bo || (empId ? `CB-${empId.slice(-4).toUpperCase()}` : '—');
@@ -895,7 +919,17 @@ export const FaceRegistrationPage: React.FC = () => {
 
                         {/* Mobile Actions */}
                         <div className="sm:hidden flex items-center gap-1.5 shrink-0">
-                          {isRegistered ? (
+                          {authUser?.id && String(emp.id) === String(authUser.id) ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEmployeeDetail(emp)}
+                              className="h-7 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 text-[11px] font-medium inline-flex items-center gap-1"
+                              title="Hồ sơ cá nhân (chỉ cấp trên thao tác)"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Chi tiết</span>
+                            </button>
+                          ) : isRegistered ? (
                             <>
                               <button
                                 type="button"
@@ -915,7 +949,7 @@ export const FaceRegistrationPage: React.FC = () => {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleDeleteEmployeeFace(emp.id || emp._id, emp.ho_ten)}
+                                onClick={() => handleDeleteEmployeeFace(emp.id, emp.ho_ten)}
                                 className="w-7 h-7 rounded-lg border border-rose-200 dark:border-rose-800 bg-white dark:bg-slate-900 text-rose-500 inline-flex items-center justify-center"
                                 title="Xóa mẫu khuôn mặt"
                               >
@@ -937,7 +971,19 @@ export const FaceRegistrationPage: React.FC = () => {
 
                       {/* Cột 4: Thao tác (Desktop) */}
                       <div className="hidden sm:flex items-center justify-end gap-1.5 shrink-0">
-                        {isRegistered ? (
+                        {authUser?.id && String(emp.id) === String(authUser.id) ? (
+                          <>
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500 px-2">Hồ sơ cá nhân</span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEmployeeDetail(emp)}
+                              className="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400 transition-colors inline-flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
+                              title="Xem chi tiết hồ sơ sinh trắc học"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : isRegistered ? (
                           <>
                             <button
                               type="button"
@@ -960,7 +1006,7 @@ export const FaceRegistrationPage: React.FC = () => {
 
                             <button
                               type="button"
-                              onClick={() => handleDeleteEmployeeFace(emp.id || emp._id, emp.ho_ten)}
+                              onClick={() => handleDeleteEmployeeFace(emp.id, emp.ho_ten)}
                               className="w-8 h-8 rounded-lg border border-rose-200/90 dark:border-rose-800/60 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-500 hover:text-rose-600 transition-colors inline-flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
                               title="Xóa mẫu khuôn mặt theo NĐ 13/2023"
                             >
@@ -987,7 +1033,7 @@ export const FaceRegistrationPage: React.FC = () => {
             /* ── CHẾ ĐỘ 2: THẺ LƯỚI TRỰC QUAN (CARD GRID VIEW) ── */
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 p-3.5 sm:p-4 bg-slate-50/50 dark:bg-slate-950/20">
               {paginatedEmployees.map((emp) => {
-                const empId = emp.id || emp._id;
+                const empId = emp.id;
                 const isRegistered = Boolean(emp.da_dang_ky_face);
                 const parsed = formatNameAndTitle(emp.ho_ten || '');
                 const staffCodeVal = emp.ma_can_bo || (empId ? `CB-${empId.slice(-4).toUpperCase()}` : '—');
@@ -1078,7 +1124,11 @@ export const FaceRegistrationPage: React.FC = () => {
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </button>
-                      {isRegistered ? (
+                      {authUser?.id && String(emp.id) === String(authUser.id) ? (
+                        <span className="flex-1 text-center text-[11px] font-medium text-slate-400 dark:text-slate-500 py-1.5">
+                          Hồ sơ cá nhân (cấp trên quản lý)
+                        </span>
+                      ) : isRegistered ? (
                         <>
                           <button
                             type="button"
@@ -1090,7 +1140,7 @@ export const FaceRegistrationPage: React.FC = () => {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDeleteEmployeeFace(emp.id || emp._id, emp.ho_ten)}
+                            onClick={() => handleDeleteEmployeeFace(emp.id, emp.ho_ten)}
                             className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 dark:hover:border-rose-800 transition-all cursor-pointer shadow-2xs"
                             title="Xóa mẫu khuôn mặt theo NĐ 13/2023"
                           >
@@ -1116,7 +1166,7 @@ export const FaceRegistrationPage: React.FC = () => {
             /* ── CHẾ ĐỘ 3: TINH GỌN SIÊU TỐC (COMPACT VIEW) ── */
             <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {paginatedEmployees.map((emp) => {
-                const empId = emp.id || emp._id;
+                const empId = emp.id;
                 const isRegistered = Boolean(emp.da_dang_ky_face);
                 const parsed = formatNameAndTitle(emp.ho_ten || '');
                 const staffCodeVal = emp.ma_can_bo || (empId ? `CB-${empId.slice(-4).toUpperCase()}` : '—');
@@ -1175,7 +1225,9 @@ export const FaceRegistrationPage: React.FC = () => {
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
-                        {isRegistered ? (
+                        {authUser?.id && String(emp.id) === String(authUser.id) ? (
+                          <span className="text-[11px] text-slate-400 px-1.5">Cá nhân</span>
+                        ) : isRegistered ? (
                           <>
                             <button
                               type="button"
@@ -1187,7 +1239,7 @@ export const FaceRegistrationPage: React.FC = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteEmployeeFace(emp.id || emp._id, emp.ho_ten)}
+                              onClick={() => handleDeleteEmployeeFace(emp.id, emp.ho_ten)}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
                               title="Xóa mẫu khuôn mặt"
                             >
@@ -1264,7 +1316,7 @@ export const FaceRegistrationPage: React.FC = () => {
                     {!isCollapsed && (
                       <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
                         {group.members.map((emp) => {
-                          const empId = emp.id || emp._id;
+                          const empId = emp.id;
                           const isRegistered = Boolean(emp.da_dang_ky_face);
                           const parsed = formatNameAndTitle(emp.ho_ten || '');
                           const staffCodeVal = emp.ma_can_bo || (empId ? `CB-${empId.slice(-4).toUpperCase()}` : '—');
@@ -1320,7 +1372,9 @@ export const FaceRegistrationPage: React.FC = () => {
                                   <Eye className="w-3 h-3" />
                                 </button>
 
-                                {isRegistered ? (
+                                {authUser?.id && String(emp.id) === String(authUser.id) ? (
+                                  <span className="text-[11px] text-slate-400 px-1.5">Cá nhân</span>
+                                ) : isRegistered ? (
                                   <div className="flex items-center gap-1">
                                     <button
                                       type="button"
@@ -1332,7 +1386,7 @@ export const FaceRegistrationPage: React.FC = () => {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => handleDeleteEmployeeFace(emp.id || emp._id, emp.ho_ten)}
+                                      onClick={() => handleDeleteEmployeeFace(emp.id, emp.ho_ten)}
                                       className="p-1 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                                       title="Xóa mẫu khuôn mặt"
                                     >
@@ -1547,14 +1601,14 @@ export const FaceRegistrationPage: React.FC = () => {
 
       {/* ── 5. Popup Xem Chi Tiết Hồ Sơ Sinh Trắc Học Face ID ─────────── */}
       {detailEmployee && (() => {
-        const isReg = detailFaceStatus ? Boolean(detailFaceStatus.da_dang_ky_face) : Boolean(detailEmployee.isFaceRegistered);
-        const faceImgUrl = detailFaceStatus?.anh_dai_dien || detailEmployee.facePhoto || detailEmployee.anh_khuon_mat || null;
-        const sampleQty = detailFaceStatus?.so_luong_mau ?? detailEmployee.sampleCount ?? detailEmployee.so_luong_mau ?? (isReg ? 5 : 0);
+        const isReg = detailFaceStatus ? Boolean(detailFaceStatus.da_dang_ky_face) : Boolean(detailEmployee.da_dang_ky_face);
+        const faceImgUrl = detailFaceStatus?.anh_dai_dien || detailEmployee.anh_khuon_mat || null;
+        const sampleQty = detailFaceStatus?.so_luong_mau ?? detailEmployee.so_luong_mau ?? (isReg ? 5 : 0);
         const aiModelName = detailFaceStatus?.mo_hinh_ai || detailEmployee.mo_hinh_ai || 'buffalo_s';
         const vectorDim = detailFaceStatus?.so_chieu_vector ?? (detailEmployee as any).so_chieu_vector ?? 512;
         const isDefaultFace = detailFaceStatus?.mac_dinh ?? (detailEmployee as any).mac_dinh ?? true;
         const faceStatusVal = detailFaceStatus?.trang_thai_khuon_mat || (detailEmployee as any).trang_thai_khuon_mat || (isReg ? 'hoat_dong' : null);
-        const registeredAtRaw = detailFaceStatus?.ngay_dang_ky || detailEmployee.faceRegisteredAt || null;
+        const registeredAtRaw = detailFaceStatus?.ngay_dang_ky || detailEmployee.ngay_dang_ky_face || null;
         const registeredAtText = registeredAtRaw ? new Date(registeredAtRaw).toLocaleString('vi-VN') : 'Chưa cập nhật';
         const POSE_NAMES: Record<string, string> = {
           chinh_dien: 'Chính diện',
@@ -1583,23 +1637,23 @@ export const FaceRegistrationPage: React.FC = () => {
               <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
                 <div className="flex items-center gap-3 min-w-0">
                   <UserAvatar
-                    name={detailEmployee.fullName}
-                    avatarUrl={detailEmployee.avatar}
-                    staffCode={detailEmployee.staffCode || detailEmployee._id}
+                    name={detailEmployee.ho_ten}
+                    avatarUrl={detailEmployee.anh_dai_dien}
+                    staffCode={detailEmployee.ma_can_bo || detailEmployee.id}
                     size="md"
                     shape="circle"
                   />
                   <div className="min-w-0">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                      {formatNameAndTitle(detailEmployee.fullName || '').name}
+                      {formatNameAndTitle(detailEmployee.ho_ten || '').name}
                     </h3>
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                       <span className="font-mono font-semibold text-brand-600 dark:text-brand-400 shrink-0">
-                        {detailEmployee.staffCode || 'CHƯA CẤP MÃ'}
+                        {detailEmployee.ma_can_bo || 'CHƯA CẤP MÃ'}
                       </span>
                       <span className="text-slate-300 dark:text-slate-600">·</span>
                       <span className="truncate">
-                        {formatNameAndTitle(detailEmployee.fullName || '').title || getEmpDepartmentName(detailEmployee)}
+                        {formatNameAndTitle(detailEmployee.ho_ten || '').title || getEmpDepartmentName(detailEmployee)}
                       </span>
                     </div>
                   </div>
@@ -1646,7 +1700,7 @@ export const FaceRegistrationPage: React.FC = () => {
                     ) : isReg && faceImgUrl ? (
                       <AnhBaoMat
                         src={faceImgUrl}
-                        alt={detailEmployee.fullName}
+                        alt={detailEmployee.ho_ten}
                         className="w-full h-full object-cover"
                         fallback={
                           <div className="flex flex-col items-center gap-1 text-slate-400 p-3 text-center">
@@ -1749,31 +1803,35 @@ export const FaceRegistrationPage: React.FC = () => {
               {/* Footer nút thao tác */}
               <div className="px-5 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/80 flex items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target = detailEmployee;
-                      setDetailEmployee(null);
-                      handleOpenEmployeeEnroll(target);
-                    }}
-                    className="h-8 px-3.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>{isReg ? 'Chụp lại 5 góc' : 'Đăng ký Face ID'}</span>
-                  </button>
-                  {isReg && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = detailEmployee;
-                        setDetailEmployee(null);
-                        handleDeleteEmployeeFace(target._id || target.id, target.fullName);
-                      }}
-                      className="h-8 px-3 rounded-lg border border-rose-200/90 dark:border-rose-800/60 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Xóa mẫu Face ID</span>
-                    </button>
+                  {(!authUser?.id || String(detailEmployee.id) !== String(authUser.id)) && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = detailEmployee;
+                          setDetailEmployee(null);
+                          handleOpenEmployeeEnroll(target);
+                        }}
+                        className="h-8 px-3.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>{isReg ? 'Chụp lại 5 góc' : 'Đăng ký Face ID'}</span>
+                      </button>
+                      {isReg && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = detailEmployee;
+                            setDetailEmployee(null);
+                            handleDeleteEmployeeFace(target.id, target.ho_ten);
+                          }}
+                          className="h-8 px-3 rounded-lg border border-rose-200/90 dark:border-rose-800/60 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Xóa mẫu Face ID</span>
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
                 <button

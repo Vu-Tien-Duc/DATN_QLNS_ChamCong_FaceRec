@@ -30,9 +30,9 @@ export const BangDieuKhienAiVaHangDoi: React.FC<BangDieuKhienAiVaHangDoiProps> =
       if (v) setVectorStats(v);
       if (q) setQueueStats(q);
       if (c) {
-        if (c.vi_do !== undefined || c.lat !== undefined) setViDo(String(c.vi_do ?? c.lat));
-        if (c.kinh_do !== undefined || c.lng !== undefined) setKinhDo(String(c.kinh_do ?? c.lng));
-        if (c.ban_kinh_met !== undefined) {
+        if (c.vi_do !== undefined && c.vi_do !== null) setViDo(String(c.vi_do));
+        if (c.kinh_do !== undefined && c.kinh_do !== null) setKinhDo(String(c.kinh_do));
+        if (c.ban_kinh_met !== undefined && c.ban_kinh_met !== null) {
           setBanKinh(String(c.ban_kinh_met));
         }
       }

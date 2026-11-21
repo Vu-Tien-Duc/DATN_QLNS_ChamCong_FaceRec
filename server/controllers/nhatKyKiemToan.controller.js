@@ -9,15 +9,15 @@ const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
 // Tra cứu danh sách nhật ký kiểm toán theo bộ lọc và phân trang
 const getAuditLogs = async (req, res, next) => {
   try {
-    const nguoi_thuc_hien_id = req.query?.nguoi_thuc_hien_id || req.query?.nguoi_dung_id;
+    const nguoi_thuc_hien_id = req.query?.nguoi_thuc_hien_id;
     const hanh_dong = req.query?.hanh_dong;
     const loai_doi_tuong = req.query?.loai_doi_tuong;
     const ket_qua = req.query?.ket_qua;
     const tim_kiem = req.query?.tim_kiem;
     const tu_ngay = req.query?.tu_ngay;
     const den_ngay = req.query?.den_ngay;
-    const page = req.query?.trang || 1;
-    const limit = req.query?.gioi_han || 20;
+    const trang = req.query?.trang || 1;
+    const gioi_han = req.query?.gioi_han || 20;
 
     const result = await fetchAuditLogs({
       nguoi_thuc_hien_id,
@@ -27,8 +27,8 @@ const getAuditLogs = async (req, res, next) => {
       tim_kiem,
       tu_ngay,
       den_ngay,
-      page,
-      limit,
+      trang,
+      gioi_han,
     });
     return sendSuccess(res, 'Lấy danh sách nhật ký kiểm toán (Audit Logs) thành công.', result);
   } catch (error) {

@@ -170,7 +170,12 @@ const getCachedUsersWithFace = async () => {
   }
 
   const { Op } = require('sequelize');
-  const templates = await FaceTemplate.findAll({ where: { mac_dinh: true } });
+  const templates = await FaceTemplate.findAll({
+    where: {
+      mac_dinh: true,
+      trang_thai: { [Op.ne]: 'bi_khoa' },
+    },
+  });
 
   const validTemplates = (templates || [])
     .map((template) => {
@@ -190,7 +195,11 @@ const getCachedUsersWithFace = async () => {
   }
 
   const users = await User.findAll({
-    where: { id: { [Op.in]: validTemplates.map((t) => t.userId) } },
+    where: {
+      id: { [Op.in]: validTemplates.map((t) => t.userId) },
+      kich_hoat: true,
+      trang_thai_lam_viec: { [Op.ne]: 'da_nghi_viec' },
+    },
     attributes: ['id', 'ho_ten', 'email', 'ma_can_bo', 'vai_tro_chinh', 'anh_dai_dien'],
   });
 
@@ -218,10 +227,14 @@ const getCachedUsersWithFace = async () => {
   return usersWithFace;
 };
 
-// Xóa cache khuôn mặt trong RAM khi có thay đổi đăng ký
+// Xóa cache khuôn mặt trong RAM và Redis khi có thay đổi đăng ký
 const invalidateFaceCache = () => {
   _cachedUsersWithFace = null;
   _faceCacheExpiry = 0;
+  try {
+    const { invalidateFaceCache: invalidateRedisFaceCache } = require('../config/redis');
+    invalidateRedisFaceCache().catch(() => {});
+  } catch (_) {}
 };
 
 // Tìm người dùng khớp nhất với vector khuôn mặt truyền vào
@@ -389,18 +402,45 @@ const verifyCampusNetwork = (ip, customSubnets = null) => {
   return { isCampusIp: false, ip: cleanIp, reason: 'Địa chỉ IP ngoài dải mạng trường học.' };
 };
 
+const resolveCachedCampus = () => {
+  const geofenceTruong = systemConfigService.getConfigSync('GEOFENCE_TRUONG');
+  if (
+    geofenceTruong &&
+    typeof geofenceTruong === 'object' &&
+    Array.isArray(geofenceTruong.toa_do) &&
+    geofenceTruong.toa_do.length >= 2 &&
+    Number.isFinite(Number(geofenceTruong.toa_do[0])) &&
+    Number.isFinite(Number(geofenceTruong.toa_do[1]))
+  ) {
+    return {
+      name: geofenceTruong.ten_co_so || CAMPUS_CONFIG.name,
+      lat: Number(geofenceTruong.toa_do[1]),
+      lng: Number(geofenceTruong.toa_do[0]),
+      radiusMeters: Number(geofenceTruong.ban_kinh_met) || CAMPUS_CONFIG.radiusMeters,
+    };
+  }
+
+  const legacyCampus = systemConfigService.getConfigSync('CAMPUS_GEOFENCE');
+  if (
+    legacyCampus &&
+    typeof legacyCampus === 'object' &&
+    Number.isFinite(Number(legacyCampus.lat)) &&
+    Number.isFinite(Number(legacyCampus.lng))
+  ) {
+    return {
+      name: legacyCampus.name || CAMPUS_CONFIG.name,
+      lat: Number(legacyCampus.lat),
+      lng: Number(legacyCampus.lng),
+      radiusMeters: Number(legacyCampus.radiusMeters) || CAMPUS_CONFIG.radiusMeters,
+    };
+  }
+
+  return { ...CAMPUS_CONFIG };
+};
+
 // Kiểm tra vị trí GPS và IP có nằm trong phạm vi trường hoặc đơn vị hay không
 const validateGeofence = (clientLocation, targetLocation = null, maxRadius = null, clientIp = null) => {
-  const cachedCampus = systemConfigService.getConfigSync('CAMPUS_GEOFENCE');
-  const activeCampus =
-    cachedCampus && typeof cachedCampus === 'object' && Number.isFinite(Number(cachedCampus.lat)) && Number.isFinite(Number(cachedCampus.lng))
-      ? {
-          name: cachedCampus.name || CAMPUS_CONFIG.name,
-          lat: Number(cachedCampus.lat),
-          lng: Number(cachedCampus.lng),
-          radiusMeters: Number(cachedCampus.radiusMeters) || CAMPUS_CONFIG.radiusMeters,
-        }
-      : CAMPUS_CONFIG;
+  const activeCampus = resolveCachedCampus();
 
   const cachedRadius = systemConfigService.getConfigSync('CAMPUS_GPS_RADIUS_METERS');
   // Hỗ trợ maxRadius là số hoặc object { radiusMultiplier }
@@ -603,18 +643,15 @@ const validateGeofence = (clientLocation, targetLocation = null, maxRadius = nul
   };
 };
 
-// Lấy cấu hình tọa độ và bán kính khuôn viên trường hiện hành
+// Lấy cấu hình tọa độ và bán kính khuôn viên trường hiện hành (chuẩn hóa tiếng Việt)
 const getCampusConfig = () => {
-  const cached = systemConfigService.getConfigSync('CAMPUS_GEOFENCE');
-  if (cached && typeof cached === 'object' && Number.isFinite(Number(cached.lat)) && Number.isFinite(Number(cached.lng))) {
-    return {
-      name: cached.name || CAMPUS_CONFIG.name,
-      lat: Number(cached.lat),
-      lng: Number(cached.lng),
-      radiusMeters: Number(cached.radiusMeters) || CAMPUS_CONFIG.radiusMeters,
-    };
-  }
-  return { ...CAMPUS_CONFIG };
+  const campus = resolveCachedCampus();
+  return {
+    ten_co_so: campus.name,
+    vi_do: campus.lat,
+    kinh_do: campus.lng,
+    ban_kinh_met: campus.radiusMeters,
+  };
 };
 
 // Lấy danh sách tọa độ geofence theo khoa, phòng ban hoặc lịch giảng dạy

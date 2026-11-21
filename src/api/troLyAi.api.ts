@@ -41,7 +41,7 @@ export interface AIDocumentChunk {
 }
 
 export interface AIDocumentItem {
-  _id: string;
+  id: string;
   tieu_de: string;
   ten_tep_goc: string;
   loai_tep: 'pdf' | 'docx' | 'doc' | 'txt' | 'md';
@@ -58,8 +58,9 @@ export interface AIDocumentItem {
   thong_bao_loi?: string | null;
   duong_dan?: string | null;
   tao_luc?: string;
+  cap_nhat_luc?: string;
   nguoi_tai_id?: {
-    _id: string;
+    id: string;
     ho_ten?: string;
     vai_tro_chinh?: string;
   } | string;
@@ -134,7 +135,17 @@ export const aiApi = {
       return response.data;
     }
 
-    const { file: _omit, ...jsonPayload } = payload;
+    const jsonPayload = {
+      tin_nhan: payload.message || '',
+      ...(payload.mode ? { che_do: payload.mode } : {}),
+      ...(payload.history ? { lich_su: payload.history } : {}),
+      ...(payload.provider ? { nha_cung_cap: payload.provider } : {}),
+      ...(payload.model ? { mo_hinh: payload.model } : {}),
+      ...(payload.documentIds && payload.documentIds.length > 0
+        ? { danh_sach_tai_lieu_id: payload.documentIds }
+        : {}),
+      ...(payload.useRag !== undefined ? { dung_rag: payload.useRag } : {}),
+    };
     const response = await apiClient.post<ApiResponse<AIChatResponseData>>('/tro-ly-ai/tro-chuyen', jsonPayload, {
       timeout: 45000,
     });

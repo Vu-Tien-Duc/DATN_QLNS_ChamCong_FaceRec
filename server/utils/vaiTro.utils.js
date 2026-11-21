@@ -6,7 +6,6 @@ const ROLES = {
   TCCB: 'tccb',
   DAO_TAO: 'dao_tao',
   KE_TOAN: 'ke_toan',
-  KIEM_TOAN: 'kiem_toan',
   TRUONG_KHOA: 'truong_khoa',
   PHO_KHOA: 'pho_khoa',
   TRUONG_BO_MON: 'truong_bo_mon',
@@ -14,9 +13,7 @@ const ROLES = {
   TRUONG_PHONG: 'truong_phong',
   PHO_PHONG: 'pho_phong',
   GIANG_VIEN: 'giang_vien',
-  CHUYEN_VIEN: 'chuyen_vien',
   NHAN_VIEN: 'nhan_vien',
-  QUAN_LY_XE: 'quan_ly_xe',
 };
 
 const ALL_ROLES = Object.values(ROLES);
@@ -37,7 +34,6 @@ const GLOBAL_ADMIN_ROLES = [
   ROLES.BGH,
   ROLES.TCCB,
   ROLES.KE_TOAN,
-  ROLES.KIEM_TOAN,
 ];
 
 // Chuẩn hóa tên vai trò sang chữ thường snake_case
@@ -58,10 +54,10 @@ function getActiveUserRoles(user) {
     day: '2-digit',
   }).format(new Date());
 
-  const primary = normalizeRole(user.vai_tro_chinh || user.role);
+  const primary = normalizeRole(user.vai_tro_chinh);
   if (primary) roles.add(primary);
 
-  const list = user.danh_sach_vai_tro || user.roles || [];
+  const list = user.danh_sach_vai_tro || [];
   if (Array.isArray(list)) {
     for (const item of list) {
       if (!item) continue;

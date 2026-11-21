@@ -4,14 +4,18 @@ const {
   NguoiDung,
   HoSoCanBo,
   PhongBan,
+  VaiTroNguoiDung,
   LichTrinh,
   LichTrinhTuan,
   NgoaiLeLichTrinh,
+  NgayNghiLe,
   CaLamViec,
   MonHoc,
   NhatKyChamCong,
 } = require('../../models');
-const { isScheduleActiveOnDate } = require('../../utils/ngayLichTrinh.utils');
+const { resolveActiveSchedulesForUserDate } = require('../../utils/ngayLichTrinh.utils');
+const { getVietnamTime } = require('../../utils/thoiGianChamCong.utils');
+const { getActiveUserRoles } = require('../../utils/vaiTro.utils');
 const { getLeaveStatsByYear } = require('../donNghiPhep/tinhPhepNam.helper');
 
 const SUPPORTED_MODES = {
@@ -48,11 +52,13 @@ const SUPPORTED_MODES = {
 };
 
 // Lấy chuỗi ngày hiện tại (YYYY-MM-DD) theo múi giờ Việt Nam
-const getVietnamTodayString = () => {
-  const now = new Date();
-  const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-  return vnTime.toISOString().slice(0, 10);
-};
+const getVietnamTodayString = (date = new Date()) =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
 
 // Lấy dữ liệu công tác thực tế của giảng viên/cán bộ trong ngày từ CSDL 3NF
 const getLecturerContextData = async (userId) => {
@@ -64,16 +70,22 @@ const getLecturerContextData = async (userId) => {
       include: [
         { model: PhongBan, as: 'don_vi_chinh', attributes: ['id', 'ten_phong_ban'] },
         { model: HoSoCanBo, as: 'ho_so', attributes: ['han_muc_phep_nam', 'hoc_vi', 'hoc_ham'] },
+        {
+          model: VaiTroNguoiDung,
+          as: 'danh_sach_vai_tro',
+          attributes: ['ma_vai_tro', 'don_vi_id', 'duoc_uy_quyen', 'tu_ngay', 'den_ngay'],
+        },
       ],
     });
 
     if (!user) return null;
 
-    const todayStr = getVietnamTodayString();
-    const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-    const dayOfWeek = vnNow.getUTCDay();
+    const now = new Date();
+    const vnWallClock = getVietnamTime(now);
+    const todayStr = getVietnamTodayString(now);
+    const dayOfWeek = vnWallClock.getDay();
 
-    // 1. Lịch giảng dạy trong ngày hôm nay (xét tuan_hoc, lịch day_bu và lọc bỏ lịch bị báo nghỉ/hủy)
+    // 1. Kiểm tra ngày nghỉ lễ & lịch giảng dạy trong ngày (xét tuan_hoc, day_bu, doi_ca và loại trừ lịch nghỉ/hủy)
     const scheduleIncludes = [
       { model: CaLamViec, as: 'ca', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc'] },
       { model: MonHoc, as: 'mon_hoc', attributes: ['id', 'ten_mon', 'ma_mon'] },
@@ -81,7 +93,14 @@ const getLecturerContextData = async (userId) => {
       { model: NgoaiLeLichTrinh, as: 'ngoai_le' },
     ];
 
-    const [rawSchedules, makeupExceptions] = await Promise.all([
+    const [todayHoliday, rawSchedules, exceptionOverrides] = await Promise.all([
+      NgayNghiLe.findOne({
+        where: {
+          ngay_bat_dau: { [Op.lte]: todayStr },
+          ngay_ket_thuc: { [Op.gte]: todayStr },
+        },
+        attributes: ['id', 'ten_ngay_le'],
+      }),
       LichTrinh.findAll({
         where: {
           nguoi_dung_id: userId,
@@ -93,14 +112,14 @@ const getLecturerContextData = async (userId) => {
       }),
       NgoaiLeLichTrinh.findAll({
         where: {
-          trang_thai: 'day_bu',
+          trang_thai: { [Op.in]: ['day_bu', 'doi_ca'] },
           [Op.or]: [{ ngay_day_bu: todayStr }, { ngay: todayStr }],
         },
         include: [
+          { model: CaLamViec, as: 'ca_thay_the', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc'] },
           {
             model: LichTrinh,
             as: 'lich_trinh',
-            where: { nguoi_dung_id: userId },
             required: true,
             include: scheduleIncludes,
           },
@@ -108,27 +127,17 @@ const getLecturerContextData = async (userId) => {
       }),
     ]);
 
-    const seenScheduleIds = new Set();
-    const combinedSchedules = [];
-    for (const s of rawSchedules) {
-      seenScheduleIds.add(String(s.id));
-      combinedSchedules.push(s);
-    }
-    for (const ex of makeupExceptions) {
-      if (ex.lich_trinh && !seenScheduleIds.has(String(ex.lich_trinh.id))) {
-        seenScheduleIds.add(String(ex.lich_trinh.id));
-        combinedSchedules.push(ex.lich_trinh);
-      }
-    }
-
-    const todaySchedules = combinedSchedules.filter((s) => {
-      const plain = typeof s.toJSON === 'function' ? s.toJSON() : { ...s };
-      plain.danh_sach_tuan = (plain.tuan_hoc || []).map((w) => Number(w.tuan_thu));
-      return isScheduleActiveOnDate(plain, vnNow);
+    const todaySchedules = resolveActiveSchedulesForUserDate({
+      rawSchedules,
+      exceptionOverrides,
+      userId,
+      dateStr: todayStr,
+      now,
+      hasHoliday: Boolean(todayHoliday),
     });
 
-    // 2. Thống kê phép năm (tính chuẩn theo năm hiện tại và loại trừ Chủ nhật / ngày lễ)
-    const currentYear = vnNow.getUTCFullYear();
+    // 2. Thống kê phép năm (tính chuẩn theo năm hiện tại theo giờ Việt Nam và loại trừ Chủ nhật / ngày lễ)
+    const currentYear = vnWallClock.getFullYear();
     const leaveStats = await getLeaveStatsByYear(userId, currentYear);
     const usedLeaveDays = Number(leaveStats?.daysUsed || 0);
     const leaveQuota = user.ho_so?.han_muc_phep_nam !== undefined ? Number(user.ho_so.han_muc_phep_nam) : 12;
@@ -166,16 +175,20 @@ const getLecturerContextData = async (userId) => {
       ve_som_phut: log.ve_som_phut || 0,
     }));
 
+    const activeRoles = Array.from(getActiveUserRoles(user));
+
     return {
       user: {
         id: String(user.id),
         ho_ten: user.ho_ten,
         ma_can_bo: user.ma_can_bo || 'Chưa cập nhật',
         vai_tro: user.vai_tro_chinh,
+        cac_vai_tro: activeRoles,
         don_vi: user.don_vi_chinh?.ten_phong_ban || 'Trường Đại học Nguyễn Trãi',
         hoc_vi: user.ho_so?.hoc_vi || 'Cử nhân',
       },
       todayDate: todayStr,
+      holidayName: todayHoliday?.ten_ngay_le || null,
       todaySchedules: todaySchedules.map((s) => ({
         ten_mon: s.mon_hoc?.ten_mon || 'Chưa đặt tên môn',
         ma_mon: s.mon_hoc?.ma_mon || '',

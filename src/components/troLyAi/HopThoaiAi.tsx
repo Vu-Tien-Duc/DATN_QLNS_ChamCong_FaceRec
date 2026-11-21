@@ -445,9 +445,14 @@ export const AiChatBox: React.FC = () => {
         scope: canUploadSchoolWide ? ragUploadScope : 'ca_nhan',
       });
       if (res.success && res.data) {
-        toast.success(`Đã nạp "${res.data.tieu_de}" (${res.data.tong_so_doan} đoạn) vào Kho RAG!`);
-        setRagDocuments((prev) => [res.data, ...prev]);
-        setSelectedDocIds((prev) => Array.from(new Set([...prev, res.data._id])));
+        const isDuplicate = Boolean((res as any).isDuplicate);
+        toast.success(
+          isDuplicate
+            ? res.message || `Tài liệu "${res.data.tieu_de}" đã có sẵn trong Kho RAG.`
+            : `Đã nạp "${res.data.tieu_de}" (${res.data.tong_so_doan || 0} đoạn) vào Kho RAG!`
+        );
+        setRagDocuments((prev) => [res.data, ...prev.filter((d) => d.id !== res.data.id)]);
+        setSelectedDocIds((prev) => Array.from(new Set([...prev, res.data.id])));
         setSelectedMode('rag_doc');
         setShowRagPanel(true);
       } else {
@@ -468,7 +473,7 @@ export const AiChatBox: React.FC = () => {
       const res = await aiApi.deleteDocument(docId);
       if (res.success) {
         toast.success('Đã xóa tài liệu khỏi kho RAG.');
-        setRagDocuments((prev) => prev.filter((d) => d._id !== docId));
+        setRagDocuments((prev) => prev.filter((d) => d.id !== docId));
         setSelectedDocIds((prev) => prev.filter((id) => id !== docId));
       }
     } catch (err: any) {

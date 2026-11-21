@@ -13,9 +13,7 @@ import { UserProfile } from '../types/index';
  * - 'dao_tao': Chuyên Viên Đào Tạo
  * - 'tccb': Tổ Chức Cán Bộ
  * - 'ke_toan': Kế Toán
- * - 'kiem_toan': Khảo Thí / Kiểm Toán
  * - 'giang_vien': Giảng Viên
- * - 'chuyen_vien': Chuyên Viên
  * - 'nhan_vien': Nhân Viên
  */
 export const normalizeRoleKey = (r?: any): string => {
@@ -33,8 +31,8 @@ const getVietnamTodayKey = (): string =>
 
 const isRoleAssignmentActive = (item: any, todayKey: string): boolean => {
   if (!item || typeof item !== 'object') return false;
-  const rawStart = item.tu_ngay ?? item.startDate;
-  const rawEnd = item.den_ngay ?? item.endDate;
+  const rawStart = item.tu_ngay;
+  const rawEnd = item.den_ngay;
   const start = rawStart ? String(rawStart).slice(0, 10) : null;
   const end = rawEnd ? String(rawEnd).slice(0, 10) : null;
   if (start && start > todayKey) return false;
@@ -54,14 +52,9 @@ export const getUserRoles = (user: UserProfile | null | undefined): Set<string> 
     if (canonical) set.add(canonical);
   };
 
-  addRole(user.role);
-  addRole(user.primaryRole);
+  addRole(user.vai_tro_chinh);
 
-  const roleList = Array.isArray(user.roles)
-    ? user.roles
-    : Array.isArray((user as any).danh_sach_vai_tro)
-    ? (user as any).danh_sach_vai_tro
-    : [];
+  const roleList = Array.isArray(user.danh_sach_vai_tro) ? user.danh_sach_vai_tro : [];
 
   const todayKey = getVietnamTodayKey();
   roleList.forEach((item: any) => {
@@ -71,7 +64,7 @@ export const getUserRoles = (user: UserProfile | null | undefined): Set<string> 
       return;
     }
     if (!isRoleAssignmentActive(item, todayKey)) return;
-    addRole(item.ma_vai_tro || item.role);
+    addRole(item.ma_vai_tro);
   });
 
   return set;
@@ -128,12 +121,12 @@ export const hasRole = (
 
 /**
  * Kiểm tra quyền tự chấm công cá nhân (Face ID, Trực tuyến GPS, Quét mã QR).
- * Lưu ý nghiệp vụ: Quản trị viên IT (admin) và Kiểm toán (kiem_toan) KHÔNG tự chấm công cá nhân.
+ * Lưu ý nghiệp vụ: Quản trị viên IT (admin) KHÔNG tự chấm công cá nhân.
  */
 export const canPersonalCheckIn = (user: UserProfile | null | undefined): boolean => {
   if (!user) return false;
   const roles = getUserRoles(user);
-  return !roles.has('admin') && !roles.has('kiem_toan');
+  return !roles.has('admin');
 };
 
 /**
@@ -169,17 +162,38 @@ export const canApproveLevel1 = (user: UserProfile | null | undefined): boolean 
   if (roles.has('admin') || roles.has('bgh') || roles.has('truong_khoa') || roles.has('truong_bo_mon') || roles.has('truong_phong')) {
     return true;
   }
-  const roleList = Array.isArray((user as any).danh_sach_vai_tro)
-    ? (user as any).danh_sach_vai_tro
-    : Array.isArray(user.roles)
-    ? user.roles
-    : [];
+  const roleList = Array.isArray(user.danh_sach_vai_tro) ? user.danh_sach_vai_tro : [];
   const todayKey = getVietnamTodayKey();
   return roleList.some(
     (r: any) =>
       isRoleAssignmentActive(r, todayKey) &&
-      Boolean(r?.duoc_uy_quyen ?? r?.isAuthorized) &&
-      ['pho_khoa', 'pho_bo_mon', 'pho_phong'].includes(normalizeRoleKey(r?.ma_vai_tro || r?.role))
+      Boolean(r?.duoc_uy_quyen) &&
+      ['pho_khoa', 'pho_bo_mon', 'pho_phong'].includes(normalizeRoleKey(r?.ma_vai_tro))
+  );
+};
+
+/**
+ * Kiểm tra quyền tạo/sửa danh mục môn học (khớp BE LICH:XEP_LICH | HE_THONG:CAU_HINH)
+ */
+export const canManageSubjects = (user: UserProfile | null | undefined): boolean => {
+  if (!user) return false;
+  const roles = getUserRoles(user);
+  if (
+    roles.has('admin') ||
+    roles.has('bgh') ||
+    roles.has('dao_tao') ||
+    roles.has('truong_khoa') ||
+    roles.has('truong_bo_mon')
+  ) {
+    return true;
+  }
+  const roleList = Array.isArray(user.danh_sach_vai_tro) ? user.danh_sach_vai_tro : [];
+  const todayKey = getVietnamTodayKey();
+  return roleList.some(
+    (r: any) =>
+      isRoleAssignmentActive(r, todayKey) &&
+      Boolean(r?.duoc_uy_quyen) &&
+      ['pho_khoa', 'pho_bo_mon'].includes(normalizeRoleKey(r?.ma_vai_tro))
   );
 };
 
@@ -211,16 +225,10 @@ export const getRoleLabel = (role?: string): string => {
       return 'Tổ Chức Cán Bộ';
     case 'ke_toan':
       return 'Kế Toán';
-    case 'kiem_toan':
-      return 'Khảo Thí / Kiểm Toán';
     case 'giang_vien':
       return 'Giảng Viên';
-    case 'chuyen_vien':
-      return 'Chuyên Viên';
     case 'nhan_vien':
       return 'Nhân Viên';
-    case 'quan_ly_xe':
-      return 'Quản Lý Xe';
     default:
       return role || '';
   }

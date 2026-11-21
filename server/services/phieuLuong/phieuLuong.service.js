@@ -28,6 +28,18 @@ const {
   formatPayrollDoc,
 } = tinhThueVaLuongHelper;
 
+const runWithPayrollPeriodLock = async (year, month, busyMessage, busyCode, fn) => {
+  const lockKey = `PAYROLL_PERIOD_${year}_${month}`;
+  try {
+    return await withDistributedLock(lockKey, 120, fn, { throwOnBusy: true, logPrefix: '[PayrollPeriodLock]' });
+  } catch (err) {
+    if (err?.code === 'DISTRIBUTED_LOCK_BUSY') {
+      throw new ServiceError(busyMessage, 409, busyCode);
+    }
+    throw err;
+  }
+};
+
 // Tính và tạo bảng lương tháng hàng loạt cho nhân sự thuộc phạm vi quản lý
 const generateMonthlyPayroll = async ({ thang, nam, don_vi_id, currentUser }) => {
   const currentUserId = currentUser.id;
@@ -37,12 +49,12 @@ const generateMonthlyPayroll = async ({ thang, nam, don_vi_id, currentUser }) =>
 
   const { month: m, year: y, departmentId } = validatePayrollScopeParams({ thang, nam, don_vi_id });
 
-  const lockKey = departmentId ? `PAYROLL_GEN_${y}_${m}_${departmentId}` : `PAYROLL_GEN_${y}_${m}`;
-  try {
-    return await withDistributedLock(
-      lockKey,
-      120,
-      async () => {
+  return runWithPayrollPeriodLock(
+    y,
+    m,
+    'Hệ thống đang khởi tạo hoặc khóa/mở khóa bảng lương cho kỳ này, vui lòng thử lại sau ít giây.',
+    'PAYROLL_GENERATION_IN_PROGRESS',
+    async () => {
         const userWhere = {
           kich_hoat: true,
           trang_thai_lam_viec: { [Op.ne]: 'da_nghi_viec' },
@@ -149,20 +161,9 @@ const generateMonthlyPayroll = async ({ thang, nam, don_vi_id, currentUser }) =>
           tong_da_tinh: createdPayrolls.length,
           phieu_luong: createdPayrolls.map((doc) => formatPayrollDoc(doc, configParams)),
         };
-      },
-      { throwOnBusy: true, logPrefix: '[PayrollGen]' }
+      }
     );
-  } catch (err) {
-    if (err?.code === 'DISTRIBUTED_LOCK_BUSY') {
-      throw new ServiceError(
-        'Hệ thống đang khởi tạo bảng lương cho kỳ này, vui lòng thử lại sau ít giây.',
-        409,
-        'PAYROLL_GENERATION_IN_PROGRESS'
-      );
-    }
-    throw err;
-  }
-};
+  };
 
 // Khóa sổ bảng lương tháng (hoặc một phiếu lương cụ thể) và chốt công liên quan
 const lockMonthlyPayroll = async ({ month, year, departmentId = null, payrollId = null, currentUser, ip }) => {
@@ -233,47 +234,55 @@ const lockMonthlyPayroll = async ({ month, year, departmentId = null, payrollId 
   const lastDay = new Date(y, m, 0).getDate();
   const endDateStr = `${y}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
-  const { lockedPayrollsCount, lockedAttendanceLogsCount } = await runInTransaction(async (transaction) => {
-    const [pCount] = await PhieuLuong.update(
-      {
-        trang_thai: 'da_duyet',
-        thoi_gian_duyet: lockTime,
-        nguoi_duyet_id: currentUserId,
-      },
-      { where: payrollWhere, transaction }
-    );
+  return runWithPayrollPeriodLock(
+    y,
+    m,
+    'Hệ thống đang xử lý bảng lương cho kỳ này, vui lòng thử lại sau ít giây.',
+    'PAYROLL_LOCK_IN_PROGRESS',
+    async () => {
+      const { lockedPayrollsCount, lockedAttendanceLogsCount } = await runInTransaction(async (transaction) => {
+        const [pCount] = await PhieuLuong.update(
+          {
+            trang_thai: 'da_duyet',
+            thoi_gian_duyet: lockTime,
+            nguoi_duyet_id: currentUserId,
+          },
+          { where: payrollWhere, transaction }
+        );
 
-    const [aCount] = await NhatKyChamCong.update(
-      { da_chot: true },
-      { where: { ngay_cong: { [Op.between]: [startDateStr, endDateStr] }, ...userFilter }, transaction }
-    );
+        const [aCount] = await NhatKyChamCong.update(
+          { da_chot: true },
+          { where: { ngay_cong: { [Op.between]: [startDateStr, endDateStr] }, ...userFilter }, transaction }
+        );
 
-    return { lockedPayrollsCount: pCount, lockedAttendanceLogsCount: aCount };
-  });
+        return { lockedPayrollsCount: pCount, lockedAttendanceLogsCount: aCount };
+      });
 
-  await NhatKyKiemToan.create({
-    nguoi_thuc_hien_id: currentUserId,
-    loai_chu_the: 'user',
-    hanh_dong: 'LOCK_PAYROLL',
-    doi_tuong_id: targetPayroll ? String(targetPayroll.id) : `${y}-${m}`,
-    loai_doi_tuong: 'phieu_luong',
-    chi_tiet: {
-      phieu_luong_id: targetPayroll ? targetPayroll.id : null,
-      don_vi_id: scopedDeptId,
-      thong_bao: `Khóa sổ bảng lương tháng ${m}/${y} (${lockedPayrollsCount} phiếu lương) và chốt công (${lockedAttendanceLogsCount} ngày công).`,
-    },
-    dia_chi_ip: ip || null,
-  });
+      await NhatKyKiemToan.create({
+        nguoi_thuc_hien_id: currentUserId,
+        loai_chu_the: 'user',
+        hanh_dong: 'LOCK_PAYROLL',
+        doi_tuong_id: targetPayroll ? String(targetPayroll.id) : `${y}-${m}`,
+        loai_doi_tuong: 'phieu_luong',
+        chi_tiet: {
+          phieu_luong_id: targetPayroll ? targetPayroll.id : null,
+          don_vi_id: scopedDeptId,
+          thong_bao: `Khóa sổ bảng lương tháng ${m}/${y} (${lockedPayrollsCount} phiếu lương) và chốt công (${lockedAttendanceLogsCount} ngày công).`,
+        },
+        dia_chi_ip: ip || null,
+      });
 
-  return {
-    thang: m,
-    nam: y,
-    da_khoa: true,
-    thoi_gian_khoa: lockTime,
-    so_phieu_da_khoa: lockedPayrollsCount,
-    so_cong_da_chot: lockedAttendanceLogsCount,
-    thong_bao: `Đã khóa sổ thành công bảng lương tháng ${m}/${y}.`,
-  };
+      return {
+        thang: m,
+        nam: y,
+        da_khoa: true,
+        thoi_gian_khoa: lockTime,
+        so_phieu_da_khoa: lockedPayrollsCount,
+        so_cong_da_chot: lockedAttendanceLogsCount,
+        thong_bao: `Đã khóa sổ thành công bảng lương tháng ${m}/${y}.`,
+      };
+    }
+  );
 };
 
 // Mở khóa bảng lương tháng (hoặc một phiếu lương cụ thể) có kiểm tra điều kiện và ghi nhận kiểm toán
@@ -355,41 +364,49 @@ const unlockMonthlyPayroll = async ({ month, year, departmentId = null, payrollI
   const lastDay = new Date(y, m, 0).getDate();
   const endDateStr = `${y}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
-  const unlockedPayrollsCount = await runInTransaction(async (transaction) => {
-    const [pCount] = await PhieuLuong.update(
-      { trang_thai: 'nhap', thoi_gian_duyet: null, ghi_chu: `Mở khóa: ${reason.trim()}` },
-      { where: unlockWhere, transaction }
-    );
+  return runWithPayrollPeriodLock(
+    y,
+    m,
+    'Hệ thống đang xử lý bảng lương cho kỳ này, vui lòng thử lại sau ít giây.',
+    'PAYROLL_UNLOCK_IN_PROGRESS',
+    async () => {
+      const unlockedPayrollsCount = await runInTransaction(async (transaction) => {
+        const [pCount] = await PhieuLuong.update(
+          { trang_thai: 'nhap', thoi_gian_duyet: null, ghi_chu: `Mở khóa: ${reason.trim()}` },
+          { where: unlockWhere, transaction }
+        );
 
-    await NhatKyChamCong.update(
-      { da_chot: false },
-      { where: { ngay_cong: { [Op.between]: [startDateStr, endDateStr] }, ...userFilter }, transaction }
-    );
+        await NhatKyChamCong.update(
+          { da_chot: false },
+          { where: { ngay_cong: { [Op.between]: [startDateStr, endDateStr] }, ...userFilter }, transaction }
+        );
 
-    return pCount;
-  });
+        return pCount;
+      });
 
-  await NhatKyKiemToan.create({
-    nguoi_thuc_hien_id: currentUserId,
-    loai_chu_the: 'user',
-    hanh_dong: 'UNLOCK_PAYROLL',
-    doi_tuong_id: targetPayroll ? String(targetPayroll.id) : `${y}-${m}`,
-    loai_doi_tuong: 'phieu_luong',
-    chi_tiet: {
-      phieu_luong_id: targetPayroll ? targetPayroll.id : null,
-      don_vi_id: scopedDeptId,
-      thong_bao: `Mở khóa bảng lương tháng ${m}/${y}. Lý do: ${reason.trim()}`,
-    },
-    dia_chi_ip: ip || null,
-  });
+      await NhatKyKiemToan.create({
+        nguoi_thuc_hien_id: currentUserId,
+        loai_chu_the: 'user',
+        hanh_dong: 'UNLOCK_PAYROLL',
+        doi_tuong_id: targetPayroll ? String(targetPayroll.id) : `${y}-${m}`,
+        loai_doi_tuong: 'phieu_luong',
+        chi_tiet: {
+          phieu_luong_id: targetPayroll ? targetPayroll.id : null,
+          don_vi_id: scopedDeptId,
+          thong_bao: `Mở khóa bảng lương tháng ${m}/${y}. Lý do: ${reason.trim()}`,
+        },
+        dia_chi_ip: ip || null,
+      });
 
-  return {
-    thang: m,
-    nam: y,
-    da_khoa: false,
-    so_phieu_da_mo_khoa: unlockedPayrollsCount,
-    thong_bao: `Đã mở khóa thành công bảng lương tháng ${m}/${y}.`,
-  };
+      return {
+        thang: m,
+        nam: y,
+        da_khoa: false,
+        so_phieu_da_mo_khoa: unlockedPayrollsCount,
+        thong_bao: `Đã mở khóa thành công bảng lương tháng ${m}/${y}.`,
+      };
+    }
+  );
 };
 
 module.exports = {

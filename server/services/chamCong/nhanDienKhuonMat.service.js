@@ -14,6 +14,7 @@ const { validateGeofence, resolveUserGeofenceTargets } = require('../../utils/ho
 const { storeAttendanceEvidence, removeAttendanceEvidence } = require('../../utils/anhMinhChungChamCong');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
+const { withDistributedLock } = require('../../utils/khoaPhanTan');
 const { evaluateUserScheduleForCheckIn } = require('./dieuKienLichChamCong.service');
 const { kiemTraChoPhepCheckOut } = require('./khoiCaDay.service');
 const {
@@ -143,8 +144,9 @@ const processFaceAttendance = async ({
     };
   }
 
-  // 3. Kiểm tra Cooldown 60 giây chống quét lặp liên tiếp
+  // 3. Khóa đồng thời theo từng userId chống race condition check-in/out kép & kiểm tra Cooldown 60 giây
   const userKey = String(userId);
+  return withDistributedLock(`attendance_punch:${userKey}`, 15, async () => {
   const redisRemaining = await getCooldownRemaining(userKey);
   const lastScanTime = scanCooldownMap.get(userKey);
   const nowMs = Date.now();
@@ -350,6 +352,7 @@ const processFaceAttendance = async ({
   let attendanceRecord = null;
 
   if (actionType === 'check_out' && openLog) {
+    try {
     if (openLog.da_chot) {
       throw new ServiceError('Bản ghi chấm công đã bị khóa sổ lương, không thể check-out.', 409, 'ATTENDANCE_LOCKED');
     }
@@ -386,8 +389,8 @@ const processFaceAttendance = async ({
 
     attendanceRecord = await runInTransaction(async (transaction) => {
       openLog.thoi_gian_ra = checkOutTime;
-      openLog.thoi_luong_lam_viec_phut = durationMins;
       openLog.trang_thai = finalStatus;
+      openLog.thoi_luong_lam_viec_phut = durationMins;
       openLog.ve_som_phut = earlyMinutes || 0;
       openLog.so_tiet_thuc_day = teachingPeriods;
       if (geoCheck.isFraud) openLog.co_gian_lan = true;
@@ -419,6 +422,12 @@ const processFaceAttendance = async ({
 
       return openLog;
     });
+    } catch (checkoutErr) {
+      scanCooldownMap.delete(userKey);
+      await resetCooldown(userKey).catch(() => {});
+      await removeAttendanceEvidence(storedEvidencePath).catch(() => {});
+      throw checkoutErr;
+    }
   } else {
     // 7. Thực hiện CHECK-IN (tái sử dụng scheduleEval đã thẩm định ở bước trên)
     const checkInTime = now;
@@ -427,6 +436,7 @@ const processFaceAttendance = async ({
     const effectiveCaId = selectedShift?.id || null;
     if (!effectiveCaId) {
       scanCooldownMap.delete(userKey);
+      await resetCooldown(userKey).catch(() => {});
       await removeAttendanceEvidence(storedEvidencePath).catch(() => {});
       throw new ServiceError('Không xác định được ca làm việc hợp lệ để chấm công.', 400, 'SHIFT_NOT_FOUND');
     }
@@ -528,6 +538,7 @@ const processFaceAttendance = async ({
       });
     } catch (createErr) {
       scanCooldownMap.delete(userKey);
+      await resetCooldown(userKey).catch(() => {});
       await removeAttendanceEvidence(storedEvidencePath).catch(() => {});
       if (
         createErr.name === 'SequelizeUniqueConstraintError' ||
@@ -613,6 +624,7 @@ const processFaceAttendance = async ({
     diem_nguoi_that: aiResult.liveness_score,
     record: attendanceRecord,
   };
+  });
 };
 
 module.exports = {

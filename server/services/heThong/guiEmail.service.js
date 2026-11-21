@@ -161,13 +161,15 @@ const sendLeaveRejectedEmail = async ({
   return await transporter.sendMail(mailOptions);
 };
 
-// Định dạng ngày theo DD/MM/YYYY
+// Định dạng ngày theo DD/MM/YYYY (cố định múi giờ Asia/Ho_Chi_Minh)
 const formatDate = (date) => {
   if (!date) return '';
 
   const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return String(date);
 
   return d.toLocaleDateString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -176,6 +178,7 @@ const formatDate = (date) => {
 
 // Gửi email cảnh báo vắng mặt không phép
 const sendAbsentWarningEmail = async ({ to, fullName, shiftName, date }) => {
+  if (!to) return null;
   const dateStr = formatDate(date);
 
   const mailOptions = {

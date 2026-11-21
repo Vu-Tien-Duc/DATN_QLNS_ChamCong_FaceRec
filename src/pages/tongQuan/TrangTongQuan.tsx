@@ -104,11 +104,11 @@ const getDescendantDepartmentIds = (rootDeptId: string, departments: DepartmentI
   while (added) {
     added = false;
     for (const d of departments) {
-      const id = String(d.id || (d as any)._id || '');
+      const id = String(d.id || '');
       const rawParent = d.don_vi_cha_id;
       const parentId = rawParent
         ? typeof rawParent === 'object' && rawParent !== null
-          ? String((rawParent as any).id || (rawParent as any)._id || '')
+          ? String((rawParent as any).id || '')
           : String(rawParent)
         : '';
       if (id && parentId && result.has(parentId) && !result.has(id)) {
@@ -190,7 +190,7 @@ export const Dashboard: React.FC = () => {
       const currentYear = now.getFullYear();
 
       const canViewUsers = hasRole(user, ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']);
-      const canViewLeaves = !hasRole(user, ['kiem_toan']);
+      const canViewLeaves = true;
       const canViewPayrollSummary = hasRole(user, ['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']);
 
       // 1. Tải danh sách nhân sự (theo phân quyền) & đơn vị & cấu hình khuôn viên
@@ -361,7 +361,7 @@ export const Dashboard: React.FC = () => {
     }
     const deptId = getEmpDepartmentId(u);
     if (deptId && departments.length > 0) {
-      const found = departments.find((d) => String(d.id || d._id) === deptId);
+      const found = departments.find((d) => String(d.id) === deptId);
       if (found) return found.ten_phong_ban || 'Văn phòng / Ban';
     }
     return 'Văn phòng / Ban';
@@ -376,7 +376,7 @@ export const Dashboard: React.FC = () => {
   // Lọc danh sách nhân viên áp dụng bộ lọc Khoa / Bộ môn đa cấp
   const filteredUsersList = useMemo(() => {
     if (!scopedDeptIds) return allUsersList;
-    const selectedDept = departments.find((d) => String(d.id || d._id) === String(departmentFilter));
+    const selectedDept = departments.find((d) => String(d.id) === String(departmentFilter));
     const isBghFilter = selectedDept
       ? String(selectedDept.loai_don_vi || '').toLowerCase().includes('bgh') ||
         String(selectedDept.ten_phong_ban || '').toLowerCase().includes('giám hiệu')
@@ -393,7 +393,7 @@ export const Dashboard: React.FC = () => {
       return roleList.some((r: any) => {
         const rDept = r.don_vi_id;
         if (!rDept) return false;
-        const rId = typeof rDept === 'object' && rDept !== null ? String(rDept.id || rDept._id || '') : String(rDept);
+        const rId = typeof rDept === 'object' && rDept !== null ? String(rDept.id || '') : String(rDept);
         return scopedDeptIds.has(rId);
       });
     });
@@ -410,7 +410,7 @@ export const Dashboard: React.FC = () => {
         if (uDept && scopedDeptIds.has(uDept)) return true;
       }
       const uid = String(log?.nguoi_dung_id || uObj?.id || '');
-      return filteredUsersList.some((u) => String(u.id || u._id) === uid);
+      return filteredUsersList.some((u) => String(u.id) === uid);
     },
     [scopedDeptIds, filteredUsersList]
   );
@@ -493,7 +493,7 @@ export const Dashboard: React.FC = () => {
       const dateStr = now.toLocaleDateString('vi-VN');
 
       const dataRows = filteredUsersList.map((emp, i) => {
-        const empId = String(emp.id || emp._id);
+        const empId = String(emp.id);
         const deptName = getEmpDepartmentName(emp);
 
         // Tìm kiếm log chấm công hôm nay của cán bộ này
@@ -1479,11 +1479,11 @@ export const Dashboard: React.FC = () => {
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-slate-500">
                             <span className="flex items-center gap-1 font-mono">
                               <Clock className="w-3.5 h-3.5 text-indigo-500" />
-                              {sched.startTime} - {sched.endTime}
+                              {sched.gio_bat_dau} - {sched.gio_ket_thuc}
                             </span>
                             <span className="flex items-center gap-1">
                               <Building2 className="w-3.5 h-3.5 text-blue-500" />
-                              Phòng: {sched.roomId || 'A302'}
+                              Phòng: {sched.phong_hoc || 'A302'}
                             </span>
                             <span className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
                               {shiftName}
@@ -1542,11 +1542,11 @@ export const Dashboard: React.FC = () => {
                 pendingLeaveList.map((reqItem: any) => {
                   const staffName = reqItem.nguoi_dung?.ho_ten || 'Cán bộ';
                   const staffCode = reqItem.nguoi_dung?.ma_can_bo || 'NTU';
-                  const isApproving = isApprovingId === (reqItem.id || reqItem._id);
+                  const isApproving = isApprovingId === (reqItem.id);
 
                   return (
                     <div
-                      key={reqItem.id || reqItem._id}
+                      key={reqItem.id}
                       className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3"
                     >
                       <div className="flex flex-col min-w-0">
@@ -1554,14 +1554,14 @@ export const Dashboard: React.FC = () => {
                           {staffName} • {staffCode}
                         </span>
                         <span className="text-[11px] text-slate-500 truncate mt-0.5">
-                          {reqItem.reason || 'Nghỉ phép công tác theo lịch cá nhân'}
+                          {reqItem.ly_do || 'Nghỉ phép công tác theo lịch cá nhân'}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           disabled={isApproving}
-                          onClick={() => handleQuickApproveLeave(reqItem._id)}
+                          onClick={() => handleQuickApproveLeave(reqItem.id)}
                           className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
                           type="button"
                         >

@@ -24,13 +24,18 @@ const getSystemConfigs = async (req, res, next) => {
 // PUT /api/he-thong/cau-hinh - Cập nhật giá trị cấu hình theo khóa (đơn lẻ hoặc hàng loạt)
 const updateSystemConfig = async (req, res, next) => {
   try {
-    const key = req.body?.khoa_cau_hinh || req.body?.khoa;
+    const key = req.body?.khoa_cau_hinh;
     const value = req.body?.gia_tri;
     const configs = req.body?.danh_sach_cau_hinh;
 
     if (Array.isArray(configs)) {
       const results = await systemConfigService.bulkUpdateConfigs(
-        configs.map((c) => ({ key: c.khoa_cau_hinh || c.khoa || c.key, value: c.gia_tri !== undefined ? c.gia_tri : c.value })),
+        configs.map((c) => ({
+          khoa_cau_hinh: c?.khoa_cau_hinh,
+          gia_tri: c?.gia_tri,
+          nhom: c?.nhom,
+          mo_ta: c?.mo_ta,
+        })),
         req.user,
         req
       );
@@ -42,11 +47,13 @@ const updateSystemConfig = async (req, res, next) => {
       return sendSuccess(res, `Cập nhật cấu hình "${result.khoa_cau_hinh}" thành công.`, result);
     }
 
-    // Nếu truyền object map { KEY1: val1, KEY2: val2 }
+    // Nếu truyền object map { KEY1: val1, KEY2: val2 } -> chỉ cho phép khóa nằm trong danh mục chuẩn
     if (typeof req.body === 'object' && req.body !== null && Object.keys(req.body).length > 0) {
-      const entries = Object.entries(req.body).filter(([k]) => !['khoa_cau_hinh', 'khoa', 'gia_tri', 'danh_sach_cau_hinh'].includes(k));
+      const entries = Object.entries(req.body).filter(
+        ([k]) => !['khoa_cau_hinh', 'gia_tri', 'danh_sach_cau_hinh'].includes(k)
+      );
       if (entries.length > 0) {
-        const batch = entries.map(([k, v]) => ({ key: k, value: v }));
+        const batch = entries.map(([k, v]) => ({ khoa_cau_hinh: k, gia_tri: v }));
         const results = await systemConfigService.bulkUpdateConfigs(batch, req.user, req);
         return sendSuccess(res, 'Cập nhật cấu hình hệ thống thành công.', results);
       }

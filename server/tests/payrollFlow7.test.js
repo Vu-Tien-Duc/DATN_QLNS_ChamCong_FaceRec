@@ -29,7 +29,6 @@ const ID_KE_TOAN = '22222222-2222-4222-8222-222222222222';
 const ID_BGH = '33333333-3333-4333-8333-333333333333';
 const ID_DEAN = '44444444-4444-4444-8444-444444444444';
 const ID_GV = '55555555-5555-4555-8555-555555555555';
-const ID_KIEM_TOAN = '66666666-6666-4666-8666-666666666666';
 const ID_DEPT_1 = '77777777-7777-4777-8777-777777777777';
 const ID_DEPT_CHILD = '88888888-8888-4888-8888-888888888888';
 const ID_PAYROLL_1 = '99999999-9999-4999-8999-999999999991';
@@ -129,7 +128,7 @@ const injectRequest = (app, { method = 'GET', url, headers = {}, body = null }) 
 };
 
 const makeToken = (userId, role) =>
-  jwt.sign({ id: userId, role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  jwt.sign({ id: userId, vai_tro_chinh: role, phien_ban_token: 1 }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
 describe('Luồng 7 — Payroll Calculation Engine (P0/P1)', () => {
   it('không cộng giờ hành chính của Trưởng khoa kiêm nhiệm thành tiền vượt giờ giảng', async () => {
@@ -426,19 +425,19 @@ describe('Luồng 7 — Express HTTP Routes, RBAC & Export (End-to-End)', () => 
       [ID_KE_TOAN]: buildUser(ID_KE_TOAN, 'ke_toan'),
       [ID_BGH]: buildUser(ID_BGH, 'bgh'),
       [ID_DEAN]: buildUser(ID_DEAN, 'truong_khoa'),
-      [ID_KIEM_TOAN]: buildUser(ID_KIEM_TOAN, 'kiem_toan'),
+      [ID_GV]: buildUser(ID_GV, 'giang_vien'),
     };
     stub(models.NguoiDung, 'findByPk', async (id) => usersMap[String(id)] || null);
 
     const app = createPayrollApp();
 
-    // 1. kiem_toan bị chặn 403 trên tất cả API bảng lương
-    const resAuditList = await injectRequest(app, {
+    // 1. giang_vien bị chặn 403 trên API thống kê tổng hợp quỹ lương tháng
+    const resGvSummary = await injectRequest(app, {
       method: 'GET',
-      url: '/api/phieu-luong',
-      headers: { authorization: `Bearer ${makeToken(ID_KIEM_TOAN, 'kiem_toan')}` },
+      url: '/api/phieu-luong/tong-hop',
+      headers: { authorization: `Bearer ${makeToken(ID_GV, 'giang_vien')}` },
     });
-    assert.equal(resAuditList.status, 403);
+    assert.equal(resGvSummary.status, 403);
 
     // 2. truong_khoa & bgh không có LUONG:LAP_BANG -> bị chặn 403 ở POST /khoi-tao
     const resDeanInit = await injectRequest(app, {

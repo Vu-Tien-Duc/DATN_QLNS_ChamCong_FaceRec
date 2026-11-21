@@ -1,5 +1,5 @@
 // Trợ lý AI: trò chuyện kèm ảnh/tài liệu (OCR, PDF, Word), truy xuất RAG và quản lý kho tài liệu
-const { generateAIResponse, getGeminiChatModelChain } = require('../services/ai/nhaCungCapAi.service');
+const { generateAIResponse, getGeminiChatModelChain, sanitizeModelName } = require('../services/ai/nhaCungCapAi.service');
 const { buildAIContext, SUPPORTED_MODES } = require('../services/ai/nguCanhAi.service');
 const { extractTextFromBuffer } = require('../services/ai/docTaiLieuAi.service');
 const {
@@ -11,6 +11,8 @@ const {
   canManageSchoolDocuments,
 } = require('../services/ai/khoTriThucRag.service');
 const { loadConfigsIntoCache, getConfigSync } = require('../services/heThong/cauHinhHeThong.service');
+const { NhatKyKiemToan } = require('../models');
+const { hasAnyActiveRole, ROLES } = require('../utils/vaiTro.utils');
 
 const AI_CONFIG_KEYS = [
   'AI_DEFAULT_PROVIDER',
@@ -22,18 +24,58 @@ const AI_CONFIG_KEYS = [
   'DEEPSEEK_MODEL',
 ];
 
+const VALID_AI_PROVIDERS = new Set(['gemini', 'groq', 'deepseek', 'offline_mock']);
+const INITIAL_ENV_AI_CONFIG = Object.fromEntries(AI_CONFIG_KEYS.map((k) => [k, process.env[k] || '']));
+
 const syncAiRuntimeConfig = async () => {
   try {
     await loadConfigsIntoCache();
     for (const k of AI_CONFIG_KEYS) {
-      const val = getConfigSync(k);
+      const val = getConfigSync(k, undefined);
+      if (val === undefined) {
+        continue;
+      }
       if (typeof val === 'string' && val.trim()) {
         process.env[k] = val.trim();
+      } else if (INITIAL_ENV_AI_CONFIG[k]) {
+        process.env[k] = INITIAL_ENV_AI_CONFIG[k];
+      } else {
+        delete process.env[k];
       }
     }
   } catch {
     // Bỏ qua nếu DB chưa sẵn sàng
   }
+};
+
+const isAiAdminUser = (user) => hasAnyActiveRole(user, [ROLES.ADMIN, ROLES.BGH]);
+
+const sanitizeChatHistory = (rawHistory) => {
+  const MAX_TURNS = 10;
+  const MAX_ITEM_CHARS = 2000;
+  const MAX_TOTAL_CHARS = 12000;
+
+  const recent = parseJsonArray(rawHistory).slice(-MAX_TURNS);
+  const normalized = [];
+  for (const item of recent) {
+    if (!item || typeof item !== 'object') continue;
+    const rawContent = typeof item.content === 'string' ? item.content : typeof item.text === 'string' ? item.text : '';
+    const trimmed = rawContent.trim().slice(0, MAX_ITEM_CHARS);
+    if (!trimmed) continue;
+    const role = item.role === 'assistant' || item.role === 'model' ? 'assistant' : 'user';
+    normalized.push({ role, content: trimmed });
+  }
+
+  // Giới hạn tổng ký tự lịch sử (giữ các lượt gần nhất)
+  let totalChars = 0;
+  const bounded = [];
+  for (let i = normalized.length - 1; i >= 0; i -= 1) {
+    const entry = normalized[i];
+    if (totalChars + entry.content.length > MAX_TOTAL_CHARS) break;
+    bounded.unshift(entry);
+    totalChars += entry.content.length;
+  }
+  return bounded;
 };
 
 const QUICK_PROMPTS = {
@@ -126,8 +168,25 @@ const chat = async (req, res) => {
       });
     }
 
-    const userId = req.user?._id;
-    const parsedHistory = parseJsonArray(history);
+    let safeProvider = null;
+    if (provider !== null && provider !== undefined && String(provider).trim() !== '') {
+      safeProvider = String(provider).trim().toLowerCase();
+      if (!VALID_AI_PROVIDERS.has(safeProvider)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nhà cung cấp AI (nha_cung_cap) không hợp lệ.',
+        });
+      }
+    }
+
+    let safeModel = null;
+    if (model !== null && model !== undefined && String(model).trim() !== '') {
+      safeModel = sanitizeModelName(model, null);
+    }
+
+    const userId = req.user?.id;
+    const isAdmin = isAiAdminUser(req.user);
+    const parsedHistory = sanitizeChatHistory(history);
     const parsedDocIds = parseJsonArray(documentIds);
     const shouldQueryRag =
       parsedDocIds.length > 0 ||
@@ -245,10 +304,10 @@ const chat = async (req, res) => {
     const aiResponse = await generateAIResponse({
       prompt: enrichedPrompt,
       systemInstruction,
-      history: parsedHistory.slice(-10),
+      history: parsedHistory,
       attachments,
-      provider,
-      model,
+      provider: safeProvider,
+      model: safeModel,
       mode: selectedMode,
       mockContext,
       ragChunks,
@@ -259,32 +318,40 @@ const chat = async (req, res) => {
     const sources = ragChunks.map((c) => ({
       documentId: c.documentId,
       title: c.title,
-      page: Math.floor((c.thu_tu || 0) / 3) + 1,
+      page: c.so_trang_uoc_luong ?? null,
       chunkIndex: c.thu_tu,
       score: c.score,
     }));
 
+    const responseData = {
+      reply: aiResponse.text,
+      mode: selectedMode,
+      modeMeta,
+      provider: aiResponse.provider,
+      model: aiResponse.model,
+      tokens: aiResponse.tokens,
+      sources,
+      attachmentMeta,
+    };
+    if (isAdmin) {
+      responseData.fallbackErrors = aiResponse.fallbackErrors || [];
+    }
+
     return res.status(200).json({
       success: true,
-      data: {
-        reply: aiResponse.text,
-        mode: selectedMode,
-        modeMeta,
-        provider: aiResponse.provider,
-        model: aiResponse.model,
-        tokens: aiResponse.tokens,
-        sources,
-        attachmentMeta,
-        fallbackErrors: aiResponse.fallbackErrors || [],
-      },
+      data: responseData,
     });
   } catch (error) {
     console.error('[AI Controller] Lỗi khi xử lý chat:', error);
-    const status = error.statusCode || 500;
+    const status = error.statusCode || error.status || 500;
+    const isAdmin = isAiAdminUser(req.user);
     return res.status(status).json({
       success: false,
-      message: error.message || 'Có lỗi xảy ra khi xử lý phản hồi từ Trợ lý AI.',
-      error: error.message,
+      message:
+        status >= 500 && !isAdmin
+          ? 'Có lỗi xảy ra khi xử lý phản hồi từ Trợ lý AI. Vui lòng thử lại sau.'
+          : error.message || 'Có lỗi xảy ra khi xử lý phản hồi từ Trợ lý AI.',
+      ...(isAdmin ? { error: error.message } : {}),
     });
   }
 };
@@ -347,7 +414,7 @@ const getProviders = async (req, res) => {
 // GET /api/tro-ly-ai/tai-lieu - Danh sách tài liệu RAG được phép truy cập
 const getDocuments = async (req, res) => {
   try {
-    const documents = await listDocuments(req.user?._id);
+    const documents = await listDocuments(req.user?.id);
     return res.status(200).json({
       success: true,
       data: {
@@ -367,6 +434,7 @@ const getDocuments = async (req, res) => {
 // POST /api/tro-ly-ai/tai-lieu - Tải lên và nạp tài liệu vào Kho tri thức RAG
 const uploadDocument = async (req, res) => {
   try {
+    await syncAiRuntimeConfig();
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -386,12 +454,30 @@ const uploadDocument = async (req, res) => {
       user: req.user,
     });
 
+    if (!isDuplicate) {
+      NhatKyKiemToan.create({
+        nguoi_thuc_hien_id: req.user?.id || null,
+        loai_chu_the: 'user',
+        hanh_dong: 'UPLOAD_RAG_DOCUMENT',
+        doi_tuong_id: String(document.id),
+        loai_doi_tuong: 'tai_lieu_rag',
+        dia_chi_ip: req.ip || req.connection?.remoteAddress || '127.0.0.1',
+        chi_tiet: {
+          tieu_de: document.tieu_de,
+          pham_vi: document.pham_vi,
+          tong_so_doan: document.tong_so_doan,
+          mo_hinh_embedding: document.mo_hinh_embedding,
+        },
+      }).catch((err) => console.error('[AI Controller] Lỗi ghi audit upload RAG:', err.message));
+    }
+
     return res.status(isDuplicate ? 200 : 201).json({
       success: true,
       message: isDuplicate
         ? `Tài liệu "${document.tieu_de}" đã có sẵn trong Kho tri thức AI.`
         : 'Đã đọc và nạp tài liệu vào Kho tri thức AI thành công.',
       data: document,
+      isDuplicate,
     });
   } catch (error) {
     console.error('[AI Controller] Lỗi nạp tài liệu RAG:', error);
@@ -406,7 +492,7 @@ const uploadDocument = async (req, res) => {
 // GET /api/tro-ly-ai/tai-lieu/:id - Chi tiết tài liệu RAG
 const getDocumentDetail = async (req, res) => {
   try {
-    const limit = req.query?.gioi_han || req.query?.limit;
+    const limit = req.query?.gioi_han;
     const detail = await getDocumentById(req.params.id, req.user, { limit });
     return res.status(200).json({
       success: true,
@@ -425,6 +511,16 @@ const getDocumentDetail = async (req, res) => {
 const removeDocument = async (req, res) => {
   try {
     const deleted = await deleteDocument(req.params.id, req.user);
+    NhatKyKiemToan.create({
+      nguoi_thuc_hien_id: req.user?.id || null,
+      loai_chu_the: 'user',
+      hanh_dong: 'DELETE_RAG_DOCUMENT',
+      doi_tuong_id: String(deleted.deletedId),
+      loai_doi_tuong: 'tai_lieu_rag',
+      dia_chi_ip: req.ip || req.connection?.remoteAddress || '127.0.0.1',
+      chi_tiet: { tieu_de: deleted.tieu_de },
+    }).catch((err) => console.error('[AI Controller] Lỗi ghi audit delete RAG:', err.message));
+
     return res.status(200).json({
       success: true,
       message: `Đã xóa tài liệu "${deleted.tieu_de}" khỏi kho tri thức AI.`,

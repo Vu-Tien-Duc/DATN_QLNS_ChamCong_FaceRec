@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getAllDepartments,
+  getDepartmentTree,
   getDepartmentById,
   createDepartment,
   updateDepartment,
@@ -13,10 +14,7 @@ const { verifyToken, verifyRole } = require('../middlewares/xacThuc.middleware')
 router.use(verifyToken);
 
 // Tất cả cán bộ/giảng viên đã đăng nhập đều có quyền tra cứu danh sách và chi tiết đơn vị
-router.get('/cay', (req, res, next) => {
-  req.query.tree = 'true';
-  return getAllDepartments(req, res, next);
-});
+router.get('/cay', getDepartmentTree);
 router.get('/', getAllDepartments);
 router.get('/:id', getDepartmentById);
 

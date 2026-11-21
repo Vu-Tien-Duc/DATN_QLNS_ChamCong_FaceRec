@@ -1,5 +1,6 @@
 // Giới hạn tần suất gọi API (Rate Limit): dùng Redis khi cấu hình REDIS_URL và tự fallback sang MemoryStore
 const rateLimit = require('express-rate-limit');
+const { MemoryStore } = rateLimit;
 const net = require('net');
 
 // Lấy địa chỉ IP gốc của client
@@ -31,56 +32,113 @@ const isLocalOrDev = (req) => {
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
 };
 
-let redisInitialized = false;
-let redisStoreInstance = undefined;
+let redisClientInitialized = false;
+let sharedRedisClient = null;
+let RedisStoreCtor = null;
+let redisStoreHealthy = true;
+const rateLimitStores = new Map();
 
-// Khởi tạo Redis Store cho rate limiter (hoặc undefined để dùng MemoryStore mặc định)
-const getRateLimitStore = () => {
-  if (redisInitialized) return redisStoreInstance;
-  redisInitialized = true;
+const initRateLimitRedisClient = () => {
+  if (redisClientInitialized) return sharedRedisClient;
+  redisClientInitialized = true;
 
   const redisUrl = process.env.REDIS_URL;
-  if (!redisUrl) {
-    return undefined;
-  }
+  if (!redisUrl) return null;
 
   try {
     const { RedisStore } = require('rate-limit-redis');
+    RedisStoreCtor = RedisStore;
     let client;
     try {
       const { createClient } = require('redis');
       client = createClient({ url: redisUrl });
+      if (typeof client.on === 'function') {
+        client.on('error', () => { redisStoreHealthy = false; });
+        client.on('ready', () => { redisStoreHealthy = true; });
+      }
       client.connect().catch((err) => {
+        redisStoreHealthy = false;
         console.warn('[RateLimiter] Cảnh báo kết nối Redis server, fallback sang MemoryStore:', err.message);
       });
     } catch {
       const Redis = require('ioredis');
       client = new Redis(redisUrl, { lazyConnect: true });
+      if (typeof client.on === 'function') {
+        client.on('error', () => { redisStoreHealthy = false; });
+        client.on('ready', () => { redisStoreHealthy = true; });
+      }
     }
-
-    redisStoreInstance = new RedisStore({
-      sendCommand: (...args) =>
-        typeof client.sendCommand === 'function' ? client.sendCommand(args) : client.call(...args),
-      prefix: 'rl:',
-    });
-    console.log('[RateLimiter] Đã khởi tạo thành công Redis Store phân tán cho Rate Limiter.');
-    return redisStoreInstance;
-  } catch (err) {
+    sharedRedisClient = client;
+    console.log('[RateLimiter] Đã khởi tạo thành công Redis Client phân tán cho Rate Limiter.');
+    return sharedRedisClient;
+  } catch {
     console.info('[RateLimiter] Driver Redis Store không khả dụng trong môi trường này, chuyển sang MemoryStore (In-Memory).');
-    return undefined;
+    return null;
   }
 };
 
-// Khóa giới hạn đăng nhập theo cặp IP + email để không chặn nhầm người khác dùng chung mạng
+// Tạo Redis Store độc lập kèm fallback tự động sang MemoryStore khi Redis lỗi kết nối
+const getRateLimitStore = (scope = 'default') => {
+  const client = initRateLimitRedisClient();
+  if (!client || !RedisStoreCtor) {
+    return undefined;
+  }
+  const normalizedScope = String(scope || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (rateLimitStores.has(normalizedScope)) {
+    return rateLimitStores.get(normalizedScope);
+  }
+  const fallbackMemoryStore = new MemoryStore();
+  const redisStore = new RedisStoreCtor({
+    sendCommand: (...args) =>
+      typeof client.sendCommand === 'function' ? client.sendCommand(args) : client.call(...args),
+    prefix: `rl:${normalizedScope}:`,
+  });
+  const resilientStore = {
+    prefix: redisStore.prefix,
+    init(options) {
+      if (typeof fallbackMemoryStore.init === 'function') fallbackMemoryStore.init(options);
+      if (typeof redisStore.init === 'function') redisStore.init(options);
+    },
+    async increment(key) {
+      if (!redisStoreHealthy) return fallbackMemoryStore.increment(key);
+      try {
+        return await redisStore.increment(key);
+      } catch {
+        return fallbackMemoryStore.increment(key);
+      }
+    },
+    async decrement(key) {
+      if (!redisStoreHealthy) return fallbackMemoryStore.decrement(key);
+      try {
+        return await redisStore.decrement(key);
+      } catch {
+        return fallbackMemoryStore.decrement(key);
+      }
+    },
+    async resetKey(key) {
+      if (!redisStoreHealthy) return fallbackMemoryStore.resetKey(key);
+      try {
+        return await redisStore.resetKey(key);
+      } catch {
+        return fallbackMemoryStore.resetKey(key);
+      }
+    },
+  };
+  rateLimitStores.set(normalizedScope, resilientStore);
+  return resilientStore;
+};
+
+// Khóa giới hạn đăng nhập theo cặp IP + định danh đăng nhập (email hoặc mã cán bộ)
 const getLoginRateKey = (req) => {
   const ip = getRateLimitIp(req);
-  const email = req.body?.email ? String(req.body.email).toLowerCase().trim().slice(0, 254) : 'anonymous';
-  return `login_${ip}_${email}`;
+  const rawIdentifier = req.body?.email || req.body?.ma_can_bo || '';
+  const identifier = rawIdentifier ? String(rawIdentifier).toLowerCase().trim().slice(0, 254) : 'anonymous';
+  return `login_${ip}_${identifier}`;
 };
 
 // Khóa giới hạn AI chat ưu tiên theo ID người dùng đang đăng nhập
 const getAiChatRateKey = (req) => {
-  const userId = req.user?._id || req.user?.ma_can_bo;
+  const userId = req.user?.id || req.user?.ma_can_bo;
   if (userId) return `ai_chat_user_${userId}`;
   return `ai_chat_ip_${getRateLimitIp(req)}`;
 };
@@ -91,7 +149,8 @@ const faceCheckInRateLimit = rateLimit({
   max: (req) => (isLocalOrDev(req) ? 200 : 30),
   standardHeaders: true,
   legacyHeaders: false,
-  store: getRateLimitStore(),
+  passOnStoreError: true,
+  store: getRateLimitStore('face_checkin'),
   handler: (req, res) =>
     res.status(429).json({
       success: false,
@@ -107,7 +166,8 @@ const facePoseRateLimit = rateLimit({
   max: (req) => (isLocalOrDev(req) ? 1500 : 600),
   standardHeaders: true,
   legacyHeaders: false,
-  store: getRateLimitStore(),
+  passOnStoreError: true,
+  store: getRateLimitStore('face_pose'),
   handler: (req, res) =>
     res.status(429).json({
       success: false,
@@ -126,7 +186,8 @@ const loginLimiter = rateLimit({
   validate: { keyGenerator: false, xForwardedForHeader: false, default: false },
   standardHeaders: true,
   legacyHeaders: false,
-  store: getRateLimitStore(),
+  passOnStoreError: true,
+  store: getRateLimitStore('login'),
   handler: (req, res) => {
     return res.status(429).json({
       success: false,
@@ -145,12 +206,33 @@ const aiChatRateLimit = rateLimit({
   validate: { keyGenerator: false, xForwardedForHeader: false, default: false },
   standardHeaders: true,
   legacyHeaders: false,
-  store: getRateLimitStore(),
+  passOnStoreError: true,
+  store: getRateLimitStore('ai_chat'),
   handler: (req, res) => {
     return res.status(429).json({
       success: false,
       message: 'Bạn đã gửi yêu cầu quá nhanh tới Trợ lý AI (vượt ngưỡng 30 câu hỏi/phút). Vui lòng chờ 1 phút.',
       errorCode: 'AI_CHAT_RATE_LIMIT_EXCEEDED',
+      data: null,
+    });
+  },
+});
+
+// Giới hạn tải tệp lên: tối đa 30 tệp / phút (dev/local: 200)
+const uploadRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: (req) => (isLocalOrDev(req) ? 200 : 30),
+  keyGenerator: (req) => (req.user?.id ? `upload_user_${req.user.id}` : `upload_ip_${getRateLimitIp(req)}`),
+  validate: { keyGenerator: false, xForwardedForHeader: false, default: false },
+  standardHeaders: true,
+  legacyHeaders: false,
+  passOnStoreError: true,
+  store: getRateLimitStore('file_upload'),
+  handler: (req, res) => {
+    return res.status(429).json({
+      success: false,
+      message: 'Bạn tải tệp lên quá nhanh. Vui lòng thử lại sau ít phút.',
+      errorCode: 'UPLOAD_RATE_LIMIT_EXCEEDED',
       data: null,
     });
   },
@@ -162,7 +244,8 @@ const passwordResetLimiter = rateLimit({
   max: (req) => (isLocalOrDev(req) ? 30 : 5),
   standardHeaders: true,
   legacyHeaders: false,
-  store: getRateLimitStore(),
+  passOnStoreError: true,
+  store: getRateLimitStore('password_reset'),
   handler: (req, res) => {
     return res.status(429).json({
       success: false,
@@ -180,7 +263,8 @@ const apiGeneralLimiter = rateLimit({
   skip: (req) => req.path === '/khuon-mat/phat-hien-tu-the',
   standardHeaders: true,
   legacyHeaders: false,
-  store: getRateLimitStore(),
+  passOnStoreError: true,
+  store: getRateLimitStore('api_general'),
   handler: (req, res) => {
     return res.status(429).json({
       success: false,
@@ -193,11 +277,13 @@ const apiGeneralLimiter = rateLimit({
 
 module.exports = {
   getRateLimitIp,
+  getRateLimitStore,
   isLocalOrDev,
   loginLimiter,
   faceCheckInRateLimit,
   facePoseRateLimit,
   aiChatRateLimit,
+  uploadRateLimit,
   passwordResetLimiter,
   apiGeneralLimiter,
 };

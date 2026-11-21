@@ -124,12 +124,13 @@ const TARGET_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'nhat_ky_cham_cong', label: 'Nhật ký chấm công' },
   { value: 'phieu_luong', label: 'Bảng / Phiếu lương' },
   { value: 'lich_trinh', label: 'Lịch giảng dạy' },
+  { value: 'ngoai_le_lich_trinh', label: 'Ngoại lệ lịch trình' },
   { value: 'phong_ban', label: 'Khoa / Phòng ban' },
   { value: 'cau_hinh_he_thong', label: 'Cấu hình hệ thống' },
   { value: 'ngay_nghi_le', label: 'Ngày nghỉ lễ' },
   { value: 'ca_lam_viec', label: 'Ca làm việc' },
   { value: 'mon_hoc', label: 'Môn học' },
-  { value: 'mau_khuon_mat', label: 'Mẫu khuôn mặt' },
+  { value: 'tai_lieu_rag', label: 'Tài liệu AI RAG' },
 ];
 
 const TARGET_TYPE_LABELS: Record<string, string> = Object.fromEntries(
@@ -145,9 +146,8 @@ function getAuditActorInfo(log: any): {
 } {
   const actorObj =
     (log?.nguoi_thuc_hien && typeof log.nguoi_thuc_hien === 'object' ? log.nguoi_thuc_hien : null) ||
-    (log?.actor && typeof log.actor === 'object' ? log.actor : null) ||
     (log?.nguoi_thuc_hien_id && typeof log.nguoi_thuc_hien_id === 'object' ? log.nguoi_thuc_hien_id : null);
-  const actorType = String(log?.actorType || log?.loai_chu_the || 'user').toLowerCase();
+  const actorType = String(log?.loai_chu_the || 'user').toLowerCase();
   const isSystem = actorType === 'system' || (!actorObj && !log?.nguoi_thuc_hien_id);
 
   if (actorObj) {
@@ -256,6 +256,8 @@ export const AuditLogs: React.FC = () => {
   // DATA FETCHING
   // =============================================================================
 
+  const [summaryCounts, setSummaryCounts] = useState<{ successCount: number; failedCount: number } | null>(null);
+
   const fetchAuditLogs = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -273,6 +275,11 @@ export const AuditLogs: React.FC = () => {
       const res = await auditLogApi.getAuditLogs(params);
       setLogs(res.logs || []);
       setTotalRecords(res.totalRecords || 0);
+      setSummaryCounts(
+        res.summary
+          ? { successCount: res.summary.successCount, failedCount: res.summary.failedCount }
+          : null
+      );
       setPagination(res.pagination);
     } catch (err: any) {
       console.error('Lỗi khi tải nhật ký kiểm toán:', err);
@@ -314,16 +321,18 @@ export const AuditLogs: React.FC = () => {
   // =============================================================================
 
   const kpis = useMemo(() => {
-    let successCount = 0;
-    let failedCount = 0;
+    let successCount = summaryCounts?.successCount ?? 0;
+    let failedCount = summaryCounts?.failedCount ?? 0;
 
-    logs.forEach((log) => {
-      if (['success', 'thanh_cong'].includes(String(log.ket_qua || '').toLowerCase())) successCount++;
-      else if (['failed', 'that_bai'].includes(String(log.ket_qua || '').toLowerCase())) failedCount++;
-    });
+    if (!summaryCounts) {
+      logs.forEach((log) => {
+        if (String(log.ket_qua || '').toLowerCase() === 'success') successCount++;
+        else if (String(log.ket_qua || '').toLowerCase() === 'failed') failedCount++;
+      });
+    }
 
-    const pageCount = logs.length || 1;
-    const successRate = ((successCount / pageCount) * 100).toFixed(1);
+    const denominator = summaryCounts ? totalRecords || 1 : logs.length || 1;
+    const successRate = ((successCount / denominator) * 100).toFixed(1);
 
     return {
       totalRecords,
@@ -331,11 +340,16 @@ export const AuditLogs: React.FC = () => {
       successCount,
       failedCount,
     };
-  }, [logs, totalRecords]);
+  }, [logs, totalRecords, summaryCounts]);
 
   // =============================================================================
   // EXPORT EXCEL (.XLSX)
   // =============================================================================
+
+  const sanitizeExcelCell = (value: unknown): string => {
+    const str = String(value ?? '');
+    return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  };
 
   const handleExportExcel = () => {
     if (logs.length === 0) {
@@ -347,22 +361,22 @@ export const AuditLogs: React.FC = () => {
       const dataRows = logs.map((l, idx) => {
         const actorInfo = getAuditActorInfo(l);
         const detailsStr = l.chi_tiet ? JSON.stringify(l.chi_tiet) : '';
-        const isOk = ['success', 'thanh_cong'].includes(String(l.ket_qua || '').toLowerCase());
+        const isOk = String(l.ket_qua || '').toLowerCase() === 'success';
 
         return {
           'STT': idx + 1,
           'Thời Điểm': formatDateTimeVN(l.thoi_diem),
-          'Hành Động': l.hanh_dong,
-          'Người Thực Hiện': actorInfo.name,
-          'Mã Cán Bộ': actorInfo.staffCode,
-          'Loại Chủ Thể': l.loai_chu_the || 'user',
-          'Loại Đối Tượng': TARGET_TYPE_LABELS[l.loai_doi_tuong] || l.loai_doi_tuong,
-          'ID Đối Tượng': l.doi_tuong_id,
-          'Địa Chỉ IP': l.dia_chi_ip || '--',
+          'Hành Động': sanitizeExcelCell(l.hanh_dong),
+          'Người Thực Hiện': sanitizeExcelCell(actorInfo.name),
+          'Mã Cán Bộ': sanitizeExcelCell(actorInfo.staffCode),
+          'Loại Chủ Thể': sanitizeExcelCell(l.loai_chu_the || 'user'),
+          'Loại Đối Tượng': sanitizeExcelCell(TARGET_TYPE_LABELS[l.loai_doi_tuong] || l.loai_doi_tuong),
+          'ID Đối Tượng': sanitizeExcelCell(l.doi_tuong_id),
+          'Địa Chỉ IP': sanitizeExcelCell(l.dia_chi_ip || '--'),
           'Kết Quả': isOk ? 'Thành công' : 'Thất bại',
-          'Mã Băm SHA-256 Hiện Tại': l.ma_bam_hien_tai || '--',
-          'Mã Băm Trước Đó': l.ma_bam_truoc || '--',
-          'Chi Tiết Thay Đổi': detailsStr,
+          'Mã Băm SHA-256 Hiện Tại': sanitizeExcelCell(l.ma_bam_hien_tai || '--'),
+          'Mã Băm Trước Đó': sanitizeExcelCell(l.ma_bam_truoc || '--'),
+          'Chi Tiết Thay Đổi': sanitizeExcelCell(detailsStr),
         };
       });
 
@@ -386,7 +400,13 @@ export const AuditLogs: React.FC = () => {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Nhật Ký Kiểm Toán');
 
-      const fileName = `Nhat_Ky_Kiem_Toan_AuditLogs_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const vnDateSlug = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+      const fileName = `Nhat_Ky_Kiem_Toan_AuditLogs_${vnDateSlug}.xlsx`;
       XLSX.writeFile(wb, fileName);
       toast.success('Đã xuất Nhật ký kiểm toán (.xlsx) thành công!');
     } catch (err) {
@@ -654,18 +674,18 @@ export const AuditLogs: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {logs.map((log: any) => {
-                  const actVal = log.action || log.hanh_dong || 'THAO TÁC';
+                  const actVal = log.hanh_dong || 'THAO TÁC';
                   const actLabel = getActionLabel(actVal);
                   const actStyle = getActionColor(actVal);
                   const actorInfo = getAuditActorInfo(log);
-                  const timestampVal = log.timestamp || log.thoi_diem || log.tao_luc;
+                  const timestampVal = log.thoi_diem || log.tao_luc;
                   const timeParts = formatDateAndTimeParts(timestampVal);
-                  const ipVal = log.ipAddress || log.dia_chi_ip || '127.0.0.1';
-                  const hashVal = log.currentHash || log.ma_bam_hien_tai || '';
-                  const targetTypeVal = log.targetType || log.loai_doi_tuong || 'he_thong';
+                  const ipVal = log.dia_chi_ip || '127.0.0.1';
+                  const hashVal = log.ma_bam_hien_tai || '';
+                  const targetTypeVal = log.loai_doi_tuong || 'he_thong';
                   const targetLabel = TARGET_TYPE_LABELS[targetTypeVal] || targetTypeVal;
-                  const targetIdVal = log.targetId || log.doi_tuong_id || '';
-                  const statusVal = (log.status || log.ket_qua || 'success').toString().toLowerCase();
+                  const targetIdVal = log.doi_tuong_id || '';
+                  const statusVal = (log.ket_qua || 'success').toString().toLowerCase();
                   const isSuccess = statusVal === 'success' || statusVal === 'thanh_cong';
 
                   return (
@@ -969,11 +989,11 @@ export const AuditLogs: React.FC = () => {
                     </span>
                   </div>
                 )}
-                {(selectedLog as any).failureReason && (
+                {selectedLog.ly_do_that_bai && (
                   <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
                     <span className="text-rose-500 shrink-0 font-semibold">Lý do thất bại:</span>
                     <span className="text-right text-rose-600 dark:text-rose-400 font-medium break-words">
-                      {(selectedLog as any).failureReason}
+                      {selectedLog.ly_do_that_bai}
                     </span>
                   </div>
                 )}

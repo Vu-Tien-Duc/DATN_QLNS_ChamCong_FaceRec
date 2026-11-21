@@ -20,11 +20,125 @@ const { runInTransaction } = require('../../utils/giaoDichDb');
 const minioStorage = require('../../config/minio');
 const { setGraceToken, getGraceToken, deleteGraceToken, redisSet, redisGet } = require('../../config/redis');
 const { transporter } = require('../../config/mailer');
+const { disconnectUserSockets } = require('../../config/socket');
 const { normalizeRole, getActiveUserRoles } = require('../../utils/vaiTro.utils');
+const { normalizeSafeAvatarUrl } = require('./taiTep.service');
 const ServiceError = require('../../utils/loiNghiepVu');
 
 // Băm token bằng SHA-256 trước khi lưu hoặc tra cứu
 const hashToken = (tokenStr) => crypto.createHash('sha256').update(String(tokenStr).trim()).digest('hex');
+
+const DUMMY_BCRYPT_HASH = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+const UNIFIED_OTP_ERROR_MESSAGE = 'Email hoặc mã OTP không hợp lệ hoặc đã hết hạn.';
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const LOGIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
+const OTP_COOLDOWN_SECONDS = 60;
+
+const getJwtSecret = () => {
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
+    return 'secret-jwt-fallback-key';
+  }
+  throw new ServiceError('Lỗi cấu hình bảo mật JWT_SECRET.', 500);
+};
+
+const getRefreshTokenSecret = () => {
+  if (process.env.REFRESH_TOKEN_SECRET) return process.env.REFRESH_TOKEN_SECRET;
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
+    return 'secret-refresh-fallback-key';
+  }
+  throw new ServiceError('Lỗi cấu hình bảo mật REFRESH_TOKEN_SECRET.', 500);
+};
+
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const detectImageSignature = (buffer) => {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { ext: 'jpg', mimeType: 'image/jpeg' };
+  }
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return { ext: 'png', mimeType: 'image/png' };
+  }
+  if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
+    return { ext: 'webp', mimeType: 'image/webp' };
+  }
+  return null;
+};
+
+const LOGIN_FAIL_PREFIX = 'LOGIN_FAIL_USER:';
+const OTP_COOLDOWN_PREFIX = 'OTP_REQ_COOLDOWN:';
+const loginFailureMap = new Map();
+const otpCooldownMap = new Map();
+
+const getMaxLoginFailures = () => {
+  const envLimit = Number(process.env.MAX_LOGIN_FAILURES);
+  if (Number.isFinite(envLimit) && envLimit > 0) return envLimit;
+  return 5;
+};
+
+const checkUserLoginLockout = async (userId) => {
+  const uid = String(userId);
+  const now = Date.now();
+  const localEntry = loginFailureMap.get(uid);
+  if (localEntry && localEntry.expiresAt > now && localEntry.count >= getMaxLoginFailures()) {
+    return true;
+  }
+  const remoteRaw = await redisGet(`${LOGIN_FAIL_PREFIX}${uid}`).catch(() => null);
+  if (remoteRaw && Number(remoteRaw) >= getMaxLoginFailures()) {
+    return true;
+  }
+  return false;
+};
+
+const recordUserLoginFailure = async (userId) => {
+  const uid = String(userId);
+  const now = Date.now();
+  const existing = loginFailureMap.get(uid);
+  const nextCount = existing && existing.expiresAt > now ? existing.count + 1 : 1;
+  const expiresAt = existing && existing.expiresAt > now ? existing.expiresAt : now + LOGIN_FAIL_WINDOW_MS;
+  loginFailureMap.set(uid, { count: nextCount, expiresAt });
+  const ttlSec = Math.max(1, Math.ceil((expiresAt - now) / 1000));
+  await redisSet(`${LOGIN_FAIL_PREFIX}${uid}`, String(nextCount), ttlSec).catch(() => {});
+};
+
+const clearUserLoginFailures = async (userId) => {
+  const uid = String(userId);
+  loginFailureMap.delete(uid);
+  await redisSet(`${LOGIN_FAIL_PREFIX}${uid}`, '0', 1).catch(() => {});
+};
+
+const checkAndMarkOtpCooldown = async (emailHash) => {
+  const now = Date.now();
+  const localUntil = otpCooldownMap.get(emailHash);
+  if (localUntil && localUntil > now) {
+    return Math.max(1, Math.ceil((localUntil - now) / 1000));
+  }
+  const remoteUntil = await redisGet(`${OTP_COOLDOWN_PREFIX}${emailHash}`).catch(() => null);
+  if (remoteUntil && Number(remoteUntil) > now) {
+    return Math.max(1, Math.ceil((Number(remoteUntil) - now) / 1000));
+  }
+  const nextUntil = now + OTP_COOLDOWN_SECONDS * 1000;
+  otpCooldownMap.set(emailHash, nextUntil);
+  await redisSet(`${OTP_COOLDOWN_PREFIX}${emailHash}`, String(nextUntil), OTP_COOLDOWN_SECONDS).catch(() => {});
+  return 0;
+};
 
 const GRACE_REVOKED_USER_PREFIX = 'TOKEN_GRACE_REVOKED:';
 const revokedGraceUserMap = new Map();
@@ -73,6 +187,12 @@ if (process.env.NODE_ENV !== 'test') {
     for (const [uid, revokedAt] of revokedGraceUserMap.entries()) {
       if (now - revokedAt > 30000) revokedGraceUserMap.delete(uid);
     }
+    for (const [uid, entry] of loginFailureMap.entries()) {
+      if (entry.expiresAt <= now) loginFailureMap.delete(uid);
+    }
+    for (const [emailHash, until] of otpCooldownMap.entries()) {
+      if (until <= now) otpCooldownMap.delete(emailHash);
+    }
   }, 30000);
   if (cleanupTimer.unref) cleanupTimer.unref();
 }
@@ -85,20 +205,17 @@ const generateAccessToken = (user) => {
   const userIdStr = String(user.id);
 
   const payload = {
+    jti: crypto.randomUUID(),
     id: userIdStr,
-    userId: userIdStr,
     email: user.email,
     ho_ten: user.ho_ten || '',
-    role: roleVal,
     vai_tro_chinh: roleVal,
     danh_sach_vai_tro: activeRoles.length > 0 ? activeRoles : (roleVal ? [roleVal] : []),
-    departmentId: deptId,
     don_vi_chinh_id: deptId,
-    tokenVersion: user.phien_ban_token || 1,
     phien_ban_token: user.phien_ban_token || 1,
   };
 
-  return jwt.sign(payload, process.env.JWT_SECRET || 'secret-jwt-fallback-key', {
+  return jwt.sign(payload, getJwtSecret(), {
     expiresIn: process.env.JWT_EXPIRES_IN || '15m',
   });
 };
@@ -110,12 +227,12 @@ const generateRefreshToken = (user, existingFamily = null) => {
 
   const tokenString = jwt.sign(
     {
+      jti: crypto.randomUUID(),
       id: String(user.id),
-      userId: String(user.id),
       tokenFamily,
       type: 'refresh',
     },
-    process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET || 'secret-refresh-fallback-key',
+    getRefreshTokenSecret(),
     { expiresIn: `${expiresDays}d` }
   );
 
@@ -155,7 +272,8 @@ const formatUserResponse = (userInstance, faceTemplate) => {
   userObj.ma_can_bo = userObj.ma_can_bo || '';
   userObj.so_dien_thoai = userObj.so_dien_thoai || '';
   userObj.vai_tro_chinh = roleVal;
-  userObj.don_vi_chinh_id = deptObj || userObj.don_vi_chinh_id || null;
+  userObj.don_vi_chinh = deptObj || userObj.don_vi_chinh || null;
+  userObj.don_vi_chinh_id = deptObj?.id || (typeof userObj.don_vi_chinh_id === 'string' ? userObj.don_vi_chinh_id : null);
   userObj.ten_phong_ban = deptObj?.ten_phong_ban || '';
   userObj.anh_dai_dien = userObj.anh_dai_dien || null;
 
@@ -198,17 +316,32 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   });
 
   if (!user) {
+    await bcrypt.compare(password, DUMMY_BCRYPT_HASH);
     throw new ServiceError('Tài khoản hoặc mật khẩu không chính xác.', 401);
   }
+
+  if (await checkUserLoginLockout(user.id)) {
+    throw new ServiceError(
+      'Tài khoản này đã đăng nhập sai quá số lần quy định (5 lần). Vui lòng thử lại sau 15 phút để đảm bảo an toàn.',
+      429,
+      'AUTH_RATE_LIMIT_EXCEEDED'
+    );
+  }
+
+  // So khớp mật khẩu trước khi báo trạng thái khóa/nghỉ việc để chống dò tài khoản (enumeration)
+  const isMatch = user.mat_khau_ma_hoa
+    ? await bcrypt.compare(password, user.mat_khau_ma_hoa)
+    : await bcrypt.compare(password, DUMMY_BCRYPT_HASH).then(() => false);
+  if (!isMatch) {
+    await recordUserLoginFailure(user.id);
+    throw new ServiceError('Tài khoản hoặc mật khẩu không chính xác.', 401);
+  }
+
+  await clearUserLoginFailures(user.id);
 
   const isUserActive = user.kich_hoat !== false && user.trang_thai_lam_viec !== 'da_nghi_viec';
   if (!isUserActive) {
     throw new ServiceError('Tài khoản của bạn đã bị vô hiệu hóa hoặc tạm khóa. Vui lòng liên hệ phòng Tổ chức Cán bộ.', 403);
-  }
-
-  const isMatch = user.mat_khau_ma_hoa ? await bcrypt.compare(password, user.mat_khau_ma_hoa) : false;
-  if (!isMatch) {
-    throw new ServiceError('Tài khoản hoặc mật khẩu không chính xác.', 401);
   }
 
   const token = generateAccessToken(user);
@@ -265,94 +398,119 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
 
   const incomingHash = hashToken(incomingToken);
 
-  let graceItem = (await getGraceToken(incomingHash)) || (await getGraceToken(incomingToken));
-  if (!graceItem) {
-    graceItem = rotationGraceCache.get(incomingHash) || rotationGraceCache.get(incomingToken);
-  }
-  if (graceItem && graceItem.expiresAt > Date.now() && !(await isGraceItemRevoked(graceItem))) {
+  const readGraceItem = async () => {
+    let item = (await getGraceToken(incomingHash)) || (await getGraceToken(incomingToken));
+    if (!item) {
+      item = rotationGraceCache.get(incomingHash) || rotationGraceCache.get(incomingToken);
+    }
+    if (item && item.expiresAt > Date.now() && !(await isGraceItemRevoked(item))) {
+      return item;
+    }
+    return null;
+  };
+
+  const initialGraceItem = await readGraceItem();
+  if (initialGraceItem) {
     return {
-      accessToken: graceItem.newAccessToken,
-      token: graceItem.newAccessToken,
-      newAccessToken: graceItem.newAccessToken,
-      refreshToken: graceItem.newRefreshTokenString,
-      newRefreshTokenString: graceItem.newRefreshTokenString,
+      accessToken: initialGraceItem.newAccessToken,
+      refreshToken: initialGraceItem.newRefreshTokenString,
     };
   }
 
-  const txResult = await runInTransaction(async (transaction) => {
-    const tokenDoc = await MaLamMoi.findOne({
-      where: { chuoi_token: incomingHash },
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
+  let graceStoredInTx = false;
+  let txResult;
+  try {
+    txResult = await runInTransaction(async (transaction) => {
+      const tokenDoc = await MaLamMoi.findOne({
+        where: { chuoi_token: incomingHash },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
 
-    if (!tokenDoc) {
-      throw new ServiceError('Refresh token không hợp lệ hoặc đã bị hủy.', 403);
-    }
-
-    const tokenFamily = tokenDoc.ma_nhom_token;
-    const userId = tokenDoc.nguoi_dung_id;
-
-    if (tokenDoc.da_su_dung) {
-      const usedAtTime = tokenDoc.thoi_diem_su_dung;
-      const elapsedMs = usedAtTime ? Date.now() - new Date(usedAtTime).getTime() : Infinity;
-      if (elapsedMs <= 15000 && graceItem && !(await isGraceItemRevoked(graceItem))) {
-        return { outcome: 'grace' };
+      if (!tokenDoc) {
+        throw new ServiceError('Refresh token không hợp lệ hoặc đã bị hủy.', 403);
       }
-      return { outcome: 'replay', tokenFamily, userId };
-    }
 
-    if (tokenDoc.het_han_luc && new Date(tokenDoc.het_han_luc).getTime() < Date.now()) {
-      throw new ServiceError('Refresh token đã hết hạn.', 403);
-    }
+      const tokenFamily = tokenDoc.ma_nhom_token;
+      const userId = tokenDoc.nguoi_dung_id;
 
-    const user = await NguoiDung.findByPk(userId, {
-      include: [
+      if (tokenDoc.da_su_dung) {
+        const usedAtTime = tokenDoc.thoi_diem_su_dung;
+        const elapsedMs = usedAtTime ? Date.now() - new Date(usedAtTime).getTime() : Infinity;
+        // Đọc lại grace cache bên trong transaction sau khi giành khóa để tránh race condition đa request
+        const txGraceItem = await readGraceItem();
+        if (elapsedMs <= 15000 && txGraceItem) {
+          return { outcome: 'grace', graceItem: txGraceItem };
+        }
+        return { outcome: 'replay', tokenFamily, userId };
+      }
+
+      if (tokenDoc.het_han_luc && new Date(tokenDoc.het_han_luc).getTime() < Date.now()) {
+        throw new ServiceError('Refresh token đã hết hạn.', 403);
+      }
+
+      const user = await NguoiDung.findByPk(userId, {
+        include: [
+          {
+            model: VaiTroNguoiDung,
+            as: 'danh_sach_vai_tro',
+            attributes: ['id', 'ma_vai_tro', 'don_vi_id', 'pham_vi', 'duoc_uy_quyen', 'tu_ngay', 'den_ngay'],
+            include: [{ model: PhongBan, as: 'don_vi', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] }],
+          },
+        ],
+        transaction,
+      });
+      if (!user || user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
+        throw new ServiceError('Tài khoản người dùng không còn tồn tại hoặc đã bị khóa.', 401);
+      }
+
+      tokenDoc.da_su_dung = true;
+      tokenDoc.thoi_diem_su_dung = new Date();
+      await tokenDoc.save({ transaction });
+
+      const newAccessToken = generateAccessToken(user);
+      const { tokenString: newRefreshTokenString } = generateRefreshToken(user, tokenFamily);
+
+      const expiresDays = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '7', 10);
+      const expiresAt = new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000);
+
+      await MaLamMoi.create(
         {
-          model: VaiTroNguoiDung,
-          as: 'danh_sach_vai_tro',
-          attributes: ['id', 'ma_vai_tro', 'don_vi_id', 'pham_vi', 'duoc_uy_quyen', 'tu_ngay', 'den_ngay'],
-          include: [{ model: PhongBan, as: 'don_vi', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] }],
+          chuoi_token: hashToken(newRefreshTokenString),
+          ma_nhom_token: tokenFamily,
+          nguoi_dung_id: user.id,
+          dia_chi_ip: ipAddress || null,
+          thiet_bi: userAgent || null,
+          het_han_luc: expiresAt,
         },
-      ],
-      transaction,
+        { transaction }
+      );
+
+      const graceData = {
+        userId: String(user.id),
+        createdAt: Date.now(),
+        newAccessToken,
+        newRefreshTokenString,
+        expiresAt: Date.now() + 15000,
+      };
+      rotationGraceCache.set(incomingHash, graceData);
+      await setGraceToken(incomingHash, graceData, 15).catch(() => {});
+      graceStoredInTx = true;
+
+      return { outcome: 'rotated', newAccessToken, newRefreshTokenString };
     });
-    if (!user || user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
-      throw new ServiceError('Tài khoản người dùng không còn tồn tại hoặc đã bị khóa.', 401);
+  } catch (err) {
+    if (graceStoredInTx) {
+      rotationGraceCache.delete(incomingHash);
+      await deleteGraceToken(incomingHash).catch(() => {});
     }
-
-    tokenDoc.da_su_dung = true;
-    tokenDoc.thoi_diem_su_dung = new Date();
-    await tokenDoc.save({ transaction });
-
-    const newAccessToken = generateAccessToken(user);
-    const { tokenString: newRefreshTokenString } = generateRefreshToken(user, tokenFamily);
-
-    const expiresDays = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '7', 10);
-    const expiresAt = new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000);
-
-    await MaLamMoi.create(
-      {
-        chuoi_token: hashToken(newRefreshTokenString),
-        ma_nhom_token: tokenFamily,
-        nguoi_dung_id: user.id,
-        dia_chi_ip: ipAddress || null,
-        thiet_bi: userAgent || null,
-        het_han_luc: expiresAt,
-      },
-      { transaction }
-    );
-
-    return { outcome: 'rotated', user, newAccessToken, newRefreshTokenString };
-  });
+    throw err;
+  }
 
   if (txResult.outcome === 'grace') {
     return {
-      accessToken: graceItem.newAccessToken,
-      token: graceItem.newAccessToken,
-      newAccessToken: graceItem.newAccessToken,
-      refreshToken: graceItem.newRefreshTokenString,
-      newRefreshTokenString: graceItem.newRefreshTokenString,
+      accessToken: txResult.graceItem.newAccessToken,
+      refreshToken: txResult.graceItem.newRefreshTokenString,
     };
   }
 
@@ -387,26 +545,9 @@ const refreshToken = async ({ token, refreshTokenString, ipAddress, userAgent })
     );
   }
 
-  const { user, newAccessToken, newRefreshTokenString } = txResult;
-
-  const graceData = {
-    userId: String(user.id),
-    createdAt: Date.now(),
-    newAccessToken,
-    newRefreshTokenString,
-    expiresAt: Date.now() + 15000,
-  };
-  await Promise.all([
-    setGraceToken(incomingHash, graceData, 15),
-  ]).catch(() => {});
-  rotationGraceCache.set(incomingHash, graceData);
-
   return {
-    accessToken: newAccessToken,
-    token: newAccessToken,
-    newAccessToken,
-    refreshToken: newRefreshTokenString,
-    newRefreshTokenString,
+    accessToken: txResult.newAccessToken,
+    refreshToken: txResult.newRefreshTokenString,
   };
 };
 
@@ -416,19 +557,12 @@ const logout = async ({ refreshTokenString, accessTokenString, userId }) => {
 
   if (accessTokenString) {
     const decoded = jwt.decode(accessTokenString);
-    const remainingSeconds =
-      decoded && typeof decoded.exp === 'number'
-        ? Math.max(1, Math.ceil(decoded.exp - Date.now() / 1000))
-        : undefined;
-    revokeToken(accessTokenString, remainingSeconds);
+    const expiresAtMs = decoded && typeof decoded.exp === 'number' ? decoded.exp * 1000 : undefined;
+    revokeToken(accessTokenString, expiresAtMs);
 
     if (!effectiveUserId) {
       try {
-        const verified = jwt.verify(
-          accessTokenString,
-          process.env.JWT_SECRET || 'secret-jwt-fallback-key',
-          { ignoreExpiration: true }
-        );
+        const verified = jwt.verify(accessTokenString, getJwtSecret(), { ignoreExpiration: true });
         if (verified?.id) {
           effectiveUserId = verified.id;
         }
@@ -445,20 +579,18 @@ const logout = async ({ refreshTokenString, accessTokenString, userId }) => {
     if (!effectiveUserId && tokenDoc?.nguoi_dung_id) {
       effectiveUserId = tokenDoc.nguoi_dung_id;
     }
+    // Xóa bản ghi refresh token khi đăng xuất chủ động để không gây nhầm lẫn Replay Attack
     if (tokenDoc?.ma_nhom_token) {
-      await MaLamMoi.update(
-        { da_su_dung: true, thoi_diem_su_dung: new Date() },
-        { where: { ma_nhom_token: tokenDoc.ma_nhom_token, da_su_dung: false } }
-      );
+      await MaLamMoi.destroy({ where: { ma_nhom_token: tokenDoc.ma_nhom_token } });
     } else {
-      await MaLamMoi.update(
-        { da_su_dung: true, thoi_diem_su_dung: new Date() },
-        { where: { chuoi_token: tokenHash } }
-      );
+      await MaLamMoi.destroy({ where: { chuoi_token: tokenHash } });
     }
   }
 
   await revokeUserGraceTokens(effectiveUserId, refreshTokenString);
+  if (effectiveUserId) {
+    disconnectUserSockets(effectiveUserId);
+  }
 
   if (effectiveUserId) {
     NhatKyKiemToan.create({
@@ -509,9 +641,8 @@ const getMe = async (userId) => {
 };
 
 // Đổi mật khẩu tài khoản
-const changePassword = async ({ userId, currentPassword, oldPassword, newPassword, ipAddress }) => {
-  const currentPass = currentPassword || oldPassword;
-  if (!currentPass || !newPassword) {
+const changePassword = async ({ userId, currentPassword, newPassword, ipAddress }) => {
+  if (!currentPassword || !newPassword) {
     throw new ServiceError('Vui lòng cung cấp mật khẩu cũ và mật khẩu mới.', 400);
   }
   if (newPassword.length < 6) {
@@ -523,23 +654,34 @@ const changePassword = async ({ userId, currentPassword, oldPassword, newPasswor
     throw new ServiceError('Không tìm thấy người dùng.', 404);
   }
 
-  const isMatch = user.mat_khau_ma_hoa ? await bcrypt.compare(currentPass, user.mat_khau_ma_hoa) : false;
+  const isMatch = user.mat_khau_ma_hoa ? await bcrypt.compare(currentPassword, user.mat_khau_ma_hoa) : false;
   if (!isMatch) {
     throw new ServiceError('Mật khẩu hiện tại không chính xác.', 400);
   }
 
-  const salt = await bcrypt.genSalt(10);
-  user.mat_khau_ma_hoa = await bcrypt.hash(newPassword, salt);
-  user.doi_mat_khau_luc = new Date();
-  user.phien_ban_token = (user.phien_ban_token || 1) + 1;
-  await user.save();
+  const isSameAsCurrent = user.mat_khau_ma_hoa ? await bcrypt.compare(newPassword, user.mat_khau_ma_hoa) : false;
+  if (isSameAsCurrent) {
+    throw new ServiceError('Mật khẩu mới không được trùng với mật khẩu hiện tại.', 400);
+  }
 
-  await MaLamMoi.update(
-    { da_su_dung: true, thoi_diem_su_dung: new Date() },
-    { where: { nguoi_dung_id: user.id, da_su_dung: false } }
-  );
+  const salt = await bcrypt.genSalt(10);
+  const hashedNewPassword = await bcrypt.hash(newPassword, salt);
+
+  await runInTransaction(async (transaction) => {
+    user.mat_khau_ma_hoa = hashedNewPassword;
+    user.doi_mat_khau_luc = new Date();
+    user.phien_ban_token = (user.phien_ban_token || 1) + 1;
+    await user.save({ transaction });
+
+    // Xóa toàn bộ refresh token cũ để không gây Replay Attack giả nếu thiết bị cũ gọi refresh
+    await MaLamMoi.destroy({
+      where: { nguoi_dung_id: user.id },
+      transaction,
+    });
+  });
 
   await revokeUserGraceTokens(user.id);
+  disconnectUserSockets(user.id);
 
   NhatKyKiemToan.create({
     nguoi_thuc_hien_id: user.id,
@@ -565,32 +707,25 @@ const updateAvatar = async ({ userId, avatarUrl, imageBuffer, file, ipAddress })
   const bufferToSave = imageBuffer || (file && file.buffer ? file.buffer : null);
 
   if (bufferToSave) {
-    const allowedExts = new Set(['jpg', 'jpeg', 'png', 'webp']);
-    const rawExt = file && file.originalname ? path.extname(file.originalname).replace('.', '').toLowerCase() : 'jpg';
-    const ext = allowedExts.has(rawExt) ? rawExt : 'jpg';
-    const mimeType = file?.mimetype || `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-    const fileName = `avatar-${userId}-${Date.now()}.${ext}`;
+    if (!Buffer.isBuffer(bufferToSave) || bufferToSave.length === 0 || bufferToSave.length > MAX_AVATAR_BYTES) {
+      throw new ServiceError('Ảnh đại diện vượt quá giới hạn dung lượng tối đa (5MB).', 400);
+    }
+    const signature = detectImageSignature(bufferToSave);
+    if (!signature) {
+      throw new ServiceError('Định dạng ảnh đại diện không hợp lệ. Chỉ chấp nhận tệp JPG, PNG hoặc WEBP.', 400);
+    }
+    const fileName = `avatar-${userId}-${Date.now()}.${signature.ext}`;
 
-    await minioStorage.putObject(`avatars/${fileName}`, bufferToSave, mimeType, {
+    await minioStorage.putObject(`avatars/${fileName}`, bufferToSave, signature.mimeType, {
       userId: String(userId),
       category: 'avatar',
     });
 
     finalAvatarPath = `/api/tai-tep/tep/${fileName}`;
   } else if (file && file.filename) {
-    finalAvatarPath = `/api/tai-tep/tep/${file.filename}`;
-  } else if (avatarUrl === null || avatarUrl === '') {
-    finalAvatarPath = null;
-  } else if (typeof avatarUrl === 'string') {
-    const trimmedUrl = avatarUrl.trim();
-    const isValidSafeUrl =
-      /^\/api\/tai-tep\/tep\/[A-Za-z0-9._-]+$/.test(trimmedUrl) ||
-      /^https?:\/\/\S+$/i.test(trimmedUrl) ||
-      /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(trimmedUrl);
-    if (!isValidSafeUrl || trimmedUrl.length > 500) {
-      throw new ServiceError('Đường dẫn ảnh đại diện không hợp lệ.', 400);
-    }
-    finalAvatarPath = trimmedUrl;
+    finalAvatarPath = normalizeSafeAvatarUrl(`/api/tai-tep/tep/${path.basename(String(file.filename))}`);
+  } else if (avatarUrl !== undefined) {
+    finalAvatarPath = normalizeSafeAvatarUrl(avatarUrl);
   }
 
   user.anh_dai_dien = finalAvatarPath;
@@ -603,12 +738,11 @@ const updateAvatar = async ({ userId, avatarUrl, imageBuffer, file, ipAddress })
     doi_tuong_id: String(user.id),
     loai_doi_tuong: 'nguoi_dung',
     dia_chi_ip: ipAddress || null,
-    chi_tiet: { avatar: finalAvatarPath },
+    chi_tiet: { anh_dai_dien: finalAvatarPath },
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   return {
     message: 'Cập nhật ảnh đại diện thành công.',
-    avatar: finalAvatarPath,
     anh_dai_dien: finalAvatarPath,
   };
 };
@@ -620,6 +754,14 @@ const forgotPassword = async ({ email, ipAddress }) => {
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
+  const emailHash = hashToken(cleanEmail);
+
+  // Áp dụng cooldown đồng nhất theo email trước khi truy vấn CSDL để chống dò tài khoản
+  const waitSeconds = await checkAndMarkOtpCooldown(emailHash);
+  if (waitSeconds > 0) {
+    throw new ServiceError(`Vui lòng đợi ${waitSeconds} giây trước khi yêu cầu mã OTP mới.`, 429);
+  }
+
   const user = await NguoiDung.findOne({ where: { email: cleanEmail } });
 
   if (!user || user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
@@ -629,37 +771,9 @@ const forgotPassword = async ({ email, ipAddress }) => {
     };
   }
 
-  const latestOtp = await XacThucOtp.findOne({
-    where: { nguoi_dung_id: user.id, loai_otp: 'forgot_password' },
-    order: [['tao_luc', 'DESC']],
-  });
-
-  const COOLDOWN_SECONDS = 60;
-  if (latestOtp && latestOtp.gui_luc) {
-    const elapsedSeconds = Math.floor((Date.now() - new Date(latestOtp.gui_luc).getTime()) / 1000);
-    if (elapsedSeconds < COOLDOWN_SECONDS) {
-      const waitSeconds = COOLDOWN_SECONDS - elapsedSeconds;
-      throw new ServiceError(`Vui lòng đợi ${waitSeconds} giây trước khi yêu cầu mã OTP mới.`, 429);
-    }
-  }
-
   const rawOtp = crypto.randomInt(100000, 1000000).toString();
-  const hashedOtp = crypto.createHash('sha256').update(rawOtp).digest('hex');
-
-  await XacThucOtp.update(
-    { da_su_dung: true },
-    { where: { nguoi_dung_id: user.id, loai_otp: 'forgot_password', da_su_dung: false } }
-  );
-
-  await XacThucOtp.create({
-    nguoi_dung_id: user.id,
-    loai_otp: 'forgot_password',
-    ma_otp: hashedOtp,
-    het_han_luc: new Date(Date.now() + 10 * 60 * 1000),
-    so_lan_thu: 0,
-    da_su_dung: false,
-    gui_luc: new Date(),
-  });
+  const hashedOtp = hashToken(rawOtp);
+  const safeFullName = escapeHtml(user.ho_ten || 'Giảng viên');
 
   const mailOptions = {
     from: process.env.EMAIL_FROM || '"QLNS & Chấm Công Đại Học" <no-reply@uni.edu.vn>',
@@ -668,7 +782,7 @@ const forgotPassword = async ({ email, ipAddress }) => {
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
         <h2 style="color: #2563eb; text-align: center;">Yêu Cầu Đặt Lại Mật Khẩu</h2>
-        <p>Kính gửi Thầy/Cô <strong>${user.ho_ten || 'Giảng viên'}</strong>,</p>
+        <p>Kính gửi Thầy/Cô <strong>${safeFullName}</strong>,</p>
         <p>Hệ thống nhận được yêu cầu đặt lại mật khẩu cho tài khoản liên kết với địa chỉ email này.</p>
         <div style="text-align: center; margin: 30px 0;">
           <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #1e40af; background: #eff6ff; padding: 12px 24px; border-radius: 8px; border: 1px dashed #3b82f6;">${rawOtp}</span>
@@ -678,9 +792,33 @@ const forgotPassword = async ({ email, ipAddress }) => {
     `,
   };
 
+  await runInTransaction(async (transaction) => {
+    await XacThucOtp.update(
+      { da_su_dung: true },
+      { where: { nguoi_dung_id: user.id, loai_otp: 'forgot_password', da_su_dung: false }, transaction }
+    );
+
+    await XacThucOtp.create(
+      {
+        nguoi_dung_id: user.id,
+        loai_otp: 'forgot_password',
+        ma_otp: hashedOtp,
+        het_han_luc: new Date(Date.now() + 10 * 60 * 1000),
+        so_lan_thu: 0,
+        da_su_dung: false,
+        gui_luc: new Date(),
+      },
+      { transaction }
+    );
+  });
+
+  // Gửi email OTP sau khi DB transaction đã commit để không giữ connection lock khi SMTP chậm
   try {
     await transporter.sendMail(mailOptions);
   } catch (err) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ServiceError('Không thể gửi email xác thực OTP lúc này. Vui lòng thử lại sau.', 503);
+    }
     console.error('[Email OTP Error]:', err.message);
   }
 
@@ -714,66 +852,92 @@ const resetPassword = async ({ email, otp, newPassword, ipAddress }) => {
 
   const cleanEmail = String(email).trim().toLowerCase();
   const cleanOtp = String(otp).trim();
+  const MAX_ATTEMPTS = 5;
 
-  const user = await NguoiDung.scope('withPassword').findOne({ where: { email: cleanEmail } });
-  if (!user) {
-    throw new ServiceError('Email hoặc mã OTP không hợp lệ.', 400);
-  }
+  const txResult = await runInTransaction(async (transaction) => {
+    const user = await NguoiDung.scope('withPassword').findOne({
+      where: { email: cleanEmail },
+      transaction,
+    });
+    if (!user || user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
+      return { ok: false, statusCode: 400, message: UNIFIED_OTP_ERROR_MESSAGE };
+    }
 
-  const otpDoc = await XacThucOtp.findOne({
-    where: { nguoi_dung_id: user.id, loai_otp: 'forgot_password', da_su_dung: false },
-    order: [['tao_luc', 'DESC']],
+    const otpDoc = await XacThucOtp.findOne({
+      where: { nguoi_dung_id: user.id, loai_otp: 'forgot_password', da_su_dung: false },
+      order: [['tao_luc', 'DESC']],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!otpDoc) {
+      return { ok: false, statusCode: 400, message: UNIFIED_OTP_ERROR_MESSAGE };
+    }
+
+    if ((otpDoc.so_lan_thu || 0) >= MAX_ATTEMPTS) {
+      otpDoc.da_su_dung = true;
+      await otpDoc.save({ transaction });
+      return { ok: false, statusCode: 400, message: UNIFIED_OTP_ERROR_MESSAGE };
+    }
+
+    if (!otpDoc.het_han_luc || new Date() > new Date(otpDoc.het_han_luc)) {
+      otpDoc.da_su_dung = true;
+      await otpDoc.save({ transaction });
+      return { ok: false, statusCode: 400, message: UNIFIED_OTP_ERROR_MESSAGE };
+    }
+
+    const hashedInputBuf = crypto.createHash('sha256').update(cleanOtp).digest();
+    const storedOtpBuf = Buffer.from(String(otpDoc.ma_otp || ''), 'hex');
+    const isOtpMatch =
+      storedOtpBuf.length === hashedInputBuf.length &&
+      crypto.timingSafeEqual(storedOtpBuf, hashedInputBuf);
+
+    if (!isOtpMatch) {
+      const nextAttempts = (otpDoc.so_lan_thu || 0) + 1;
+      otpDoc.so_lan_thu = nextAttempts;
+      if (nextAttempts >= MAX_ATTEMPTS) {
+        otpDoc.da_su_dung = true;
+      }
+      await otpDoc.save({ transaction });
+      return { ok: false, statusCode: 400, message: UNIFIED_OTP_ERROR_MESSAGE };
+    }
+
+    const isSameAsCurrent = user.mat_khau_ma_hoa ? await bcrypt.compare(newPassword, user.mat_khau_ma_hoa) : false;
+    if (isSameAsCurrent) {
+      return { ok: false, statusCode: 400, message: 'Mật khẩu mới không được trùng với mật khẩu hiện tại.' };
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.mat_khau_ma_hoa = await bcrypt.hash(newPassword, salt);
+    user.doi_mat_khau_luc = new Date();
+    user.phien_ban_token = (user.phien_ban_token || 1) + 1;
+    await user.save({ transaction });
+
+    otpDoc.da_su_dung = true;
+    await otpDoc.save({ transaction });
+
+    await MaLamMoi.destroy({
+      where: { nguoi_dung_id: user.id },
+      transaction,
+    });
+
+    return { ok: true, userId: user.id, email: user.email };
   });
 
-  if (!otpDoc) {
-    throw new ServiceError('Không có yêu cầu đặt lại mật khẩu nào đang chờ xử lý.', 400);
+  if (!txResult.ok) {
+    throw new ServiceError(txResult.message, txResult.statusCode);
   }
 
-  const MAX_ATTEMPTS = 5;
-  if ((otpDoc.so_lan_thu || 0) >= MAX_ATTEMPTS) {
-    otpDoc.da_su_dung = true;
-    await otpDoc.save();
-    throw new ServiceError('Bạn đã nhập sai mã OTP quá 5 lần. Mã xác thực đã bị vô hiệu hóa vì lý do an toàn. Vui lòng yêu cầu mã mới.', 400);
-  }
-
-  if (!otpDoc.het_han_luc || new Date() > new Date(otpDoc.het_han_luc)) {
-    otpDoc.da_su_dung = true;
-    await otpDoc.save();
-    throw new ServiceError('Mã OTP đã hết hạn sử dụng (quá 10 phút). Vui lòng yêu cầu mã mới.', 400);
-  }
-
-  const hashedInputOtp = crypto.createHash('sha256').update(cleanOtp).digest('hex');
-  if (hashedInputOtp !== otpDoc.ma_otp) {
-    otpDoc.so_lan_thu = (otpDoc.so_lan_thu || 0) + 1;
-    await otpDoc.save();
-    const remaining = MAX_ATTEMPTS - otpDoc.so_lan_thu;
-    throw new ServiceError(`Mã OTP không chính xác. Bạn còn ${remaining} lần thử trước khi mã bị khóa.`, 400);
-  }
-
-  const salt = await bcrypt.genSalt(10);
-  user.mat_khau_ma_hoa = await bcrypt.hash(newPassword, salt);
-  user.doi_mat_khau_luc = new Date();
-  user.phien_ban_token = (user.phien_ban_token || 1) + 1;
-  await user.save();
-
-  otpDoc.da_su_dung = true;
-  await otpDoc.save();
-
-  await MaLamMoi.update(
-    { da_su_dung: true, thoi_diem_su_dung: new Date() },
-    { where: { nguoi_dung_id: user.id, da_su_dung: false } }
-  );
-
-  await revokeUserGraceTokens(user.id);
+  await revokeUserGraceTokens(txResult.userId);
 
   NhatKyKiemToan.create({
-    nguoi_thuc_hien_id: user.id,
+    nguoi_thuc_hien_id: txResult.userId,
     loai_chu_the: 'user',
     hanh_dong: 'PASSWORD_RESET_SUCCESS',
-    doi_tuong_id: String(user.id),
+    doi_tuong_id: String(txResult.userId),
     loai_doi_tuong: 'nguoi_dung',
     dia_chi_ip: ipAddress || null,
-    chi_tiet: { email: user.email },
+    chi_tiet: { email: txResult.email },
   }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   return {
@@ -795,4 +959,6 @@ module.exports = {
   generateRefreshToken,
   revokeUserGraceTokens,
   rotationGraceCache,
+  loginFailureMap,
+  otpCooldownMap,
 };

@@ -123,6 +123,41 @@ const faceRecognizeAttendance = async (req, res, next) => {
         ? 'check_in'
         : null);
 
+    const livenessTicket = String(req.body?.livenessTicket || req.body?.ve_mat_that || '').trim();
+    if (livenessTicket) {
+      if (!livenessTicket.includes('.')) {
+        return sendError(res, 'Vé xác thực Liveness không hợp lệ.', null, 400, 'INVALID_LIVENESS_TICKET');
+      }
+      const [ticketB64, ticketSig] = livenessTicket.split('.');
+      const expectedTicketSig = crypto.createHmac('sha256', getLivenessSecret()).update(ticketB64).digest('hex');
+      const sigBuf = Buffer.from(ticketSig || '');
+      const expBuf = Buffer.from(expectedTicketSig);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        return sendError(res, 'Chữ ký vé Liveness không hợp lệ.', null, 400, 'INVALID_LIVENESS_TICKET');
+      }
+      let ticketData;
+      try {
+        ticketData = JSON.parse(Buffer.from(ticketB64, 'base64url').toString('utf8'));
+      } catch {
+        return sendError(res, 'Nội dung vé Liveness không hợp lệ.', null, 400, 'INVALID_LIVENESS_TICKET');
+      }
+      if (!ticketData?.exp || Date.now() > Number(ticketData.exp)) {
+        return sendError(res, 'Vé xác thực Liveness đã hết hạn.', null, 400, 'LIVENESS_TICKET_EXPIRED');
+      }
+      if (String(ticketData.userId || '') !== String(callerId)) {
+        return sendError(res, 'Vé Liveness không khớp với tài khoản đang đăng nhập.', null, 403, 'LIVENESS_USER_MISMATCH');
+      }
+      const ticketRedisKey = `liveness_ticket:${ticketData.nonce}`;
+      const storedTicketOwner = await redisGet(ticketRedisKey);
+      if (storedTicketOwner && String(storedTicketOwner) !== String(callerId)) {
+        return sendError(res, 'Vé Liveness đã bị sử dụng hoặc không hợp lệ.', null, 409, 'LIVENESS_TICKET_REPLAY');
+      }
+      if (storedTicketOwner === 'USED') {
+        return sendError(res, 'Vé Liveness đã được sử dụng.', null, 409, 'LIVENESS_TICKET_REPLAY');
+      }
+      await redisSet(ticketRedisKey, 'USED', 150).catch(() => {});
+    }
+
     const result = await processFaceAttendance({
       imageBuffer,
       location,
@@ -161,7 +196,7 @@ const getQueueStats = async (req, res, next) => {
 };
 
 
-const NON_ATTENDANCE_ROLES = ['admin', 'kiem_toan'];
+const NON_ATTENDANCE_ROLES = ['admin'];
 const KIOSK_QR_ROLES = [
   'admin',
   'bgh',
@@ -463,6 +498,7 @@ const getDynamicQRCode = async (req, res, next) => {
 // GET /api/cham-cong/cau-hinh-khuon-vien - Cấu hình Geofence khuôn viên trường
 const getCampusConfigInfo = async (req, res, next) => {
   try {
+    await systemConfigService.loadConfigsIntoCache().catch(() => {});
     const config = getCampusConfig();
     return sendSuccess(res, 'Lấy cấu hình Geofence thành công.', config, 200);
   } catch (error) {
@@ -492,26 +528,29 @@ const syncFaissIndexController = async (req, res, next) => {
   }
 };
 
-// Cập nhật tọa độ và bán kính hàng rào địa lý khuôn viên trường
+// Cập nhật tọa độ và bán kính hàng rào địa lý khuôn viên trường (lưu chuẩn GEOFENCE_TRUONG)
 const updateCampusLocationConfig = async (req, res, next) => {
   try {
     const { updateCampusConfig } = require('../utils/hoTroChamCong');
     const updatedCampus = updateCampusConfig(req.body || {});
-    const updated = await systemConfigService.updateConfig(
-      'CAMPUS_GEOFENCE',
-      updatedCampus,
+    const geofencePayload = {
+      ten_co_so: updatedCampus.name,
+      toa_do: [updatedCampus.lng, updatedCampus.lat],
+      ban_kinh_met: updatedCampus.radiusMeters,
+    };
+    await systemConfigService.updateConfig(
+      'GEOFENCE_TRUONG',
+      geofencePayload,
       req.user || null,
       req
     );
-    if (updatedCampus.radiusMeters !== undefined) {
-      await systemConfigService.updateConfig(
-        'CAMPUS_GPS_RADIUS_METERS',
-        updatedCampus.radiusMeters,
-        req.user || null,
-        req
-      ).catch(() => {});
-    }
-    return sendSuccess(res, 'Cập nhật cấu hình khuôn viên thành công.', updatedCampus, 200);
+    const canonicalResponse = {
+      ten_co_so: geofencePayload.ten_co_so,
+      vi_do: updatedCampus.lat,
+      kinh_do: updatedCampus.lng,
+      ban_kinh_met: updatedCampus.radiusMeters,
+    };
+    return sendSuccess(res, 'Cập nhật cấu hình khuôn viên thành công.', canonicalResponse, 200);
   } catch (error) {
     handleServiceError(res, error, next);
   }
@@ -547,18 +586,19 @@ const normalizePoseMatchesChallenge = (challenge, poseRes) => {
   return candidates.some((cand) => acceptedTokens.some((tok) => cand === tok || cand.includes(tok)));
 };
 
-// Tạo thử thách quay/ngẩng/cúi mặt ngẫu nhiên kèm chữ ký HMAC (hạn 120s)
+// Tạo thử thách quay/ngẩng/cúi mặt ngẫu nhiên kèm chữ ký HMAC gắn userId (hạn 120s)
 const getLivenessChallengeController = (req, res) => {
   const challenge = LIVENESS_CHALLENGES[Math.floor(Math.random() * LIVENESS_CHALLENGES.length)];
   const nonce = crypto.randomBytes(12).toString('hex');
   const exp = Date.now() + 120 * 1000;
-  const payloadBase64 = Buffer.from(JSON.stringify({ challenge, nonce, exp })).toString('base64url');
+  const userId = req.user?.id ? String(req.user.id) : '';
+  const payloadBase64 = Buffer.from(JSON.stringify({ challenge, nonce, exp, userId })).toString('base64url');
   const sig = crypto.createHmac('sha256', getLivenessSecret()).update(payloadBase64).digest('hex');
   const challengeToken = `${payloadBase64}.${sig}`;
   return sendSuccess(res, 'Liveness challenge', { challenge, challengeToken, expiresInSeconds: 120 });
 };
 
-// Xác thực ảnh người dùng thực hiện đúng thử thách liveness và cấp vé tạm thời
+// Xác thực ảnh người dùng thực hiện đúng thử thách liveness và cấp vé tạm thời gắn userId
 const verifyLivenessChallengeController = async (req, res, next) => {
   try {
     const challengeToken = String(req.body?.challengeToken || '').trim();
@@ -579,6 +619,10 @@ const verifyLivenessChallengeController = async (req, res, next) => {
       tokenPayload = JSON.parse(Buffer.from(payloadBase64, 'base64url').toString('utf8'));
     } catch {
       return sendError(res, 'Nội dung challengeToken không hợp lệ.', null, 400);
+    }
+
+    if (tokenPayload?.userId && String(tokenPayload.userId) !== String(req.user?.id || '')) {
+      return sendError(res, 'Thử thách Liveness không thuộc về tài khoản hiện tại.', null, 403, 'LIVENESS_USER_MISMATCH');
     }
 
     if (!tokenPayload?.exp || Date.now() > Number(tokenPayload.exp)) {
@@ -611,6 +655,17 @@ const verifyLivenessChallengeController = async (req, res, next) => {
     const faceDetected = poseRes?.status ? poseRes.status === 'face_detected' : Boolean(poseRes?.face_detected ?? true);
     const passed = faceDetected && normalizePoseMatchesChallenge(expectedChallenge, poseRes);
 
+    let livenessTicket = null;
+    if (passed && req.user?.id) {
+      const ticketNonce = crypto.randomBytes(12).toString('hex');
+      const ticketPayloadB64 = Buffer.from(
+        JSON.stringify({ nonce: ticketNonce, userId: String(req.user.id), exp: Date.now() + 120 * 1000 })
+      ).toString('base64url');
+      const ticketSig = crypto.createHmac('sha256', getLivenessSecret()).update(ticketPayloadB64).digest('hex');
+      livenessTicket = `${ticketPayloadB64}.${ticketSig}`;
+      await redisSet(`liveness_ticket:${ticketNonce}`, String(req.user.id), 150).catch(() => {});
+    }
+
     return sendSuccess(
       res,
       passed ? 'Xác thực Liveness thành công.' : 'Tư thế khuôn mặt chưa khớp thử thách.',
@@ -618,6 +673,7 @@ const verifyLivenessChallengeController = async (req, res, next) => {
         passed,
         detectedPose: String(detectedPose || '').toUpperCase(),
         expectedChallenge,
+        ...(livenessTicket ? { livenessTicket } : {}),
       }
     );
   } catch (error) {
@@ -649,7 +705,7 @@ const getKhoiHomNay = async (req, res, next) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ success: false, message: 'Chưa xác thực người dùng.' });
     const { evaluateUserScheduleForCheckIn } = require('../services/chamCong/dieuKienLichChamCong.service');
-    const evalResult = await evaluateUserScheduleForCheckIn(userId, null, req.user);
+    const evalResult = await evaluateUserScheduleForCheckIn(userId, null, req.user, new Date(), { readOnly: true });
     return sendSuccess(res, 'Lấy danh sách khối ca hôm nay thành công.', {
       co_the_check_in: evalResult.canCheckIn,
       trang_thai: evalResult.status,

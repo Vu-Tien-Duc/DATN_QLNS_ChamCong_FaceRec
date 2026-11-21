@@ -3,7 +3,10 @@
 const { Server } = require('socket.io');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-const { UNIT_LEADER_ROLES, getActiveUserRoles, hasAnyActiveRole } = require('../utils/vaiTro.utils');
+const { NguoiDung, VaiTroNguoiDung } = require('../models');
+const { isTokenRevokedAsync } = require('../utils/thuHoiToken');
+const { isValidUuid } = require('../utils/hoTroSequelize');
+const { UNIT_LEADER_ROLES, normalizeRole, getActiveUserRoles, hasAnyActiveRole } = require('../utils/vaiTro.utils');
 
 let io = null;
 
@@ -48,11 +51,11 @@ const initSocketServer = (httpServer, customOptions = {}) => {
     ...customOptions,
   });
 
-  // Xác thực kết nối bằng JWT hoặc mã thiết bị X-Terminal-Key
-  io.use((socket, next) => {
+  // Xác thực kết nối bằng JWT (đối soát blacklist, tokenVersion & trạng thái CSDL) hoặc mã thiết bị X-Terminal-Key
+  io.use(async (socket, next) => {
     try {
       const authHeader = socket.handshake.headers?.authorization;
-      const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
       const token = socket.handshake.auth?.token || bearerToken;
 
       if (!token) {
@@ -68,7 +71,7 @@ const initSocketServer = (httpServer, customOptions = {}) => {
           }
         }
 
-        if (process.env.NODE_ENV === 'test') {
+        if (process.env.NODE_ENV === 'test' && socket.handshake.auth?.allowGuestInTest === true) {
           socket.user = { id: 'GUEST_TEST', role: 'guest' };
           return next();
         }
@@ -77,24 +80,72 @@ const initSocketServer = (httpServer, customOptions = {}) => {
       }
 
       const decoded = jwt.verify(token, getJwtSecret());
-      const activeRoles = Array.from(getActiveUserRoles(decoded));
+
+      if (await isTokenRevokedAsync(token)) {
+        return next(new Error('AUTHENTICATION_ERROR: Token đã bị vô hiệu hóa do đăng xuất.'));
+      }
+
+      const tokenUserId = decoded?.id;
+      if (!isValidUuid(tokenUserId)) {
+        return next(new Error('AUTHENTICATION_ERROR: Định danh người dùng trong token không hợp lệ.'));
+      }
+
+      const user = await NguoiDung.findByPk(tokenUserId, {
+        attributes: [
+          'id',
+          'vai_tro_chinh',
+          'don_vi_chinh_id',
+          'kich_hoat',
+          'trang_thai_lam_viec',
+          'phien_ban_token',
+          'doi_mat_khau_luc',
+          'ho_ten',
+          'email',
+        ],
+        include: [
+          {
+            model: VaiTroNguoiDung,
+            as: 'danh_sach_vai_tro',
+            attributes: ['id', 'ma_vai_tro', 'pham_vi', 'don_vi_id', 'duoc_uy_quyen', 'tu_ngay', 'den_ngay'],
+          },
+        ],
+      });
+
+      if (!user) {
+        return next(new Error('AUTHENTICATION_ERROR: Người dùng không tồn tại trên hệ thống.'));
+      }
+
+      if (user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
+        return next(new Error('AUTHENTICATION_ERROR: Tài khoản đã bị vô hiệu hóa hoặc đã nghỉ việc.'));
+      }
+
+      const userTokenVersion = user.phien_ban_token || 1;
+      if (typeof decoded.phien_ban_token !== 'number' || decoded.phien_ban_token < userTokenVersion) {
+        return next(new Error('AUTHENTICATION_ERROR: Phiên đăng nhập đã bị thu hồi.'));
+      }
+
+      if (user.doi_mat_khau_luc) {
+        const changedTimestamp = Math.floor(new Date(user.doi_mat_khau_luc).getTime() / 1000);
+        if (decoded.iat && decoded.iat < changedTimestamp) {
+          return next(new Error('AUTHENTICATION_ERROR: Mật khẩu đã thay đổi gần đây. Vui lòng đăng nhập lại.'));
+        }
+      }
+
+      const activeRoles = Array.from(getActiveUserRoles(user));
+      const primaryRole = normalizeRole(user.vai_tro_chinh) || activeRoles[0] || 'nhan_vien';
       socket.user = {
-        id: decoded.id || decoded.userId || decoded._id || decoded.nguoi_dung_id,
-        role: decoded.vai_tro_chinh || decoded.role || activeRoles[0] || 'nhan_vien',
-        roles: activeRoles,
-        departmentId: decoded.don_vi_chinh_id || decoded.departmentId || null,
-        email: decoded.email,
-        fullName: decoded.ho_ten || decoded.fullName,
+        id: user.id,
+        vai_tro_chinh: primaryRole,
+        danh_sach_vai_tro: user.danh_sach_vai_tro || [],
+        don_vi_chinh_id: user.don_vi_chinh_id || null,
+        email: user.email,
+        ho_ten: user.ho_ten,
       };
 
       return next();
     } catch (err) {
       if (process.env.NODE_ENV !== 'test') {
         console.warn('[Socket Handshake Auth Warning]:', err.message);
-      }
-      if (process.env.NODE_ENV === 'test') {
-        socket.user = { id: 'GUEST_TEST', role: 'guest' };
-        return next();
       }
       return next(new Error(`AUTHENTICATION_ERROR: Token không hợp lệ hoặc đã hết hạn (${err.message}).`));
     }
@@ -103,7 +154,7 @@ const initSocketServer = (httpServer, customOptions = {}) => {
   io.on('connection', (socket) => {
     const user = socket.user || {};
     const userId = user.id ? user.id.toString() : socket.id;
-    const isAdminViewer = hasAnyActiveRole(user, ['admin', 'bgh', 'tccb', 'kiem_toan']);
+    const isAdminViewer = hasAnyActiveRole(user, ['admin', 'bgh', 'tccb']);
     const isDeptLeader = hasAnyActiveRole(user, UNIT_LEADER_ROLES);
 
     // Tự động đưa socket vào room cá nhân, room toàn trường (admin) và room đơn vị (lãnh đạo)
@@ -113,8 +164,8 @@ const initSocketServer = (httpServer, customOptions = {}) => {
       socket.join('admin-room');
     }
 
-    if (user.departmentId && (isDeptLeader || isAdminViewer)) {
-      socket.join(`dept:${user.departmentId.toString()}`);
+    if (user.don_vi_chinh_id && (isDeptLeader || isAdminViewer)) {
+      socket.join(`dept:${user.don_vi_chinh_id.toString()}`);
     }
 
     // Cho client xin vào room bổ sung nhưng vẫn kiểm tra quyền để tránh IDOR
@@ -126,7 +177,7 @@ const initSocketServer = (httpServer, customOptions = {}) => {
       }
       if (roomName.startsWith('dept:')) {
         const targetDept = roomName.slice(5);
-        if (isAdminViewer || (isDeptLeader && user.departmentId && String(user.departmentId) === targetDept)) {
+        if (isAdminViewer || (isDeptLeader && user.don_vi_chinh_id && String(user.don_vi_chinh_id) === targetDept)) {
           socket.join(roomName);
         }
         return;
@@ -317,6 +368,17 @@ const emitQueueStats = (queueStats) => {
   }
 };
 
+// Ngắt toàn bộ kết nối WebSocket đang mở của một người dùng (khi đăng xuất / đổi mật khẩu / khóa tài khoản)
+const disconnectUserSockets = (userId) => {
+  if (!io || !userId || typeof io.in !== 'function') return 0;
+  try {
+    io.in(`user:${String(userId)}`).disconnectSockets(true);
+    return 1;
+  } catch (_) {
+    return 0;
+  }
+};
+
 // Đóng kết nối WebSocket khi tắt máy chủ
 const closeSocketServer = async () => {
   if (io) {
@@ -337,5 +399,6 @@ module.exports = {
   emitFraudAlert,
   emitLeaveRequestUpdate,
   emitQueueStats,
+  disconnectUserSockets,
   closeSocketServer,
 };

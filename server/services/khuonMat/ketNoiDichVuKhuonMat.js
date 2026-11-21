@@ -8,13 +8,35 @@ const {
 } = require('../../config/redis');
 const { getConfigSync } = require('../heThong/cauHinhHeThong.service');
 
-// Lấy ngưỡng so khớp khuôn mặt hiệu lực từ tham số truyền vào hoặc cấu hình hệ thống
+// Lấy ngưỡng so khớp khuôn mặt hiệu lực từ tham số truyền vào hoặc cấu hình NGUONG_AI
 const getEffectiveThreshold = (explicitThreshold) => {
-  if (Number.isFinite(Number(explicitThreshold))) {
+  if (explicitThreshold !== undefined && explicitThreshold !== null && Number.isFinite(Number(explicitThreshold))) {
     return Number(explicitThreshold);
   }
-  const configured = Number(getConfigSync('FACE_MATCH_THRESHOLD', 0.45));
-  return Number.isFinite(configured) ? configured : 0.45;
+  const aiCfg = getConfigSync('NGUONG_AI', null);
+  if (aiCfg && typeof aiCfg === 'object') {
+    const dynamicVal = aiCfg.cosine_min ?? aiCfg.nguong_khop;
+    if (Number.isFinite(Number(dynamicVal))) {
+      return Number(dynamicVal);
+    }
+  }
+  return 0.45;
+};
+
+// Lấy biên độ chênh lệch tối thiểu Top 1 - Top 2 từ tham số truyền vào hoặc cấu hình MARGIN_TOP1_TOP2
+const getEffectiveMarginTop1Top2 = (explicitMargin) => {
+  if (explicitMargin !== undefined && explicitMargin !== null && Number.isFinite(Number(explicitMargin))) {
+    return Number(explicitMargin);
+  }
+  const configured = getConfigSync('MARGIN_TOP1_TOP2', null);
+  if (configured !== null && typeof configured !== 'object' && Number.isFinite(Number(configured))) {
+    return Number(configured);
+  }
+  if (configured && typeof configured === 'object') {
+    const val = configured.gia_tri ?? configured.margin ?? configured.value;
+    if (Number.isFinite(Number(val))) return Number(val);
+  }
+  return 0.05;
 };
 
 // Đọc phản hồi HTTP và parse JSON an toàn
@@ -129,21 +151,23 @@ const enrollMultiAngle = async ({ files, employeeId, fullName, department }) => 
   });
 };
 
-// Nhận diện khuôn mặt 1:N kèm kiểm tra liveness và chất lượng ảnh
+// Nhận diện khuôn mặt 1:N kèm kiểm tra liveness, chất lượng ảnh và biên độ Top1-Top2
 const recognizeFace = async ({
   imageBuffer,
   threshold,
+  margin,
   checkLiveness = true,
   checkQuality = true,
   mimeType = 'image/jpeg',
   fileName = 'attendance.jpg',
 }) => {
   const effectiveThreshold = getEffectiveThreshold(threshold);
+  const effectiveMargin = getEffectiveMarginTop1Top2(margin);
   const formData = new FormData();
   formData.append('image', new Blob([imageBuffer], { type: mimeType }), fileName);
 
   return callFaceService({
-    path: `/v1/face/recognize?threshold=${effectiveThreshold}&check_liveness=${checkLiveness}&check_quality=${checkQuality}`,
+    path: `/v1/face/recognize?threshold=${effectiveThreshold}&margin=${effectiveMargin}&check_liveness=${checkLiveness}&check_quality=${checkQuality}`,
     method: 'POST',
     body: formData,
     timeoutMs: 8000,
@@ -237,8 +261,12 @@ const ensureRamCacheWarm = async (force = false) => {
       },
       required: true,
     };
+    const activeTemplateWhere = {
+      mac_dinh: true,
+      trang_thai: { [Op.ne]: 'bi_khoa' },
+    };
     const dbTemplateCount = await MauKhuonMat.count({
-      where: { mac_dinh: true },
+      where: activeTemplateWhere,
       include: [{ model: NguoiDung, as: 'nguoi_dung', attributes: [], where: activeUserInclude.where, required: true }],
     });
 
@@ -254,7 +282,7 @@ const ensureRamCacheWarm = async (force = false) => {
       }
 
       const templates = await MauKhuonMat.findAll({
-        where: { mac_dinh: true },
+        where: activeTemplateWhere,
         include: [activeUserInclude],
       });
 
@@ -291,18 +319,10 @@ const ensureRamCacheWarm = async (force = false) => {
   }
 };
 
-// Aliases tương thích ngược
-const identifyFaceWithTemplates = async ({ imageBuffer, templates }) => {
-  return recognizeFace({ imageBuffer });
-};
-
-// Alias nhận diện khuôn mặt qua FAISS
-const identifyFaceFaiss = async ({ imageBuffer }) => {
-  return recognizeFace({ imageBuffer });
-};
-
 module.exports = {
   FACE_SERVICE_URL,
+  getEffectiveThreshold,
+  getEffectiveMarginTop1Top2,
   callFaceService,
   extractFaceEmbedding,
   detectFacePose,
@@ -314,6 +334,4 @@ module.exports = {
   removeFaissTemplate,
   getFaissStats,
   ensureRamCacheWarm,
-  identifyFaceWithTemplates,
-  identifyFaceFaiss,
 };

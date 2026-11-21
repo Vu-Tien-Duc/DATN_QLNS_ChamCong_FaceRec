@@ -652,17 +652,20 @@ describe('Luồng 5 - Integration Express Routes, RBAC, Multer & Liveness', () =
     });
   };
 
+  const ADMIN_UUID = 'aaaaaaaa-0000-4000-8000-000000000001';
+  const BGH_UUID = 'aaaaaaaa-0000-4000-8000-000000000002';
   const signUser = (role, id = USER_1) =>
-    jwt.sign({ id, vai_tro_chinh: role }, process.env.JWT_SECRET, { expiresIn: '10m' });
+    jwt.sign({ id, vai_tro_chinh: role, phien_ban_token: 1 }, process.env.JWT_SECRET, { expiresIn: '10m' });
 
   it('B9 & D7: kiểm tra tách quyền middleware/controller và parse toa_do JSON string ở /khuon-mat', async () => {
     stub(models.NguoiDung, 'findByPk', async (id) => ({
       id,
       ho_ten: 'Test User',
       email: 'test@uni.edu.vn',
-      vai_tro_chinh: id === 'admin-id' ? 'admin' : id === 'audit-id' ? 'kiem_toan' : id === 'bgh-id' ? 'bgh' : 'giang_vien',
+      vai_tro_chinh: id === ADMIN_UUID ? 'admin' : id === BGH_UUID ? 'bgh' : 'giang_vien',
       kich_hoat: true,
       trang_thai_lam_viec: 'dang_lam_viec',
+      phien_ban_token: 1,
       don_vi_chinh_id: DEPT_1,
       danh_sach_vai_tro: [],
     }));
@@ -722,7 +725,7 @@ describe('Luồng 5 - Integration Express Routes, RBAC, Multer & Liveness', () =
     const app = createTestApp();
 
     // 1. admin bị controller chặn 403 ATTENDANCE_ROLE_FORBIDDEN trên /vao-ca và /khuon-mat
-    const adminToken = signUser('admin', 'admin-id');
+    const adminToken = signUser('admin', ADMIN_UUID);
     const rAdminVaoCa = await dispatchExpress(app, {
       method: 'POST',
       url: '/api/cham-cong/vao-ca',
@@ -743,8 +746,8 @@ describe('Luồng 5 - Integration Express Routes, RBAC, Multer & Liveness', () =
     assert.equal(rAdminFace.status, 403);
     assert.equal(rAdminFace.body.errorCode, 'ATTENDANCE_ROLE_FORBIDDEN');
 
-    // 2. kiem_toan & bgh bị middleware requirePermission(CONG_QUET_MAT) chặn 403 tại /khuon-mat
-    const bghToken = signUser('bgh', 'bgh-id');
+    // 2. bgh bị middleware requirePermission(CONG_QUET_MAT) chặn 403 tại /khuon-mat
+    const bghToken = signUser('bgh', BGH_UUID);
     const rBghFace = await dispatchExpress(app, {
       method: 'POST',
       url: '/api/cham-cong/khuon-mat',
@@ -752,17 +755,6 @@ describe('Luồng 5 - Integration Express Routes, RBAC, Multer & Liveness', () =
       formData: new FormData(),
     });
     assert.equal(rBghFace.status, 403);
-
-    // kiem_toan qua middleware trên /vao-ca nhưng bị controller chặn ATTENDANCE_ROLE_FORBIDDEN
-    const auditToken = signUser('kiem_toan', 'audit-id');
-    const rAuditVaoCa = await dispatchExpress(app, {
-      method: 'POST',
-      url: '/api/cham-cong/vao-ca',
-      headers: { Authorization: `Bearer ${auditToken}` },
-      jsonBody: { phuong_thuc: 'gps_mobile' },
-    });
-    assert.equal(rAuditVaoCa.status, 403);
-    assert.equal(rAuditVaoCa.body.errorCode, 'ATTENDANCE_ROLE_FORBIDDEN');
 
     // 3. uploadFaceImage từ chối file sai MIME
     const gvToken = signUser('giang_vien', USER_1);

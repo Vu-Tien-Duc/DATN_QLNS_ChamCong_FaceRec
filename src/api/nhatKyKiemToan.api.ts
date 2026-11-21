@@ -17,7 +17,7 @@ export interface AuditLogItem {
   loai_doi_tuong: string;
   dia_chi_ip?: string | null;
   thong_tin_trinh_duyet?: string | null;
-  ket_qua: 'thanh_cong' | 'that_bai' | 'success' | 'failed' | string;
+  ket_qua: 'success' | 'failed';
   ly_do_that_bai?: string | null;
   thoi_diem: string;
   chi_tiet?: any;
@@ -30,7 +30,7 @@ export interface AuditLogQueryParams {
   nguoi_thuc_hien_id?: string;
   hanh_dong?: string;
   loai_doi_tuong?: string;
-  ket_qua?: string;
+  ket_qua?: 'success' | 'failed';
   tim_kiem?: string;
   tu_ngay?: string;
   den_ngay?: string;
@@ -47,9 +47,16 @@ export interface AuditLogPagination {
   hasPrevPage: boolean;
 }
 
+export interface AuditLogSummary {
+  totalRecords: number;
+  successCount: number;
+  failedCount: number;
+}
+
 export interface AuditLogResponse {
   totalRecords: number;
   logs: AuditLogItem[];
+  summary?: AuditLogSummary;
   pagination: AuditLogPagination;
 }
 
@@ -83,13 +90,14 @@ export const auditLogApi = {
     const raw = res.data?.data || res.data;
     const rawLogs = Array.isArray(raw?.logs) ? raw.logs : Array.isArray(raw) ? raw : [];
     return {
-      totalRecords: raw?.totalRecords || rawLogs.length,
+      totalRecords: raw?.totalRecords ?? rawLogs.length,
       logs: rawLogs,
+      summary: raw?.summary,
       pagination: raw?.pagination || {
         page: params?.trang || 1,
         limit: params?.gioi_han || 20,
         totalPages: 1,
-        totalDocs: raw?.totalRecords || rawLogs.length,
+        totalDocs: raw?.totalRecords ?? rawLogs.length,
         hasNextPage: false,
         hasPrevPage: false,
       },

@@ -41,7 +41,7 @@ const validateEnvironment = () => {
   }
 
   if (process.env.NODE_ENV === 'production') {
-    if (!process.env.DB_PASSWORD && !process.env.DB_HOST) {
+    if (!process.env.DB_PASSWORD || !process.env.DB_HOST) {
       errors.push('Cấu hình kết nối SQL Server (DB_HOST, DB_PASSWORD) bắt buộc phải được cấu hình trong production.');
     }
     if (!process.env.ATTENDANCE_EVIDENCE_DIR) {

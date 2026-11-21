@@ -519,7 +519,7 @@ export const FaceAttendance: React.FC = () => {
             </button>
 
             {/* Nút Đăng Ký 5 Góc (Admin / BGH / TCCB) */}
-            {['admin', 'bgh', 'tccb'].includes(authUser?.role || '') && (
+            {['admin', 'bgh', 'tccb'].includes(authUser?.vai_tro_chinh || '') && (
               <button
                 type="button"
                 onClick={() => {
@@ -934,7 +934,7 @@ export const FaceAttendance: React.FC = () => {
                 <span>
                   {isAutoScan ? '● Chế độ tự động chụp khi có người' : 'Nhấn nút hoặc bấm phím Space để chụp'}
                 </span>
-                {['admin', 'bgh', 'tccb'].includes(authUser?.role || '') && (
+                {['admin', 'bgh', 'tccb'].includes(authUser?.vai_tro_chinh || '') && (
                   <button
                     type="button"
                     onClick={() => {

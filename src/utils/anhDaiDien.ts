@@ -102,8 +102,8 @@ export function getCleanAvatarUrl(userOrUrl: any): string | null {
   if (typeof userOrUrl === 'string') {
     raw = userOrUrl.trim();
   } else if (typeof userOrUrl === 'object') {
-    // Chỉ lấy trường avatar hồ sơ (không lấy facePhoto / anh_khuon_mat)
-    raw = (userOrUrl.avatar || userOrUrl.avatarUrl || userOrUrl.anh_dai_dien || '').trim();
+    // Chỉ lấy trường anh_dai_dien hồ sơ (không lấy anh_khuon_mat)
+    raw = (userOrUrl.anh_dai_dien || '').trim();
   }
 
   if (!raw) return null;

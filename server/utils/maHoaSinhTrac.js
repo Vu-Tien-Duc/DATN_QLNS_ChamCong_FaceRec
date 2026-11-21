@@ -5,10 +5,18 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const ENVELOPE_VERSION = 'v1';
 
-// Tạo khóa AES-256 từ biến môi trường BIOMETRIC_ENCRYPTION_KEY hoặc JWT_SECRET
+// Tạo khóa AES-256 từ biến môi trường BIOMETRIC_ENCRYPTION_KEY (fail-fast trên production nếu thiếu)
 const deriveAes256Key = () => {
+  const envKey = String(process.env.BIOMETRIC_ENCRYPTION_KEY || '').trim();
+  if (envKey) {
+    return crypto.createHash('sha256').update(envKey).digest();
+  }
+
+  if (String(process.env.NODE_ENV || '').toLowerCase() === 'production') {
+    throw new Error('[BiometricCipher] Thiếu biến môi trường BIOMETRIC_ENCRYPTION_KEY trong môi trường production.');
+  }
+
   const rawSecret =
-    process.env.BIOMETRIC_ENCRYPTION_KEY ||
     process.env.JWT_SECRET ||
     'datn-qlns-biometric-aes256-gcm-dev-key';
   return crypto.createHash('sha256').update(String(rawSecret)).digest();

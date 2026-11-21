@@ -44,8 +44,6 @@ const LEAVE_SELF_AND_LEADER_ROLES = [
   'pho_phong',
   'giang_vien',
   'nhan_vien',
-  'chuyen_vien',
-  'quan_ly_xe',
   'dao_tao',
   'ke_toan',
 ];

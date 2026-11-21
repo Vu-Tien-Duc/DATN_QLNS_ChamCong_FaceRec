@@ -3,8 +3,19 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { isTokenRevokedAsync } = require('../utils/thuHoiToken');
 const { NguoiDung, VaiTroNguoiDung } = require('../models');
-const { ROLE_PERMISSIONS, getEffectivePermissions } = require('../config/permissions');
+const { getEffectivePermissions } = require('../config/permissions');
+const { isValidUuid } = require('../utils/hoTroSequelize');
+const { normalizeRole } = require('../utils/vaiTro.utils');
 const { sendError } = require('../utils/phanHoiHttp');
+
+// Lấy JWT secret bắt buộc trên production, chỉ cho phép fallback ở dev/test
+const getJwtSecret = () => {
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
+    return 'secret-jwt-fallback-key';
+  }
+  throw new Error('JWT_SECRET chưa được cấu hình trên môi trường production.');
+};
 
 // Xác thực JWT Bearer token, kiểm tra thu hồi và nạp thông tin người dùng vào req.user
 const verifyToken = async (req, res, next) => {
@@ -21,7 +32,13 @@ const verifyToken = async (req, res, next) => {
       return sendError(res, 'Truy cập bị từ chối. Định dạng token không hợp lệ.', null, 401);
     }
 
-    const jwtSecret = process.env.JWT_SECRET || 'secret-jwt-fallback-key';
+    let jwtSecret;
+    try {
+      jwtSecret = getJwtSecret();
+    } catch (secretErr) {
+      console.error('[verifyToken Secret Error]:', secretErr.message);
+      return sendError(res, 'Lỗi cấu hình bảo mật hệ thống.', null, 500);
+    }
 
     let decoded;
     try {
@@ -33,12 +50,17 @@ const verifyToken = async (req, res, next) => {
       return sendError(res, 'Token không hợp lệ hoặc đã bị giả mạo.', null, 401);
     }
 
+    const tokenUserId = decoded?.id;
+    if (!isValidUuid(tokenUserId)) {
+      return sendError(res, 'Token không hợp lệ hoặc đã bị giả mạo.', null, 401);
+    }
+
     // Kiểm tra thu hồi In-Memory & Redis
     if (await isTokenRevokedAsync(token)) {
       return sendError(res, 'Token đã bị vô hiệu hóa do đăng xuất. Vui lòng đăng nhập lại.', null, 401);
     }
 
-    const user = await NguoiDung.findByPk(decoded.id || decoded.userId, {
+    const user = await NguoiDung.findByPk(tokenUserId, {
       attributes: [
         'id',
         'vai_tro_chinh',
@@ -69,8 +91,8 @@ const verifyToken = async (req, res, next) => {
       return sendError(res, 'Tài khoản của bạn đã bị vô hiệu hóa hoặc đã nghỉ việc.', null, 403);
     }
 
-    const userTokenVersion = user.phien_ban_token || 0;
-    if (decoded.tokenVersion !== undefined && decoded.tokenVersion < userTokenVersion) {
+    const userTokenVersion = user.phien_ban_token || 1;
+    if (typeof decoded.phien_ban_token !== 'number' || decoded.phien_ban_token < userTokenVersion) {
       return sendError(
         res,
         'Phiên đăng nhập đã bị thu hồi hoặc đã đăng xuất. Vui lòng đăng nhập lại.',
@@ -94,26 +116,34 @@ const verifyToken = async (req, res, next) => {
       }
     }
 
-    // Gán các trường tương thích ngược để bảo vệ tất cả router
-    user._id = user.id;
-    user.role = normalizeRole(user.vai_tro_chinh);
-    user.primaryRole = user.role;
-    user.departmentId = user.don_vi_chinh_id;
-    user.fullName = user.ho_ten;
-    user.staffCode = user.ma_can_bo;
-    user.avatar = user.anh_dai_dien;
-    user.isActive = user.kich_hoat;
-    user.roles = user.danh_sach_vai_tro;
-
     req.user = user;
     req.token = token;
     return next();
   } catch (error) {
-    return sendError(res, 'Lỗi hệ thống khi xác thực token: ' + error.message, null, 500);
+    console.error('[verifyToken Error]:', error.message);
+    return sendError(res, 'Lỗi hệ thống khi xác thực token.', null, 500);
   }
 };
 
-const { normalizeRole } = require('../utils/vaiTro.utils');
+// Giải mã an toàn Access Token nếu có (cho phép token vừa hết hạn khi đăng xuất)
+const attachOptionalUser = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const tokenMatch = /^Bearer\s+(\S+)$/i.exec(authHeader.trim());
+    const token = tokenMatch?.[1];
+    if (token) {
+      const verified = jwt.verify(token, getJwtSecret(), { ignoreExpiration: true });
+      const userId = verified?.id || verified?.userId;
+      if (isValidUuid(userId)) {
+        req.user = { id: userId };
+      }
+      req.token = token;
+    }
+  } catch (_) {
+    // Bỏ qua lỗi giải mã để thao tác đăng xuất vẫn xóa được cookie/refreshToken
+  }
+  return next();
+};
 
 // Chuẩn hóa tên vai trò về chữ thường snake_case
 const normalizeRoleKey = (r) => {
@@ -145,15 +175,12 @@ const getActiveRoles = (user) => {
     if (canonical) roles.add(canonical);
   };
 
-  addNorm(user.role);
-  addNorm(user.primaryRole);
   addNorm(user.vai_tro_chinh);
 
-  const roleCollections = [user.roles, user.danh_sach_vai_tro].filter(Array.isArray);
-  for (const list of roleCollections) {
-    for (const v of list) {
+  if (Array.isArray(user.danh_sach_vai_tro)) {
+    for (const v of user.danh_sach_vai_tro) {
       if (!v) continue;
-      const roleName = typeof v === 'string' ? v : v.ma_vai_tro || v.role || '';
+      const roleName = typeof v === 'string' ? v : v.ma_vai_tro || '';
       if (!roleName) continue;
       if (typeof v === 'object' && !isRoleEntryActive(v, todayKey)) {
         continue;
@@ -167,17 +194,7 @@ const getActiveRoles = (user) => {
 
 // Tổng hợp tập quyền chi tiết của người dùng
 const getUserPermissions = (user) => {
-  const permissions = getEffectivePermissions(user);
-  const activeRoles = getActiveRoles(user);
-
-  for (const role of activeRoles) {
-    const rolePerms = ROLE_PERMISSIONS[role] || [];
-    for (const p of rolePerms) {
-      permissions.add(p);
-    }
-  }
-
-  return permissions;
+  return getEffectivePermissions(user);
 };
 
 // Chỉ cho phép nếu người dùng giữ ít nhất 1 vai trò trong danh sách
@@ -312,6 +329,7 @@ const verifyTerminalKey = async (req, res, next) => {
 
 module.exports = {
   verifyToken,
+  attachOptionalUser,
   verifyRole,
   authorizeRoles,
   requirePermission,

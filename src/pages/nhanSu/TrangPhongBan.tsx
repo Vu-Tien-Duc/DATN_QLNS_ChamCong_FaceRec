@@ -206,7 +206,9 @@ export const Departments: React.FC = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const canFetchUsers = hasRole(user, ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']);
+      const canFetchUsers = hasRole(user, [
+        'admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong',
+      ]);
       const [deptRes, usersRes] = await Promise.all([
         departmentApi.getDepartmentsFlat(),
         canFetchUsers ? userApi.getUsers({ trang: 1, gioi_han: 100 }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
@@ -222,7 +224,7 @@ export const Departments: React.FC = () => {
       const initialExpanded: Record<string, boolean> = {};
       deptList.forEach((d) => {
         if (d.loai_don_vi === 'khoa') {
-          initialExpanded[d.id || d._id] = true;
+          initialExpanded[d.id] = true;
         }
       });
       setExpandedFacultyIds((prev) => (Object.keys(prev).length > 0 ? prev : initialExpanded));
@@ -272,7 +274,7 @@ export const Departments: React.FC = () => {
 
   // List of all Functional Departments ('phong_ban')
   const functionalDepts = useMemo(
-    () => departments.filter((d) => d.loai_don_vi === 'phong_ban' || d.loai_don_vi === 'phongban').sort((a, b) => a.ten_phong_ban.localeCompare(b.ten_phong_ban, 'vi')),
+    () => departments.filter((d) => d.loai_don_vi === 'phong_ban').sort((a, b) => a.ten_phong_ban.localeCompare(b.ten_phong_ban, 'vi')),
     [departments]
   );
 
@@ -280,8 +282,8 @@ export const Departments: React.FC = () => {
   const childrenByFacultyId = useMemo(() => {
     const map: Record<string, DepartmentItem[]> = {};
     departments.forEach((d) => {
-      if ((d.loai_don_vi === 'bo_mon' || d.loai_don_vi === 'bomon') && d.don_vi_cha_id) {
-        const pId = typeof d.don_vi_cha_id === 'object' ? (d.don_vi_cha_id.id || d.don_vi_cha_id._id) : d.don_vi_cha_id;
+      if (d.loai_don_vi === 'bo_mon' && d.don_vi_cha_id) {
+        const pId = typeof d.don_vi_cha_id === 'object' ? d.don_vi_cha_id.id : d.don_vi_cha_id;
         if (pId) {
           if (!map[pId]) map[pId] = [];
           map[pId].push(d);
@@ -296,19 +298,24 @@ export const Departments: React.FC = () => {
   const membersCountByDeptId = useMemo(() => {
     const map: Record<string, number> = {};
     departments.forEach((d) => {
-      const dId = d.id || d._id;
+      const dId = d.id;
       map[dId] = d.so_luong_thanh_vien || 0;
     });
     if (allUsers.length > 0) {
       const userCountMap: Record<string, number> = {};
       allUsers.forEach((u) => {
-        const uDeptId = u.don_vi_chinh_id ? String(u.don_vi_chinh_id) : (u as any).don_vi_chinh?.id;
+        const uDeptId =
+          typeof u.don_vi_chinh_id === 'object' && u.don_vi_chinh_id
+            ? String(u.don_vi_chinh_id.id)
+            : u.don_vi_chinh_id
+              ? String(u.don_vi_chinh_id)
+              : u.don_vi_chinh?.id || '';
         if (uDeptId) {
           userCountMap[uDeptId] = (userCountMap[uDeptId] || 0) + 1;
         }
       });
       departments.forEach((d) => {
-        const dId = d.id || d._id;
+        const dId = d.id;
         map[dId] = Math.max(d.so_luong_thanh_vien || 0, userCountMap[dId] || 0);
       });
     }
@@ -317,7 +324,7 @@ export const Departments: React.FC = () => {
 
   const getDirectMemberCount = useCallback(
     (dept: DepartmentItem) => {
-      const dId = dept.id || dept._id;
+      const dId = dept.id;
       return membersCountByDeptId[dId] ?? dept.so_luong_thanh_vien ?? 0;
     },
     [membersCountByDeptId]
@@ -336,7 +343,7 @@ export const Departments: React.FC = () => {
           childCount: 0,
         };
       }
-      const children = childrenByFacultyId[dept.id || dept._id] || [];
+      const children = childrenByFacultyId[dept.id] || [];
       const childMembers = children.reduce((sum, c) => sum + getDirectMemberCount(c), 0);
       const childSubjects = children.reduce((sum, c) => sum + (c.so_luong_mon_hoc || 0), 0);
       return {
@@ -353,27 +360,34 @@ export const Departments: React.FC = () => {
   const stats = useMemo(() => {
     const total = departments.length;
     const khoaCount = faculties.length;
-    const bomonCount = departments.filter((d) => d.loai_don_vi === 'bo_mon' || d.loai_don_vi === 'bomon').length;
+    const bomonCount = departments.filter((d) => d.loai_don_vi === 'bo_mon').length;
     const phongbanCount = functionalDepts.length;
     const assignedManagers = departments.filter((d) => Boolean(d.truong_don_vi_id || d.truong_don_vi)).length;
-    const totalCampusStaff = allUsers.length;
+    const totalCampusStaff = allUsers.filter(
+      (u) => u.kich_hoat !== false && u.trang_thai_lam_viec !== 'da_nghi_viec'
+    ).length;
     return { total, khoaCount, bomonCount, phongbanCount, assignedManagers, totalCampusStaff };
   }, [departments, faculties, functionalDepts, allUsers]);
 
   // Selected Department Item (if selectedNodeId is an actual department)
   const activeDepartment = useMemo(() => {
-    return departments.find((d) => (d.id || d._id) === selectedNodeId) || null;
+    return departments.find((d) => d.id === selectedNodeId) || null;
   }, [departments, selectedNodeId]);
 
   // Staff members belonging to the activeDepartment
   const activeDeptMembers = useMemo(() => {
     if (!activeDepartment) return [];
-    const activeId = activeDepartment.id || activeDepartment._id;
+    const activeId = activeDepartment.id;
     const childIds = new Set(
-      (childrenByFacultyId[activeId] || []).map((c) => c.id || c._id)
+      (childrenByFacultyId[activeId] || []).map((c) => c.id)
     );
     return allUsers.filter((u) => {
-      const uDeptId = u.don_vi_chinh_id ? String(u.don_vi_chinh_id) : (u as any).don_vi_chinh?.id;
+      const uDeptId =
+        typeof u.don_vi_chinh_id === 'object' && u.don_vi_chinh_id
+          ? String(u.don_vi_chinh_id.id)
+          : u.don_vi_chinh_id
+            ? String(u.don_vi_chinh_id)
+            : u.don_vi_chinh?.id || '';
       if (!uDeptId) return false;
       return uDeptId === activeId || childIds.has(uDeptId);
     });
@@ -412,7 +426,7 @@ export const Departments: React.FC = () => {
     const kw = treeSearch.toLowerCase().trim();
     return faculties.filter((f) => {
       const nameMatch = f.ten_phong_ban.toLowerCase().includes(kw);
-      const childMatch = (childrenByFacultyId[f.id || f._id] || []).some((c) =>
+      const childMatch = (childrenByFacultyId[f.id] || []).some((c) =>
         c.ten_phong_ban.toLowerCase().includes(kw)
       );
       return nameMatch || childMatch;
@@ -430,7 +444,7 @@ export const Departments: React.FC = () => {
     setIsFacultiesFolderOpen(true);
     setIsFunctionalFolderOpen(true);
     const all: Record<string, boolean> = {};
-    faculties.forEach((f) => (all[f.id || f._id] = true));
+    faculties.forEach((f) => (all[f.id] = true));
     setExpandedFacultyIds(all);
   };
 
@@ -450,7 +464,7 @@ export const Departments: React.FC = () => {
     setFormData({
       name: '',
       type: presetType,
-      parentId: (presetType === 'bo_mon' || presetType === 'bomon') ? presetParentId || faculties[0]?.id || faculties[0]?._id || '' : '',
+      parentId: presetType === 'bo_mon' ? presetParentId || faculties[0]?.id || '' : '',
       managerId: '',
       latitude: '20.9752',
       longitude: '105.7628',
@@ -465,10 +479,10 @@ export const Departments: React.FC = () => {
     setEditingDept(dept);
 
     const pId = dept.don_vi_cha_id
-      ? String(typeof dept.don_vi_cha_id === 'object' ? (dept.don_vi_cha_id.id || dept.don_vi_cha_id._id) : dept.don_vi_cha_id)
+      ? String(typeof dept.don_vi_cha_id === 'object' ? dept.don_vi_cha_id.id : dept.don_vi_cha_id)
       : '';
     const mId = dept.truong_don_vi_id
-      ? String(typeof dept.truong_don_vi_id === 'object' ? (dept.truong_don_vi_id.id || dept.truong_don_vi_id._id) : dept.truong_don_vi_id)
+      ? String(typeof dept.truong_don_vi_id === 'object' ? dept.truong_don_vi_id.id : dept.truong_don_vi_id)
       : '';
     const lat = dept.vi_do ?? dept.toa_do?.vi_do ?? '';
     const lng = dept.kinh_do ?? dept.toa_do?.kinh_do ?? '';
@@ -491,24 +505,39 @@ export const Departments: React.FC = () => {
       toast.error('Vui lòng nhập tên đơn vị');
       return;
     }
-    if ((formData.type === 'bo_mon' || formData.type === 'bomon') && !formData.parentId) {
+    if (formData.type === 'bo_mon' && !formData.parentId) {
       toast.error('Bộ môn bắt buộc phải trực thuộc một Khoa đào tạo');
+      return;
+    }
+
+    const latRaw = formData.latitude.trim();
+    const lngRaw = formData.longitude.trim();
+    const latNum = latRaw !== '' ? Number(latRaw) : null;
+    const lngNum = lngRaw !== '' ? Number(lngRaw) : null;
+    if (latNum !== null && (!Number.isFinite(latNum) || latNum < -90 || latNum > 90)) {
+      toast.error('Vĩ độ phải nằm trong khoảng [-90, 90]');
+      return;
+    }
+    if (lngNum !== null && (!Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180)) {
+      toast.error('Kinh độ phải nằm trong khoảng [-180, 180]');
+      return;
+    }
+    const radiusNum = Number(formData.radiusMeters);
+    if (!Number.isFinite(radiusNum) || radiusNum <= 0) {
+      toast.error('Bán kính chấm công phải là số dương lớn hơn 0');
       return;
     }
 
     setSubmitting(true);
     try {
-      const latNum = formData.latitude.trim() !== '' ? Number(formData.latitude) : null;
-      const lngNum = formData.longitude.trim() !== '' ? Number(formData.longitude) : null;
-
       const payload = {
         ten_phong_ban: formData.name.trim(),
         loai_don_vi: formData.type,
-        don_vi_cha_id: (formData.type === 'bo_mon' || formData.type === 'bomon') ? formData.parentId : null,
+        don_vi_cha_id: formData.type === 'bo_mon' ? formData.parentId : null,
         truong_don_vi_id: formData.managerId || null,
         vi_do: latNum,
         kinh_do: lngNum,
-        ban_kinh_met: Number(formData.radiusMeters) || 200,
+        ban_kinh_met: Math.round(radiusNum),
         toa_do: {
           vi_do: latNum,
           kinh_do: lngNum,
@@ -516,13 +545,13 @@ export const Departments: React.FC = () => {
       };
 
       if (isEditing && editingDept) {
-        await departmentApi.updateDepartment(editingDept.id || editingDept._id, payload);
+        await departmentApi.updateDepartment(editingDept.id, payload);
         toast.success('Cập nhật đơn vị thành công');
       } else {
         const created = await departmentApi.createDepartment(payload);
         toast.success('Thêm mới đơn vị thành công');
-        if (created?.data?.id || created?.data?._id) {
-          setSelectedNodeId(created.data.id || created.data._id);
+        if (created?.data?.id) {
+          setSelectedNodeId(created.data.id);
         }
       }
 
@@ -538,7 +567,7 @@ export const Departments: React.FC = () => {
 
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
-    const targetId = deleteTarget.id || deleteTarget._id;
+    const targetId = deleteTarget.id;
     setSubmitting(true);
     try {
       await departmentApi.deleteDepartment(targetId);
@@ -789,7 +818,7 @@ export const Departments: React.FC = () => {
                   {isFacultiesFolderOpen && (
                     <div className="relative pl-3 border-l-2 border-brand-200/80 dark:border-brand-800/60 ml-2.5 mt-1 space-y-1">
                       {filteredFaculties.map((faculty) => {
-                        const fId = faculty.id || faculty._id;
+                        const fId = faculty.id;
                         const isExpanded = Boolean(expandedFacultyIds[fId]);
                         const children = childrenByFacultyId[fId] || [];
                         const isSelected = selectedNodeId === fId;
@@ -847,7 +876,7 @@ export const Departments: React.FC = () => {
                             {isExpanded && children.length > 0 && (
                               <div className="relative pl-3 border-l-2 border-indigo-200/80 dark:border-indigo-800/60 ml-2.5 mt-1 space-y-1">
                                 {children.map((bm) => {
-                                  const bmId = bm.id || bm._id;
+                                  const bmId = bm.id;
                                   const isBmSelected = selectedNodeId === bmId;
                                   return (
                                     <div
@@ -921,7 +950,7 @@ export const Departments: React.FC = () => {
                   {isFunctionalFolderOpen && (
                     <div className="relative pl-3 border-l-2 border-emerald-200/80 dark:border-emerald-800/60 ml-2.5 mt-1 space-y-1">
                       {filteredFunctionalDepts.map((pb) => {
-                        const pbId = pb.id || pb._id;
+                        const pbId = pb.id;
                         const isSelected = selectedNodeId === pbId;
                         return (
                           <div
@@ -1058,7 +1087,7 @@ export const Departments: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {faculties.map((f) => {
-                    const fId = f.id || f._id;
+                    const fId = f.id;
                     const children = childrenByFacultyId[fId] || [];
                     const agg = getAggregateStats(f);
                     return (
@@ -1126,7 +1155,7 @@ export const Departments: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {functionalDepts.map((pb) => {
-                    const pbId = pb.id || pb._id;
+                    const pbId = pb.id;
                     return (
                     <div
                       key={pbId}
@@ -1171,14 +1200,14 @@ export const Departments: React.FC = () => {
                       ĐHNT
                     </button>
                     <span>/</span>
-                    {activeDepartment.loai_don_vi === 'bo_mon' || activeDepartment.loai_don_vi === 'bomon' ? (
+                    {activeDepartment.loai_don_vi === 'bo_mon' ? (
                       <>
                         <button
                           type="button"
                           onClick={() => {
                             const pId = activeDepartment.don_vi_cha_id
                               ? typeof activeDepartment.don_vi_cha_id === 'object'
-                                ? (activeDepartment.don_vi_cha_id.id || activeDepartment.don_vi_cha_id._id)
+                                ? activeDepartment.don_vi_cha_id.id
                                 : activeDepartment.don_vi_cha_id
                               : undefined;
                             if (pId) setSelectedNodeId(pId);
@@ -1205,14 +1234,14 @@ export const Departments: React.FC = () => {
                         className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm ${
                           activeDepartment.loai_don_vi === 'khoa'
                             ? 'bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400 ring-4 ring-brand-500/10'
-                            : (activeDepartment.loai_don_vi === 'bo_mon' || activeDepartment.loai_don_vi === 'bomon')
+                            : activeDepartment.loai_don_vi === 'bo_mon'
                             ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400 ring-4 ring-indigo-500/10'
                             : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 ring-4 ring-emerald-500/10'
                         }`}
                       >
                         {activeDepartment.loai_don_vi === 'khoa' ? (
                           <GraduationCap className="w-6 h-6" />
-                        ) : (activeDepartment.loai_don_vi === 'bo_mon' || activeDepartment.loai_don_vi === 'bomon') ? (
+                        ) : activeDepartment.loai_don_vi === 'bo_mon' ? (
                           <Layers className="w-6 h-6" />
                         ) : (
                           <Briefcase className="w-6 h-6" />
@@ -1261,7 +1290,7 @@ export const Departments: React.FC = () => {
                               size="sm"
                               className="text-xs"
                               leftIcon={<Plus className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />}
-                              onClick={() => openCreateModal('bo_mon', activeDepartment.id || activeDepartment._id)}
+                              onClick={() => openCreateModal('bo_mon', activeDepartment.id)}
                             >
                               Thêm Bộ Môn
                             </Button>
@@ -1399,12 +1428,12 @@ export const Departments: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
                         <Layers className="w-4 h-4 text-indigo-500" />
-                        Bộ Môn Chuyên Môn Trực Thuộc ({(childrenByFacultyId[activeDepartment.id || activeDepartment._id] || []).length})
+                        Bộ Môn Chuyên Môn Trực Thuộc ({(childrenByFacultyId[activeDepartment.id] || []).length})
                       </h4>
                       {isAdmin && (
                         <button
                           type="button"
-                          onClick={() => openCreateModal('bo_mon', activeDepartment.id || activeDepartment._id)}
+                          onClick={() => openCreateModal('bo_mon', activeDepartment.id)}
                           className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
                         >
                           <Plus className="w-3.5 h-3.5" /> Thêm Bộ môn
@@ -1412,21 +1441,21 @@ export const Departments: React.FC = () => {
                       )}
                     </div>
 
-                    {(childrenByFacultyId[activeDepartment.id || activeDepartment._id] || []).length === 0 ? (
+                    {(childrenByFacultyId[activeDepartment.id] || []).length === 0 ? (
                       <p className="text-xs text-slate-400 italic py-3 text-center bg-slate-50/50 dark:bg-slate-800/30 rounded-xl">
                         Khoa này chưa có bộ môn trực thuộc nào.
                       </p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        {(childrenByFacultyId[activeDepartment.id || activeDepartment._id] || []).map((bm) => (
+                        {(childrenByFacultyId[activeDepartment.id] || []).map((bm) => (
                           <div
-                            key={bm.id || bm._id}
-                            onClick={() => setSelectedNodeId(bm._id)}
+                            key={bm.id}
+                            onClick={() => setSelectedNodeId(bm.id)}
                             className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-500/60 hover:shadow-2xs transition-all cursor-pointer flex flex-col justify-between gap-2 group"
                           >
                             <div className="min-w-0">
                               <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate block group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                {bm.name}
+                                {bm.ten_phong_ban}
                               </span>
                               <span className="text-[11px] text-slate-400 mt-0.5 block">
                                 {getDirectMemberCount(bm)} Giảng viên
@@ -1558,7 +1587,7 @@ export const Departments: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                           {filteredDeptMembers.map((member) => {
-                            const mId = member.id || member._id;
+                            const mId = member.id;
                             const { cleanName, title } = splitNameAndTitle(member.ho_ten);
                             return (
                               <tr
@@ -1607,13 +1636,13 @@ export const Departments: React.FC = () => {
 
                                 <td className="py-2.5 px-3.5 hidden md:table-cell">
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                                    {member.role || 'Cán bộ'}
+                                    {member.vai_tro_chinh || 'Cán bộ'}
                                   </span>
                                 </td>
 
                                 <td className="py-2.5 px-3.5 text-right">
                                   <div className="inline-flex items-center justify-end gap-2">
-                                    {member.isFaceRegistered ? (
+                                    {member.da_dang_ky_face ? (
                                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800">
                                         <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Face ID
                                       </span>
@@ -1700,7 +1729,7 @@ export const Departments: React.FC = () => {
                         setFormData((prev) => ({
                           ...prev,
                           type: item.id,
-                          parentId: item.id === 'bo_mon' ? prev.parentId || faculties[0]?.id || faculties[0]?._id || '' : '',
+                          parentId: item.id === 'bo_mon' ? prev.parentId || faculties[0]?.id || '' : '',
                         }))
                       }
                       className={`p-2.5 rounded-2xl border text-left transition-all ${
@@ -1731,7 +1760,7 @@ export const Departments: React.FC = () => {
                   placeholder={
                     formData.type === 'khoa'
                       ? 'VD: Khoa Công nghệ Thông tin & Thiết kế Đồ họa'
-                      : (formData.type === 'bo_mon' || formData.type === 'bomon')
+                      : formData.type === 'bo_mon'
                       ? 'VD: Bộ môn Trí tuệ Nhân tạo & Khoa học Dữ liệu'
                       : 'VD: Phòng Quản lý Đào tạo'
                   }
@@ -1740,7 +1769,7 @@ export const Departments: React.FC = () => {
               </div>
 
               {/* Đơn vị cha (nếu là Bộ môn) */}
-              {(formData.type === 'bo_mon' || formData.type === 'bomon') ? (
+              {formData.type === 'bo_mon' ? (
                 <div className="space-y-1.5 p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50">
                   <label className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
                     Khoa đào tạo chủ quản <span className="text-rose-500">*</span>
@@ -1753,7 +1782,7 @@ export const Departments: React.FC = () => {
                   >
                     <option value="">-- Chọn Khoa đào tạo chủ quản --</option>
                     {faculties.map((f) => {
-                      const fId = f.id || f._id;
+                      const fId = f.id;
                       return (
                       <option key={fId} value={fId}>
                         {f.ten_phong_ban}
@@ -1766,7 +1795,7 @@ export const Departments: React.FC = () => {
                 <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-brand-600 flex-shrink-0" />
                   <span>
-                    Đơn vị cấp 1 trực thuộc trực tiếp <strong>Ban Giám Hiệu Nhà Trường</strong> (parentId = null).
+                    Đơn vị cấp 1 trực thuộc trực tiếp <strong>Ban Giám Hiệu Nhà Trường</strong> (don_vi_cha_id = null).
                   </span>
                 </div>
               )}
@@ -1776,7 +1805,7 @@ export const Departments: React.FC = () => {
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
                   {formData.type === 'khoa'
                     ? 'Trưởng Khoa phụ trách'
-                    : (formData.type === 'bo_mon' || formData.type === 'bomon')
+                    : formData.type === 'bo_mon'
                     ? 'Trưởng Bộ môn phụ trách'
                     : 'Trưởng Phòng ban phụ trách'}
                 </label>
@@ -1787,8 +1816,8 @@ export const Departments: React.FC = () => {
                 >
                   <option value="">-- Chưa bổ nhiệm / Bổ nhiệm sau --</option>
                   {eligibleManagers.map((u) => (
-                    <option key={u._id} value={u._id}>
-                      {u.fullName} ({u.staffCode || u.email})
+                    <option key={u.id} value={u.id}>
+                      {u.ho_ten} ({u.ma_can_bo || u.email})
                     </option>
                   ))}
                 </select>
@@ -2019,8 +2048,8 @@ export const Departments: React.FC = () => {
                   <TruongThongTin
                     label="Đơn vị trực thuộc"
                     value={
-                      (childrenByFacultyId[detailDept.id || detailDept._id] || []).length > 0
-                        ? (childrenByFacultyId[detailDept.id || detailDept._id] || []).map((c) => c.ten_phong_ban).join(', ')
+                      (childrenByFacultyId[detailDept.id] || []).length > 0
+                        ? (childrenByFacultyId[detailDept.id] || []).map((c) => c.ten_phong_ban).join(', ')
                         : 'Không có đơn vị con'
                     }
                   />
@@ -2129,7 +2158,7 @@ export const Departments: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
                   <TruongThongTin
                     label="Đơn vị công tác"
-                    value={activeDepartment?.name || 'Trường ĐH Nguyễn Trãi'}
+                    value={activeDepartment?.ten_phong_ban || 'Trường ĐH Nguyễn Trãi'}
                   />
                   <TruongThongTin
                     label="Sinh trắc học Face ID"
@@ -2137,10 +2166,10 @@ export const Departments: React.FC = () => {
                       <span className="flex items-center gap-1.5">
                         <span
                           className={`w-2 h-2 rounded-full ${
-                            detailMember.isFaceRegistered ? 'bg-emerald-500' : 'bg-slate-400'
+                            detailMember.da_dang_ky_face ? 'bg-emerald-500' : 'bg-slate-400'
                           }`}
                         />
-                        {detailMember.isFaceRegistered ? 'Đã đăng ký Face ID (5 góc)' : 'Chưa đăng ký'}
+                        {detailMember.da_dang_ky_face ? 'Đã đăng ký Face ID (5 góc)' : 'Chưa đăng ký'}
                       </span>
                     }
                   />
@@ -2150,7 +2179,7 @@ export const Departments: React.FC = () => {
                   />
                   <TruongThongTin
                     label="Số điện thoại"
-                    value={detailMember.phoneNumber || 'Chưa cập nhật'}
+                    value={detailMember.so_dien_thoai || 'Chưa cập nhật'}
                   />
                 </div>
               </div>

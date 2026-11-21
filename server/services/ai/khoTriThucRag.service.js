@@ -18,7 +18,44 @@ const {
   callGemini,
   embedTextWithGemini,
   embedBatchWithGemini,
+  getDefaultEmbeddingModel,
 } = require('./nhaCungCapAi.service');
+
+// Gắn thống kê phân đoạn thực tế từ bảng phan_doan_tai_lieu vào danh sách TaiLieuRag
+const enrichDocumentsWithStats = async (docs = []) => {
+  if (!Array.isArray(docs) || docs.length === 0) return [];
+  const docIds = docs.map((d) => String(d.id));
+  const statsRows = await PhanDoanTaiLieu.findAll({
+    where: { tai_lieu_id: { [Op.in]: docIds } },
+    attributes: [
+      'tai_lieu_id',
+      [sequelize.fn('COUNT', sequelize.col('id')), 'tong_so_doan'],
+      [sequelize.fn('COUNT', sequelize.col('vector_embedding')), 'so_doan_vector'],
+      [sequelize.fn('SUM', sequelize.col('so_tu')), 'tong_so_tu'],
+    ],
+    group: ['tai_lieu_id'],
+    raw: true,
+  });
+
+  const statsMap = new Map(statsRows.map((row) => [String(row.tai_lieu_id), row]));
+  const embeddingModel = getDefaultEmbeddingModel();
+
+  return docs.map((doc) => {
+    const plain = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
+    const stat = statsMap.get(String(plain.id));
+    const chunkCount = Number(stat?.tong_so_doan || 0);
+    const vectorCount = Number(stat?.so_doan_vector || 0);
+    const totalWords = Number(stat?.tong_so_tu || 0);
+
+    return {
+      ...plain,
+      tong_so_doan: plain.tong_so_doan ?? chunkCount,
+      tong_ky_tu: plain.tong_ky_tu ?? totalWords * 5,
+      phuong_thuc_trich_xuat: plain.phuong_thuc_trich_xuat || 'text_parser',
+      mo_hinh_embedding: plain.mo_hinh_embedding || (vectorCount > 0 ? embeddingModel : 'keyword_only'),
+    };
+  });
+};
 
 const INSTITUTIONAL_UPLOAD_ROLES = new Set([
   ROLES.ADMIN,
@@ -162,7 +199,8 @@ const ingestDocument = async ({ buffer, originalname, mimetype, title, scope = '
 
   const existingDoc = await TaiLieuRag.findOne({ where: duplicateWhere });
   if (existingDoc) {
-    return { document: existingDoc.toJSON(), isDuplicate: true };
+    const [enriched] = await enrichDocumentsWithStats([existingDoc]);
+    return { document: enriched, isDuplicate: true };
   }
 
   let parsed;
@@ -177,10 +215,12 @@ const ingestDocument = async ({ buffer, originalname, mimetype, title, scope = '
   }
 
   let extractedText = parsed.text;
+  let usedGeminiOcr = false;
   if (parsed.isLikelyScanned) {
     const ocrText = await extractTextFromScannedPdfWithGemini(buffer);
     if (ocrText.length >= 30) {
       extractedText = ocrText;
+      usedGeminiOcr = true;
     }
   }
 
@@ -203,7 +243,7 @@ const ingestDocument = async ({ buffer, originalname, mimetype, title, scope = '
     throw new ServiceError('Không thể phân đoạn nội dung tài liệu.', 400, 'CHUNKING_FAILED');
   }
 
-  const { embeddings } = await embedBatchWithGemini(chunksData.map((c) => c.noi_dung));
+  const { embeddings, modelUsed } = await embedBatchWithGemini(chunksData.map((c) => c.noi_dung));
 
   const summary =
     extractedText.length > 280
@@ -245,17 +285,21 @@ const ingestDocument = async ({ buffer, originalname, mimetype, title, scope = '
     return doc;
   });
 
-  return { document: document.toJSON(), isDuplicate: false };
+  return {
+    document: {
+      ...document.toJSON(),
+      tong_ky_tu: extractedText.length,
+      tong_so_doan: chunksData.length,
+      phuong_thuc_trich_xuat: usedGeminiOcr ? 'gemini_ocr' : 'text_parser',
+      mo_hinh_embedding: modelUsed,
+    },
+    isDuplicate: false,
+  };
 };
 
 // Tìm kiếm các đoạn văn bản liên quan nhất theo câu hỏi của người dùng
 const searchRelevantChunks = async ({ query, userId, documentIds = [], topK = 4 }) => {
   if (!query || !String(query).trim()) return [];
-  try {
-    await sequelize.authenticate();
-  } catch (_) {
-    return [];
-  }
 
   const orConditions = [{ pham_vi: 'toan_truong' }];
   if (userId && isValidUuid(String(userId))) {
@@ -286,17 +330,21 @@ const searchRelevantChunks = async ({ query, userId, documentIds = [], topK = 4 
   const docIdsToQuery = accessibleDocs.map((d) => d.id);
 
   if (validDocIds.length > 0 && isSummaryIntent(query)) {
+    const perDocCap = Math.max(2, Math.ceil(topK / docIdsToQuery.length));
     const summaryChunks = await PhanDoanTaiLieu.findAll({
       where: {
         tai_lieu_id: { [Op.in]: docIdsToQuery },
-        thu_tu: { [Op.lt]: Math.max(topK, 4) },
+        thu_tu: { [Op.lt]: perDocCap },
       },
       attributes: ['id', 'tai_lieu_id', 'thu_tu', 'noi_dung_chunk'],
-      order: [['thu_tu', 'ASC']],
-      limit: topK,
+      order: [
+        ['thu_tu', 'ASC'],
+        ['tai_lieu_id', 'ASC'],
+      ],
+      limit: Math.max(topK, docIdsToQuery.length * perDocCap),
     });
 
-    return summaryChunks.map((chunk) => {
+    return summaryChunks.slice(0, Math.max(topK, docIdsToQuery.length)).map((chunk) => {
       const parentDoc = docMap.get(String(chunk.tai_lieu_id));
       return {
         chunkId: String(chunk.id),
@@ -310,11 +358,23 @@ const searchRelevantChunks = async ({ query, userId, documentIds = [], topK = 4 
     });
   }
 
-  const chunks = await PhanDoanTaiLieu.findAll({
-    where: { tai_lieu_id: { [Op.in]: docIdsToQuery } },
-    order: [['thu_tu', 'ASC']],
-    limit: 2000,
-  });
+  // Nạp theo lô 2000 đoạn để không bỏ sót tài liệu khi kho vượt quá 2000 phân đoạn
+  const chunks = [];
+  const batchSize = 2000;
+  const maxTotalChunks = 10000;
+  for (let offset = 0; offset < maxTotalChunks; offset += batchSize) {
+    const batch = await PhanDoanTaiLieu.findAll({
+      where: { tai_lieu_id: { [Op.in]: docIdsToQuery } },
+      order: [
+        ['tai_lieu_id', 'ASC'],
+        ['thu_tu', 'ASC'],
+      ],
+      limit: batchSize,
+      offset,
+    });
+    chunks.push(...batch);
+    if (batch.length < batchSize) break;
+  }
 
   if (!chunks.length) return [];
 
@@ -350,7 +410,7 @@ const listDocuments = async (userId) => {
     orConditions.push({ nguoi_tai_id: String(userId) });
   }
 
-  return TaiLieuRag.findAll({
+  const docs = await TaiLieuRag.findAll({
     where: {
       trang_thai: { [Op.in]: ['san_sang', 'loi'] },
       [Op.or]: orConditions,
@@ -361,6 +421,8 @@ const listDocuments = async (userId) => {
       ['tao_luc', 'DESC'],
     ],
   });
+
+  return enrichDocumentsWithStats(docs);
 };
 
 // Lấy chi tiết 1 tài liệu RAG kèm danh sách phân đoạn nội dung
@@ -389,15 +451,18 @@ const getDocumentById = async (documentId, user, options = {}) => {
     ? Math.min(200, Math.floor(requestedLimit))
     : 50;
 
-  const previewChunks = await PhanDoanTaiLieu.findAll({
-    where: { tai_lieu_id: doc.id },
-    attributes: ['id', 'thu_tu', 'noi_dung_chunk', 'so_tu'],
-    order: [['thu_tu', 'ASC']],
-    limit: chunkLimit,
-  });
+  const [previewChunks, [enrichedDoc]] = await Promise.all([
+    PhanDoanTaiLieu.findAll({
+      where: { tai_lieu_id: doc.id },
+      attributes: ['id', 'thu_tu', 'noi_dung_chunk', 'so_tu'],
+      order: [['thu_tu', 'ASC']],
+      limit: chunkLimit,
+    }),
+    enrichDocumentsWithStats([doc]),
+  ]);
 
   return {
-    ...doc.toJSON(),
+    ...enrichedDoc,
     xem_truoc_phan_doan: previewChunks,
   };
 };

@@ -3,13 +3,13 @@ import { UserProfile } from '../types';
 
 export interface LoginPayload {
   email: string;
-  password: string;
+  mat_khau: string;
 }
 
 export interface LoginResponseData {
   token: string;
-  refreshToken: string;
-  user: UserProfile;
+  ma_lam_moi: string;
+  nguoi_dung: UserProfile;
 }
 
 export const authApi = {
@@ -24,18 +24,18 @@ export const authApi = {
   /**
    * Lấy thông tin cá nhân của phiên đăng nhập hiện tại (GET /api/xac-thuc/ho-so)
    */
-  getMe: async (): Promise<ApiResponse<UserProfile | { user: UserProfile }>> => {
-    const response = await apiClient.get<ApiResponse<UserProfile | { user: UserProfile }>>('/xac-thuc/ho-so');
+  getMe: async (): Promise<ApiResponse<UserProfile>> => {
+    const response = await apiClient.get<ApiResponse<UserProfile>>('/xac-thuc/ho-so');
     return response.data;
   },
 
   /**
    * Làm mới token (POST /api/xac-thuc/lam-moi-token)
    */
-  refreshToken: async (refreshToken: string): Promise<ApiResponse<{ token: string; refreshToken: string }>> => {
-    const response = await apiClient.post<ApiResponse<{ token: string; refreshToken: string }>>(
+  refreshToken: async (maLamMoi: string): Promise<ApiResponse<{ token: string; ma_lam_moi: string }>> => {
+    const response = await apiClient.post<ApiResponse<{ token: string; ma_lam_moi: string }>>(
       '/xac-thuc/lam-moi-token',
-      { ma_lam_moi: refreshToken }
+      { ma_lam_moi: maLamMoi }
     );
     return response.data;
   },
@@ -43,15 +43,25 @@ export const authApi = {
   /**
    * Đăng xuất hệ thống (POST /api/xac-thuc/dang-xuat)
    */
-  logout: async (): Promise<ApiResponse<null>> => {
-    const response = await apiClient.post<ApiResponse<null>>('/xac-thuc/dang-xuat');
+  logout: async (maLamMoi?: string | null, accessToken?: string | null): Promise<ApiResponse<null>> => {
+    const tokenToRevoke =
+      maLamMoi !== undefined
+        ? maLamMoi
+        : typeof window !== 'undefined'
+        ? sessionStorage.getItem('refreshToken') || localStorage.getItem('refreshToken')
+        : null;
+    const response = await apiClient.post<ApiResponse<null>>(
+      '/xac-thuc/dang-xuat',
+      tokenToRevoke ? { ma_lam_moi: tokenToRevoke } : {},
+      accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined
+    );
     return response.data;
   },
 
   /**
    * Đổi mật khẩu tài khoản (PUT /api/xac-thuc/doi-mat-khau)
    */
-  changePassword: async (payload: { currentPassword: string; newPassword: string }): Promise<ApiResponse<null>> => {
+  changePassword: async (payload: { mat_khau_hien_tai: string; mat_khau_moi: string }): Promise<ApiResponse<null>> => {
     const response = await apiClient.put<ApiResponse<null>>('/xac-thuc/doi-mat-khau', payload);
     return response.data;
   },
@@ -60,17 +70,14 @@ export const authApi = {
    * Cập nhật ảnh đại diện cá nhân (PUT /api/xac-thuc/anh-dai-dien)
    */
   updateAvatar: async (
-    data: FormData | { avatar?: string | null; avatarBase64?: string }
-  ): Promise<ApiResponse<{ avatar: string }>> => {
+    data: FormData | { anh_dai_dien?: string | null; anh_dai_dien_base64?: string }
+  ): Promise<ApiResponse<{ anh_dai_dien: string | null }>> => {
     const headers = data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {};
-    const response = await apiClient.put<ApiResponse<{ avatar: string; anh_dai_dien?: string }>>(
+    const response = await apiClient.put<ApiResponse<{ anh_dai_dien: string | null }>>(
       '/xac-thuc/anh-dai-dien',
       data,
       { headers }
     );
-    if (response.data?.data && response.data.data.avatar === undefined) {
-      response.data.data.avatar = response.data.data.anh_dai_dien || '';
-    }
     return response.data;
   },
 

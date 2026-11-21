@@ -123,6 +123,21 @@ const createLeaveRequestDomain = async ({
       if (!logRecord) {
         throw new ServiceError('Không tìm thấy bản ghi nhật ký thiếu check-out hợp lệ cho bạn.', 404, 'LOG_NOT_FOUND');
       }
+      if (logRecord.da_chot) {
+        throw new ServiceError(
+          `Không thể gửi giải trình cho ngày ${String(logRecord.ngay_cong).slice(0, 10)} vì kỳ công đã bị khóa sổ.`,
+          409,
+          'ATTENDANCE_LOCKED'
+        );
+      }
+      const logDateKey = String(logRecord.ngay_cong || '').slice(0, 10);
+      if (!logDateKey || logDateKey < minPastKey || logDateKey > todayKey) {
+        throw new ServiceError(
+          'Bản ghi nhật ký thiếu check-out nằm ngoài phạm vi 30 ngày gần nhất.',
+          400,
+          'LOG_DATE_OUT_OF_RANGE'
+        );
+      }
       const existingExplanation = await DonNghiPhep.findOne({
         where: { nhat_ky_id: validNhatKyId, trang_thai: { [Op.in]: [...PENDING_LEAVE_STATUSES, 'approved'] } },
       });
@@ -311,8 +326,8 @@ const createLeaveRequestDomain = async ({
         const endYear = Number(endKey.slice(0, 4));
 
         for (let targetYear = startYear; targetYear <= endYear; targetYear += 1) {
-          const yearStart = new Date(targetYear, 0, 1);
-          const yearEnd = new Date(targetYear, 11, 31, 23, 59, 59, 999);
+          const yearStart = new Date(`${targetYear}-01-01T00:00:00+07:00`);
+          const yearEnd = new Date(`${targetYear}-12-31T23:59:59.999+07:00`);
           const targetYearLeavesStart = new Date(Math.max(start.getTime(), yearStart.getTime()));
           const targetYearLeavesEnd = new Date(Math.min(end.getTime(), yearEnd.getTime()));
           const requestedDaysInYear = calculateLeaveDays(targetYearLeavesStart, targetYearLeavesEnd, Boolean(isHalfDay), holidaySet);
@@ -547,7 +562,7 @@ const fetchSubstituteLecturers = async (currentUser) => {
     where: {
       kich_hoat: true,
       trang_thai_lam_viec: 'dang_lam_viec',
-      vai_tro_chinh: { [Op.notIn]: ['admin', 'kiem_toan', 'ke_toan', 'quan_ly_xe'] },
+      vai_tro_chinh: { [Op.notIn]: ['admin', 'ke_toan'] },
       ...(currentUserId ? { id: { [Op.ne]: currentUserId } } : {}),
     },
     attributes: ['id', 'ho_ten', 'ma_can_bo', 'vai_tro_chinh', 'don_vi_chinh_id'],

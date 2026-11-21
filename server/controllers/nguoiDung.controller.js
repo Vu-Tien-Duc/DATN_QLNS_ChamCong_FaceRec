@@ -46,19 +46,18 @@ const getAllUsers = async (req, res, next) => {
   try {
     const vai_tro = req.query?.vai_tro;
     const don_vi_id = req.query?.don_vi_id;
-    const dang_hoat_dong = req.query?.kich_hoat;
+    const kich_hoat = req.query?.kich_hoat;
     const tim_kiem = req.query?.tim_kiem;
-    const page = req.query?.trang || 1;
-    const limit = req.query?.gioi_han || 20;
+    const trang = req.query?.trang || 1;
+    const gioi_han = req.query?.gioi_han || 20;
 
     const result = await fetchUsers({
       vai_tro,
       don_vi_id,
-      dang_hoat_dong,
-      kich_hoat: dang_hoat_dong,
+      kich_hoat,
       tim_kiem,
-      page,
-      limit,
+      trang,
+      gioi_han,
       currentUser: req.user,
     });
     return sendSuccess(res, 'Lấy danh sách người dùng thành công.', result);
@@ -121,7 +120,20 @@ const registerFaceDescriptor = async (req, res, next) => {
       ghi_de: force,
       cac_goc_mau: sampleAngles,
       mo_hinh_ai: aiModel,
-    } = req.body;
+      dong_y_thu_thap,
+    } = req.body || {};
+
+    const consentAgreed = dong_y_thu_thap === true || dong_y_thu_thap === 'true';
+    if (!consentAgreed) {
+      return sendError(
+        res,
+        'Yêu cầu xác nhận đồng thuận: Phải xác nhận đồng ý thu thập và mã hóa dữ liệu sinh trắc học theo Nghị định 13/2023/NĐ-CP trước khi đăng ký.',
+        null,
+        400,
+        'BIOMETRIC_CONSENT_REQUIRED_ND13'
+      );
+    }
+
     const files = req.files || (req.file ? [req.file] : []);
 
     let result;
@@ -131,6 +143,7 @@ const registerFaceDescriptor = async (req, res, next) => {
         files,
         sampleAngles,
         force: force === 'true' || force === true,
+        aiModel,
         currentUser: req.user,
         ip: req.ip,
       });

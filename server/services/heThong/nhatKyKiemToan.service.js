@@ -4,86 +4,73 @@ const { NhatKyKiemToan, NguoiDung } = require('../../models');
 const ServiceError = require('../../utils/loiNghiepVu');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
 
+// Parse ngày lọc YYYY-MM-DD theo múi giờ Việt Nam (UTC+7)
+const parseAuditDateBound = (dateInput, isEnd = false) => {
+  if (!dateInput) return null;
+  const raw = String(dateInput).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return new Date(`${raw}T${isEnd ? '23:59:59.999' : '00:00:00.000'}+07:00`);
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new ServiceError(isEnd ? 'Ngày kết thúc không hợp lệ.' : 'Ngày bắt đầu không hợp lệ.', 400);
+  }
+  return parsed;
+};
+
 // Truy vấn nhật ký kiểm toán có lọc theo người thực hiện, hành động, ngày và phân trang
 const getAuditLogs = async (params = {}) => {
   const {
     nguoi_thuc_hien_id,
-    actor,
     hanh_dong,
-    action,
     loai_doi_tuong,
-    targetType,
     ket_qua,
-    status,
     tim_kiem,
-    keyword,
     tu_ngay,
     den_ngay,
-    page,
-    limit,
     trang,
     gioi_han,
   } = params;
 
   const where = {};
-  const effectiveActor = nguoi_thuc_hien_id || actor;
-  if (effectiveActor) {
-    if (effectiveActor === 'null' || effectiveActor === 'system') {
+  if (nguoi_thuc_hien_id) {
+    if (nguoi_thuc_hien_id === 'null' || nguoi_thuc_hien_id === 'system') {
       where.nguoi_thuc_hien_id = null;
-    } else if (!isValidUuid(effectiveActor)) {
+    } else if (!isValidUuid(nguoi_thuc_hien_id)) {
       throw new ServiceError('ID người thực hiện (nguoi_thuc_hien_id) không đúng định dạng UUID hợp lệ.', 400);
     } else {
-      where.nguoi_thuc_hien_id = effectiveActor;
+      where.nguoi_thuc_hien_id = nguoi_thuc_hien_id;
     }
   }
 
-  const effectiveAction = hanh_dong || action;
-  if (effectiveAction) where.hanh_dong = effectiveAction;
+  if (hanh_dong) where.hanh_dong = hanh_dong;
+  if (loai_doi_tuong) where.loai_doi_tuong = loai_doi_tuong;
 
-  const effectiveTargetType = loai_doi_tuong || targetType;
-  if (effectiveTargetType) where.loai_doi_tuong = effectiveTargetType;
-
-  const rawStatus = ket_qua || status;
-  if (rawStatus) {
-    const normalizedStatus = String(rawStatus).toLowerCase();
+  if (ket_qua) {
+    const normalizedStatus = String(ket_qua).toLowerCase();
     if (['success', 'failed'].includes(normalizedStatus)) {
       where.ket_qua = normalizedStatus;
     }
   }
 
-  const searchTerm = (tim_kiem || keyword || '').trim();
+  const searchTerm = (tim_kiem || '').trim();
   if (searchTerm) {
     const likePattern = `%${searchTerm}%`;
     where[Op.or] = [
       { hanh_dong: { [Op.like]: likePattern } },
       { loai_doi_tuong: { [Op.like]: likePattern } },
       { doi_tuong_id: { [Op.like]: likePattern } },
+      { dia_chi_ip: { [Op.like]: likePattern } },
+      { chi_tiet: { [Op.like]: likePattern } },
+      { '$nguoi_thuc_hien.ho_ten$': { [Op.like]: likePattern } },
+      { '$nguoi_thuc_hien.email$': { [Op.like]: likePattern } },
+      { '$nguoi_thuc_hien.ma_can_bo$': { [Op.like]: likePattern } },
     ];
   }
 
-  let parsedStartDate = null;
-  let parsedEndDate = null;
-  if (tu_ngay) {
-    parsedStartDate = new Date(tu_ngay);
-    if (Number.isNaN(parsedStartDate.getTime())) {
-      throw new ServiceError('Ngày bắt đầu không hợp lệ.', 400);
-    }
-  }
-  if (den_ngay) {
-    parsedEndDate = new Date(den_ngay);
-    if (Number.isNaN(parsedEndDate.getTime())) {
-      throw new ServiceError('Ngày kết thúc không hợp lệ.', 400);
-    }
-    if (typeof den_ngay === 'string' && !den_ngay.includes('T')) {
-      parsedEndDate.setHours(23, 59, 59, 999);
-    } else if (
-      parsedEndDate.getHours() === 0 &&
-      parsedEndDate.getMinutes() === 0 &&
-      parsedEndDate.getSeconds() === 0
-    ) {
-      parsedEndDate.setHours(23, 59, 59, 999);
-    }
-  }
+  const parsedStartDate = parseAuditDateBound(tu_ngay, false);
+  const parsedEndDate = parseAuditDateBound(den_ngay, true);
+
   if (parsedStartDate && parsedEndDate && parsedStartDate > parsedEndDate) {
     throw new ServiceError(
       'Khoảng thời gian không hợp lệ: Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.',
@@ -98,31 +85,53 @@ const getAuditLogs = async (params = {}) => {
     where.thoi_diem = { [Op.lte]: parsedEndDate };
   }
 
-  const isPaginated = page !== undefined || limit !== undefined || trang !== undefined || gioi_han !== undefined;
+  const isPaginated = trang !== undefined || gioi_han !== undefined;
   const { page: pageNum, limit: limitNum, offset } = normalizePagination(
-    page ?? trang,
-    isPaginated ? (limit ?? gioi_han ?? 20) : 500,
-    500
+    trang,
+    isPaginated ? (gioi_han ?? 20) : 500,
+    1000
   );
 
-  const { count: totalDocs, rows: logs } = await NhatKyKiemToan.findAndCountAll({
-    where,
-    include: [
-      {
-        model: NguoiDung,
-        as: 'nguoi_thuc_hien',
-        attributes: ['id', 'ho_ten', 'ma_can_bo', 'email', 'vai_tro_chinh', 'anh_dai_dien'],
-      },
-    ],
-    order: [['thoi_diem', 'DESC']],
-    offset: isPaginated ? offset : 0,
-    limit: limitNum,
-  });
+  const actorInclude = {
+    model: NguoiDung,
+    as: 'nguoi_thuc_hien',
+    attributes: ['id', 'ho_ten', 'ma_can_bo', 'email', 'vai_tro_chinh', 'anh_dai_dien'],
+    required: false,
+  };
+
+  const countInclude = searchTerm ? [actorInclude] : [];
+
+  const [{ count: totalDocs, rows: logs }, totalSuccessCount, totalFailedCount] = await Promise.all([
+    NhatKyKiemToan.findAndCountAll({
+      where,
+      include: [actorInclude],
+      order: [['thoi_diem', 'DESC'], ['id', 'DESC']],
+      offset: isPaginated ? offset : 0,
+      limit: limitNum,
+      subQuery: false,
+      distinct: true,
+    }),
+    NhatKyKiemToan.count({
+      where: { ...where, ket_qua: 'success' },
+      include: countInclude,
+      distinct: true,
+    }),
+    NhatKyKiemToan.count({
+      where: { ...where, ket_qua: 'failed' },
+      include: countInclude,
+      distinct: true,
+    }),
+  ]);
 
   const totalPages = Math.ceil(totalDocs / limitNum) || 1;
   return {
     totalRecords: totalDocs,
     logs,
+    summary: {
+      totalRecords: totalDocs,
+      successCount: totalSuccessCount,
+      failedCount: totalFailedCount,
+    },
     pagination: {
       page: pageNum,
       limit: limitNum,

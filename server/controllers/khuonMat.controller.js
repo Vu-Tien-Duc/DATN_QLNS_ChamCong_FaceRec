@@ -10,12 +10,11 @@ const {
   registerFaceDescriptorForUser,
   removeFaceDescriptorForUser,
   findTargetUserForFace,
-  getFaceTemplateByUserId,
   getFaceRegistrationStatusByUserId,
 } = require('../services/khuonMat/mauKhuonMat.service');
-const minioStorage = require('../config/minio');
+const { detectImageSignature } = require('../middlewares/taiAnhKhuonMat.middleware');
 const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
-const { getActiveRoles } = require('../middlewares/xacThuc.middleware');
+const { hasAnyActiveRole } = require('../utils/vaiTro.utils');
 const { UNIT_LEADER_ROLES } = require('../utils/vaiTro.utils');
 
 // POST /api/khuon-mat/phat-hien-tu-the - Nhận diện tư thế đầu 3D từ frame webcam
@@ -76,15 +75,10 @@ const detectPose = async (req, res) => {
   }
 };
 
-// POST /api/khuon-mat/dang-ky-da-goc - Đăng ký khuôn mặt 5 góc (thẳng, trái, phải, ngước, cúi)
+// POST /api/khuon-mat/dang-ky-da-goc - Đăng ký khuôn mặt 5 góc (thẳng, trái, phải, ngửa, cúi)
 const enrollMultiAngleFace = async (req, res) => {
   try {
-    const userRoles = getActiveRoles(req.user);
-    const canEnrollFace =
-      userRoles.has('admin') ||
-      userRoles.has('bgh') ||
-      userRoles.has('tccb') ||
-      UNIT_LEADER_ROLES.some((role) => userRoles.has(role));
+    const canEnrollFace = hasAnyActiveRole(req.user, ['admin', 'bgh', 'tccb', ...UNIT_LEADER_ROLES]);
     if (!canEnrollFace) {
       return res.status(403).json({
         success: false,
@@ -130,6 +124,18 @@ const enrollMultiAngleFace = async (req, res) => {
       });
     }
 
+    // Kiểm tra chữ ký nhị phân (magic bytes) của mọi tệp ảnh tải lên trước khi chuyển qua Face AI
+    const uploadedFields = Object.values(req.files || {}).flat().filter(Boolean);
+    for (const file of uploadedFields) {
+      if (!file.buffer || !detectImageSignature(file.buffer)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tệp ảnh khuôn mặt không đúng định dạng JPEG, PNG hoặc WebP hợp lệ.',
+          errorCode: 'INVALID_IMAGE_SIGNATURE',
+        });
+      }
+    }
+
     const targetUserId = String(targetUser.id);
     let aiResult = null;
     try {
@@ -138,12 +144,19 @@ const enrollMultiAngleFace = async (req, res) => {
         employeeId: targetUserId,
         fullName: resolvedFullName || targetUser.ho_ten,
       });
-
     } catch (aiErr) {
-      console.warn('[Face Service] Không thể kết nối AI Microservice:', aiErr.message);
+      console.warn('[Face Service] Lỗi gọi AI Microservice:', aiErr.message);
+      if (aiErr.statusCode >= 400 && aiErr.statusCode < 500) {
+        return res.status(aiErr.statusCode).json({
+          success: false,
+          message: aiErr.message || 'Ảnh khuôn mặt chưa đạt chuẩn đăng ký.',
+          errorCode: aiErr.errorCode || 'FACE_AI_VALIDATION_FAILED',
+        });
+      }
       return res.status(503).json({
         success: false,
-        message: 'Không thể kết nối đến máy chủ Face AI Microservice: ' + aiErr.message,
+        message: 'Dịch vụ Face AI Microservice tạm thời không khả dụng. Vui lòng thử lại sau.',
+        errorCode: aiErr.errorCode || 'FACE_SERVICE_UNAVAILABLE',
       });
     }
 
@@ -171,47 +184,11 @@ const enrollMultiAngleFace = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Không trích xuất được vector khuôn mặt hợp lệ từ các ảnh tải lên.',
+        errorCode: 'FACE_EMBEDDING_EXTRACTION_FAILED',
       });
     }
 
-    // Callback lưu ảnh chính diện sau khi đã qua kiểm tra chống trùng khuôn mặt
-    const existingTemplate = await getFaceTemplateByUserId(targetUserId).catch(() => null);
-    let facePhotoUrl = existingTemplate?.anh_dai_dien || targetUser.anh_dai_dien || null;
-    const uploadPrimaryPhotoAfterValidation = async () => {
-      if (!req.files) return facePhotoUrl;
-      const primaryFile = req.files['image_straight']?.[0] || req.files['straight']?.[0] || req.files['image']?.[0];
-      if (!primaryFile || !primaryFile.buffer) return facePhotoUrl;
-
-      await minioStorage.deleteUserFaceFiles(
-        targetUserId,
-        targetUser.ma_can_bo,
-        facePhotoUrl
-      ).catch(() => {});
-
-      const staffCode = (targetUser.ma_can_bo || targetUserId).replace(/[^a-zA-Z0-9_-]/g, '_');
-      let cleanName = (targetUser.ho_ten || 'can-bo')
-        .replace(/\(.*?\)/g, '')
-        .replace(/^(ThS|TS|PGS|GS|Ths|Ts)\.?\s+/i, '')
-        .trim()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/đ/g, 'd').replace(/Đ/g, 'D')
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
-      if (!cleanName) cleanName = 'avatar';
-
-      const fileName = `face-${staffCode}-${cleanName}.jpg`;
-      await minioStorage.putObject(`faces/${fileName}`, primaryFile.buffer, 'image/jpeg', {
-        userId: targetUserId,
-        staffCode,
-        fullName: targetUser.ho_ten,
-        category: 'face-registration',
-      });
-      facePhotoUrl = `/api/tai-tep/tep/${fileName}`;
-      return facePhotoUrl;
-    };
+    const primaryFile = req.files?.['image_straight']?.[0] || req.files?.['straight']?.[0] || req.files?.['image']?.[0] || null;
 
     const result = await registerFaceDescriptorForUser({
       id: targetUserId,
@@ -220,8 +197,7 @@ const enrollMultiAngleFace = async (req, res) => {
       force: ghi_de === true || ghi_de === 'true',
       currentUser: req.user,
       ip: req.ip,
-      facePhotoUrl,
-      onValidated: uploadPrimaryPhotoAfterValidation,
+      primaryPhotoFile: primaryFile,
     });
 
     return res.status(200).json({
@@ -230,24 +206,30 @@ const enrollMultiAngleFace = async (req, res) => {
       data: {
         nguoi_dung_id: targetUserId,
         ho_ten: targetUser.ho_ten,
-        cac_goc_mau: recordedPoses,
-        so_mau: allVectors.length,
-        anh_khuon_mat: facePhotoUrl,
-        mau_khuon_mat_id: result.templateId,
+        cac_goc_chup: result.cac_goc_chup,
+        so_luong_mau: result.so_luong_mau,
+        anh_khuon_mat: result.anh_khuon_mat || null,
+        mau_khuon_mat_id: result.mau_khuon_mat_id,
       },
     });
   } catch (err) {
     if (err.statusCode) {
-      return res.status(err.statusCode).json({ success: false, message: err.message, data: err.data || null });
+      return res.status(err.statusCode).json({
+        success: false,
+        message: err.message,
+        errorCode: err.errorCode || null,
+        data: err.data || null,
+      });
     }
-    return res.status(500).json({ success: false, message: 'Lỗi đăng ký khuôn mặt: ' + err.message });
+    console.error('[EnrollMultiAngleFace Error]:', err);
+    return res.status(500).json({ success: false, message: 'Đã xảy ra lỗi hệ thống khi đăng ký khuôn mặt.' });
   }
 };
 
 // GET /api/khuon-mat/trang-thai-dang-ky(/:nguoiDungId) - Kiểm tra trạng thái đăng ký Face ID
 const getRegistrationStatus = async (req, res) => {
   try {
-    const targetId = req.params.nguoiDungId || req.user?.id || req.user?._id;
+    const targetId = req.params.nguoiDungId || req.user?.id;
 
     if (!targetId) {
       return res.status(400).json({ success: false, message: 'Thiếu định danh người dùng.' });
@@ -281,9 +263,10 @@ const deleteFaceData = async (req, res) => {
     );
   } catch (err) {
     if (err.statusCode) {
-      return sendError(res, err.message, null, err.statusCode);
+      return sendError(res, err.message, err.data || null, err.statusCode, err.errorCode || null);
     }
-    return res.status(500).json({ success: false, message: err.message });
+    console.error('[DeleteFaceData Error]:', err);
+    return sendError(res, 'Đã xảy ra lỗi hệ thống khi xóa dữ liệu khuôn mặt.', null, 500, 'FACE_DELETE_INTERNAL_ERROR');
   }
 };
 
@@ -293,9 +276,11 @@ const getFaceHealth = async (req, res) => {
     const result = await callFaceService({ path: '/health', method: 'GET', timeoutMs: 5000 });
     return res.json({ success: true, data: result });
   } catch (err) {
+    console.warn('[FaceHealth Warning]:', err.message);
     return res.status(503).json({
       success: false,
-      message: 'Face AI service không khả dụng: ' + err.message,
+      message: 'Face AI service tạm thời không khả dụng.',
+      errorCode: err.errorCode || 'FACE_SERVICE_UNAVAILABLE',
     });
   }
 };
@@ -306,13 +291,43 @@ const testFaceRecognition = async (req, res) => {
     let imageBuffer = null;
     if (req.file && req.file.buffer) {
       imageBuffer = req.file.buffer;
-    } else if (req.body?.image) {
+    } else if (req.body?.image && typeof req.body.image === 'string') {
       const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, '');
+      if (base64Data.length > 21 * 1024 * 1024) {
+        return res.status(413).json({
+          success: false,
+          khop_khuon_mat: false,
+          message: 'Ảnh kiểm thử vượt quá dung lượng cho phép (tối đa 15MB).',
+          errorCode: 'FACE_IMAGE_TOO_LARGE',
+        });
+      }
       imageBuffer = Buffer.from(base64Data, 'base64');
     }
 
-    if (!imageBuffer) {
-      return res.status(400).json({ success: false, matched: false, message: 'Vui lòng cung cấp hình ảnh khuôn mặt từ camera.' });
+    if (!imageBuffer || imageBuffer.length === 0) {
+      return res.status(400).json({
+        success: false,
+        khop_khuon_mat: false,
+        message: 'Vui lòng cung cấp hình ảnh khuôn mặt từ camera.',
+      });
+    }
+
+    if (imageBuffer.length > 15 * 1024 * 1024) {
+      return res.status(413).json({
+        success: false,
+        khop_khuon_mat: false,
+        message: 'Ảnh kiểm thử vượt quá dung lượng cho phép (tối đa 15MB).',
+        errorCode: 'FACE_IMAGE_TOO_LARGE',
+      });
+    }
+
+    if (!detectImageSignature(imageBuffer)) {
+      return res.status(400).json({
+        success: false,
+        khop_khuon_mat: false,
+        message: 'Tệp ảnh kiểm thử không đúng định dạng JPEG, PNG hoặc WebP hợp lệ.',
+        errorCode: 'INVALID_IMAGE_SIGNATURE',
+      });
     }
 
     const { processFaceAttendance } = require('../services/chamCong');
@@ -325,12 +340,52 @@ const testFaceRecognition = async (req, res) => {
       useQueue: false,
     });
 
-    return res.json(result);
+    if (!result.khop_khuon_mat) {
+      return res.json({
+        success: false,
+        khop_khuon_mat: false,
+        message: result.message || 'Không tìm thấy khuôn mặt trùng khớp trong hệ thống.',
+        errorCode: result.errorCode || 'FACE_NOT_MATCHED',
+        do_tuong_dong: result.similarity ?? null,
+        do_tin_cay: result.similarity ?? null,
+      });
+    }
+
+    const matchedUser = result.user || {};
+    const score = result.diem_tin_cay ?? result.similarity ?? null;
+
+    return res.json({
+      success: true,
+      khop_khuon_mat: true,
+      nguoi_dung_id: result.nguoi_dung_id || matchedUser.id,
+      nguoi_dung: {
+        id: matchedUser.id || result.nguoi_dung_id,
+        ho_ten: matchedUser.ho_ten,
+        email: matchedUser.email,
+        vai_tro_chinh: matchedUser.vai_tro_chinh,
+        anh_dai_dien: matchedUser.anh_dai_dien || null,
+        ma_can_bo: matchedUser.ma_can_bo || '',
+        ten_phong_ban: matchedUser.don_vi_chinh?.ten_phong_ban || null,
+      },
+      do_tuong_dong: score,
+      do_tin_cay: score,
+      diem_nguoi_that: result.diem_nguoi_that ?? null,
+      message: result.message,
+    });
   } catch (err) {
-    return res.status(err.statusCode || 500).json({
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        khop_khuon_mat: false,
+        message: err.message,
+        errorCode: err.errorCode || null,
+      });
+    }
+    console.error('[TestFaceRecognition Error]:', err);
+    return res.status(500).json({
       success: false,
-      matched: false,
-      message: err.message || 'Lỗi khi kiểm thử nhận diện khuôn mặt.',
+      khop_khuon_mat: false,
+      message: 'Đã xảy ra lỗi khi kiểm thử nhận diện khuôn mặt.',
     });
   }
 };

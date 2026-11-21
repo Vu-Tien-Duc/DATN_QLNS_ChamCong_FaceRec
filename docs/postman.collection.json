@@ -63,13 +63,13 @@
                 "dang-nhap"
               ]
             },
-            "description": "Đăng nhập vào hệ thống bằng Email hoặc Mã cán bộ và Mật khẩu.\n\n**Danh sách tài khoản Demo (Mật khẩu chung: `password123`):**\n- Quản trị viên (Admin): `admin@university.edu.vn` hoặc `daihocdtd@gmail.com`\n- Hiệu trưởng (BGH): `hieutruong@university.edu.vn`\n- Trưởng khoa CNTT: `truongkhoa.cntt@university.edu.vn`\n- Giảng viên: `giangvien.bich@university.edu.vn`\n- Nhân viên: `nhanvien.ha@university.edu.vn`",
+            "description": "Đăng nhập vào hệ thống bằng Email hoặc Mã cán bộ và Mật khẩu.\n\n**Danh sách tài khoản Demo (Mật khẩu mặc định: `123456`):**\n- Quản trị viên (Admin): `admin@ntu.edu.vn`\n- Hiệu trưởng (BGH): `hieutruong@ntu.edu.vn`\n- Trưởng khoa CNTT: `truongkhoa.cntt@ntu.edu.vn`\n- Giảng viên: `ducvt.gv@ntu.edu.vn`\n- Tổ chức cán bộ (TCCB): `tccb@ntu.edu.vn`\n- Kế toán: `ketoan@ntu.edu.vn`",
             "auth": {
               "type": "noauth"
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"admin@university.edu.vn\",\n  \"password\": \"password123\"\n}",
+              "raw": "{\n  \"email\": \"admin@ntu.edu.vn\",\n  \"mat_khau\": \"123456\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -269,7 +269,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"daihocdtd@gmail.com\",\n  \"otp\": \"123456\",\n  \"newPassword\": \"new_password123\"\n}",
+              "raw": "{\n  \"email\": \"ducvt.gv@ntu.edu.vn\",\n  \"ma_otp\": \"123456\",\n  \"mat_khau_moi\": \"new_password123\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -302,7 +302,7 @@
             "description": "[🔒 Cá nhân] Đổi mật khẩu tài khoản đang đăng nhập",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"oldPassword\": \"password123\",\n  \"newPassword\": \"new_secret_pass_2026\"\n}",
+              "raw": "{\n  \"mat_khau_hien_tai\": \"123456\",\n  \"mat_khau_moi\": \"new_secret_pass_2026\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -332,10 +332,10 @@
               "mode": "formdata",
               "formdata": [
                 {
-                  "key": "avatar",
+                  "key": "anh_dai_dien",
                   "type": "file",
                   "src": "",
-                  "description": "File ảnh JPG/PNG"
+                  "description": "File ảnh JPG/PNG/WEBP (tối đa 5MB)"
                 }
               ]
             }
@@ -363,36 +363,48 @@
               ],
               "query": [
                 {
-                  "key": "role",
+                  "key": "vai_tro",
                   "value": "",
-                  "description": "Lọc theo chức vụ",
+                  "description": "Lọc theo vai trò (bao gồm vai trò chính và kiêm nhiệm)",
                   "disabled": true
                 },
                 {
-                  "key": "departmentId",
+                  "key": "don_vi_id",
                   "value": "",
-                  "description": "Lọc theo mã phòng ban (Chỉ có tác dụng với Admin)",
+                  "description": "Lọc theo mã đơn vị (mở rộng bộ môn con nếu là Khoa)",
                   "disabled": true
                 },
                 {
-                  "key": "isActive",
+                  "key": "kich_hoat",
                   "value": "",
-                  "description": "Lọc tài khoản còn hoạt động hay không",
+                  "description": "Lọc tài khoản còn hoạt động hay không (true/false)",
                   "disabled": true
                 },
                 {
-                  "key": "search",
+                  "key": "tim_kiem",
                   "value": "",
-                  "description": "Tìm theo họ tên hoặc email",
+                  "description": "Tìm theo họ tên, email hoặc mã cán bộ",
+                  "disabled": true
+                },
+                {
+                  "key": "trang",
+                  "value": "1",
+                  "description": "Số trang",
+                  "disabled": true
+                },
+                {
+                  "key": "gioi_han",
+                  "value": "20",
+                  "description": "Số lượng mỗi trang",
                   "disabled": true
                 }
               ]
             },
-            "description": "[🔒 Admin / Trưởng khoa] Lấy danh sách người dùng (Admin xem toàn trường, Trưởng khoa chỉ xem khoa mình)"
+            "description": "[🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Lấy danh sách người dùng theo phạm vi quản lý"
           }
         },
         {
-          "name": "POST /api/nguoi-dung — [🔒 Admin] Thêm người dùng mới (Ghi Audit Log)",
+          "name": "POST /api/nguoi-dung — [🔒 Admin / BGH / TCCB] Thêm người dùng mới (Ghi Audit Log)",
           "request": {
             "method": "POST",
             "header": [
@@ -411,10 +423,10 @@
                 "nguoi-dung"
               ]
             },
-            "description": "[🔒 Admin] Thêm người dùng mới (Ghi Audit Log)",
+            "description": "[🔒 Admin / BGH / TCCB] Thêm người dùng mới (Ghi Audit Log)",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"TS. Lê Thanh Sơn\",\n  \"email\": \"lethanhson@university.edu.vn\",\n  \"password\": \"password123\",\n  \"role\": \"giang_vien\",\n  \"departmentId\": \"00000000-0000-4000-8000-000000000\",\n  \"annualLeaveQuota\": 12,\n  \"staffCode\": \"GV001\",\n  \"phoneNumber\": \"0901234567\",\n  \"academicTitle\": \"Tiến sĩ\"\n}",
+              "raw": "{\n  \"ho_ten\": \"TS. Lê Thanh Sơn\",\n  \"email\": \"lethanhson@ntu.edu.vn\",\n  \"mat_khau\": \"password123\",\n  \"ma_can_bo\": \"GV001\",\n  \"vai_tro_chinh\": \"giang_vien\",\n  \"don_vi_chinh_id\": \"00000000-0000-4000-8000-000000000001\",\n  \"so_dien_thoai\": \"0901234567\",\n  \"hoc_vi\": \"tien_si\",\n  \"loai_nhan_su\": \"giang_vien\",\n  \"loai_hop_dong\": \"toan_thoi_gian\",\n  \"he_so_luong\": 2.34,\n  \"han_muc_phep_nam\": 12\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -424,7 +436,7 @@
           }
         },
         {
-          "name": "GET /api/nguoi-dung/:id — [🔒 Admin / Trưởng khoa] Xem thông tin chi tiết một người dùng",
+          "name": "GET /api/nguoi-dung/:id — [🔒 Chính chủ / Admin / BGH / TCCB / Lãnh đạo đơn vị] Xem thông tin chi tiết một người dùng",
           "request": {
             "method": "GET",
             "header": [],
@@ -446,11 +458,11 @@
                 }
               ]
             },
-            "description": "[🔒 Admin / Trưởng khoa] Xem thông tin chi tiết một người dùng"
+            "description": "[🔒 Chính chủ / Admin / BGH / TCCB / Lãnh đạo đơn vị] Xem thông tin chi tiết một người dùng"
           }
         },
         {
-          "name": "PUT /api/nguoi-dung/:id — [🔒 Admin / Trưởng khoa] Cập nhật thông tin người dùng (Ghi Audit Log)",
+          "name": "PUT /api/nguoi-dung/:id — [🔒 Chính chủ / Admin / BGH / TCCB / Lãnh đạo đơn vị] Cập nhật thông tin người dùng (Ghi Audit Log)",
           "request": {
             "method": "PUT",
             "header": [
@@ -477,10 +489,10 @@
                 }
               ]
             },
-            "description": "[🔒 Admin / Trưởng khoa] Cập nhật thông tin người dùng (Ghi Audit Log)",
+            "description": "[🔒 Chính chủ / Admin / BGH / TCCB / Lãnh đạo đơn vị] Cập nhật thông tin người dùng (Ghi Audit Log)",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"TS. Trần Thị Bích (Cập nhật)\",\n  \"departmentId\": \"00000000-0000-4000-8000-000000000\",\n  \"role\": \"admin\",\n  \"isActive\": true,\n  \"annualLeaveQuota\": 14,\n  \"staffCode\": \"GV001\",\n  \"phoneNumber\": \"0901234567\",\n  \"academicTitle\": \"Tiến sĩ\"\n}",
+              "raw": "{\n  \"ho_ten\": \"TS. Trần Thị Bích (Cập nhật)\",\n  \"don_vi_chinh_id\": \"00000000-0000-4000-8000-000000000001\",\n  \"vai_tro_chinh\": \"giang_vien\",\n  \"kich_hoat\": true,\n  \"han_muc_phep_nam\": 14,\n  \"ma_can_bo\": \"GV001\",\n  \"so_dien_thoai\": \"0901234567\",\n  \"hoc_vi\": \"tien_si\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -490,7 +502,7 @@
           }
         },
         {
-          "name": "DELETE /api/nguoi-dung/:id — [🔒 Admin] Vô hiệu hóa người dùng (Soft Delete: isActive = false, Ghi Audit Log)",
+          "name": "DELETE /api/nguoi-dung/:id — [🔒 Admin / BGH] Vô hiệu hóa người dùng (Soft Delete: kich_hoat = false, Ghi Audit Log)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -512,11 +524,11 @@
                 }
               ]
             },
-            "description": "[🔒 Admin] Vô hiệu hóa người dùng (Soft Delete: isActive = false, Ghi Audit Log)"
+            "description": "[🔒 Admin / BGH] Vô hiệu hóa người dùng (Soft Delete: kich_hoat = false, thu hồi phiên & RAM AI, Ghi Audit Log)"
           }
         },
         {
-          "name": "POST /api/nguoi-dung/:id/khuon-mat — [🔒 Admin] Đăng ký Face ID đa góc từ ảnh bằng InsightFace (512 chiều)",
+          "name": "POST /api/nguoi-dung/:id/khuon-mat — [🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Đăng ký Face ID đa góc từ ảnh (512 chiều)",
           "request": {
             "method": "POST",
             "header": [],
@@ -535,11 +547,11 @@
                 {
                   "key": "id",
                   "value": "00000000-0000-4000-8000-000000000001",
-                  "description": "ID người dùng cần gán Face ID"
+                  "description": "ID người dùng cần gán Face ID (không được tự đăng ký)"
                 }
               ]
             },
-            "description": "Gửi tối đa 5 ảnh góc độ JPEG, PNG hoặc WebP dạng multipart/form-data (chính diện, nghiêng trái, nghiêng phải, ngửa lên, cúi xuống). Face Service trích xuất embedding 512 chiều; backend lưu vector trong face_templates.",
+            "description": "Gửi tối đa 10 ảnh góc độ JPEG, PNG hoặc WebP dạng multipart/form-data (kèm bắt buộc dong_y_thu_thap=true theo NĐ 13/2023/NĐ-CP). Face Service trích xuất embedding 512 chiều; backend mã hóa AES-256-GCM và lưu vào mau_khuon_mat.",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -550,23 +562,29 @@
                   "description": "Tối đa 10 ảnh khuôn mặt (JPEG/PNG/WebP)"
                 },
                 {
-                  "key": "sampleAngles",
+                  "key": "cac_goc_mau",
                   "type": "text",
-                  "value": "[\"straight\",\"left\",\"right\",\"up\",\"down\"]",
+                  "value": "[\"chinh_dien\",\"nghieng_trai\",\"nghieng_phai\",\"ngua_len\",\"cui_xuong\"]",
                   "description": "Mảng góc mặt tương ứng (tùy chọn)"
                 },
                 {
-                  "key": "force",
+                  "key": "dong_y_thu_thap",
                   "type": "text",
                   "value": "true",
-                  "description": "Ghi đè dữ liệu khuôn mặt cũ"
+                  "description": "Bắt buộc true theo NĐ 13/2023/NĐ-CP"
+                },
+                {
+                  "key": "ghi_de",
+                  "type": "text",
+                  "value": "false",
+                  "description": "Ghi đè nếu phát hiện trùng khuôn mặt"
                 }
               ]
             }
           }
         },
         {
-          "name": "DELETE /api/nguoi-dung/:id/khuon-mat — [🔒 Admin] Xóa dữ liệu Face ID của nhân sự",
+          "name": "DELETE /api/nguoi-dung/:id/khuon-mat — [🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Xóa dữ liệu Face ID của nhân sự",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -589,7 +607,7 @@
                 }
               ]
             },
-            "description": "Xóa mẫu khuôn mặt khỏi collection face_templates và đặt lại faceRegistered = false để cho phép đăng ký lại."
+            "description": "Xóa sạch mẫu khuôn mặt khỏi mau_khuon_mat, hủy ảnh MinIO và gỡ khỏi RAM FAISS theo NĐ 13/2023/NĐ-CP (cấm tự xóa)."
           }
         }
       ]
@@ -614,30 +632,42 @@
               ],
               "query": [
                 {
-                  "key": "tree",
-                  "value": "true",
+                  "key": "cay",
+                  "value": "false",
                   "description": "Trả về cấu trúc dạng cây phân cấp (true/false)",
                   "disabled": true
                 },
                 {
-                  "key": "type",
+                  "key": "loai_don_vi",
                   "value": "",
-                  "description": "Lọc theo loại",
+                  "description": "Lọc theo loại (khoa, bo_mon, phong_ban)",
                   "disabled": true
                 },
                 {
-                  "key": "parentId",
+                  "key": "don_vi_cha_id",
                   "value": "",
                   "description": "Lọc theo ID đơn vị cha",
+                  "disabled": true
+                },
+                {
+                  "key": "trang",
+                  "value": "1",
+                  "description": "Số trang",
+                  "disabled": true
+                },
+                {
+                  "key": "gioi_han",
+                  "value": "20",
+                  "description": "Số lượng mỗi trang",
                   "disabled": true
                 }
               ]
             },
-            "description": "[🔒 Xác thực] Lấy danh sách Khoa / Viện / Phòng ban (Cây phân cấp)"
+            "description": "[🔒 Xác thực] Lấy danh sách Khoa / Bộ môn / Phòng ban (phẳng, cây hoặc phân trang)"
           }
         },
         {
-          "name": "POST /api/phong-ban — [🔒 Admin] Tạo mới Khoa / Phòng ban / Bộ môn",
+          "name": "POST /api/phong-ban — [🔒 Admin / BGH] Tạo mới Khoa / Phòng ban / Bộ môn",
           "request": {
             "method": "POST",
             "header": [
@@ -656,10 +686,10 @@
                 "phong-ban"
               ]
             },
-            "description": "[🔒 Admin] Tạo mới Khoa / Phòng ban / Bộ môn",
+            "description": "[🔒 Admin / BGH] Tạo mới Khoa / Phòng ban / Bộ môn",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Bộ môn Khoa học Dữ liệu\",\n  \"type\": \"bomon\",\n  \"parentId\": \"00000000-0000-4000-8000-000000000\",\n  \"managerId\": \"00000000-0000-4000-8000-000000000\",\n  \"location\": {\n    \"lat\": 21.028511,\n    \"lng\": 105.854444\n  }\n}",
+              "raw": "{\n  \"ten_phong_ban\": \"Bộ môn Khoa học Dữ liệu\",\n  \"loai_don_vi\": \"bo_mon\",\n  \"don_vi_cha_id\": \"00000000-0000-4000-8000-000000000001\",\n  \"truong_don_vi_id\": \"00000000-0000-4000-8000-000000000002\",\n  \"vi_do\": 20.9752,\n  \"kinh_do\": 105.7628,\n  \"ban_kinh_met\": 200\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -714,7 +744,7 @@
           }
         },
         {
-          "name": "PUT /api/phong-ban/:id — [🔒 Admin / Trưởng khoa] Cập nhật thông tin Khoa / Phòng ban",
+          "name": "PUT /api/phong-ban/:id — [🔒 Admin / BGH] Cập nhật thông tin Khoa / Phòng ban",
           "request": {
             "method": "PUT",
             "header": [
@@ -741,10 +771,10 @@
                 }
               ]
             },
-            "description": "[🔒 Admin / Trưởng khoa] Cập nhật thông tin Khoa / Phòng ban",
+            "description": "[🔒 Admin / BGH] Cập nhật thông tin Khoa / Phòng ban",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Khoa CNTT & Truyền thông\",\n  \"managerId\": \"00000000-0000-4000-8000-000000000\",\n  \"location\": {\n    \"lat\": 21.028511,\n    \"lng\": 105.854444\n  }\n}",
+              "raw": "{\n  \"ten_phong_ban\": \"Khoa CNTT & Truyền thông\",\n  \"truong_don_vi_id\": \"00000000-0000-4000-8000-000000000002\",\n  \"vi_do\": 20.9752,\n  \"kinh_do\": 105.7628,\n  \"ban_kinh_met\": 200\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -754,7 +784,7 @@
           }
         },
         {
-          "name": "DELETE /api/phong-ban/:id — [🔒 Admin] Xóa Khoa / Phòng ban (Ràng buộc nhân sự & đơn vị con)",
+          "name": "DELETE /api/phong-ban/:id — [🔒 Admin / BGH] Xóa Khoa / Phòng ban (Ràng buộc nhân sự, môn học & đơn vị con)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -892,7 +922,7 @@
             "description": "[🔒 Admin] Cập nhật ca làm việc",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"\",\n  \"startTime\": \"07:15\",\n  \"endTime\": \"09:45\",\n  \"lateThresholdMinutes\": 0\n}",
+              "raw": "{\n  \"ten_ca\": \"Ca Sáng (Điều chỉnh)\",\n  \"gio_bat_dau\": \"07:15\",\n  \"gio_ket_thuc\": \"09:45\",\n  \"nguong_di_muon_phut\": 15,\n  \"kich_hoat\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -949,13 +979,13 @@
               ],
               "query": [
                 {
-                  "key": "search",
+                  "key": "tim_kiem",
                   "value": "",
                   "description": "Tìm theo mã hoặc tên môn học",
                   "disabled": true
                 },
                 {
-                  "key": "departmentId",
+                  "key": "phong_ban_id",
                   "value": "",
                   "description": "Lọc theo khoa/bộ môn",
                   "disabled": true
@@ -985,10 +1015,10 @@
                 "mon-hoc"
               ]
             },
-            "description": "[🔒 Admin/Trưởng khoa] Tạo môn học/học phần mới",
+            "description": "[🔒 Admin / BGH / Đào tạo / Trưởng khoa / Trưởng BM / Phó ủy quyền] Tạo môn học/học phần mới",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"code\": \"INT3105\",\n  \"name\": \"Lập trình Web nâng cao\",\n  \"credits\": 3,\n  \"departmentId\": \"00000000-0000-4000-8000-000000000\",\n  \"description\": \"Học phần Lập trình Web chuyên ngành CNTT\"\n}",
+              "raw": "{\n  \"ma_mon\": \"INT3105\",\n  \"ten_mon\": \"Lập trình Web nâng cao\",\n  \"so_tin_chi\": 3,\n  \"phong_ban_id\": \"00000000-0000-4000-8000-000000000001\",\n  \"mo_ta\": \"Học phần Lập trình Web chuyên ngành CNTT\",\n  \"kich_hoat\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1051,10 +1081,10 @@
                 }
               ]
             },
-            "description": "[🔒 Admin/Trưởng khoa] Cập nhật thông tin môn học",
+            "description": "[🔒 Admin / BGH / Đào tạo / Trưởng khoa / Trưởng BM / Phó ủy quyền] Cập nhật thông tin môn học",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"code\": \"INT3105\",\n  \"name\": \"Lập trình Web nâng cao (2026)\",\n  \"credits\": 3,\n  \"departmentId\": \"00000000-0000-4000-8000-000000000\",\n  \"description\": \"Cập nhật đề cương học phần\",\n  \"isActive\": true\n}",
+              "raw": "{\n  \"ma_mon\": \"INT3105\",\n  \"ten_mon\": \"Lập trình Web nâng cao (2026)\",\n  \"so_tin_chi\": 3,\n  \"phong_ban_id\": \"00000000-0000-4000-8000-000000000001\",\n  \"mo_ta\": \"Cập nhật đề cương học phần\",\n  \"kich_hoat\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1111,25 +1141,25 @@
               ],
               "query": [
                 {
-                  "key": "userId",
+                  "key": "nguoi_dung_id",
                   "value": "",
                   "description": "Lọc theo ID giảng viên",
                   "disabled": true
                 },
                 {
-                  "key": "shiftId",
+                  "key": "ca_id",
                   "value": "",
                   "description": "Lọc theo ID ca",
                   "disabled": true
                 },
                 {
-                  "key": "weekday",
+                  "key": "thu_trong_tuan",
                   "value": "",
                   "description": "Thứ trong tuần (0: CN, 1: T2, ..., 6: T7)",
                   "disabled": true
                 },
                 {
-                  "key": "date",
+                  "key": "ngay",
                   "value": "",
                   "description": "Lọc lịch học vào ngày cụ thể (YYYY-MM-DD)",
                   "disabled": true
@@ -1140,7 +1170,7 @@
           }
         },
         {
-          "name": "POST /api/lich-trinh — [🔒 Admin / Trưởng khoa] Tạo mới lịch phân công giảng dạy",
+          "name": "POST /api/lich-trinh — [🔒 Admin / BGH / Đào tạo / Trưởng khoa / Trưởng BM / Phó ủy quyền] Tạo mới lịch phân công giảng dạy",
           "request": {
             "method": "POST",
             "header": [
@@ -1159,10 +1189,10 @@
                 "lich-trinh"
               ]
             },
-            "description": "[🔒 Admin / Trưởng khoa] Tạo mới lịch phân công giảng dạy",
+            "description": "[🔒 Quyền xếp lịch] Tạo mới lịch phân công giảng dạy",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": \"00000000-0000-4000-8000-000000000\",\n  \"shiftId\": \"00000000-0000-4000-8000-000000000\",\n  \"roomId\": \"A1-402\",\n  \"weekday\": 2,\n  \"startDate\": \"2026-09-01\",\n  \"endDate\": \"2026-12-31\",\n  \"notes\": \"Hệ điều hành nâng cao - K21\"\n}",
+              "raw": "{\n  \"nguoi_dung_id\": \"00000000-0000-4000-8000-000000000001\",\n  \"ca_id\": \"00000000-0000-4000-8000-000000000002\",\n  \"phong_hoc\": \"A1-402\",\n  \"thu_trong_tuan\": 2,\n  \"tiet_bat_dau\": 1,\n  \"so_tiet\": 4,\n  \"gio_bat_dau\": \"07:00\",\n  \"gio_ket_thuc\": \"11:30\",\n  \"ngay_bat_dau\": \"2026-09-01\",\n  \"ngay_ket_thuc\": \"2026-12-31\",\n  \"danh_sach_tuan\": [1, 2, 3, 4],\n  \"nam_hoc\": \"2026-2027\",\n  \"hoc_ky\": 1,\n  \"ghi_chu\": \"Hệ điều hành nâng cao - K21\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1188,15 +1218,15 @@
               ],
               "query": [
                 {
-                  "key": "date",
+                  "key": "ngay",
                   "value": "",
                   "description": "Ngày cần tra cứu (mặc định là hôm nay)",
                   "disabled": true
                 },
                 {
-                  "key": "userId",
+                  "key": "nguoi_dung_id",
                   "value": "",
-                  "description": "Lọc theo ID giảng viên (Dành cho Admin/Trưởng khoa)",
+                  "description": "Lọc theo ID giảng viên (theo phạm vi quyền)",
                   "disabled": true
                 }
               ]
@@ -1261,7 +1291,7 @@
             "description": "[🔒 Admin / Trưởng khoa] Cập nhật lịch giảng dạy",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"roomId\": \"B2-205\",\n  \"notes\": \"Chuyển phòng học thực hành\"\n}",
+              "raw": "{\n  \"phong_hoc\": \"B2-205\",\n  \"ghi_chu\": \"Chuyển phòng học thực hành\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1359,18 +1389,18 @@
               ],
               "query": [
                 {
-                  "key": "year",
+                  "key": "nam",
                   "value": "2026",
                   "description": "Lọc theo năm dương lịch",
                   "disabled": true
                 }
               ]
             },
-            "description": "[🔒 Admin] Lấy danh sách ngày nghỉ lễ toàn trường"
+            "description": "[🔒 Xác thực] Lấy danh sách ngày nghỉ lễ toàn trường"
           }
         },
         {
-          "name": "POST /api/ngay-nghi-le — [🔒 Admin] Tạo ngày nghỉ lễ mới",
+          "name": "POST /api/ngay-nghi-le — [🔒 Admin / TCCB] Tạo ngày nghỉ lễ mới",
           "request": {
             "method": "POST",
             "header": [
@@ -1389,10 +1419,10 @@
                 "ngay-nghi-le"
               ]
             },
-            "description": "[🔒 Admin] Tạo ngày nghỉ lễ mới",
+            "description": "[🔒 Admin / TCCB] Tạo ngày nghỉ lễ mới",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Nghỉ lễ Giỗ Tổ Hùng Vương 2026\",\n  \"startDate\": \"2026-04-26\",\n  \"endDate\": \"2026-04-26\",\n  \"year\": 2026,\n  \"isPaid\": true,\n  \"description\": \"Nghỉ lễ theo quy định nhà nước\"\n}",
+              "raw": "{\n  \"ten_ngay_le\": \"Nghỉ lễ Giỗ Tổ Hùng Vương 2026\",\n  \"ngay_bat_dau\": \"2026-04-26\",\n  \"ngay_ket_thuc\": \"2026-04-26\",\n  \"huong_luong\": true,\n  \"mo_ta\": \"Nghỉ lễ theo quy định nhà nước\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1458,7 +1488,7 @@
             "description": "[🔒 Admin] Cập nhật thông tin ngày nghỉ lễ",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Nghỉ lễ Giỗ Tổ Hùng Vương (Điều chỉnh)\",\n  \"startDate\": \"2026-04-26\",\n  \"endDate\": \"2026-04-27\",\n  \"isPaid\": true,\n  \"description\": \"Hoán đổi ngày nghỉ theo thông báo\"\n}",
+              "raw": "{\n  \"ten_ngay_le\": \"Nghỉ lễ Giỗ Tổ Hùng Vương (Điều chỉnh)\",\n  \"ngay_bat_dau\": \"2026-04-26\",\n  \"ngay_ket_thuc\": \"2026-04-27\",\n  \"huong_luong\": true,\n  \"mo_ta\": \"Hoán đổi ngày nghỉ theo thông báo\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1539,7 +1569,7 @@
           }
         },
         {
-          "name": "POST /api/khuon-mat/dang-ky-da-goc — [🔒 Admin/Trưởng khoa/Tự đăng ký] Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D",
+          "name": "POST /api/khuon-mat/dang-ky-da-goc — [🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D (cấm tự đăng ký)",
           "request": {
             "method": "POST",
             "header": [],
@@ -1554,15 +1584,27 @@
                 "dang-ky-da-goc"
               ]
             },
-            "description": "Nhận 5 ảnh các góc (chính diện, trái, phải, ngửa, cúi), trích xuất 5 vector ArcFace 512D và tính toán vector Centroid L2 chuẩn hóa.",
+            "description": "Nhận 5 ảnh các góc (chính diện, trái, phải, ngửa, cúi), kiểm tra liveness/quality/đồng nhất danh tính, trích xuất 5 vector ArcFace 512D và mã hóa AES-256-GCM vào mau_khuon_mat.",
             "body": {
               "mode": "formdata",
               "formdata": [
                 {
-                  "key": "userId",
+                  "key": "ma_can_bo",
                   "type": "text",
                   "value": "",
-                  "description": "ID người dùng (Admin có thể chỉ định, mặc định là bản thân)"
+                  "description": "Mã cán bộ / UUID / Email nhân sự cấp dưới"
+                },
+                {
+                  "key": "dong_y_thu_thap",
+                  "type": "text",
+                  "value": "true",
+                  "description": "Bắt buộc true theo NĐ 13/2023/NĐ-CP"
+                },
+                {
+                  "key": "ghi_de",
+                  "type": "text",
+                  "value": "false",
+                  "description": "Ghi đè khi xác nhận trùng sinh trắc học"
                 },
                 {
                   "key": "image_straight",
@@ -1618,7 +1660,7 @@
           }
         },
         {
-          "name": "GET /api/khuon-mat/trang-thai-dang-ky/:nguoiDungId — [🔒 Admin/Trưởng khoa] Kiểm tra trạng thái đã đăng ký khuôn mặt của người dùng",
+          "name": "GET /api/khuon-mat/trang-thai-dang-ky/:nguoiDungId — [🔒 Chính chủ / Admin / BGH / TCCB / Lãnh đạo đơn vị] Kiểm tra trạng thái Face ID của người dùng",
           "request": {
             "method": "GET",
             "header": [],
@@ -1635,41 +1677,17 @@
               ],
               "variable": [
                 {
-                  "key": "userId",
-                  "value": "00000000-0000-4000-8000-000000000001",
-                  "description": ""
-                },
-                {
                   "key": "nguoiDungId",
                   "value": "00000000-0000-4000-8000-000000000001",
                   "description": ""
                 }
               ]
             },
-            "description": "[🔒 Admin/Trưởng khoa] Kiểm tra trạng thái đã đăng ký khuôn mặt của người dùng"
+            "description": "[🔒 Chính chủ / Admin / BGH / TCCB / Lãnh đạo đơn vị] Kiểm tra trạng thái đã đăng ký khuôn mặt của người dùng"
           }
         },
         {
-          "name": "DELETE /api/khuon-mat/du-lieu-cua-toi — [🔒 Cá nhân] Tự xóa dữ liệu mẫu khuôn mặt của bản thân (Tuân thủ quyền xóa dữ liệu cá nhân)",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/khuon-mat/du-lieu-cua-toi",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "khuon-mat",
-                "du-lieu-cua-toi"
-              ]
-            },
-            "description": "[🔒 Cá nhân] Tự xóa dữ liệu mẫu khuôn mặt của bản thân (Tuân thủ quyền xóa dữ liệu cá nhân)"
-          }
-        },
-        {
-          "name": "DELETE /api/khuon-mat/du-lieu/:nguoiDungId — [🔒 Admin/Trưởng khoa] Xóa toàn bộ dữ liệu mẫu khuôn mặt của nhân sự và xóa khỏi RAM FAISS",
+          "name": "DELETE /api/khuon-mat/du-lieu/:nguoiDungId — [🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Xóa toàn bộ dữ liệu mẫu khuôn mặt của nhân sự (cấm tự xóa)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -1686,18 +1704,13 @@
               ],
               "variable": [
                 {
-                  "key": "userId",
-                  "value": "00000000-0000-4000-8000-000000000001",
-                  "description": ""
-                },
-                {
                   "key": "nguoiDungId",
                   "value": "00000000-0000-4000-8000-000000000001",
                   "description": ""
                 }
               ]
             },
-            "description": "[🔒 Admin/Trưởng khoa] Xóa toàn bộ dữ liệu mẫu khuôn mặt của nhân sự và xóa khỏi RAM FAISS"
+            "description": "[🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Xóa toàn bộ dữ liệu mẫu khuôn mặt của nhân sự và xóa khỏi RAM FAISS theo NĐ 13/2023/NĐ-CP"
           }
         },
         {
@@ -3154,62 +3167,62 @@
               ],
               "query": [
                 {
-                  "key": "actor",
+                  "key": "nguoi_thuc_hien_id",
                   "value": "",
-                  "description": "ID người thực hiện hoặc SYSTEM",
+                  "description": "UUID người thực hiện hoặc system",
                   "disabled": true
                 },
                 {
-                  "key": "action",
+                  "key": "hanh_dong",
                   "value": "",
-                  "description": "Tên hành động (e.g. USER_LOGIN, LOCK_PAYROLL)",
+                  "description": "Tên hành động (vd: USER_LOGIN, UPDATE_SYSTEM_CONFIG)",
                   "disabled": true
                 },
                 {
-                  "key": "targetType",
+                  "key": "loai_doi_tuong",
                   "value": "",
-                  "description": "Loại đối tượng (User, Payroll, LeaveRequest)",
+                  "description": "Loại đối tượng (nguoi_dung, cau_hinh_he_thong, tai_lieu_rag)",
                   "disabled": true
                 },
                 {
-                  "key": "status",
+                  "key": "ket_qua",
                   "value": "",
-                  "description": "Trạng thái thành công hay thất bại",
+                  "description": "Trạng thái (success hoặc failed)",
                   "disabled": true
                 },
                 {
-                  "key": "keyword",
+                  "key": "tim_kiem",
                   "value": "",
                   "description": "Từ khóa tìm kiếm",
                   "disabled": true
                 },
                 {
-                  "key": "startDate",
+                  "key": "tu_ngay",
                   "value": "",
-                  "description": "Từ ngày",
+                  "description": "Từ ngày (YYYY-MM-DD)",
                   "disabled": true
                 },
                 {
-                  "key": "endDate",
+                  "key": "den_ngay",
                   "value": "",
-                  "description": "Đến ngày",
+                  "description": "Đến ngày (YYYY-MM-DD)",
                   "disabled": true
                 },
                 {
-                  "key": "page",
+                  "key": "trang",
                   "value": "1",
                   "description": "",
                   "disabled": true
                 },
                 {
-                  "key": "limit",
+                  "key": "gioi_han",
                   "value": "20",
                   "description": "",
                   "disabled": true
                 }
               ]
             },
-            "description": "Chỉ dành cho Admin, Hiệu trưởng và Hiệu phó. Hỗ trợ lọc theo actor, action, targetType, status, khoảng thời gian và phân trang."
+            "description": "Chỉ dành cho Admin, Hiệu trưởng, Hiệu phó và TCCB. Hỗ trợ lọc theo nguoi_thuc_hien_id, hanh_dong, loai_doi_tuong, ket_qua, khoảng thời gian và phân trang."
           }
         },
         {
@@ -3280,7 +3293,7 @@
             "description": "[🔒 Admin] Cập nhật tham số cấu hình (tự động ghi Audit Log & làm mới RAM Cache)",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"key\": \"CAMPUS_GPS_RADIUS_METERS\",\n  \"value\": 100\n}",
+              "raw": "{\n  \"khoa_cau_hinh\": \"LUONG_CO_SO\",\n  \"gia_tri\": 2530000\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3311,15 +3324,9 @@
               ],
               "query": [
                 {
-                  "key": "isRead",
+                  "key": "thoi_diem_doc_gan_nhat",
                   "value": "",
-                  "description": "Lọc thông báo đã đọc hoặc chưa đọc",
-                  "disabled": true
-                },
-                {
-                  "key": "limit",
-                  "value": "20",
-                  "description": "Số lượng thông báo",
+                  "description": "Mốc thời gian ISO đánh dấu đã đọc gần nhất",
                   "disabled": true
                 }
               ]
@@ -3456,15 +3463,15 @@
               ],
               "query": [
                 {
-                  "key": "search",
+                  "key": "tim_kiem",
                   "value": "",
-                  "description": "Từ khóa tìm kiếm theo họ tên, email, hướng nghiên cứu",
+                  "description": "Từ khóa tìm kiếm theo họ tên hoặc email",
                   "disabled": true
                 },
                 {
                   "key": "phong_ban_id",
                   "value": "",
-                  "description": "Mã định danh Khoa/Viện",
+                  "description": "Mã định danh Khoa/Viện hoặc Bộ môn",
                   "disabled": true
                 },
                 {
@@ -3480,13 +3487,13 @@
                   "disabled": true
                 },
                 {
-                  "key": "page",
+                  "key": "trang",
                   "value": "1",
                   "description": "",
                   "disabled": true
                 },
                 {
-                  "key": "limit",
+                  "key": "gioi_han",
                   "value": "12",
                   "description": "",
                   "disabled": true
@@ -3597,7 +3604,7 @@
             "description": "Trò chuyện với Trợ lý AI tích hợp RAG và đính kèm tệp",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"message\": \"Quy định chấm công đi muộn của giảng viên như thế nào?\",\n  \"mode\": \"hr_work\",\n  \"useRag\": true\n}",
+              "raw": "{\n  \"tin_nhan\": \"Quy định chấm công đi muộn của giảng viên như thế nào?\",\n  \"che_do\": \"hr_work\",\n  \"dung_rag\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3652,7 +3659,7 @@
                   "description": "Tệp PDF, DOCX, DOC, TXT hoặc MD (tối đa 10MB)"
                 },
                 {
-                  "key": "title",
+                  "key": "tieu_de",
                   "type": "text",
                   "value": "Quy chế chấm công 2026",
                   "description": "Tiêu đề tài liệu (tùy chọn)"

@@ -15,7 +15,8 @@ try {
 
 const app = require('./app');
 const connectDB = require('./config/db');
-const { initCronJobs } = require('./services/heThong/tacVuDinhKy.service');
+const { sequelize } = connectDB;
+const { initCronJobs, stopCronJobs } = require('./services/heThong/tacVuDinhKy.service');
 const { loadConfigsIntoCache } = require('./services/heThong/cauHinhHeThong.service');
 
 const PORT = process.env.PORT || 5000;
@@ -31,17 +32,15 @@ const startServer = async () => {
     // Khởi chạy các tác vụ định kỳ (node-cron)
     initCronJobs();
 
-    // Khởi chạy worker xử lý hàng đợi chấm công khi Redis sẵn sàng
+    // Khởi chạy worker xử lý hàng đợi chấm công và tự khởi động lại khi Redis ready lại
     const { startPunchWorker, closePunchQueue } = require('./queues/hangDoiChamCong');
-    const { getRedisClient } = require('./config/redis');
-    const worker = startPunchWorker(5);
-    if (!worker) {
-      const redisCli = getRedisClient();
-      if (redisCli && typeof redisCli.once === 'function') {
-        redisCli.once('ready', () => {
-          startPunchWorker(5);
-        });
-      }
+    const { getRedisClient, closeRedis } = require('./config/redis');
+    startPunchWorker(5);
+    const redisCli = getRedisClient();
+    if (redisCli && typeof redisCli.on === 'function') {
+      redisCli.on('ready', () => {
+        startPunchWorker(5);
+      });
     }
 
     // Nạp sẵn vector khuôn mặt vào RAM dịch vụ AI sau khi khởi động
@@ -69,10 +68,16 @@ const startServer = async () => {
       console.log(`===================================================`);
     });
 
+    let isShuttingDown = false;
     const shutdown = async () => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
       console.log('[Server] Đang đóng kết nối an toàn...');
+      stopCronJobs();
       await closePunchQueue();
       await closeSocketServer();
+      await closeRedis().catch(() => {});
+      await sequelize.close().catch(() => {});
       server.close(() => {
         process.exit(0);
       });

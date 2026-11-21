@@ -14,18 +14,6 @@ export interface UserAvatarProps {
     anh_dai_dien?: string | null;
     ma_can_bo?: string;
     vai_tro_chinh?: string;
-    /** @deprecated Dùng id */
-    _id?: string;
-    /** @deprecated Dùng ho_ten */
-    fullName?: string;
-    name?: string;
-    /** @deprecated Dùng anh_dai_dien */
-    avatar?: string | null;
-    avatarUrl?: string | null;
-    /** @deprecated Dùng ma_can_bo */
-    staffCode?: string;
-    /** @deprecated Dùng vai_tro_chinh */
-    role?: string;
   } | null;
   name?: string;
   avatarUrl?: string | null;
@@ -57,7 +45,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   const [imgError, setImgError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const displayName = name || user?.ho_ten || user?.name || '';
+  const displayName = name || user?.ho_ten || '';
   const resolvedStaffCode = staffCode || user?.ma_can_bo || user?.id || displayName;
   const resolvedAvatarUrl = avatarUrl !== undefined ? getCleanAvatarUrl(avatarUrl) : getCleanAvatarUrl(user);
 

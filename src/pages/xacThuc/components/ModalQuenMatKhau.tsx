@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Mail, KeyRound, Lock, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi } from '../../../api/xacThuc.api';
@@ -20,6 +20,12 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setEmail(defaultEmail || '');
+    }
+  }, [isOpen, defaultEmail]);
 
   if (!isOpen) return null;
 

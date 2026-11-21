@@ -78,7 +78,7 @@ const updateSubject = async (req, res, next) => {
 // Xóa môn học
 const deleteSubject = async (req, res, next) => {
   try {
-    const subject = await subjectService.deleteSubject(req.params.id);
+    const subject = await subjectService.deleteSubject(req.params.id, req.user);
     return sendSuccess(res, `Đã xóa môn học "${subject.ten_mon}" thành công.`);
   } catch (error) {
     return handleError(res, error, next);

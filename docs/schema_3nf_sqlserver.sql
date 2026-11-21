@@ -166,7 +166,7 @@ CREATE TABLE [ho_so_can_bo] (
     CONSTRAINT [CK_ho_so_gioi_tinh] CHECK ([gioi_tinh] IN (N'nam', N'nu', N'khac')),
     CONSTRAINT [CK_ho_so_loai_nhan_su] CHECK ([loai_nhan_su] IN (N'giang_vien', N'can_bo_quan_ly', N'chuyen_vien', N'nhan_vien')),
     CONSTRAINT [CK_ho_so_loai_hop_dong] CHECK ([loai_hop_dong] IN (N'toan_thoi_gian', N'ban_thoi_gian', N'thinh_giang', N'hop_dong_vu_viec')),
-    CONSTRAINT [CK_ho_so_he_so_luong] CHECK ([he_so_luong] > 0),
+    CONSTRAINT [CK_ho_so_he_so_luong] CHECK ([he_so_luong] >= 0),
     CONSTRAINT [CK_ho_so_phu_thuoc] CHECK ([so_nguoi_phu_thuoc] >= 0),
     CONSTRAINT [CK_ho_so_phep_nam] CHECK ([han_muc_phep_nam] >= 0),
     CONSTRAINT [CK_ho_so_han_hop_dong] CHECK ([ngay_het_han_hop_dong] IS NULL OR [ngay_het_han_hop_dong] >= [ngay_vao_lam])

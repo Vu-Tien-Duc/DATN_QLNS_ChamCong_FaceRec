@@ -6,8 +6,31 @@ const { uuidPk, uuidFk, jsonText } = require('./modelHelpers');
 
 const GENESIS_HASH = '0'.repeat(64);
 
-// Băm SHA-256 bản ghi kiểm toán nối với mã băm liền trước
+// Băm SHA-256 bản ghi kiểm toán nối với mã băm liền trước (v2: bao gồm cả IP và lý do thất bại)
 const computeLogHash = (log, previousHash) => {
+  const prev = previousHash !== undefined ? previousHash : (log.ma_bam_truoc || GENESIS_HASH);
+  const timeStr = log.thoi_diem ? new Date(log.thoi_diem).toISOString() : new Date().toISOString();
+  const details = log.chi_tiet ? JSON.stringify(log.chi_tiet) : '';
+
+  const rawString = [
+    prev,
+    timeStr,
+    log.nguoi_thuc_hien_id ? String(log.nguoi_thuc_hien_id) : '',
+    log.loai_chu_the || 'user',
+    log.hanh_dong || '',
+    log.loai_doi_tuong || '',
+    log.doi_tuong_id ? String(log.doi_tuong_id) : '',
+    log.ket_qua || 'success',
+    log.dia_chi_ip ? String(log.dia_chi_ip) : '',
+    log.ly_do_that_bai ? String(log.ly_do_that_bai) : '',
+    details,
+  ].join('|');
+
+  return crypto.createHash('sha256').update(rawString).digest('hex');
+};
+
+// Công thức băm v1 cũ (tương thích ngược khi đối soát bản ghi lịch sử có sẵn trước nâng cấp v2)
+const computeLogHashLegacyV1 = (log, previousHash) => {
   const prev = previousHash !== undefined ? previousHash : (log.ma_bam_truoc || GENESIS_HASH);
   const timeStr = log.thoi_diem ? new Date(log.thoi_diem).toISOString() : new Date().toISOString();
   const details = log.chi_tiet ? JSON.stringify(log.chi_tiet) : '';
@@ -51,14 +74,22 @@ const runWithAuditChainLock = async (task) =>
     const lockKey = 'AUDIT_LOG_HASH_CHAIN';
     const workerId = `${process.pid}_${crypto.randomUUID()}`;
     let acquired = false;
-    for (let i = 0; i < 20; i += 1) {
+    let redisUnavailable = false;
+    for (let i = 0; i < 60; i += 1) {
       const ok = await redisHelpers.acquireRedisLock(lockKey, 5, workerId);
       if (ok === true) {
         acquired = true;
         break;
       }
-      if (ok === null) break;
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      if (ok === null) {
+        redisUnavailable = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    if (!acquired && !redisUnavailable) {
+      throw new Error('[AuditChainLock] Không thể chiếm khóa tuần tự chuỗi Hash SHA-256 sau thời gian chờ.');
     }
 
     try {
@@ -71,19 +102,97 @@ const runWithAuditChainLock = async (task) =>
   });
 
 class NhatKyKiemToan extends Model {
-  // Kiểm tra tính toàn vẹn chuỗi băm của các bản ghi gần nhất
+  // Giữ khóa tuần tự xuyên suốt thao tác INSERT để chuỗi Hash không bị phân nhánh khi ghi đồng thời
+  async save(options = {}) {
+    if (!this.isNewRecord || options?._insideAuditLock) {
+      return super.save(options);
+    }
+    return runWithAuditChainLock(() =>
+      super.save({
+        ...options,
+        _insideAuditLock: true,
+      })
+    );
+  }
+
+  static async bulkCreate(records, options = {}) {
+    if (options?._insideAuditLock) {
+      return super.bulkCreate(records, options);
+    }
+    return runWithAuditChainLock(() =>
+      super.bulkCreate(records, {
+        ...options,
+        _insideAuditLock: true,
+      })
+    );
+  }
+
+  // Kiểm tra tính toàn vẹn chuỗi băm của các bản ghi gần nhất (trả đủ thống kê & chi tiết bản ghi lỗi)
   static async xacMinhChuoi({ limit = 1000 } = {}) {
-    const recentLogs = await NhatKyKiemToan.findAll({ order: [['thoi_diem', 'DESC']], limit });
+    const [totalInDb, recentLogs] = await Promise.all([
+      NhatKyKiemToan.count(),
+      NhatKyKiemToan.findAll({ order: [['thoi_diem', 'DESC'], ['id', 'DESC']], limit }),
+    ]);
+
     const logs = recentLogs.reverse();
+    const tamperedMap = new Map();
+    let brokenChainCount = 0;
+
+    const recordViolation = (log, reason, expectedHash = undefined) => {
+      const id = String(log.id);
+      if (!tamperedMap.has(id)) {
+        tamperedMap.set(id, {
+          id,
+          action: log.hanh_dong || '',
+          timestamp: log.thoi_diem ? new Date(log.thoi_diem).toISOString() : new Date().toISOString(),
+          storedHash: log.ma_bam_hien_tai || null,
+          ...(expectedHash ? { expectedHash } : {}),
+          reason,
+        });
+      }
+    };
+
+    // Khi quét toàn bộ bảng, bản ghi đầu tiên bắt buộc phải nối từ GENESIS_HASH (phát hiện xóa log đầu bảng)
+    if (logs.length > 0 && logs.length === totalInDb && logs[0].ma_bam_truoc !== GENESIS_HASH) {
+      brokenChainCount += 1;
+      recordViolation(logs[0], 'Bản ghi đầu tiên không liên kết GENESIS_HASH (nghi xóa bản ghi đầu bảng)');
+    }
+
     let prev = null;
     for (const log of logs) {
-      if (prev !== null && log.ma_bam_truoc !== prev) return { hopLe: false, loiTaiId: log.id };
-      if (computeLogHash(log, log.ma_bam_truoc || GENESIS_HASH) !== log.ma_bam_hien_tai) {
-        return { hopLe: false, loiTaiId: log.id };
+      if (prev !== null && log.ma_bam_truoc !== prev) {
+        brokenChainCount += 1;
+        recordViolation(log, 'Chuỗi ma_bam_truoc không khớp ma_bam_hien_tai của bản ghi liền trước');
+      }
+      const prevHash = log.ma_bam_truoc || GENESIS_HASH;
+      const expectedHash = computeLogHash(log, prevHash);
+      const expectedLegacyHash = computeLogHashLegacyV1(log, prevHash);
+      if (expectedHash !== log.ma_bam_hien_tai && expectedLegacyHash !== log.ma_bam_hien_tai) {
+        recordViolation(log, 'Mã băm SHA-256 không khớp nội dung bản ghi', expectedHash);
       }
       prev = log.ma_bam_hien_tai;
     }
-    return { hopLe: true, loiTaiId: null, checkedCount: logs.length };
+
+    const tamperedLogs = Array.from(tamperedMap.values());
+    const tamperedCount = tamperedLogs.length;
+    const totalChecked = logs.length;
+    const isValid = tamperedCount === 0;
+    const firstTamperedId = tamperedLogs[0]?.id || null;
+
+    return {
+      isValid,
+      hopLe: isValid,
+      loiTaiId: firstTamperedId,
+      totalChecked,
+      checkedCount: totalChecked,
+      validCount: Math.max(0, totalChecked - tamperedCount),
+      tamperedCount,
+      brokenChainCount,
+      tamperedLogs,
+      genesisHash: logs[0]?.ma_bam_truoc || GENESIS_HASH,
+      latestHash: logs.length > 0 ? logs[logs.length - 1].ma_bam_hien_tai : GENESIS_HASH,
+      checkedAt: new Date().toISOString(),
+    };
   }
 }
 
@@ -120,14 +229,14 @@ NhatKyKiemToan.init(
     timestamps: false,
     hooks: {
       beforeCreate: async (log, options) => {
-        if (!log.thoi_diem) {
-          log.thoi_diem = new Date();
-        }
-        if (log.ma_bam_hien_tai) return;
-        await runWithAuditChainLock(async () => {
+        const computeStep = async () => {
+          if (!log.thoi_diem) {
+            log.thoi_diem = new Date();
+          }
+          if (log.ma_bam_hien_tai) return;
           if (!log.ma_bam_truoc) {
             const last = await NhatKyKiemToan.findOne({
-              order: [['thoi_diem', 'DESC']],
+              order: [['thoi_diem', 'DESC'], ['id', 'DESC']],
               attributes: ['ma_bam_hien_tai', 'thoi_diem'],
               transaction: options && options.transaction,
               ...(options && options.transaction ? { lock: options.transaction.LOCK.UPDATE } : {}),
@@ -138,13 +247,19 @@ NhatKyKiemToan.init(
             log.ma_bam_truoc = (last && last.ma_bam_hien_tai) || GENESIS_HASH;
           }
           log.ma_bam_hien_tai = computeLogHash(log, log.ma_bam_truoc);
-        });
+        };
+
+        if (options?._insideAuditLock) {
+          await computeStep();
+        } else {
+          await runWithAuditChainLock(computeStep);
+        }
       },
       beforeBulkCreate: async (logs, options) => {
         if (!Array.isArray(logs) || logs.length === 0) return;
-        await runWithAuditChainLock(async () => {
+        const computeBulkStep = async () => {
           const last = await NhatKyKiemToan.findOne({
-            order: [['thoi_diem', 'DESC']],
+            order: [['thoi_diem', 'DESC'], ['id', 'DESC']],
             attributes: ['ma_bam_hien_tai', 'thoi_diem'],
             transaction: options && options.transaction,
             ...(options && options.transaction ? { lock: options.transaction.LOCK.UPDATE } : {}),
@@ -166,7 +281,13 @@ NhatKyKiemToan.init(
             }
             prevHash = log.ma_bam_hien_tai;
           }
-        });
+        };
+
+        if (options?._insideAuditLock) {
+          await computeBulkStep();
+        } else {
+          await runWithAuditChainLock(computeBulkStep);
+        }
       },
       beforeUpdate: () => {
         throw new Error('Nhật ký kiểm toán (Audit Log) là dữ liệu bất biến, không được phép chỉnh sửa.');
@@ -190,4 +311,5 @@ NhatKyKiemToan.init(
 
 module.exports = NhatKyKiemToan;
 module.exports.computeLogHash = computeLogHash;
+module.exports.computeLogHashLegacyV1 = computeLogHashLegacyV1;
 module.exports.GENESIS_HASH = GENESIS_HASH;

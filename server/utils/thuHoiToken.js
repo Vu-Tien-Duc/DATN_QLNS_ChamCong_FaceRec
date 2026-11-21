@@ -53,11 +53,21 @@ const revokeToken = (token, expiresAt) => {
   let expTime;
   if (expiresAt instanceof Date) {
     expTime = expiresAt.getTime();
-  } else if (typeof expiresAt === 'number') {
-    expTime = expiresAt > 1e11 ? expiresAt : expiresAt * 1000;
+  } else if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
+    if (expiresAt > 1e11) {
+      // Unix epoch milliseconds
+      expTime = expiresAt;
+    } else if (expiresAt >= 1e9) {
+      // Unix epoch seconds
+      expTime = expiresAt * 1000;
+    } else {
+      // Thời lượng còn lại tính theo giây
+      expTime = Date.now() + Math.max(1, expiresAt) * 1000;
+    }
   } else {
     expTime = Date.now() + 15 * 60 * 1000; // Mặc định 15 phút
   }
+  if (expTime <= Date.now()) return;
   revokedTokensMap.set(hash, expTime);
   const ttlSeconds = Math.max(1, Math.ceil((expTime - Date.now()) / 1000));
   if (isRedisReady()) {

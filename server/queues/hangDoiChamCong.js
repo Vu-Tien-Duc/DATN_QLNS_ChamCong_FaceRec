@@ -133,27 +133,6 @@ const processPunchJobData = async (jobData) => {
   const nowVN = getVietnamTime(effectivePunchTime);
   const { dateStr: workDateStr } = getVietnamDayRange(effectivePunchTime);
 
-  // Môi trường test cô lập không có SQL Server -> chỉ chấm geofence và trả kết quả giả lập
-  let dbReady = true;
-  try {
-    await sequelize.authenticate();
-  } catch (_) {
-    dbReady = false;
-  }
-
-  if (!dbReady) {
-    const geoCheck = validateGeofence(location, null, null, reqIp);
-    return {
-      success: true,
-      action: requestedAction || punchType || 'check_in',
-      recordId: crypto.randomUUID(),
-      userId: effectiveUserId,
-      isFraud: geoCheck.isFraud,
-      processedAt: new Date(),
-      offlineDb: true,
-    };
-  }
-
   // Tìm bản ghi chấm công đang mở (ưu tiên trong ngày, có hỗ trợ ca làm việc qua đêm)
   const yesterdayStr = getVietnamDayRange(new Date(effectivePunchTime.getTime() - 24 * 60 * 60 * 1000)).dateStr;
   const overnightCutoff = new Date(effectivePunchTime.getTime() - 18 * 60 * 60 * 1000);
@@ -480,8 +459,9 @@ const addPunchJob = async (jobData) => {
 
   if (queue) {
     let timeoutId = null;
+    const jobUserId = jobData?.nguoi_dung_id || jobData?.userId || 'unknown';
     const jobPromise = queue.add(
-      `punch-${jobData.userId}-${Date.now()}`,
+      `punch-${jobUserId}-${Date.now()}`,
       jobData,
       jobData?.idempotencyKey ? { jobId: String(jobData.idempotencyKey) } : undefined
     );

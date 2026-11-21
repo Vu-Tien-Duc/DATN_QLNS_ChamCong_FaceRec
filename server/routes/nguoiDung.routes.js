@@ -19,7 +19,7 @@ const { UNIT_LEADER_ROLES } = require('../utils/vaiTro.utils');
 router.use(verifyToken);
 
 // 1. Xem danh sách người dùng (Admin, BGH, TCCB và Trưởng khoa - Trưởng khoa tự động lọc theo khoa)
-router.get('/', verifyRole(['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']), getAllUsers);
+router.get('/', verifyRole(['admin', 'bgh', 'tccb', ...UNIT_LEADER_ROLES]), getAllUsers);
 
 // 2. Thêm người dùng mới (Chỉ Admin / BGH / TCCB)
 router.post('/', verifyRole(['admin', 'bgh', 'tccb']), createUser);
@@ -34,7 +34,7 @@ router.delete('/:id/khuon-mat', verifyRole(['admin', 'bgh', 'tccb', ...UNIT_LEAD
 const allowSelfOrRoles = (allowedRoles = []) => {
   const roleMiddleware = verifyRole(allowedRoles);
   return (req, res, next) => {
-    const currentUserId = req.user?._id?.toString();
+    const currentUserId = req.user?.id?.toString();
     const targetUserId = req.params?.id?.toString();
     if (currentUserId && targetUserId && currentUserId === targetUserId) {
       return next();
@@ -44,10 +44,10 @@ const allowSelfOrRoles = (allowedRoles = []) => {
 };
 
 // 4. Xem chi tiết người dùng (Chính chủ, Admin, BGH, TCCB và Trưởng khoa của khoa đó)
-router.get('/:id', allowSelfOrRoles(['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']), getUserById);
+router.get('/:id', allowSelfOrRoles(['admin', 'bgh', 'tccb', ...UNIT_LEADER_ROLES]), getUserById);
 
 // 5. Cập nhật thông tin người dùng (Chính chủ, Admin, BGH, TCCB hoặc Trưởng khoa)
-router.put('/:id', allowSelfOrRoles(['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']), updateUser);
+router.put('/:id', allowSelfOrRoles(['admin', 'bgh', 'tccb', ...UNIT_LEADER_ROLES]), updateUser);
 
 // Vô hiệu hóa tài khoản (kich_hoat = false, chỉ Admin / BGH)
 router.delete('/:id', verifyRole(['admin', 'bgh']), deleteUser);

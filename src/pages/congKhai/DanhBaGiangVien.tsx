@@ -640,7 +640,7 @@ export const FacultyDirectory: React.FC = () => {
               >
                 <option value="">-- Tất cả Khoa / Đơn vị --</option>
                 {departments.map((d) => (
-                  <option key={d._id} value={d._id}>
+                  <option key={d.id} value={d.id}>
                     {d.ten_khoa}
                   </option>
                 ))}
@@ -701,7 +701,7 @@ export const FacultyDirectory: React.FC = () => {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {items.map((faculty) => (
-                  <FacultyCard key={faculty._id} faculty={faculty} />
+                  <FacultyCard key={faculty.id} faculty={faculty} />
                 ))}
               </div>
 

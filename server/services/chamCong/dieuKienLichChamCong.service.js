@@ -27,7 +27,8 @@ const evaluateUserScheduleForCheckIn = async (
   userId,
   specificShiftId = null,
   userObj = null,
-  referenceDate = new Date()
+  referenceDate = new Date(),
+  { readOnly = false } = {}
 ) => {
   const nowVN = getVietnamTime(referenceDate);
   const attendanceRules = getConfigSync('QUY_TAC_DIEM_DANH', {});
@@ -307,7 +308,7 @@ const evaluateUserScheduleForCheckIn = async (
   let upcomingSchedule = null;
   let alreadyCheckedInLog = null;
 
-  const activeSchedules = schedules.filter((sch) => sch.ca && isScheduleActiveOnDate(sch, nowVN));
+  const activeSchedules = schedules.filter((sch) => sch.ca && isScheduleActiveOnDate(sch, referenceDate));
   const scheduleById = new Map(activeSchedules.map((sch) => [String(sch.id), sch]));
   const nguongGopKhoi = Number(attendanceRules?.nguong_gop_khoi_phut);
   const khoiList = gomKhoiCaDay(
@@ -382,12 +383,14 @@ const evaluateUserScheduleForCheckIn = async (
         continue;
       }
 
-      // Quá hạn check-in của khối thì đánh vắng toàn bộ các ca trong khối
+      // Quá hạn check-in của khối: chỉ ghi DB/gửi email khi KHÔNG ở chế độ chỉ đọc (GET /khoi-hom-nay)
       const absentResults = [];
-      for (const member of memberSchedules) {
-        absentResults.push(await processScheduleAttendanceCheck(member, dayRange));
+      if (!readOnly) {
+        for (const member of memberSchedules) {
+          absentResults.push(await processScheduleAttendanceCheck(member, dayRange));
+        }
       }
-      const absentResult = absentResults[0];
+      const absentResult = absentResults[0] || null;
       const shiftName = shift.ten_ca || 'Ca làm việc';
       cancelledSchedules.push({
         scheduleId: sch.id,
@@ -398,24 +401,26 @@ const evaluateUserScheduleForCheckIn = async (
         absentResult,
       });
 
-      NhatKyKiemToan.create({
-        nguoi_thuc_hien_id: userId,
-        loai_chu_the: 'system',
-        hanh_dong: 'SCHEDULE_AUTO_CANCELLED_LATE',
-        doi_tuong_id: String(sch.id),
-        loai_doi_tuong: 'lich_trinh',
-        chi_tiet: {
-          shiftName,
-          startTime: shiftStartStr,
-          currentMinutes,
-          lateMinutes: currentMinutes - startMinutes,
-          lateThreshold,
-          scheduleIds: khoi.ds_lich_trinh_id,
-          reason: `Quá hạn check-in (muộn quá ${lateThreshold} phút). Tự động hủy lịch và đánh vắng.`,
-        },
-      }).catch((error) => {
-        console.error('[AttendanceService] Không thể ghi audit log hủy lịch quá hạn:', error);
-      });
+      if (!readOnly) {
+        NhatKyKiemToan.create({
+          nguoi_thuc_hien_id: userId,
+          loai_chu_the: 'system',
+          hanh_dong: 'SCHEDULE_AUTO_CANCELLED_LATE',
+          doi_tuong_id: String(sch.id),
+          loai_doi_tuong: 'lich_trinh',
+          chi_tiet: {
+            shiftName,
+            startTime: shiftStartStr,
+            currentMinutes,
+            lateMinutes: currentMinutes - startMinutes,
+            lateThreshold,
+            scheduleIds: khoi.ds_lich_trinh_id,
+            reason: `Quá hạn check-in (muộn quá ${lateThreshold} phút). Tự động hủy lịch và đánh vắng.`,
+          },
+        }).catch((error) => {
+          console.error('[AttendanceService] Không thể ghi audit log hủy lịch quá hạn:', error);
+        });
+      }
 
       continue;
     }

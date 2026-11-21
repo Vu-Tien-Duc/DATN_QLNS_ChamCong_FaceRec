@@ -286,7 +286,7 @@ const swaggerPaths = {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Đăng nhập người dùng (Rate Limit 5 lần/15p, JWT Access & Refresh Token)',
-      description: 'Đăng nhập vào hệ thống bằng Email hoặc Mã cán bộ và Mật khẩu.\n\n**Danh sách tài khoản Demo (Mật khẩu chung: `password123`):**\n- Quản trị viên (Admin): `admin@university.edu.vn` hoặc `daihocdtd@gmail.com`\n- Hiệu trưởng (BGH): `hieutruong@university.edu.vn`\n- Trưởng khoa CNTT: `truongkhoa.cntt@university.edu.vn`\n- Giảng viên: `giangvien.bich@university.edu.vn`\n- Nhân viên: `nhanvien.ha@university.edu.vn`',
+      description: 'Đăng nhập vào hệ thống bằng Email hoặc Mã cán bộ và Mật khẩu.\n\n**Danh sách tài khoản Demo (`khoiTaoDuLieuMau.js` - Mật khẩu mặc định: `123456`):**\n- Quản trị viên (Admin): `admin@ntu.edu.vn`\n- Hiệu trưởng (BGH): `hieutruong@ntu.edu.vn`\n- Trưởng khoa CNTT: `truongkhoa.cntt@ntu.edu.vn`\n- Giảng viên: `ducvt.gv@ntu.edu.vn`\n- Tổ chức cán bộ (TCCB): `tccb@ntu.edu.vn`\n- Kế toán: `ketoan@ntu.edu.vn`',
       security: [],
       requestBody: {
         required: true,
@@ -294,10 +294,10 @@ const swaggerPaths = {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['email', 'password'],
+              required: ['email', 'mat_khau'],
               properties: {
-                email: { type: 'string', example: 'admin@university.edu.vn' },
-                password: { type: 'string', example: 'password123' },
+                email: { type: 'string', example: 'admin@ntu.edu.vn', description: 'Email hoặc Mã cán bộ' },
+                mat_khau: { type: 'string', example: '123456' },
               },
             },
           },
@@ -313,22 +313,24 @@ const swaggerPaths = {
                 message: 'Đăng nhập thành công.',
                 data: {
                   token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-                  refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-                  user: {
-                    _id: '00000000-0000-4000-8000-000000000',
-                    fullName: 'Quản Trị Viên Hệ Thống (Admin Trường)',
-                    email: 'daihocdtd@gmail.com',
-                    role: 'admin',
-                    departmentId: '00000000-0000-4000-8000-000000000',
-                    annualLeaveQuota: 15,
-                    isActive: true,
+                  ma_lam_moi: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                  nguoi_dung: {
+                    id: '00000000-0000-4000-8000-000000000001',
+                    ho_ten: 'Quản Trị Viên Hệ Thống',
+                    email: 'admin@ntu.edu.vn',
+                    vai_tro_chinh: 'admin',
+                    don_vi_chinh_id: '00000000-0000-4000-8000-000000000010',
+                    han_muc_phep_nam: 15,
+                    kich_hoat: true,
                   },
                 },
               },
             },
           },
         },
-        401: { description: 'Email hoặc mật khẩu không chính xác' },
+        401: { description: 'Tài khoản hoặc mật khẩu không chính xác' },
+        403: { description: 'Tài khoản bị vô hiệu hóa hoặc đã nghỉ việc (chỉ trả về sau khi khớp mật khẩu)' },
+        429: { description: 'Đăng nhập sai quá 5 lần trong 15 phút' },
       },
     },
   },
@@ -356,7 +358,7 @@ const swaggerPaths = {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Cấp mới Access Token từ Refresh Token',
-      description: 'Đọc Refresh Token (ma_lam_moi) từ httpOnly cookie hoặc JSON Request Body để cấp mới Access Token 15 phút.',
+      description: 'Đọc Refresh Token (ma_lam_moi) từ httpOnly cookie hoặc JSON Request Body để cấp mới Access Token 15 phút (có Grace Period 15s chống Race Condition).',
       security: [],
       requestBody: {
         required: false,
@@ -374,7 +376,7 @@ const swaggerPaths = {
       responses: {
         200: { description: 'Cấp token mới thành công' },
         400: { description: 'Thiếu Refresh Token trong Cookie hoặc Body' },
-        403: { description: 'Refresh token không hợp lệ hoặc đã hết hạn' },
+        403: { description: 'Refresh token không hợp lệ, đã hết hạn hoặc phát hiện tái sử dụng bất thường' },
       },
     },
   },
@@ -382,9 +384,9 @@ const swaggerPaths = {
   '/api/xac-thuc/dang-xuat': {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
-      summary: '[🔒 Xác thực] Đăng xuất khỏi hệ thống (Blacklist Access Token, xóa Refresh Token & clear Cookie)',
-      description: 'Đưa Access Token hiện tại vào Blacklist để vô hiệu hóa ngay lập tức, xóa Refresh Token trong CSDL và xóa httpOnly cookie.',
-      security: [{ BearerAuth: [] }],
+      summary: '[🔓/🔒 Phiên] Đăng xuất khỏi hệ thống (Blacklist Access Token, xóa Refresh Token & clear Cookie)',
+      description: 'Đưa Access Token hiện tại vào Blacklist (chấp nhận cả token vừa hết hạn qua Bearer Header), xóa Refresh Token trong CSDL và xóa httpOnly cookie.',
+      security: [{ BearerAuth: [] }, {}],
       requestBody: {
         required: false,
         content: {
@@ -392,7 +394,7 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                refreshToken: { type: 'string' },
+                ma_lam_moi: { type: 'string' },
               },
             },
           },
@@ -407,8 +409,8 @@ const swaggerPaths = {
   '/api/xac-thuc/quen-mat-khau': {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
-      summary: '[🔓 Public] Yêu cầu mã OTP đặt lại mật khẩu (Hạn 10 phút)',
-      description: 'Gửi mã OTP 6 chữ số đến email để xác thực yêu cầu đổi mật khẩu mới.',
+      summary: '[🔓 Public] Yêu cầu mã OTP đặt lại mật khẩu (Hạn 10 phút, Cooldown 60s)',
+      description: 'Gửi mã OTP 6 chữ số đến email để xác thực yêu cầu đổi mật khẩu mới. Luôn trả HTTP 200 đồng nhất để chống dò tài khoản.',
       security: [],
       requestBody: {
         required: true,
@@ -418,17 +420,16 @@ const swaggerPaths = {
               type: 'object',
               required: ['email'],
               properties: {
-                email: { type: 'string', example: 'daihocdtd@gmail.com' },
+                email: { type: 'string', example: 'ducvt.gv@ntu.edu.vn' },
               },
             },
           },
         },
       },
       responses: {
-        200: { description: 'Mã OTP đặt lại mật khẩu đã được gửi đến email (hạn 10 phút)' },
+        200: { description: 'Phản hồi đồng nhất: Nếu email tồn tại và đang hoạt động, OTP đã được gửi' },
         400: { description: 'Thiếu email' },
-        403: { description: 'Tài khoản chưa được kích hoạt hoặc đã bị vô hiệu hóa' },
-        404: { description: 'Không tìm thấy tài khoản với email này' },
+        429: { description: 'Yêu cầu OTP quá nhanh trong vòng 60 giây hoặc vượt rate limit' },
       },
     },
   },
@@ -437,7 +438,7 @@ const swaggerPaths = {
     post: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
       summary: '[🔓 Public] Xác thực OTP và đặt lại mật khẩu mới',
-      description: 'Nhập mã OTP 6 số còn hiệu lực (< 10 phút) và mật khẩu mới để đổi mật khẩu (thu hồi các token cũ).',
+      description: 'Nhập mã OTP 6 số còn hiệu lực (< 10 phút) và mật khẩu mới để đổi mật khẩu (thu hồi toàn bộ phiên cũ và clear cookie).',
       security: [],
       requestBody: {
         required: true,
@@ -445,11 +446,11 @@ const swaggerPaths = {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['email', 'otp', 'newPassword'],
+              required: ['email', 'ma_otp', 'mat_khau_moi'],
               properties: {
-                email: { type: 'string', example: 'daihocdtd@gmail.com' },
-                otp: { type: 'string', example: '123456' },
-                newPassword: { type: 'string', example: 'new_password123' },
+                email: { type: 'string', example: 'ducvt.gv@ntu.edu.vn' },
+                ma_otp: { type: 'string', example: '123456' },
+                mat_khau_moi: { type: 'string', example: 'new_password123' },
               },
             },
           },
@@ -457,8 +458,7 @@ const swaggerPaths = {
       },
       responses: {
         200: { description: 'Đặt lại mật khẩu thành công' },
-        400: { description: 'Mã OTP không hợp lệ, đã hết hạn (>10 phút) hoặc mật khẩu dưới 6 ký tự' },
-        404: { description: 'Không tìm thấy tài khoản' },
+        400: { description: 'Email hoặc mã OTP không hợp lệ hoặc đã hết hạn (hoặc mật khẩu dưới 6 ký tự / trùng mật khẩu cũ)' },
       },
     },
   },
@@ -474,10 +474,10 @@ const swaggerPaths = {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['oldPassword', 'newPassword'],
+              required: ['mat_khau_hien_tai', 'mat_khau_moi'],
               properties: {
-                oldPassword: { type: 'string', example: 'password123' },
-                newPassword: { type: 'string', example: 'new_secret_pass_2026' },
+                mat_khau_hien_tai: { type: 'string', example: '123456' },
+                mat_khau_moi: { type: 'string', example: 'new_secret_pass_2026' },
               },
             },
           },
@@ -485,7 +485,7 @@ const swaggerPaths = {
       },
       responses: {
         200: { description: 'Đổi mật khẩu thành công' },
-        400: { description: 'Mật khẩu cũ không chính xác hoặc mật khẩu mới dưới 6 ký tự' },
+        400: { description: 'Mật khẩu hiện tại không chính xác, mật khẩu mới trùng mật khẩu cũ hoặc dưới 6 ký tự' },
       },
     },
   },
@@ -493,7 +493,7 @@ const swaggerPaths = {
   '/api/xac-thuc/anh-dai-dien': {
     put: {
       tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
-      summary: '[🔒 Cá nhân] Cập nhật ảnh đại diện cá nhân (PUT - Upload file hoặc URL)',
+      summary: '[🔒 Cá nhân] Cập nhật ảnh đại diện cá nhân (PUT - Upload file JPG/PNG/WEBP tối đa 5MB hoặc URL HTTPS)',
       security: [{ BearerAuth: [] }],
       requestBody: {
         content: {
@@ -501,7 +501,7 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                avatar: { type: 'string', format: 'binary', description: 'File ảnh JPG/PNG' },
+                anh_dai_dien: { type: 'string', format: 'binary', description: 'File ảnh JPG/PNG/WEBP (<= 5MB)' },
               },
             },
           },
@@ -509,7 +509,8 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                avatarUrl: { type: 'string', example: '/uploads/avatar_user.png' },
+                anh_dai_dien: { type: 'string', nullable: true, example: '/api/tai-tep/tep/avatar_user.png' },
+                anh_dai_dien_base64: { type: 'string', description: 'Ảnh mã hóa base64 tối đa 5MB' },
               },
             },
           },
@@ -517,34 +518,7 @@ const swaggerPaths = {
       },
       responses: {
         200: { description: 'Cập nhật ảnh đại diện thành công' },
-      },
-    },
-    post: {
-      tags: ['01 - Xác Thực & Phiên Làm Việc (Auth)'],
-      summary: '[🔒 Cá nhân] Cập nhật ảnh đại diện cá nhân (POST - Upload file hoặc URL)',
-      security: [{ BearerAuth: [] }],
-      requestBody: {
-        content: {
-          'multipart/form-data': {
-            schema: {
-              type: 'object',
-              properties: {
-                avatar: { type: 'string', format: 'binary' },
-              },
-            },
-          },
-          'application/json': {
-            schema: {
-              type: 'object',
-              properties: {
-                avatarUrl: { type: 'string', example: '/uploads/avatar_user.png' },
-              },
-            },
-          },
-        },
-      },
-      responses: {
-        200: { description: 'Cập nhật ảnh đại diện thành công' },
+        400: { description: 'Ảnh hoặc đường dẫn không hợp lệ' },
       },
     },
   },
@@ -553,13 +527,23 @@ const swaggerPaths = {
   '/api/nguoi-dung': {
     get: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
-      summary: '[🔒 Admin / Trưởng khoa] Lấy danh sách người dùng (Admin xem toàn trường, Trưởng khoa chỉ xem khoa mình)',
+      summary: '[🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Lấy danh sách người dùng (có lọc đệ quy theo đơn vị & vai trò kiêm nhiệm)',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'role', in: 'query', schema: { type: 'string', enum: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'giang_vien', 'nhan_vien'] }, description: 'Lọc theo chức vụ' },
-        { name: 'departmentId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo mã phòng ban (Chỉ có tác dụng với Admin)' },
-        { name: 'isActive', in: 'query', schema: { type: 'boolean' }, description: 'Lọc tài khoản còn hoạt động hay không' },
-        { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Tìm theo họ tên hoặc email' },
+        {
+          name: 'vai_tro',
+          in: 'query',
+          schema: {
+            type: 'string',
+            enum: ['admin', 'bgh', 'tccb', 'dao_tao', 'ke_toan', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'giang_vien', 'nhan_vien'],
+          },
+          description: 'Lọc theo vai trò (bao gồm vai trò chính và vai trò kiêm nhiệm còn hiệu lực)',
+        },
+        { name: 'don_vi_id', in: 'query', schema: { type: 'string', format: 'uuid' }, description: 'Lọc theo mã đơn vị (tự động mở rộng bộ môn con nếu là Khoa)' },
+        { name: 'kich_hoat', in: 'query', schema: { type: 'boolean' }, description: 'Lọc theo trạng thái kích hoạt (true/false)' },
+        { name: 'tim_kiem', in: 'query', schema: { type: 'string' }, description: 'Tìm kiếm theo họ tên, email hoặc mã cán bộ' },
+        { name: 'trang', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Số trang' },
+        { name: 'gioi_han', in: 'query', schema: { type: 'integer', default: 20 }, description: 'Số lượng mỗi trang (tối đa 100)' },
       ],
       responses: {
         200: { description: 'Lấy danh sách thành công' },
@@ -568,7 +552,7 @@ const swaggerPaths = {
     },
     post: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
-      summary: '[🔒 Admin] Thêm người dùng mới (Ghi Audit Log)',
+      summary: '[🔒 Admin / BGH / TCCB] Thêm mới tài khoản nhân sự & hồ sơ cán bộ (Ghi Audit Log)',
       security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
@@ -576,17 +560,41 @@ const swaggerPaths = {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['fullName', 'email', 'password', 'departmentId'],
+              required: ['ho_ten', 'email', 'mat_khau', 'ma_can_bo'],
               properties: {
-                fullName: { type: 'string', example: 'TS. Lê Thanh Sơn' },
-                email: { type: 'string', example: 'lethanhson@university.edu.vn' },
-                password: { type: 'string', example: 'password123' },
-                role: { type: 'string', enum: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'giang_vien', 'nhan_vien'], example: 'giang_vien' },
-                departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-                annualLeaveQuota: { type: 'number', example: 12 },
-                staffCode: { type: 'string', example: 'GV001' },
-                phoneNumber: { type: 'string', example: '0901234567' },
-                academicTitle: { type: 'string', example: 'Tiến sĩ' },
+                ho_ten: { type: 'string', example: 'TS. Lê Thanh Sơn' },
+                email: { type: 'string', example: 'lethanhson@ntu.edu.vn' },
+                mat_khau: { type: 'string', example: 'password123' },
+                ma_can_bo: { type: 'string', example: 'GV001' },
+                vai_tro_chinh: {
+                  type: 'string',
+                  enum: ['admin', 'bgh', 'tccb', 'dao_tao', 'ke_toan', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'giang_vien', 'nhan_vien'],
+                  example: 'giang_vien',
+                },
+                don_vi_chinh_id: { type: 'string', format: 'uuid', nullable: true },
+                so_dien_thoai: { type: 'string', example: '0901234567' },
+                chuc_vu: { type: 'string', example: 'Giảng viên' },
+                loai_nhan_su: { type: 'string', enum: ['giang_vien', 'can_bo_quan_ly', 'chuyen_vien', 'nhan_vien'] },
+                loai_hop_dong: { type: 'string', enum: ['toan_thoi_gian', 'ban_thoi_gian', 'thinh_giang', 'hop_dong_vu_viec'] },
+                hoc_ham: { type: 'string', enum: ['giao_su', 'pho_giao_su', 'khong'] },
+                hoc_vi: { type: 'string', enum: ['tien_si', 'thac_si', 'cu_nhan', 'ky_su', 'khac'] },
+                he_so_luong: { type: 'number', example: 2.34, description: 'Cho phép >= 0 đối với thỉnh giảng / hợp đồng vụ việc' },
+                so_nguoi_phu_thuoc: { type: 'integer', example: 0 },
+                han_muc_phep_nam: { type: 'integer', example: 12 },
+                danh_sach_vai_tro: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      ma_vai_tro: { type: 'string' },
+                      pham_vi: { type: 'string', enum: ['toan_truong', 'khoa', 'bo_mon', 'phong_ban'] },
+                      don_vi_id: { type: 'string', format: 'uuid', nullable: true },
+                      duoc_uy_quyen: { type: 'boolean' },
+                      tu_ngay: { type: 'string', format: 'date' },
+                      den_ngay: { type: 'string', format: 'date', nullable: true },
+                    },
+                  },
+                },
               },
             },
           },
@@ -594,8 +602,9 @@ const swaggerPaths = {
       },
       responses: {
         201: { description: 'Tạo người dùng thành công' },
-        400: { description: 'Dữ liệu không hợp lệ hoặc Email đã tồn tại' },
-        403: { description: 'Chỉ Admin mới có quyền thực hiện' },
+        400: { description: 'Dữ liệu không hợp lệ hoặc vi phạm quy tắc phòng ban - vai trò' },
+        403: { description: 'Không đủ thẩm quyền tạo tài khoản hoặc gán vai trò cấp cao' },
+        409: { description: 'Email hoặc Mã cán bộ đã tồn tại' },
       },
     },
   },
@@ -603,19 +612,21 @@ const swaggerPaths = {
   '/api/nguoi-dung/{id}': {
     get: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
-      summary: '[🔒 Admin / Trưởng khoa] Xem thông tin chi tiết một người dùng',
+      summary: '[🔒 Chính chủ / Admin / BGH / TCCB / Lãnh đạo đơn vị] Xem chi tiết hồ sơ cán bộ',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Lấy thông tin thành công' },
+        403: { description: 'Ngoài phạm vi quản lý đơn vị' },
         404: { description: 'Không tìm thấy người dùng' },
       },
     },
     put: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
-      summary: '[🔒 Admin / Trưởng khoa] Cập nhật thông tin người dùng (Ghi Audit Log)',
+      summary: '[🔒 Chính chủ / Admin / BGH / TCCB / Lãnh đạo đơn vị] Cập nhật thông tin hồ sơ nhân sự (Ghi Audit Log)',
+      description: 'Chính chủ và Lãnh đạo đơn vị bị giới hạn danh sách trường được phép cập nhật (không thể tự sửa hệ số lương, người phụ thuộc, loại hợp đồng, email hay vai trò). Khóa tài khoản / nghỉ việc / đổi mật khẩu sẽ thu hồi phiên và gỡ vector khuôn mặt khỏi RAM AI.',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       requestBody: {
         required: true,
         content: {
@@ -623,14 +634,22 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                fullName: { type: 'string', example: 'TS. Trần Thị Bích (Cập nhật)' },
-                departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-                role: { type: 'string', enum: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'giang_vien', 'nhan_vien'] },
-                isActive: { type: 'boolean' },
-                annualLeaveQuota: { type: 'number', example: 14 },
-                staffCode: { type: 'string', example: 'GV001' },
-                phoneNumber: { type: 'string', example: '0901234567' },
-                academicTitle: { type: 'string', example: 'Tiến sĩ' },
+                ho_ten: { type: 'string', example: 'TS. Trần Thị Bích' },
+                don_vi_chinh_id: { type: 'string', format: 'uuid' },
+                vai_tro_chinh: {
+                  type: 'string',
+                  enum: ['admin', 'bgh', 'tccb', 'dao_tao', 'ke_toan', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'giang_vien', 'nhan_vien'],
+                },
+                kich_hoat: { type: 'boolean' },
+                trang_thai_lam_viec: { type: 'string', enum: ['dang_lam_viec', 'tam_nghi', 'da_nghi_viec'] },
+                he_so_luong: { type: 'number', example: 2.67 },
+                han_muc_phep_nam: { type: 'integer', example: 14 },
+                so_nguoi_phu_thuoc: { type: 'integer', example: 1 },
+                ma_can_bo: { type: 'string', example: 'GV001' },
+                so_dien_thoai: { type: 'string', example: '0901234567' },
+                hoc_ham: { type: 'string', enum: ['giao_su', 'pho_giao_su', 'khong'] },
+                hoc_vi: { type: 'string', enum: ['tien_si', 'thac_si', 'cu_nhan', 'ky_su', 'khac'] },
+                danh_sach_vai_tro: { type: 'array', items: { type: 'object' } },
               },
             },
           },
@@ -638,16 +657,18 @@ const swaggerPaths = {
       },
       responses: {
         200: { description: 'Cập nhật thành công' },
+        403: { description: 'Không đủ quyền sửa tài khoản cấp cao hoặc ngoài phạm vi đơn vị' },
         404: { description: 'Không tìm thấy người dùng' },
       },
     },
     delete: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
-      summary: '[🔒 Admin] Vô hiệu hóa người dùng (Soft Delete: isActive = false, Ghi Audit Log)',
+      summary: '[🔒 Admin / BGH] Vô hiệu hóa người dùng (Soft Delete: kich_hoat = false, thu hồi phiên & RAM AI, Ghi Audit Log)',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Vô hiệu hóa tài khoản thành công' },
+        403: { description: 'Chỉ BGH mới có quyền khóa Admin/BGH' },
         404: { description: 'Không tìm thấy người dùng' },
       },
     },
@@ -656,21 +677,23 @@ const swaggerPaths = {
   '/api/nguoi-dung/{id}/khuon-mat': {
     post: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
-      summary: '[🔒 Admin] Đăng ký Face ID đa góc từ ảnh bằng InsightFace (512 chiều)',
-      description: 'Gửi tối đa 5 ảnh góc độ JPEG, PNG hoặc WebP dạng multipart/form-data (chính diện, nghiêng trái, nghiêng phải, ngửa lên, cúi xuống). Face Service trích xuất embedding 512 chiều; backend lưu vector trong face_templates.',
+      summary: '[🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Đăng ký Face ID đa góc từ ảnh (512 chiều)',
+      description: 'Gửi tối đa 10 ảnh góc độ JPEG, PNG hoặc WebP dạng multipart/form-data (kèm bắt buộc dong_y_thu_thap=true theo NĐ 13/2023/NĐ-CP). Face Service trích xuất embedding 512 chiều; backend mã hóa AES-256-GCM và lưu vào bảng mau_khuon_mat.',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'ID người dùng cần gán Face ID' }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' }, description: 'ID người dùng cần gán Face ID (không được tự đăng ký)' }],
       requestBody: {
         required: true,
         content: {
           'multipart/form-data': {
             schema: {
               type: 'object',
-              required: ['images'],
+              required: ['images', 'dong_y_thu_thap'],
               properties: {
-                images: { type: 'array', items: { type: 'string', format: 'binary' }, maxItems: 5 },
-                sampleAngles: { type: 'string', description: 'Mảng JSON hoặc chuỗi danh mục các góc mặt' },
-                force: { type: 'string', enum: ['true', 'false'] },
+                images: { type: 'array', items: { type: 'string', format: 'binary' }, maxItems: 10 },
+                cac_goc_mau: { type: 'string', description: 'Mảng JSON hoặc danh sách góc mặt' },
+                mo_hinh_ai: { type: 'string', default: 'buffalo_s' },
+                dong_y_thu_thap: { type: 'string', enum: ['true', 'false'], description: 'Bắt buộc true theo NĐ 13/2023/NĐ-CP' },
+                ghi_de: { type: 'string', enum: ['true', 'false'], description: 'Ghi đè nếu phát hiện trùng khuôn mặt' },
               },
             },
           },
@@ -678,21 +701,21 @@ const swaggerPaths = {
       },
       responses: {
         200: { description: 'Đăng ký Face ID thành công' },
-        400: { description: 'Vector không đúng chuẩn 512 chiều hoặc ảnh không phát hiện khuôn mặt' },
-        403: { description: 'Chỉ Admin mới có quyền thực hiện' },
+        400: { description: 'Thiếu đồng thuận NĐ 13/2023, ảnh không đúng chữ ký nhị phân hoặc không hợp lệ 512 chiều' },
+        403: { description: 'Cấm tự đăng ký hoặc ngoài phạm vi đơn vị quản lý' },
         404: { description: 'Không tìm thấy người dùng' },
-        409: { description: 'Khuôn mặt đã được đăng ký cho người khác (USER_003)' },
+        409: { description: 'Khuôn mặt đã được đăng ký cho nhân sự khác (USER_FACE_ALREADY_REGISTERED)' },
       },
     },
     delete: {
       tags: ['02 - Quản Lý Người Dùng (Users)'],
-      summary: '[🔒 Admin] Xóa dữ liệu Face ID của nhân sự',
-      description: 'Xóa mẫu khuôn mặt khỏi collection face_templates và đặt lại faceRegistered = false để cho phép đăng ký lại.',
+      summary: '[🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Xóa vĩnh viễn dữ liệu Face ID của nhân sự',
+      description: 'Xóa sạch mẫu khuôn mặt khỏi mau_khuon_mat, hủy ảnh trên MinIO và gỡ khỏi RAM Index theo NĐ 13/2023/NĐ-CP (cấm tự xóa).',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'ID người dùng cần xóa Face ID' }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' }, description: 'ID người dùng cần xóa Face ID' }],
       responses: {
         200: { description: 'Xóa Face ID thành công' },
-        403: { description: 'Chỉ Admin mới có quyền thực hiện' },
+        403: { description: 'Cấm tự xóa hoặc ngoài phạm vi đơn vị quản lý' },
         404: { description: 'Không tìm thấy người dùng' },
       },
     },
@@ -702,12 +725,14 @@ const swaggerPaths = {
   '/api/phong-ban': {
     get: {
       tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
-      summary: '[🔒 Xác thực] Lấy danh sách Khoa / Viện / Phòng ban (Cây phân cấp)',
+      summary: '[🔒 Xác thực] Lấy danh sách Khoa / Bộ môn / Phòng ban (phẳng, cây hoặc phân trang)',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'tree', in: 'query', schema: { type: 'boolean', default: true }, description: 'Trả về cấu trúc dạng cây phân cấp (true/false)' },
-        { name: 'type', in: 'query', schema: { type: 'string', enum: ['khoa', 'bo_mon', 'phong_ban'] }, description: 'Lọc theo loại' },
-        { name: 'parentId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID đơn vị cha' },
+        { name: 'cay', in: 'query', schema: { type: 'boolean', default: false }, description: 'Trả về cấu trúc dạng cây phân cấp (true/false)' },
+        { name: 'loai_don_vi', in: 'query', schema: { type: 'string', enum: ['khoa', 'bo_mon', 'phong_ban'] }, description: 'Lọc theo loại đơn vị' },
+        { name: 'don_vi_cha_id', in: 'query', schema: { type: 'string', format: 'uuid' }, description: 'Lọc theo ID đơn vị cha (hoặc "null" cho cấp trường)' },
+        { name: 'trang', in: 'query', schema: { type: 'integer' }, description: 'Số trang (khi dùng phân trang)' },
+        { name: 'gioi_han', in: 'query', schema: { type: 'integer' }, description: 'Số lượng mỗi trang (khi dùng phân trang)' },
       ],
       responses: {
         200: { description: 'Lấy danh sách thành công' },
@@ -715,7 +740,7 @@ const swaggerPaths = {
     },
     post: {
       tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
-      summary: '[🔒 Admin] Tạo mới Khoa / Phòng ban / Bộ môn',
+      summary: '[🔒 Admin / BGH] Tạo mới Khoa / Phòng ban / Bộ môn',
       security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
@@ -723,17 +748,20 @@ const swaggerPaths = {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['name', 'type'],
+              required: ['ten_phong_ban', 'loai_don_vi'],
               properties: {
-                name: { type: 'string', example: 'Bộ môn Khoa học Dữ liệu' },
-                type: { type: 'string', enum: ['khoa', 'bomon', 'phongban'], example: 'bomon' },
-                parentId: { type: 'string', example: '00000000-0000-4000-8000-000000000', nullable: true },
-                managerId: { type: 'string', example: '00000000-0000-4000-8000-000000000', nullable: true },
-                location: {
+                ten_phong_ban: { type: 'string', example: 'Bộ môn Khoa học Dữ liệu' },
+                loai_don_vi: { type: 'string', enum: ['khoa', 'bo_mon', 'phong_ban'], example: 'bo_mon' },
+                don_vi_cha_id: { type: 'string', format: 'uuid', nullable: true },
+                truong_don_vi_id: { type: 'string', format: 'uuid', nullable: true },
+                vi_do: { type: 'number', example: 20.9752 },
+                kinh_do: { type: 'number', example: 105.7628 },
+                ban_kinh_met: { type: 'integer', example: 200 },
+                toa_do: {
                   type: 'object',
                   properties: {
-                    lat: { type: 'number', example: 21.028511 },
-                    lng: { type: 'number', example: 105.854444 },
+                    vi_do: { type: 'number', example: 20.9752 },
+                    kinh_do: { type: 'number', example: 105.7628 },
                   },
                 },
               },
@@ -743,7 +771,7 @@ const swaggerPaths = {
       },
       responses: {
         201: { description: 'Tạo đơn vị thành công' },
-        400: { description: 'Thiếu thông tin bắt buộc hoặc vi phạm quy tắc phân cấp / managerId không hợp lệ' },
+        400: { description: 'Thiếu thông tin bắt buộc hoặc vi phạm quy tắc phân cấp / tọa độ / truong_don_vi_id không hợp lệ' },
       },
     },
   },
@@ -764,7 +792,7 @@ const swaggerPaths = {
       tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
       summary: '[🔒 Xác thực] Lấy chi tiết Khoa / Phòng ban',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Lấy chi tiết thành công' },
         404: { description: 'Không tìm thấy phòng ban' },
@@ -772,22 +800,27 @@ const swaggerPaths = {
     },
     put: {
       tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
-      summary: '[🔒 Admin / Trưởng khoa] Cập nhật thông tin Khoa / Phòng ban',
+      summary: '[🔒 Admin / BGH] Cập nhật thông tin Khoa / Phòng ban',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       requestBody: {
         content: {
           'application/json': {
             schema: {
               type: 'object',
               properties: {
-                name: { type: 'string', example: 'Khoa CNTT & Truyền thông' },
-                managerId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-                location: {
+                ten_phong_ban: { type: 'string', example: 'Khoa CNTT & Truyền thông' },
+                loai_don_vi: { type: 'string', enum: ['khoa', 'bo_mon', 'phong_ban'] },
+                don_vi_cha_id: { type: 'string', format: 'uuid', nullable: true },
+                truong_don_vi_id: { type: 'string', format: 'uuid', nullable: true },
+                vi_do: { type: 'number', example: 20.9752 },
+                kinh_do: { type: 'number', example: 105.7628 },
+                ban_kinh_met: { type: 'integer', example: 200 },
+                toa_do: {
                   type: 'object',
                   properties: {
-                    lat: { type: 'number', example: 21.028511 },
-                    lng: { type: 'number', example: 105.854444 },
+                    vi_do: { type: 'number', example: 20.9752 },
+                    kinh_do: { type: 'number', example: 105.7628 },
                   },
                 },
               },
@@ -801,12 +834,12 @@ const swaggerPaths = {
     },
     delete: {
       tags: ['03 - Cơ Cấu Tổ Chức & Phòng Ban (Departments)'],
-      summary: '[🔒 Admin] Xóa Khoa / Phòng ban (Ràng buộc nhân sự & đơn vị con)',
+      summary: '[🔒 Admin / BGH] Xóa Khoa / Phòng ban (Ràng buộc nhân sự, môn học & đơn vị con)',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Xóa thành công' },
-        400: { description: 'Không thể xóa do còn nhân sự hoặc đơn vị con trực thuộc' },
+        400: { description: 'Không thể xóa do còn nhân sự, môn học hoặc đơn vị con trực thuộc' },
       },
     },
   },
@@ -823,7 +856,7 @@ const swaggerPaths = {
     },
     post: {
       tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
-      summary: '[🔒 Admin] Thêm mới ca làm việc / tiết dạy',
+      summary: '[🔒 Admin / TCCB / Đào tạo] Thêm mới ca làm việc / tiết dạy',
       security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
@@ -831,12 +864,12 @@ const swaggerPaths = {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['name', 'code', 'startTime', 'endTime'],
+              required: ['ten_ca', 'gio_bat_dau', 'gio_ket_thuc'],
               properties: {
                 ten_ca: { type: 'string', example: 'Tiết 10-12 (Tối)' },
                 gio_bat_dau: { type: 'string', example: '18:00' },
                 gio_ket_thuc: { type: 'string', example: '20:30' },
-                nguong_di_muon_phut: { type: 'number', default: 15, example: 15 },
+                nguong_di_muon_phut: { type: 'integer', default: 15, example: 15 },
                 kich_hoat: { type: 'boolean', default: true, example: true },
               },
             },
@@ -845,6 +878,7 @@ const swaggerPaths = {
       },
       responses: {
         201: { description: 'Tạo ca làm việc thành công' },
+        400: { description: 'Dữ liệu đầu vào không hợp lệ (ví dụ: giờ bắt đầu trùng giờ kết thúc)' },
       },
     },
   },
@@ -854,7 +888,7 @@ const swaggerPaths = {
       tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
       summary: '[🔒 Xác thực] Chi tiết ca làm việc theo ID',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Lấy chi tiết thành công' },
         404: { description: 'Không tìm thấy ca làm việc' },
@@ -862,19 +896,20 @@ const swaggerPaths = {
     },
     put: {
       tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
-      summary: '[🔒 Admin] Cập nhật ca làm việc',
+      summary: '[🔒 Admin / TCCB / Đào tạo] Cập nhật ca làm việc',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       requestBody: {
         content: {
           'application/json': {
             schema: {
               type: 'object',
               properties: {
-                name: { type: 'string' },
-                startTime: { type: 'string', example: '07:15' },
-                endTime: { type: 'string', example: '09:45' },
-                lateThresholdMinutes: { type: 'number' },
+                ten_ca: { type: 'string', example: 'Ca Sáng (Điều chỉnh)' },
+                gio_bat_dau: { type: 'string', example: '07:15' },
+                gio_ket_thuc: { type: 'string', example: '09:45' },
+                nguong_di_muon_phut: { type: 'integer', example: 15 },
+                kich_hoat: { type: 'boolean', example: true },
               },
             },
           },
@@ -882,15 +917,17 @@ const swaggerPaths = {
       },
       responses: {
         200: { description: 'Cập nhật thành công' },
+        400: { description: 'Dữ liệu cập nhật không hợp lệ' },
       },
     },
     delete: {
       tags: ['04 - Ca Làm Việc & Tiết Học (Shifts)'],
-      summary: '[🔒 Admin] Xóa ca làm việc',
+      summary: '[🔒 Admin / TCCB] Xóa ca làm việc (chặn nếu còn lịch, nhật ký chấm công, đơn từ hoặc ngoại lệ tham chiếu)',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Xóa thành công' },
+        409: { description: 'Ca đang được tham chiếu, không thể xóa' },
       },
     },
   },
@@ -899,13 +936,19 @@ const swaggerPaths = {
   '/api/lich-trinh': {
     get: {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
-      summary: '[🔒 Xác thực] Tra cứu lịch giảng dạy và lịch làm việc',
+      summary: '[🔒 Xác thực] Tra cứu lịch giảng dạy và lịch làm việc (phân trang & phạm vi quyền)',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'userId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID giảng viên' },
-        { name: 'shiftId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID ca' },
-        { name: 'weekday', in: 'query', schema: { type: 'integer' }, description: 'Thứ trong tuần (0: CN, 1: T2, ..., 6: T7)' },
-        { name: 'date', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Lọc lịch học vào ngày cụ thể (YYYY-MM-DD)' },
+        { name: 'nguoi_dung_id', in: 'query', schema: { type: 'string', format: 'uuid' }, description: 'Lọc theo ID giảng viên / cán bộ' },
+        { name: 'ca_id', in: 'query', schema: { type: 'string', format: 'uuid' }, description: 'Lọc theo ID ca làm việc' },
+        { name: 'thu_trong_tuan', in: 'query', schema: { type: 'integer', minimum: 0, maximum: 6 }, description: 'Thứ trong tuần (0: CN, 1: T2, ..., 6: T7)' },
+        { name: 'ngay_bat_dau', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Lọc từ ngày (YYYY-MM-DD)' },
+        { name: 'ngay_ket_thuc', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Lọc đến ngày (YYYY-MM-DD)' },
+        { name: 'ngay', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Lọc lịch hiệu lực vào ngày cụ thể (YYYY-MM-DD)' },
+        { name: 'nam_hoc', in: 'query', schema: { type: 'string', example: '2026-2027' }, description: 'Năm học' },
+        { name: 'hoc_ky', in: 'query', schema: { type: 'integer', example: 1 }, description: 'Học kỳ (1, 2, 3)' },
+        { name: 'trang', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Số trang' },
+        { name: 'gioi_han', in: 'query', schema: { type: 'integer', default: 20 }, description: 'Số bản ghi mỗi trang' },
       ],
       responses: {
         200: { description: 'Lấy danh sách lịch thành công' },
@@ -913,7 +956,7 @@ const swaggerPaths = {
     },
     post: {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
-      summary: '[🔒 Admin / Trưởng khoa] Tạo mới lịch phân công giảng dạy',
+      summary: '[🔒 Admin / BGH / Đào tạo / Trưởng khoa / Trưởng BM / Phó được ủy quyền] Tạo mới lịch phân công giảng dạy',
       security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
@@ -921,15 +964,28 @@ const swaggerPaths = {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['userId', 'shiftId', 'roomId', 'weekday', 'startDate', 'endDate'],
+              required: ['nguoi_dung_id', 'phong_hoc', 'thu_trong_tuan', 'ngay_bat_dau', 'ngay_ket_thuc'],
               properties: {
-                userId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-                shiftId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-                roomId: { type: 'string', example: 'A1-402' },
-                weekday: { type: 'integer', example: 2 },
-                startDate: { type: 'string', format: 'date', example: '2026-09-01' },
-                endDate: { type: 'string', format: 'date', example: '2026-12-31' },
-                notes: { type: 'string', example: 'Hệ điều hành nâng cao - K21' },
+                nguoi_dung_id: { type: 'string', format: 'uuid', example: '00000000-0000-4000-8000-000000000001' },
+                ca_id: { type: 'string', format: 'uuid', nullable: true },
+                mon_hoc_id: { type: 'string', format: 'uuid', nullable: true },
+                phong_hoc: { type: 'string', example: 'A1-402' },
+                co_so: { type: 'string', example: 'Cơ sở 1 - Hà Đông' },
+                la_truc_tuyen: { type: 'boolean', default: false },
+                thu_trong_tuan: { type: 'integer', minimum: 0, maximum: 6, example: 2 },
+                tiet_bat_dau: { type: 'integer', example: 1 },
+                so_tiet: { type: 'integer', example: 4 },
+                gio_bat_dau: { type: 'string', example: '07:00' },
+                gio_ket_thuc: { type: 'string', example: '11:30' },
+                ngay_bat_dau: { type: 'string', format: 'date', example: '2026-09-01' },
+                ngay_ket_thuc: { type: 'string', format: 'date', example: '2026-12-31' },
+                lap_lai_hang_tuan: { type: 'boolean', default: true },
+                loai_lich: { type: 'string', enum: ['chinh_khoa', 'day_bu'], default: 'chinh_khoa' },
+                ngay_day_bu: { type: 'string', format: 'date', nullable: true },
+                danh_sach_tuan: { type: 'array', items: { type: 'integer' }, example: [1, 2, 3, 4] },
+                nam_hoc: { type: 'string', example: '2026-2027' },
+                hoc_ky: { type: 'integer', example: 1 },
+                ghi_chu: { type: 'string', example: 'Hệ điều hành nâng cao - K21' },
               },
             },
           },
@@ -937,7 +993,8 @@ const swaggerPaths = {
       },
       responses: {
         201: { description: 'Tạo lịch phân công thành công' },
-        400: { description: 'Xung đột lịch giảng dạy hoặc dữ liệu thiếu' },
+        400: { description: 'Dữ liệu đầu vào không hợp lệ' },
+        409: { description: 'Trùng lịch giảng viên, trùng phòng học hoặc trùng ngày nghỉ lễ' },
       },
     },
   },
@@ -945,11 +1002,11 @@ const swaggerPaths = {
   '/api/lich-trinh/hom-nay': {
     get: {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
-      summary: '[🔒 Xác thực] Lấy danh sách lịch giảng dạy hiệu lực trong ngày hôm nay',
+      summary: '[🔒 Xác thực] Lấy danh sách lịch giảng dạy hiệu lực trong ngày (loại trừ ngày nghỉ lễ, tự áp dụng ngoại lệ & đổi ca)',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'date', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Ngày cần tra cứu (mặc định là hôm nay)' },
-        { name: 'userId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo ID giảng viên (Dành cho Admin/Trưởng khoa)' },
+        { name: 'ngay', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Ngày cần tra cứu (YYYY-MM-DD, mặc định hôm nay)' },
+        { name: 'nguoi_dung_id', in: 'query', schema: { type: 'string', format: 'uuid' }, description: 'Lọc theo ID giảng viên (theo phạm vi quyền)' },
       ],
       responses: {
         200: { description: 'Lấy danh sách lịch trong ngày thành công' },
@@ -962,24 +1019,29 @@ const swaggerPaths = {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
       summary: '[🔒 Xác thực] Xem chi tiết một lịch giảng dạy',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Lấy thông tin thành công' },
+        404: { description: 'Không tìm thấy lịch giảng dạy' },
       },
     },
     put: {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
-      summary: '[🔒 Admin / Trưởng khoa] Cập nhật lịch giảng dạy',
+      summary: '[🔒 Quyền xếp lịch] Cập nhật lịch giảng dạy',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       requestBody: {
         content: {
           'application/json': {
             schema: {
               type: 'object',
               properties: {
-                roomId: { type: 'string', example: 'B2-205' },
-                notes: { type: 'string', example: 'Chuyển phòng học thực hành' },
+                ca_id: { type: 'string', format: 'uuid' },
+                phong_hoc: { type: 'string', example: 'B2-205' },
+                gio_bat_dau: { type: 'string', example: '12:30' },
+                gio_ket_thuc: { type: 'string', example: '17:00' },
+                danh_sach_tuan: { type: 'array', items: { type: 'integer' } },
+                ghi_chu: { type: 'string', example: 'Chuyển phòng học thực hành' },
               },
             },
           },
@@ -987,15 +1049,17 @@ const swaggerPaths = {
       },
       responses: {
         200: { description: 'Cập nhật thành công' },
+        409: { description: 'Xung đột lịch giảng viên hoặc phòng học' },
       },
     },
     delete: {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
-      summary: '[🔒 Admin / Trưởng khoa] Xóa lịch giảng dạy',
+      summary: '[🔒 Quyền xếp lịch] Xóa lịch giảng dạy (chặn nếu đã có nhật ký chấm công hoặc đơn nghỉ phép)',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Xóa thành công' },
+        409: { description: 'Lịch đã phát sinh dữ liệu chấm công/đơn từ, không thể xóa' },
       },
     },
   },
@@ -1003,7 +1067,7 @@ const swaggerPaths = {
   '/api/lich-trinh/{id}/ngoai-le': {
     post: {
       tags: ['06 - Lịch Phân Công Giảng Dạy (Schedules)'],
-      summary: '[🔒 Giảng viên / Trưởng khoa / Admin] Ghi nhận ngoại lệ lịch giảng dạy (Nghỉ / Dạy bù)',
+      summary: '[🔒 Giảng viên chính chủ / Quyền quản lý lịch] Ghi nhận ngoại lệ lịch (nghỉ / dạy bù)',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       requestBody: {
@@ -1017,7 +1081,7 @@ const swaggerPaths = {
                 ngay: { type: 'string', format: 'date', example: '2026-09-18' },
                 trang_thai: { type: 'string', enum: ['nghi', 'day_bu'], default: 'nghi' },
                 ly_do: { type: 'string', example: 'Công tác hội đồng khoa học' },
-                ngay_day_bu: { type: 'string', format: 'date', nullable: true },
+                ngay_day_bu: { type: 'string', format: 'date', nullable: true, example: '2026-09-25' },
               },
             },
           },
@@ -1025,6 +1089,7 @@ const swaggerPaths = {
       },
       responses: {
         200: { description: 'Ghi nhận ngoại lệ lịch thành công' },
+        409: { description: 'Trùng ngày nghỉ lễ, xung đột lịch dạy bù hoặc ngoại lệ đã bị khóa bởi đơn đổi ca đã duyệt' },
       },
     },
   },
@@ -1882,11 +1947,15 @@ const swaggerPaths = {
   '/api/thong-bao': {
     get: {
       tags: ['15 - Hệ Thống Thông Báo (Notifications)'],
-      summary: '[🔒 Cá nhân] Lấy danh sách thông báo của người dùng (kết quả duyệt đơn, cảnh báo đi muộn/vắng mặt)',
+      summary: '[🔒 Cá nhân] Lấy danh sách thông báo của người dùng (chấm công, lịch dạy và đơn nghỉ phép)',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'isRead', in: 'query', schema: { type: 'boolean' }, description: 'Lọc thông báo đã đọc hoặc chưa đọc' },
-        { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 }, description: 'Số lượng thông báo' },
+        {
+          name: 'thoi_diem_doc_gan_nhat',
+          in: 'query',
+          schema: { type: 'string', format: 'date-time' },
+          description: 'Mốc thời gian ISO đánh dấu đã đọc gần nhất để đếm so_chua_doc',
+        },
       ],
       responses: {
         200: {
@@ -1895,16 +1964,22 @@ const swaggerPaths = {
             'application/json': {
               example: {
                 success: true,
-                data: [
-                  {
-                    _id: '00000000-0000-4000-8000-000000000',
-                    title: 'Đơn nghỉ phép đã được phê duyệt',
-                    message: 'Đơn nghỉ phép ngày 25/09/2026 của Thầy/Cô đã được Trưởng khoa phê duyệt.',
-                    type: 'LEAVE_APPROVED',
-                    isRead: false,
-                    createdAt: '2026-09-23T08:30:00.000Z',
-                  },
-                ],
+                message: 'Lấy danh sách thông báo thành công.',
+                data: {
+                  tong_so: 1,
+                  so_chua_doc: 1,
+                  danh_sach_thong_bao: [
+                    {
+                      id: 'leave-00000000-0000-4000-8000-000000000001',
+                      tieu_de: 'Đơn xin nghỉ phép đã được duyệt',
+                      noi_dung: 'Đơn nghỉ từ 25/09/2026 đến 25/09/2026 đã được phê duyệt.',
+                      loai: 'don_tu',
+                      trang_thai: 'success',
+                      thoi_gian: '2026-09-23T08:30:00.000Z',
+                      duong_dan: '/don-nghi-phep',
+                    },
+                  ],
+                },
               },
             },
           },
@@ -1917,19 +1992,19 @@ const swaggerPaths = {
   '/api/nhat-ky-kiem-toan': {
     get: {
       tags: ['13 - Nhật Ký Kiểm Toán (Audit Logs)'],
-      summary: '[🔒 Admin/BGH] Tra cứu nhật ký kiểm toán hệ thống (Audit Logs)',
-      description: 'Chỉ dành cho Admin, Hiệu trưởng và Hiệu phó. Hỗ trợ lọc theo actor, action, targetType, status, khoảng thời gian và phân trang.',
+      summary: '[🔒 Admin/BGH/TCCB] Tra cứu nhật ký kiểm toán hệ thống (Audit Logs)',
+      description: 'Hỗ trợ lọc theo nguoi_thuc_hien_id, hanh_dong, loai_doi_tuong, ket_qua, tim_kiem, tu_ngay/den_ngay và phân trang.',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'actor', in: 'query', schema: { type: 'string' }, description: 'ID người thực hiện hoặc SYSTEM' },
-        { name: 'action', in: 'query', schema: { type: 'string' }, description: 'Tên hành động (e.g. USER_LOGIN, LOCK_PAYROLL)' },
-        { name: 'targetType', in: 'query', schema: { type: 'string' }, description: 'Loại đối tượng (User, Payroll, LeaveRequest)' },
-        { name: 'status', in: 'query', schema: { type: 'string', enum: ['success', 'failed'] }, description: 'Trạng thái thành công hay thất bại' },
-        { name: 'keyword', in: 'query', schema: { type: 'string' }, description: 'Từ khóa tìm kiếm' },
-        { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Từ ngày' },
-        { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Đến ngày' },
-        { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
-        { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+        { name: 'nguoi_thuc_hien_id', in: 'query', schema: { type: 'string' }, description: 'UUID người thực hiện hoặc system' },
+        { name: 'hanh_dong', in: 'query', schema: { type: 'string' }, description: 'Tên hành động (vd: UPDATE_SYSTEM_CONFIG, USER_LOGIN)' },
+        { name: 'loai_doi_tuong', in: 'query', schema: { type: 'string' }, description: 'Loại đối tượng (nguoi_dung, cau_hinh_he_thong, tai_lieu_rag...)' },
+        { name: 'ket_qua', in: 'query', schema: { type: 'string', enum: ['success', 'failed'] }, description: 'Trạng thái thành công hay thất bại' },
+        { name: 'tim_kiem', in: 'query', schema: { type: 'string' }, description: 'Từ khóa tìm kiếm (hành động, IP, người thực hiện, chi tiết)' },
+        { name: 'tu_ngay', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Từ ngày (YYYY-MM-DD, giờ VN)' },
+        { name: 'den_ngay', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Đến ngày (YYYY-MM-DD, giờ VN)' },
+        { name: 'trang', in: 'query', schema: { type: 'integer', default: 1 } },
+        { name: 'gioi_han', in: 'query', schema: { type: 'integer', default: 20 } },
       ],
       responses: {
         200: {
@@ -1941,18 +2016,19 @@ const swaggerPaths = {
                 message: 'Lấy danh sách nhật ký kiểm toán (Audit Logs) thành công.',
                 data: {
                   totalRecords: 1,
+                  summary: { totalRecords: 1, successCount: 1, failedCount: 0 },
                   logs: [
                     {
-                      _id: '00000000-0000-4000-8000-000000000',
-                      actor: { _id: '00000000-0000-4000-8000-000000000', fullName: 'Quản trị viên', email: 'admin@university.edu.vn', role: 'admin' },
-                      action: 'UPDATE_SYSTEM_CONFIG',
-                      targetType: 'SystemConfig',
-                      targetId: 'CAMPUS_GPS_RADIUS_METERS',
-                      status: 'success',
-                      timestamp: '2026-10-16T08:00:00.000Z',
+                      id: '00000000-0000-4000-8000-000000000001',
+                      nguoi_thuc_hien: { id: '00000000-0000-4000-8000-000000000002', ho_ten: 'Quản trị viên', email: 'admin@ntu.edu.vn', vai_tro_chinh: 'admin' },
+                      hanh_dong: 'UPDATE_SYSTEM_CONFIG',
+                      loai_doi_tuong: 'cau_hinh_he_thong',
+                      doi_tuong_id: 'LUONG_CO_SO',
+                      ket_qua: 'success',
+                      thoi_diem: '2026-10-16T08:00:00.000Z',
                     },
                   ],
-                  pagination: { page: 1, limit: 20, totalPages: 1, totalDocs: 1 },
+                  pagination: { page: 1, limit: 20, totalPages: 1, totalDocs: 1, hasNextPage: false, hasPrevPage: false },
                 },
               },
             },
@@ -1965,9 +2041,12 @@ const swaggerPaths = {
   '/api/nhat-ky-kiem-toan/xac-minh-toan-ven': {
     get: {
       tags: ['13 - Nhật Ký Kiểm Toán (Audit Logs)'],
-      summary: '[🔒 Admin/BGH] Xác thực tính toàn vẹn chuỗi hash SHA-256 nhật ký kiểm toán',
+      summary: '[🔒 Admin/BGH/TCCB] Xác thực tính toàn vẹn chuỗi hash SHA-256 nhật ký kiểm toán',
       description: 'Kiểm tra chuỗi hash liên kết giữa các bản ghi audit log để phát hiện mọi hành vi can thiệp hoặc sửa đổi dữ liệu trái phép.',
       security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'gioi_han', in: 'query', schema: { type: 'integer', default: 1000 }, description: 'Số lượng bản ghi gần nhất cần đối soát (10..5000)' },
+      ],
       responses: {
         200: {
           description: 'Kiểm tra toàn vẹn thành công',
@@ -1975,11 +2054,19 @@ const swaggerPaths = {
             'application/json': {
               example: {
                 success: true,
-                message: 'Toàn bộ chuỗi hash nhật ký kiểm toán nguyên vẹn, không phát hiện vi phạm.',
+                message: 'Đối soát toàn vẹn chuỗi Hash (SHA-256) thành công: Dữ liệu kiểm toán an toàn 100%.',
                 data: {
                   isValid: true,
+                  hopLe: true,
+                  loiTaiId: null,
                   totalChecked: 150,
-                  tamperedRecordsCount: 0,
+                  validCount: 150,
+                  tamperedCount: 0,
+                  brokenChainCount: 0,
+                  tamperedLogs: [],
+                  genesisHash: '0000000000000000000000000000000000000000000000000000000000000000',
+                  latestHash: 'a1b2c3...',
+                  checkedAt: '2026-11-21T09:00:00.000Z',
                 },
               },
             },
@@ -2247,8 +2334,8 @@ const swaggerPaths = {
   '/api/khuon-mat/dang-ky-da-goc': {
     post: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
-      summary: '[🔒 Admin/Trưởng khoa/Tự đăng ký] Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D',
-      description: 'Nhận 5 ảnh các góc (chính diện, trái, phải, ngửa, cúi), trích xuất 5 vector ArcFace 512D và tính toán vector Centroid L2 chuẩn hóa.',
+      summary: '[🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Đăng ký khuôn mặt 5 góc chuẩn ArcFace 512D (cấm tự đăng ký)',
+      description: 'Nhận 5 ảnh các góc (chính diện, trái, phải, ngửa, cúi), kiểm tra liveness/quality/đồng nhất danh tính, trích xuất 5 vector ArcFace 512D, mã hóa AES-256-GCM vào mau_khuon_mat và đồng bộ FAISS RAM.',
       security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
@@ -2256,9 +2343,14 @@ const swaggerPaths = {
           'multipart/form-data': {
             schema: {
               type: 'object',
+              required: ['dong_y_thu_thap'],
               properties: {
-                userId: { type: 'string', description: 'ID người dùng (Admin có thể chỉ định, mặc định là bản thân)' },
-                image_front: { type: 'string', format: 'binary' },
+                nguoi_dung_id: { type: 'string', format: 'uuid', description: 'ID nhân sự cấp dưới cần đăng ký' },
+                ma_can_bo: { type: 'string', description: 'Mã cán bộ / UUID / Email nhân sự (dùng nếu không truyền nguoi_dung_id)' },
+                ho_ten: { type: 'string' },
+                dong_y_thu_thap: { type: 'string', enum: ['true', 'false'], description: 'Bắt buộc true theo NĐ 13/2023/NĐ-CP' },
+                ghi_de: { type: 'string', enum: ['true', 'false'], default: 'false' },
+                image_straight: { type: 'string', format: 'binary' },
                 image_left: { type: 'string', format: 'binary' },
                 image_right: { type: 'string', format: 'binary' },
                 image_up: { type: 'string', format: 'binary' },
@@ -2273,6 +2365,9 @@ const swaggerPaths = {
           description: 'Đăng ký khuôn mặt 5 góc thành công',
           content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
         },
+        400: { description: 'Thiếu đồng thuận NĐ 13/2023, ảnh giả mạo/mờ/đa khuôn mặt hoặc không đồng nhất danh tính' },
+        403: { description: 'Cấm tự đăng ký hoặc ngoài phạm vi đơn vị quản lý' },
+        409: { description: 'Trùng lặp sinh trắc học với nhân sự khác (USER_FACE_ALREADY_REGISTERED)' },
       },
     },
   },
@@ -2292,9 +2387,9 @@ const swaggerPaths = {
   '/api/khuon-mat/trang-thai-dang-ky/{nguoiDungId}': {
     get: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
-      summary: '[🔒 Admin/Trưởng khoa] Kiểm tra trạng thái đã đăng ký khuôn mặt của người dùng',
+      summary: '[🔒 Chính chủ / Admin / BGH / TCCB / Lãnh đạo đơn vị cùng khoa] Kiểm tra trạng thái Face ID của người dùng',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'nguoiDungId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: {
           description: 'Trạng thái khuôn mặt của người dùng',
@@ -2303,23 +2398,10 @@ const swaggerPaths = {
       },
     },
   },
-  '/api/khuon-mat/du-lieu-cua-toi': {
-    delete: {
-      tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
-      summary: '[🔒 Cá nhân] Tự xóa dữ liệu mẫu khuôn mặt của bản thân (Tuân thủ quyền xóa dữ liệu cá nhân)',
-      security: [{ BearerAuth: [] }],
-      responses: {
-        200: {
-          description: 'Xóa dữ liệu khuôn mặt thành công',
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
-        },
-      },
-    },
-  },
   '/api/khuon-mat/du-lieu/{nguoiDungId}': {
     delete: {
       tags: ['08 - Sinh Trắc Học Khuôn Mặt (Face Biometrics)'],
-      summary: '[🔒 Admin/Trưởng khoa] Xóa toàn bộ dữ liệu mẫu khuôn mặt của nhân sự và xóa khỏi RAM FAISS',
+      summary: '[🔒 Admin / BGH / TCCB / Lãnh đạo đơn vị] Xóa vĩnh viễn dữ liệu mẫu khuôn mặt theo NĐ 13/2023 (cấm tự xóa)',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'nguoiDungId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
@@ -2327,6 +2409,7 @@ const swaggerPaths = {
           description: 'Xóa dữ liệu khuôn mặt thành công',
           content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
         },
+        403: { description: 'Cấm tự xóa hoặc ngoài phạm vi đơn vị quản lý' },
       },
     },
   },
@@ -2392,8 +2475,18 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                key: { type: 'string', example: 'CAMPUS_GPS_RADIUS_METERS' },
-                value: { example: 100 },
+                khoa_cau_hinh: { type: 'string', example: 'LUONG_CO_SO' },
+                gia_tri: { example: 2530000 },
+                danh_sach_cau_hinh: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      khoa_cau_hinh: { type: 'string' },
+                      gia_tri: {},
+                    },
+                  },
+                },
               },
             },
           },
@@ -2415,8 +2508,11 @@ const swaggerPaths = {
       summary: '[🔒 Xác thực] Lấy danh sách môn học/học phần đào tạo',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Tìm theo mã hoặc tên môn học' },
-        { name: 'departmentId', in: 'query', schema: { type: 'string' }, description: 'Lọc theo khoa/bộ môn' },
+        { name: 'tim_kiem', in: 'query', schema: { type: 'string' }, description: 'Tìm theo mã hoặc tên môn học' },
+        { name: 'phong_ban_id', in: 'query', schema: { type: 'string', format: 'uuid' }, description: 'Lọc theo khoa/bộ môn (tự mở rộng cây đơn vị con)' },
+        { name: 'kich_hoat', in: 'query', schema: { type: 'boolean' }, description: 'Lọc trạng thái hoạt động' },
+        { name: 'trang', in: 'query', schema: { type: 'integer', default: 1 } },
+        { name: 'gioi_han', in: 'query', schema: { type: 'integer', default: 50 } },
       ],
       responses: {
         200: {
@@ -2427,7 +2523,7 @@ const swaggerPaths = {
     },
     post: {
       tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
-      summary: '[🔒 Admin/Trưởng khoa] Tạo môn học/học phần mới',
+      summary: '[🔒 Admin / BGH / Đào tạo / Trưởng khoa / Trưởng BM / Phó ủy quyền] Tạo môn học/học phần mới',
       security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
@@ -2435,13 +2531,14 @@ const swaggerPaths = {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['code', 'name'],
+              required: ['ma_mon', 'ten_mon'],
               properties: {
-                code: { type: 'string', example: 'INT3105' },
-                name: { type: 'string', example: 'Lập trình Web nâng cao' },
-                credits: { type: 'number', example: 3 },
-                departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-                description: { type: 'string', example: 'Học phần Lập trình Web chuyên ngành CNTT' },
+                ma_mon: { type: 'string', example: 'INT3105' },
+                ten_mon: { type: 'string', example: 'Lập trình Web nâng cao' },
+                so_tin_chi: { type: 'integer', minimum: 1, example: 3 },
+                phong_ban_id: { type: 'string', format: 'uuid', example: '00000000-0000-4000-8000-000000000001' },
+                mo_ta: { type: 'string', example: 'Học phần Lập trình Web chuyên ngành CNTT' },
+                kich_hoat: { type: 'boolean', default: true },
               },
             },
           },
@@ -2460,7 +2557,7 @@ const swaggerPaths = {
       tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
       summary: '[🔒 Xác thực] Lấy thông tin chi tiết một môn học',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: {
           description: 'Lấy chi tiết môn học thành công',
@@ -2470,9 +2567,9 @@ const swaggerPaths = {
     },
     put: {
       tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
-      summary: '[🔒 Admin/Trưởng khoa] Cập nhật thông tin môn học',
+      summary: '[🔒 Admin / BGH / Đào tạo / Trưởng khoa / Trưởng BM / Phó ủy quyền] Cập nhật thông tin môn học',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       requestBody: {
         required: true,
         content: {
@@ -2480,12 +2577,12 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                code: { type: 'string', example: 'INT3105' },
-                name: { type: 'string', example: 'Lập trình Web nâng cao (2026)' },
-                credits: { type: 'number', example: 3 },
-                departmentId: { type: 'string', example: '00000000-0000-4000-8000-000000000' },
-                description: { type: 'string', example: 'Cập nhật đề cương học phần' },
-                isActive: { type: 'boolean', example: true },
+                ma_mon: { type: 'string', example: 'INT3105' },
+                ten_mon: { type: 'string', example: 'Lập trình Web nâng cao (2026)' },
+                so_tin_chi: { type: 'integer', minimum: 1, example: 3 },
+                phong_ban_id: { type: 'string', format: 'uuid', example: '00000000-0000-4000-8000-000000000001' },
+                mo_ta: { type: 'string', example: 'Cập nhật đề cương học phần' },
+                kich_hoat: { type: 'boolean', example: true },
               },
             },
           },
@@ -2500,9 +2597,9 @@ const swaggerPaths = {
     },
     delete: {
       tags: ['05 - Danh Mục Môn Học & Học Phần (Subjects)'],
-      summary: '[🔒 Admin] Xóa môn học khỏi hệ thống',
+      summary: '[🔒 Admin / TCCB] Xóa môn học khỏi hệ thống (chặn nếu còn lịch tham chiếu)',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: {
           description: 'Xóa môn học thành công',
@@ -2516,10 +2613,10 @@ const swaggerPaths = {
   '/api/ngay-nghi-le': {
     get: {
       tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
-      summary: '[🔒 Admin] Lấy danh sách ngày nghỉ lễ toàn trường',
+      summary: '[🔒 Xác thực] Lấy danh sách ngày nghỉ lễ toàn trường (hỗ trợ kỳ nghỉ vắt năm)',
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 }, description: 'Lọc theo năm dương lịch' },
+        { name: 'nam', in: 'query', schema: { type: 'integer', minimum: 1900, maximum: 2100, example: 2026 }, description: 'Lọc theo năm dương lịch' },
       ],
       responses: {
         200: {
@@ -2530,7 +2627,7 @@ const swaggerPaths = {
     },
     post: {
       tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
-      summary: '[🔒 Admin] Tạo ngày nghỉ lễ mới',
+      summary: '[🔒 Admin / TCCB] Tạo ngày nghỉ lễ mới (chặn ngày không hợp lệ hoặc chồng lấn)',
       security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
@@ -2538,14 +2635,13 @@ const swaggerPaths = {
           'application/json': {
             schema: {
               type: 'object',
-              required: ['name', 'startDate', 'endDate'],
+              required: ['ten_ngay_le', 'ngay_bat_dau', 'ngay_ket_thuc'],
               properties: {
-                name: { type: 'string', example: 'Nghỉ lễ Giỗ Tổ Hùng Vương 2026' },
-                startDate: { type: 'string', format: 'date', example: '2026-04-26' },
-                endDate: { type: 'string', format: 'date', example: '2026-04-26' },
-                year: { type: 'integer', example: 2026 },
-                isPaid: { type: 'boolean', example: true },
-                description: { type: 'string', example: 'Nghỉ lễ theo quy định nhà nước' },
+                ten_ngay_le: { type: 'string', example: 'Nghỉ lễ Giỗ Tổ Hùng Vương 2026' },
+                ngay_bat_dau: { type: 'string', format: 'date', example: '2026-04-26' },
+                ngay_ket_thuc: { type: 'string', format: 'date', example: '2026-04-26' },
+                huong_luong: { type: 'boolean', default: true, example: true },
+                mo_ta: { type: 'string', example: 'Nghỉ lễ theo quy định nhà nước' },
               },
             },
           },
@@ -2556,15 +2652,16 @@ const swaggerPaths = {
           description: 'Tạo ngày nghỉ lễ thành công',
           content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
         },
+        409: { description: 'Khoảng thời gian nghỉ lễ bị chồng lấn với kỳ nghỉ lễ khác' },
       },
     },
   },
   '/api/ngay-nghi-le/{id}': {
     get: {
       tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
-      summary: '[🔒 Admin] Lấy chi tiết một ngày nghỉ lễ',
+      summary: '[🔒 Xác thực] Lấy chi tiết một ngày nghỉ lễ',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: {
           description: 'Lấy chi tiết ngày nghỉ lễ thành công',
@@ -2574,9 +2671,9 @@ const swaggerPaths = {
     },
     put: {
       tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
-      summary: '[🔒 Admin] Cập nhật thông tin ngày nghỉ lễ',
+      summary: '[🔒 Admin / TCCB] Cập nhật thông tin ngày nghỉ lễ',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       requestBody: {
         required: true,
         content: {
@@ -2584,11 +2681,11 @@ const swaggerPaths = {
             schema: {
               type: 'object',
               properties: {
-                name: { type: 'string', example: 'Nghỉ lễ Giỗ Tổ Hùng Vương (Điều chỉnh)' },
-                startDate: { type: 'string', format: 'date', example: '2026-04-26' },
-                endDate: { type: 'string', format: 'date', example: '2026-04-27' },
-                isPaid: { type: 'boolean', example: true },
-                description: { type: 'string', example: 'Hoán đổi ngày nghỉ theo thông báo' },
+                ten_ngay_le: { type: 'string', example: 'Nghỉ lễ Giỗ Tổ Hùng Vương (Điều chỉnh)' },
+                ngay_bat_dau: { type: 'string', format: 'date', example: '2026-04-26' },
+                ngay_ket_thuc: { type: 'string', format: 'date', example: '2026-04-27' },
+                huong_luong: { type: 'boolean', example: true },
+                mo_ta: { type: 'string', example: 'Hoán đổi ngày nghỉ theo thông báo' },
               },
             },
           },
@@ -2603,9 +2700,9 @@ const swaggerPaths = {
     },
     delete: {
       tags: ['07 - Danh Mục Ngày Nghỉ Lễ (Holidays)'],
-      summary: '[🔒 Admin] Xóa ngày nghỉ lễ khỏi hệ thống',
+      summary: '[🔒 Admin / TCCB] Xóa ngày nghỉ lễ khỏi hệ thống',
       security: [{ BearerAuth: [] }],
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: {
           description: 'Xóa ngày nghỉ lễ thành công',
@@ -2634,12 +2731,12 @@ const swaggerPaths = {
       description: 'Lấy danh sách giảng viên đang công tác, hỗ trợ lọc theo Khoa, Học hàm, Học vị, từ khóa tìm kiếm. Áp dụng chuẩn bảo mật Zero Data Leakage.',
       security: [],
       parameters: [
-        { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Từ khóa tìm kiếm theo họ tên, email, hướng nghiên cứu' },
-        { name: 'phong_ban_id', in: 'query', schema: { type: 'string' }, description: 'Mã định danh Khoa/Viện' },
+        { name: 'tim_kiem', in: 'query', schema: { type: 'string' }, description: 'Từ khóa tìm kiếm theo họ tên hoặc email' },
+        { name: 'phong_ban_id', in: 'query', schema: { type: 'string', format: 'uuid' }, description: 'Mã định danh Khoa/Viện hoặc Bộ môn (mở rộng bộ môn con nếu là Khoa)' },
         { name: 'hoc_ham', in: 'query', schema: { type: 'string', enum: ['tat_ca', 'giao_su', 'pho_giao_su'] } },
-        { name: 'hoc_vi', in: 'query', schema: { type: 'string', enum: ['tat_ca', 'tien_si', 'thac_si'] } },
-        { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
-        { name: 'limit', in: 'query', schema: { type: 'integer', default: 12 } },
+        { name: 'hoc_vi', in: 'query', schema: { type: 'string', enum: ['tat_ca', 'tien_si', 'thac_si', 'ky_su', 'cu_nhan'] } },
+        { name: 'trang', in: 'query', schema: { type: 'integer', default: 1 } },
+        { name: 'gioi_han', in: 'query', schema: { type: 'integer', default: 12 } },
       ],
       responses: {
         200: { description: 'Lấy danh bạ giảng viên thành công' },
@@ -2662,8 +2759,8 @@ const swaggerPaths = {
   '/api/tro-ly-ai/che-do': {
     get: {
       tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
-      summary: 'Lấy danh sách chế độ trò chuyện AI hỗ trợ',
-      security: [],
+      summary: '[🔒 Cá nhân] Lấy danh sách chế độ trò chuyện AI hỗ trợ',
+      security: [{ BearerAuth: [] }],
       responses: {
         200: { description: 'Thành công' },
       },
@@ -2672,8 +2769,8 @@ const swaggerPaths = {
   '/api/tro-ly-ai/nha-cung-cap': {
     get: {
       tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
-      summary: 'Lấy danh sách nhà cung cấp AI khả dụng (Gemini / Groq / OpenAI)',
-      security: [],
+      summary: '[🔒 Cá nhân] Lấy danh sách nhà cung cấp AI khả dụng (Gemini / Groq / DeepSeek)',
+      security: [{ BearerAuth: [] }],
       responses: {
         200: { description: 'Thành công' },
       },
@@ -2682,7 +2779,38 @@ const swaggerPaths = {
   '/api/tro-ly-ai/tro-chuyen': {
     post: {
       tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
-      summary: 'Trò chuyện với Trợ lý AI tích hợp RAG và đính kèm tệp',
+      summary: '[🔒 Cá nhân] Trò chuyện với Trợ lý AI tích hợp RAG và đính kèm tệp',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['tin_nhan'],
+              properties: {
+                tin_nhan: { type: 'string', example: 'Hôm nay tôi có lịch dạy những ca nào?' },
+                che_do: { type: 'string', enum: ['hr_work', 'research', 'survey', 'rag_doc', 'general'], default: 'hr_work' },
+                nha_cung_cap: { type: 'string', enum: ['gemini', 'groq', 'deepseek', 'offline_mock'] },
+                mo_hinh: { type: 'string', example: 'gemini-2.5-flash' },
+                dung_rag: { type: 'boolean', default: false },
+                danh_sach_tai_lieu_id: { type: 'array', items: { type: 'string', format: 'uuid' } },
+                lich_su: { type: 'array', items: { type: 'object' } },
+              },
+            },
+          },
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              properties: {
+                tin_nhan: { type: 'string' },
+                che_do: { type: 'string' },
+                file: { type: 'string', format: 'binary' },
+              },
+            },
+          },
+        },
+      },
       responses: {
         200: { description: 'Phản hồi AI kèm nguồn trích dẫn RAG' },
       },
@@ -2691,14 +2819,32 @@ const swaggerPaths = {
   '/api/tro-ly-ai/tai-lieu': {
     get: {
       tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
-      summary: 'Liệt kê tài liệu trong Kho tri thức RAG',
+      summary: '[🔒 Cá nhân] Liệt kê tài liệu trong Kho tri thức RAG',
+      security: [{ BearerAuth: [] }],
       responses: {
         200: { description: 'Danh sách tài liệu RAG' },
       },
     },
     post: {
       tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
-      summary: 'Tải lên và phân đoạn tài liệu vào Kho tri thức RAG (PDF/DOCX/DOC/TXT/MD)',
+      summary: '[🔒 Cá nhân/Quản trị] Tải lên và phân đoạn tài liệu vào Kho tri thức RAG (PDF/DOCX/DOC/TXT/MD)',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['file'],
+              properties: {
+                file: { type: 'string', format: 'binary' },
+                tieu_de: { type: 'string', example: 'Quy chế chấm công 2026' },
+                pham_vi: { type: 'string', enum: ['ca_nhan', 'toan_truong'], default: 'ca_nhan' },
+              },
+            },
+          },
+        },
+      },
       responses: {
         201: { description: 'Nạp tài liệu thành công' },
       },
@@ -2707,15 +2853,20 @@ const swaggerPaths = {
   '/api/tro-ly-ai/tai-lieu/{id}': {
     get: {
       tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
-      summary: 'Xem chi tiết tài liệu RAG',
-      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+      summary: '[🔒 Cá nhân] Xem chi tiết tài liệu RAG',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        { name: 'gioi_han', in: 'query', schema: { type: 'integer', default: 50 }, description: 'Số đoạn xem trước tối đa' },
+      ],
       responses: {
         200: { description: 'Chi tiết tài liệu' },
       },
     },
     delete: {
       tags: ['18 - Trợ Lý AI & Kho Tri Thức RAG (AI Assistant)'],
-      summary: 'Xóa tài liệu khỏi Kho tri thức RAG',
+      summary: '[🔒 Cá nhân/Quản trị] Xóa tài liệu khỏi Kho tri thức RAG',
+      security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         200: { description: 'Xóa thành công' },

@@ -156,8 +156,6 @@ const getRoleLabel = (role) => {
       return 'Phòng Đào tạo';
     case 'ke_toan':
       return 'Phòng Kế toán';
-    case 'kiem_toan':
-      return 'Ban Kiểm toán';
     case 'truong_khoa':
       return 'Trưởng Khoa';
     case 'pho_khoa':
@@ -172,12 +170,8 @@ const getRoleLabel = (role) => {
       return 'Phó Trưởng Phòng';
     case 'giang_vien':
       return 'Giảng Viên';
-    case 'chuyen_vien':
-      return 'Chuyên viên';
     case 'nhan_vien':
       return 'Nhân viên';
-    case 'quan_ly_xe':
-      return 'Quản lý xe';
     default:
       return role || 'Cán bộ';
   }

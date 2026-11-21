@@ -46,7 +46,7 @@ const getShiftConfigById = async (req, res, next) => {
 // Tạo ca làm việc mới
 const createShiftConfig = async (req, res, next) => {
   try {
-    const shift = await shiftService.createShiftConfig(mapShiftBodyToCanonical(req.body));
+    const shift = await shiftService.createShiftConfig(mapShiftBodyToCanonical(req.body), req.user);
     return sendSuccess(res, 'Tạo mới ca làm việc thành công.', shift, 201);
   } catch (error) {
     return handleError(res, error, next);
@@ -56,7 +56,7 @@ const createShiftConfig = async (req, res, next) => {
 // Cập nhật thông tin ca làm việc
 const updateShiftConfig = async (req, res, next) => {
   try {
-    const shift = await shiftService.updateShiftConfig(req.params.id, mapShiftBodyToCanonical(req.body));
+    const shift = await shiftService.updateShiftConfig(req.params.id, mapShiftBodyToCanonical(req.body), req.user);
     return sendSuccess(res, 'Cập nhật ca làm việc thành công.', shift);
   } catch (error) {
     return handleError(res, error, next);
@@ -66,7 +66,7 @@ const updateShiftConfig = async (req, res, next) => {
 // Xóa ca làm việc
 const deleteShiftConfig = async (req, res, next) => {
   try {
-    await shiftService.deleteShiftConfig(req.params.id);
+    await shiftService.deleteShiftConfig(req.params.id, req.user);
     return sendSuccess(res, 'Xóa ca làm việc thành công.');
   } catch (error) {
     return handleError(res, error, next);

@@ -88,7 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
     };
 
-    if (user && !hasRole(user, ['kiem_toan'])) {
+    if (user) {
       fetchPendingLeave();
     }
 
@@ -118,7 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           name: 'Điểm Danh AI',
           path: '/diem-danh-khuon-mat',
           icon: Camera,
-          excludeRoles: ['admin', 'kiem_toan'],
+          excludeRoles: ['admin'],
         },
       ],
     },
@@ -135,7 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               name: 'Chấm Công Cá Nhân',
               path: '/cham-cong-ca-nhan',
               icon: Clock,
-              excludeRoles: ['admin', 'kiem_toan'],
+              excludeRoles: ['admin'],
             },
             {
               name: 'Đăng Ký Face ID',
@@ -147,13 +147,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               name: 'Quản Lý Điểm Danh',
               path: '/quan-ly-cham-cong',
               icon: Layers,
-              roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb', 'ke_toan', 'kiem_toan'],
+              roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong', 'tccb', 'ke_toan'],
             },
             {
               name: 'Đơn Nghỉ Phép',
               path: '/don-nghi-phep',
               icon: FileText,
-              excludeRoles: ['kiem_toan'],
               badge: pendingLeaveCount && pendingLeaveCount > 0 ? String(pendingLeaveCount) : undefined,
             },
           ],
@@ -167,7 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               name: 'Danh Sách Cán Bộ',
               path: '/nguoi-dung',
               icon: Users,
-              roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'tccb'],
+              roles: ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong'],
             },
             {
               name: 'Khoa & Phòng Ban',
@@ -220,7 +219,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               name: 'Bảng Lương 2026',
               path: '/phieu-luong',
               icon: DollarSign,
-              excludeRoles: ['kiem_toan'],
             },
             {
               name: 'Báo Cáo & Thống Kê',
@@ -231,7 +229,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 'bgh',
                 'tccb',
                 'ke_toan',
-                'kiem_toan',
                 'truong_khoa',
                 'pho_khoa',
                 'truong_bo_mon',
@@ -251,7 +248,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               name: 'Nhật Ký Kiểm Toán',
               path: '/nhat-ky-kiem-toan',
               icon: ShieldCheck,
-              roles: ['admin', 'bgh', 'kiem_toan'],
+              roles: ['admin', 'bgh'],
             },
             {
               name: 'Cấu Hình Tham Số',

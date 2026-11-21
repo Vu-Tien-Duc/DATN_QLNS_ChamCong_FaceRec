@@ -371,7 +371,7 @@ export const FacultyDetail: React.FC = () => {
                       <div className="space-y-3">
                         {faculty.cac_mon_chi_tiet.map((sub) => (
                           <div
-                            key={sub._id}
+                            key={sub.id}
                             className="p-4 rounded-xl border border-slate-200 hover:border-blue-300 transition-colors bg-white shadow-sm flex items-start justify-between gap-4"
                           >
                             <div className="space-y-1">
