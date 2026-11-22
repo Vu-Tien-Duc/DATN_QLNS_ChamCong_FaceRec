@@ -86,7 +86,7 @@ const generateMonthlyPayroll = async ({ thang, nam, don_vi_id, currentUser }) =>
           where: userWhere,
           include: [
             { model: HoSoCanBo, as: 'ho_so' },
-            { model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro'] },
+            { model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro', 'tu_ngay', 'den_ngay'] },
           ],
         });
         const users = rawUsers.filter((u) => !isSystemAdminUser(u));
@@ -409,10 +409,125 @@ const unlockMonthlyPayroll = async ({ month, year, departmentId = null, payrollI
   );
 };
 
+// Đánh dấu đã chi trả (da_duyet -> da_chi_tra) cho 1 phiếu lương hoặc theo kỳ/đơn vị và ghi nhận kiểm toán
+const markPayrollAsPaid = async ({ month, year, departmentId = null, payrollId = null, currentUser, ip }) => {
+  const currentUserId = currentUser.id;
+  if (!hasAnyActiveRole(currentUser, ['admin', 'bgh', 'ke_toan'])) {
+    throw new ServiceError('Chỉ Quản trị viên, Ban Giám Hiệu hoặc Kế toán mới có quyền đánh dấu chi trả bảng lương.', 403);
+  }
+
+  let m;
+  let y;
+  let scopedDeptId = departmentId || null;
+  let targetPayroll = null;
+
+  if (payrollId) {
+    if (!isValidUuid(String(payrollId))) {
+      throw new ServiceError('Mã phiếu lương (id) không hợp lệ.', 400);
+    }
+    targetPayroll = await PhieuLuong.findByPk(String(payrollId));
+    if (!targetPayroll) {
+      throw new ServiceError('Không tìm thấy phiếu lương để đánh dấu chi trả.', 404);
+    }
+    if (targetPayroll.trang_thai === 'da_chi_tra') {
+      throw new ServiceError(
+        `Phiếu lương tháng ${targetPayroll.thang}/${targetPayroll.nam} đã ở trạng thái đã chi trả (da_chi_tra).`,
+        409,
+        'PAYROLL_ALREADY_PAID'
+      );
+    }
+    if (targetPayroll.trang_thai !== 'da_duyet') {
+      throw new ServiceError(
+        'Chỉ được đánh dấu đã chi trả đối với phiếu lương đã khóa sổ / duyệt (da_duyet).',
+        409,
+        'PAYROLL_NOT_LOCKED'
+      );
+    }
+    m = Number(targetPayroll.thang);
+    y = Number(targetPayroll.nam);
+    scopedDeptId = null;
+  } else {
+    const validated = validatePayrollScopeParams({ thang: month, nam: year, don_vi_id: departmentId });
+    m = validated.month;
+    y = validated.year;
+    scopedDeptId = validated.departmentId;
+  }
+
+  const scopedUserIds = targetPayroll
+    ? [targetPayroll.nguoi_dung_id]
+    : await resolveDepartmentUserIdsFilter(scopedDeptId);
+  const userFilter = scopedUserIds
+    ? { nguoi_dung_id: { [Op.in]: scopedUserIds.length ? scopedUserIds : ['00000000-0000-0000-0000-000000000000'] } }
+    : {};
+
+  const payWhere = targetPayroll
+    ? { id: targetPayroll.id, trang_thai: 'da_duyet' }
+    : { thang: m, nam: y, trang_thai: 'da_duyet', ...userFilter };
+
+  if (!targetPayroll) {
+    const approvedCount = await PhieuLuong.count({ where: payWhere });
+    if (approvedCount === 0) {
+      const anyCount = await PhieuLuong.count({ where: { thang: m, nam: y, ...userFilter } });
+      if (anyCount === 0) {
+        throw new ServiceError(`Không tìm thấy bảng lương tháng ${m}/${y} trong phạm vi đã chọn.`, 404);
+      }
+      const paidCount = await PhieuLuong.count({ where: { thang: m, nam: y, trang_thai: 'da_chi_tra', ...userFilter } });
+      if (paidCount === anyCount) {
+        throw new ServiceError(`Toàn bộ phiếu lương tháng ${m}/${y} trong phạm vi đã được chi trả.`, 409, 'PAYROLL_ALREADY_PAID');
+      }
+      throw new ServiceError(
+        `Không có phiếu lương nào đang ở trạng thái đã khóa sổ / duyệt (da_duyet) trong tháng ${m}/${y}. Vui lòng khóa sổ trước khi chi trả.`,
+        409,
+        'PAYROLL_NOT_LOCKED'
+      );
+    }
+  }
+
+  return runWithPayrollPeriodLock(
+    y,
+    m,
+    'Hệ thống đang xử lý bảng lương cho kỳ này, vui lòng thử lại sau ít giây.',
+    'PAYROLL_PAYMENT_IN_PROGRESS',
+    async () => {
+      const paidPayrollsCount = await runInTransaction(async (transaction) => {
+        const [pCount] = await PhieuLuong.update(
+          { trang_thai: 'da_chi_tra' },
+          { where: payWhere, transaction }
+        );
+        return pCount;
+      });
+
+      await NhatKyKiemToan.create({
+        nguoi_thuc_hien_id: currentUserId,
+        loai_chu_the: 'user',
+        hanh_dong: 'MARK_PAYROLL_PAID',
+        doi_tuong_id: targetPayroll ? String(targetPayroll.id) : `${y}-${m}`,
+        loai_doi_tuong: 'phieu_luong',
+        chi_tiet: {
+          phieu_luong_id: targetPayroll ? targetPayroll.id : null,
+          don_vi_id: scopedDeptId,
+          so_phieu_da_chi_tra: paidPayrollsCount,
+          thong_bao: `Đánh dấu đã chi trả ${paidPayrollsCount} phiếu lương tháng ${m}/${y}.`,
+        },
+        dia_chi_ip: ip || null,
+      });
+
+      return {
+        thang: m,
+        nam: y,
+        so_phieu_da_chi_tra: paidPayrollsCount,
+        trang_thai: 'da_chi_tra',
+        thong_bao: `Đã đánh dấu chi trả thành công ${paidPayrollsCount} phiếu lương tháng ${m}/${y}.`,
+      };
+    }
+  );
+};
+
 module.exports = {
   ...tinhThueVaLuongHelper,
   ...xuatPhieuLuongService,
   generateMonthlyPayroll,
   lockMonthlyPayroll,
   unlockMonthlyPayroll,
+  markPayrollAsPaid,
 };

@@ -11,6 +11,7 @@ export type BackendLeaveType =
 
 export type BackendLeaveStatus =
   | 'pending'
+  | 'pending_dean'
   | 'pending_bgh'
   | 'approved'
   | 'rejected'

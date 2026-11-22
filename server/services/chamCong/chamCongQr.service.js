@@ -40,10 +40,10 @@ const processScanQRCode = async ({
     throw new ServiceError(verifyResult.message || 'Mã QR không hợp lệ hoặc đã hết hạn.', 400);
   }
 
-  // Chống replay cùng một nonce QR cho cùng tài khoản
+  // Chuẩn bị khóa chống replay cùng một nonce QR cho cùng tài khoản (kiểm tra trước & trong lock, chỉ đánh dấu đã dùng sau khi qua validate ngay trước khi ghi DB)
   const qrNonce = verifyResult.data?.nonce;
-  if (qrNonce) {
-    const replayKey = `qr_replay:${qrNonce}:${nguoi_dung_id}`;
+  const replayKey = qrNonce ? `qr_replay:${qrNonce}:${nguoi_dung_id}` : null;
+  if (replayKey) {
     const alreadyUsed = await redisGet(replayKey);
     if (alreadyUsed) {
       throw new ServiceError(
@@ -52,7 +52,6 @@ const processScanQRCode = async ({
         'QR_REPLAY_DETECTED'
       );
     }
-    await redisSet(replayKey, '1', 45);
   }
 
   const lat = vi_do !== undefined && vi_do !== null && vi_do !== '' ? Number(vi_do) : null;
@@ -61,6 +60,21 @@ const processScanQRCode = async ({
   const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
 
   return withDistributedLock(`attendance_punch:${nguoi_dung_id}`, 15, async () => {
+  if (replayKey) {
+    const alreadyUsedInLock = await redisGet(replayKey);
+    if (alreadyUsedInLock) {
+      throw new ServiceError(
+        'Mã QR này đã được bạn sử dụng. Vui lòng đợi mã QR mới trên màn hình!',
+        409,
+        'QR_REPLAY_DETECTED'
+      );
+    }
+  }
+  const markQrNonceUsed = async () => {
+    if (replayKey) {
+      await redisSet(replayKey, '1', 45);
+    }
+  };
   const now = new Date();
   const { dateStr } = getVietnamDayRange(now);
   const yesterdayStr = getVietnamDayRange(new Date(now.getTime() - 24 * 60 * 60 * 1000)).dateStr;
@@ -173,6 +187,8 @@ const processScanQRCode = async ({
     const resolvedKhoiIds = evalResult.khoi ? evalResult.khoi.ds_lich_trinh_id : null;
     const calculatedStatus = evalResult.status || 'on_time';
     const lateMinutes = evalResult.lateMinutes || 0;
+
+    await markQrNonceUsed();
 
     const { savedAttendance, punchLog } = await runInTransaction(async (transaction) => {
       let targetAttendance = await NhatKyChamCong.findOne({
@@ -323,6 +339,8 @@ const processScanQRCode = async ({
     },
     LichTrinh
   );
+
+  await markQrNonceUsed();
 
   const { savedAttendance, punchLog } = await runInTransaction(async (transaction) => {
     attendance.thoi_gian_ra = now;

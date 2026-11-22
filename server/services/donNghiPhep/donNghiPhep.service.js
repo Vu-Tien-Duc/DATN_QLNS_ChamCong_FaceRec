@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const minioStorage = require('../../config/minio');
-const { DonNghiPhep, NguoiDung, HoSoCanBo, LichTrinh, LichTrinhTuan } = require('../../models');
+const { DonNghiPhep, NguoiDung, HoSoCanBo, LichTrinh, VaiTroNguoiDung } = require('../../models');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 const { getDeanScopedUserIds, isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
@@ -154,6 +154,19 @@ const createLeaveRequestDomain = async ({
         throw new ServiceError('Ngày dạy bù không hợp lệ.', 400);
       }
       makeupDateStr = getVietnamDateKey(parsedMakeupDate);
+      if (makeupDateStr < todayKey) {
+        throw new ServiceError('Ngày dạy bù không thể nằm trong quá khứ.', 400, 'PAST_MAKEUP_DATE');
+      }
+      const [my, mm, md] = makeupDateStr.split('-').map(Number);
+      const makeupUtc = new Date(Date.UTC(my, mm - 1, md));
+      const makeupHolidays = await getHolidayDateSet(makeupDateStr, makeupDateStr);
+      if (makeupUtc.getUTCDay() === 0 || makeupHolidays.has(makeupDateStr)) {
+        throw new ServiceError(
+          'Ngày dạy bù không thể rơi vào Chủ nhật hoặc ngày nghỉ lễ.',
+          400,
+          'INVALID_MAKEUP_DATE'
+        );
+      }
     }
     let validScheduleId = lich_trinh_id && isValidUuid(String(lich_trinh_id)) ? String(lich_trinh_id) : null;
     if (canonicalType === 'giai_trinh_thieu_check_out' && matchedMissingCheckoutLog?.lich_trinh_id && !validScheduleId) {
@@ -182,9 +195,7 @@ const createLeaveRequestDomain = async ({
 
     if (canonicalType === 'day_bu' || canonicalType === 'doi_ca') {
       // Kiểm tra sở hữu lịch trình trước khi tra cứu/kiểm tra trùng lịch của đồng nghiệp (chống lộ thông tin)
-      const targetSchedule = await LichTrinh.findByPk(validScheduleId, {
-        include: [{ model: LichTrinhTuan, as: 'tuan_hoc', attributes: ['tuan_thu'] }],
-      });
+      const targetSchedule = await LichTrinh.findByPk(validScheduleId);
       if (!targetSchedule) {
         throw new ServiceError('Không tìm thấy lịch trình giảng dạy được chọn.', 404);
       }
@@ -516,14 +527,16 @@ const fetchLeaveBalance = async (nguoi_dung_id, currentUser, nam) => {
   }
 
   const user = await NguoiDung.findByPk(targetUserId, {
-    include: [{ model: HoSoCanBo, as: 'ho_so', attributes: ['han_muc_phep_nam'] }],
+    include: [
+      { model: HoSoCanBo, as: 'ho_so', attributes: ['han_muc_phep_nam'] },
+      { model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro', 'tu_ngay', 'den_ngay'] },
+    ],
   });
   if (!user) {
     throw new ServiceError('Không tìm thấy người dùng.', 404);
   }
 
-  const userRole = normalizeRole(user.vai_tro_chinh);
-  if (userRole === 'admin') {
+  if (hasAnyActiveRole(user, ['admin'])) {
     return {
       nguoi_dung_id: targetUserId,
       nam: currentYear,

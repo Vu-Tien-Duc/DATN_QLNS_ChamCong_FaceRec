@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   GraduationCap,
   Mail,
@@ -21,7 +21,6 @@ import { ModalQuenMatKhau } from './components/ModalQuenMatKhau';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { login, isLoading } = useAuthStore();
 
   const [email, setEmail] = useState('');
@@ -31,23 +30,70 @@ export const Login: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
 
-  // Đường dẫn quay lại sau khi đăng nhập thành công
-  const from = (location.state as any)?.from?.pathname || '/';
 
   const demoAccounts = [
     {
-      role: 'Quản Trị IT',
-      name: 'Quản trị viên Hệ thống',
+      role: 'Quản Trị Hệ Thống',
+      name: 'ADMIN01 • admin@ntu.edu.vn',
       email: 'admin@ntu.edu.vn',
       tag: 'Admin',
       variant: 'brand' as const,
     },
     {
+      role: 'Ban Giám Hiệu',
+      name: 'BGH01 • PGS.TS. Nguyễn Văn Hiệu',
+      email: 'hieutruong@ntu.edu.vn',
+      tag: 'BGH',
+      variant: 'purple' as const,
+    },
+    {
+      role: 'Trưởng Khoa CNTT',
+      name: 'TK_CNTT01 • TS. Trần Minh Tuấn',
+      email: 'truongkhoa.cntt@ntu.edu.vn',
+      tag: 'Trưởng khoa',
+      variant: 'info' as const,
+    },
+    {
+      role: 'Phó Khoa CNTT (Ủy quyền)',
+      name: 'PK_CNTT01 • TS. Nguyễn Hoàng Nam',
+      email: 'phokhoa.cntt@ntu.edu.vn',
+      tag: 'Phó khoa',
+      variant: 'info' as const,
+    },
+    {
+      role: 'Trưởng Bộ Môn CNPM',
+      name: 'TBM_CNPM01 • ThS. Phạm Minh Khang',
+      email: 'truongbomon.cnpm@ntu.edu.vn',
+      tag: 'Trưởng BM',
+      variant: 'warning' as const,
+    },
+    {
       role: 'Giảng Viên',
-      name: 'ThS. Vũ Tiến Đức (GV0001)',
+      name: 'GV_CNTT01 • ThS. Vũ Tiến Đức',
       email: 'ducvt.gv@ntu.edu.vn',
-      tag: 'Giảng Viên',
+      tag: 'Giảng viên',
       variant: 'success' as const,
+    },
+    {
+      role: 'Phòng TCCB',
+      name: 'TCCB01 • Lê Thị Hương',
+      email: 'tccb@ntu.edu.vn',
+      tag: 'TCCB',
+      variant: 'neutral' as const,
+    },
+    {
+      role: 'Phòng Đào Tạo',
+      name: 'DAOTAO01 • Nguyễn Minh Anh',
+      email: 'daotao@ntu.edu.vn',
+      tag: 'Đào tạo',
+      variant: 'neutral' as const,
+    },
+    {
+      role: 'Kế Toán - Tài Chính',
+      name: 'KT01 • Phạm Thu Hà',
+      email: 'ketoan@ntu.edu.vn',
+      tag: 'Kế toán',
+      variant: 'warning' as const,
     },
   ];
 
@@ -59,7 +105,7 @@ export const Login: React.FC = () => {
     if (autoSubmit) {
       const success = await login({ email: demoEmail, mat_khau: '123456' }, rememberMe);
       if (success) {
-        navigate(from, { replace: true });
+        navigate('/', { replace: true });
       }
     }
   };
@@ -79,7 +125,7 @@ export const Login: React.FC = () => {
 
     const success = await login({ email: email.trim(), mat_khau: password }, rememberMe);
     if (success) {
-      navigate(from, { replace: true });
+      navigate('/', { replace: true });
     }
   };
 
@@ -228,7 +274,7 @@ export const Login: React.FC = () => {
                       type="text"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@ntu.edu.vn hoặc GV0001"
+                      placeholder="admin@ntu.edu.vn hoặc GV_CNTT01"
                       required
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:border-brand-500 dark:focus:border-brand-500 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 transition-all"
                     />
@@ -307,7 +353,7 @@ export const Login: React.FC = () => {
                   <span className="text-[10px] text-slate-400 font-normal truncate">Nhấp đúp để đăng nhập tức thì</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
                   {demoAccounts.map((acc, idx) => (
                     <button
                       key={idx}

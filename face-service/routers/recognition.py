@@ -74,9 +74,23 @@ async def recognize_face(
         liveness_passed = False
         reasons.append(f"SPOOF_DETECTED: Phát hiện ảnh giả mạo hoặc màn hình (Score: {liveness_score})")
 
-    # 2. Kiểm tra chất lượng (cảnh báo)
+    # 2. Kiểm tra chất lượng ảnh khuôn mặt
+    quality_passed = True
     if check_quality and not meta["quality"].get("valid", True):
+        quality_passed = False
         reasons.extend(meta["quality"].get("reasons", []))
+
+    if not liveness_passed or not quality_passed:
+        return FaceRecognizeResponse(
+            matched=False,
+            similarity=0.0,
+            threshold=threshold,
+            liveness_passed=liveness_passed,
+            liveness_score=liveness_score,
+            candidates=[],
+            face_box=bbox_dict,
+            reasons=reasons or ["FACE_CHECK_FAILED: Ảnh không đạt kiểm tra Liveness hoặc chất lượng."],
+        )
 
     # 3. Trích xuất đặc trưng ArcFace 512D
     query_emb = face_engine.get_embedding(face)
@@ -98,7 +112,7 @@ async def recognize_face(
         )
 
     best_match = candidates[0]
-    is_matched = bool(best_match.similarity >= threshold and liveness_passed)
+    is_matched = bool(best_match.similarity >= threshold and liveness_passed and quality_passed)
 
     # Kiểm tra Margin Top 1 - Top 2 (Chống nhận diện nhầm người khi 2 hồ sơ có độ tương đồng quá sát nhau)
     if is_matched and len(candidates) > 1:
@@ -151,7 +165,19 @@ async def verify_face(
             reasons=["FACE_NOT_FOUND: Không tìm thấy khuôn mặt trong ảnh."],
         )
 
-    face = face_engine.select_dominant_face(faces) or faces[0]
+    primary_face = face_engine.select_dominant_face(faces)
+    if primary_face is None and len(faces) > 1:
+        return FaceVerifyResponse(
+            matched=False,
+            employee_id=employee_id,
+            similarity=0.0,
+            threshold=threshold,
+            liveness_passed=False,
+            liveness_score=0.0,
+            reasons=["MULTIPLE_FACES: Phát hiện nhiều người trong khung hình."],
+        )
+
+    face = primary_face or faces[0]
     meta = face_engine.build_face_metadata(decoded, face)
     box = meta["box"]
     bbox_dict = BoundingBoxDict(
@@ -220,7 +246,17 @@ async def identify_face(
     if not faces:
         return {"status": "no_face", "faceCount": 0, "matched": False, "match": None}
 
-    face = face_engine.select_dominant_face(faces) or faces[0]
+    primary_face = face_engine.select_dominant_face(faces)
+    if primary_face is None and len(faces) > 1:
+        return {
+            "status": "multiple_faces",
+            "faceCount": len(faces),
+            "matched": False,
+            "match": None,
+            "reasons": ["MULTIPLE_FACES: Phát hiện nhiều người trong khung hình."],
+        }
+
+    face = primary_face or faces[0]
     bbox = face.bbox.astype(float).tolist() if hasattr(face, "bbox") else [0, 0, 0, 0]
     liveness_res = LivenessChecker.check_liveness(decoded, bbox)
     if not liveness_res.get("is_live", False):

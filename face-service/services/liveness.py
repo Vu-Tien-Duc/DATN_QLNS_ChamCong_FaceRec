@@ -61,22 +61,30 @@ class FaceQualityChecker:
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         brightness = float(np.mean(gray))
 
-        # Đo độ nét chuẩn hóa 160x160
+        # Đo độ nét và độ tương phản chuẩn hóa 160x160
         crop_resized = cv2.resize(crop, (160, 160), interpolation=cv2.INTER_AREA if crop.shape[0] > 160 else cv2.INTER_LINEAR)
         gray_resized = cv2.cvtColor(crop_resized, cv2.COLOR_BGR2GRAY)
         blur_score = float(cv2.Laplacian(gray_resized, cv2.CV_64F).var())
+        contrast = float(np.std(gray_resized))
+        face_w_ratio = float(crop.shape[1]) / float(max(1, w))
+        face_h_ratio = float(crop.shape[0]) / float(max(1, h))
 
         reasons = []
-        if brightness < 30.0:
-            reasons.append("Ánh sáng quá tối (cần di chuyển đến nơi sáng hơn)")
-        elif brightness > 240.0:
+        if face_w_ratio < 0.14 or face_h_ratio < 0.18:
+            reasons.append("Khuôn mặt quá nhỏ hoặc ở quá xa camera (vui lòng đưa mặt lại gần hơn)")
+        if brightness < 50.0:
+            reasons.append("Ánh sáng khuôn mặt quá tối hoặc bị ngược sáng (hãy hướng mặt về phía ánh sáng)")
+        elif brightness > 235.0:
             reasons.append("Ánh sáng quá chói / lóa trực tiếp")
-        if blur_score < 12.0:
-            reasons.append("Ảnh bị mờ hoặc rung lắc camera")
+        if contrast < 18.0:
+            reasons.append("Khuôn mặt thiếu độ tương phản hoặc ống kính bị mờ lóa")
+        if blur_score < 22.0:
+            reasons.append("Ảnh bị mờ, thiếu nét hoặc rung lắc camera (vui lòng giữ yên)")
 
         return {
             "valid": len(reasons) == 0,
             "brightness": round(brightness, 1),
             "blur_score": round(blur_score, 1),
+            "contrast": round(contrast, 1),
             "reasons": reasons,
         }

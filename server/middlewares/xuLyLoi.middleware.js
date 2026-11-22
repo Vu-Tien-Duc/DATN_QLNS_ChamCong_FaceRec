@@ -46,9 +46,10 @@ const errorHandler = (err, req, res, next) => {
     console.error('[Error Handler]', err);
   }
 
+  const isKnownServiceError = err.name === 'ServiceError' || Boolean(err.statusCode);
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Lỗi máy chủ nội bộ';
-  let errorCode = err.errorCode || 'INTERNAL_SERVER_ERROR';
+  let errorCode = err.errorCode || null;
 
   if (err.name === 'MulterError') {
     statusCode = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
@@ -91,14 +92,21 @@ const errorHandler = (err, req, res, next) => {
     errorCode = 'AUTH_TOKEN_EXPIRED';
   }
 
-  if (statusCode >= 500 && process.env.NODE_ENV !== 'development') {
+  if (!isKnownServiceError && statusCode >= 500 && process.env.NODE_ENV !== 'development') {
     message = 'Lỗi máy chủ nội bộ.';
   }
+
+  const errorPayload =
+    err.data !== undefined && err.data !== null
+      ? err.data
+      : !isKnownServiceError && process.env.NODE_ENV === 'development'
+        ? err.stack
+        : null;
 
   return sendError(
     res,
     message,
-    process.env.NODE_ENV === 'development' ? err.stack : null,
+    errorPayload,
     statusCode,
     errorCode
   );

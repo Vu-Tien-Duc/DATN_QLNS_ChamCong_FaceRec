@@ -20,7 +20,7 @@ const SCHEDULE_WITH_SUBJECT_INCLUDE = {
 const { getDeanScopedUserIds, isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
 const { ServiceError, buildAttendanceDateFilter } = require('../../utils/thoiGianChamCong.utils');
-const { normalizeRole, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES } = require('../../utils/vaiTro.utils');
+const { normalizeRole, UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
 
 // Thống kê tổng hợp chấm công của một nhân sự trong khoảng thời gian
 const getAttendanceSummaryByUser = async (userId, startDate, endDate) => {
@@ -71,9 +71,11 @@ const getAttendanceHistory = async (params = {}) => {
 
   const where = {};
   const userRole = normalizeRole(vai_tro || currentUser?.vai_tro_chinh);
+  const isGlobalViewer = currentUser ? hasAnyActiveRole(currentUser, GLOBAL_ADMIN_ROLES) : GLOBAL_ADMIN_ROLES.includes(userRole);
+  const isUnitLeaderViewer = currentUser ? hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES) : UNIT_LEADER_ROLES.includes(userRole);
 
   // 1. Phân quyền truy cập (Fail-closed: chỉ GLOBAL_ADMIN_ROLES được xem toàn trường)
-  if (GLOBAL_ADMIN_ROLES.includes(userRole)) {
+  if (isGlobalViewer) {
     if (nguoi_dung_id) where.nguoi_dung_id = nguoi_dung_id;
     if (don_vi_chinh_id) {
       const usersInDept = await NguoiDung.findAll({
@@ -92,7 +94,7 @@ const getAttendanceHistory = async (params = {}) => {
         ? { [Op.and]: [where.nguoi_dung_id, { [Op.in]: deptUserIds }] }
         : { [Op.in]: deptUserIds };
     }
-  } else if (UNIT_LEADER_ROLES.includes(userRole)) {
+  } else if (isUnitLeaderViewer) {
     const facultyUserIds = await getDeanScopedUserIds(currentUser);
     if (!facultyUserIds.length) {
       throw new ServiceError('Tài khoản Trưởng đơn vị chưa được gán đơn vị quản lý hoặc đơn vị chưa có nhân sự.', 400);
@@ -264,9 +266,8 @@ const getAttendanceEvidence = async ({ id, currentUser }) => {
 
   // Phân quyền: Admin xem mọi bản ghi, Trưởng khoa xem trong khoa, Cán bộ xem chính mình
   if (currentUser) {
-    const curRole = normalizeRole(currentUser.vai_tro_chinh);
-    if (!GLOBAL_ADMIN_ROLES.includes(curRole)) {
-      if (UNIT_LEADER_ROLES.includes(curRole)) {
+    if (!hasAnyActiveRole(currentUser, GLOBAL_ADMIN_ROLES)) {
+      if (hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES)) {
         const inScope = await isUserInDeanScope(currentUser, ownerId);
         if (!inScope) {
           throw new ServiceError('Bạn không có quyền xem ảnh minh chứng điểm danh của cán bộ ngoài khoa.', 403);
@@ -345,9 +346,8 @@ const getAttendanceById = async ({ id, currentUser }) => {
   // Phân quyền: Admin xem mọi bản ghi, Trưởng khoa xem trong khoa, Cán bộ xem chính mình
   const ownerId = String(log.nguoi_dung_id);
   if (currentUser) {
-    const curRole = normalizeRole(currentUser.vai_tro_chinh);
-    if (!GLOBAL_ADMIN_ROLES.includes(curRole)) {
-      if (UNIT_LEADER_ROLES.includes(curRole)) {
+    if (!hasAnyActiveRole(currentUser, GLOBAL_ADMIN_ROLES)) {
+      if (hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES)) {
         const inScope = await isUserInDeanScope(currentUser, ownerId);
         if (!inScope) {
           throw new ServiceError('Bạn không có quyền xem bản ghi chấm công của cán bộ ngoài khoa.', 403);

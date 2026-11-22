@@ -559,4 +559,80 @@ describe('Luồng 7 — Express HTTP Routes, RBAC & Export (End-to-End)', () => 
     assert.equal(resExcel.body.data.rows[0].ho_ten, "'=CMD(\"evil\")");
     assert.equal(resExcel.body.data.rows[0].thuc_linh_net, 7074639);
   });
+
+  it('chặn bgh ở GET /cua-toi, mở /tong-hop cho truong_bo_mon và hỗ trợ PUT /:id/chi-tra (da_duyet -> da_chi_tra)', async () => {
+    const tbmUser = {
+      ...buildUser(ID_DEAN, 'truong_bo_mon', ID_DEPT_CHILD),
+      don_vi_chinh_id: ID_DEPT_CHILD,
+    };
+    const usersMap = {
+      [ID_BGH]: buildUser(ID_BGH, 'bgh'),
+      [ID_KE_TOAN]: buildUser(ID_KE_TOAN, 'ke_toan'),
+      [ID_DEAN]: tbmUser,
+    };
+    stub(models.NguoiDung, 'findByPk', async (id) => usersMap[String(id)] || null);
+    stub(models.PhongBan, 'findAll', async () => []);
+    stub(models.NguoiDung, 'findAll', async () => [{ id: ID_DEAN }]);
+    stub(models.VaiTroNguoiDung, 'findAll', async () => []);
+    stub(models.CauHinhHeThong, 'findAll', async () => []);
+    stub(models.PhieuLuong, 'findAll', async () => []);
+
+    const app = createPayrollApp();
+
+    // 1. BGH bị chặn ở GET /cua-toi
+    const resBghMy = await injectRequest(app, {
+      method: 'GET',
+      url: '/api/phieu-luong/cua-toi?thang=10&nam=2026',
+      headers: { authorization: `Bearer ${makeToken(ID_BGH, 'bgh')}` },
+    });
+    assert.equal(resBghMy.status, 403);
+    assert.equal(resBghMy.body.errorCode, 'ADMIN_NO_PERSONAL_PAYROLL');
+
+    // 2. truong_bo_mon được phép truy cập /tong-hop (đồng bộ UNIT_LEADER_ROLES)
+    const resTbmSummary = await injectRequest(app, {
+      method: 'GET',
+      url: '/api/phieu-luong/tong-hop?thang=10&nam=2026',
+      headers: { authorization: `Bearer ${makeToken(ID_DEAN, 'truong_bo_mon')}` },
+    });
+    assert.equal(resTbmSummary.status, 200);
+
+    // 3. PUT /:id/chi-tra chặn phiếu chưa khóa (nhap) với 409 PAYROLL_NOT_LOCKED và chuyển thành công da_duyet -> da_chi_tra
+    let currentStatus = 'nhap';
+    let updatedStatus = null;
+    stub(models.sequelize, 'transaction', async (cb) => cb({ LOCK: { UPDATE: 'UPDATE' } }));
+    stub(models.PhieuLuong, 'findByPk', async (id) => ({
+      id,
+      nguoi_dung_id: ID_GV,
+      thang: 10,
+      nam: 2026,
+      trang_thai: currentStatus,
+    }));
+    stub(models.PhieuLuong, 'update', async (values) => {
+      updatedStatus = values.trang_thai;
+      return [1];
+    });
+    stub(models.NhatKyKiemToan, 'create', async () => ({}));
+
+    const keToanToken = makeToken(ID_KE_TOAN, 'ke_toan');
+    const resNotLocked = await injectRequest(app, {
+      method: 'PUT',
+      url: `/api/phieu-luong/${ID_PAYROLL_1}/chi-tra`,
+      headers: { authorization: `Bearer ${keToanToken}` },
+      body: {},
+    });
+    assert.equal(resNotLocked.status, 409);
+    assert.equal(resNotLocked.body.errorCode, 'PAYROLL_NOT_LOCKED');
+
+    currentStatus = 'da_duyet';
+    const resPaid = await injectRequest(app, {
+      method: 'PUT',
+      url: `/api/phieu-luong/${ID_PAYROLL_1}/chi-tra`,
+      headers: { authorization: `Bearer ${keToanToken}` },
+      body: {},
+    });
+    assert.equal(resPaid.status, 200);
+    assert.equal(updatedStatus, 'da_chi_tra');
+    assert.equal(resPaid.body.data.trang_thai, 'da_chi_tra');
+    assert.equal(resPaid.body.data.so_phieu_da_chi_tra, 1);
+  });
 });

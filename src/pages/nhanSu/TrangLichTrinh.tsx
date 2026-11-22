@@ -40,7 +40,7 @@ import { holidayApi, HolidayItem } from '../../api/ngayNghiLe.api';
 import { apiClient, extractArray } from '../../api/apiClient';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { Button } from '../../components/chung/NutBam';
-import { hasRole } from '../../utils/phanQuyen';
+import { hasRole, isSuperAdmin, canManageSubjects } from '../../utils/phanQuyen';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
@@ -195,66 +195,16 @@ function resolveSubject(
   return { name, code, credits };
 }
 
-function getWeekDateString(startDateStr: string, weekNum: number): string {
-  const d = parseIsoDateOnly(startDateStr);
-  if (!d) return '';
-  d.setDate(d.getDate() + (weekNum - 1) * 7);
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  return `${day}/${month}`;
-}
-
-function calculateEndDateFromWeeks(startDateStr: string, weekNumbers: number[]): string {
-  const d = parseIsoDateOnly(startDateStr);
-  if (!d) return '';
-  const maxWeek = weekNumbers && weekNumbers.length > 0 ? Math.max(...weekNumbers) : 15;
-  d.setDate(d.getDate() + (maxWeek - 1) * 7 + 6);
-  return toIsoDateString(d);
-}
-
-function formatWeeksSummary(weeks?: number[]): string {
-  if (!Array.isArray(weeks) || weeks.length === 0) return 'Chưa thiết lập';
-  const sorted = [...new Set(weeks.map(Number).filter((n) => n >= 1 && n <= 53))].sort((a, b) => a - b);
-  if (sorted.length === 0) return 'Chưa thiết lập';
-  const ranges: string[] = [];
-  let start = sorted[0];
-  let end = sorted[0];
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] === end + 1) {
-      end = sorted[i];
-    } else {
-      ranges.push(start === end ? `${start}` : `${start}-${end}`);
-      start = sorted[i];
-      end = sorted[i];
-    }
-  }
-  ranges.push(start === end ? `${start}` : `${start}-${end}`);
-  return ranges.join(', ');
-}
-
-function parseWeeksInput(input: string): number[] {
-  const result = new Set<number>();
-  for (const part of input.split(',')) {
-    const token = part.trim();
-    if (!token) continue;
-    const rangeMatch = token.match(/^(\d+)\s*-\s*(\d+)$/);
-    if (rangeMatch) {
-      const a = Math.max(1, Math.min(53, Number(rangeMatch[1])));
-      const b = Math.max(1, Math.min(53, Number(rangeMatch[2])));
-      const [lo, hi] = a <= b ? [a, b] : [b, a];
-      for (let w = lo; w <= hi; w++) result.add(w);
-    } else if (/^\d+$/.test(token)) {
-      const n = Number(token);
-      if (n >= 1 && n <= 53) result.add(n);
-    }
-  }
-  return Array.from(result).sort((a, b) => a - b);
-}
-
 function toMinutesOfDay(hhmm?: string): number {
   if (!hhmm || typeof hhmm !== 'string') return 0;
   const [h, m] = hhmm.split(':').map(Number);
   return (h || 0) * 60 + (m || 0);
+}
+
+function formatSemesterLabel(semester?: number | null): string {
+  if (Number(semester) === 3) return 'Học kỳ Hè';
+  if (Number(semester) === 2) return 'Học kỳ 2';
+  return 'Học kỳ 1';
 }
 
 function matchScheduleToShift(item: ScheduleItem, shift: ShiftItem): boolean {
@@ -381,18 +331,6 @@ function isScheduleActiveOnDate(
     return { active: false };
   }
 
-  // 6. Kiểm tra danh sách tuần học (nếu có) dùng UTC calendar midnight tránh lệch DST/UTC
-  const weekNums = Array.isArray(item.danh_sach_tuan) ? item.danh_sach_tuan : [];
-  if (startIso && weekNums.length > 0) {
-    const [ty, tm, td] = targetIsoDate.split('-').map(Number);
-    const [sy, sm, sd] = startIso.split('-').map(Number);
-    const diffMs = Date.UTC(ty, tm - 1, td) - Date.UTC(sy, sm - 1, sd);
-    const weekNumber = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1;
-    if (!weekNums.includes(weekNumber)) {
-      return { active: false };
-    }
-  }
-
   return { active: true };
 }
 
@@ -402,9 +340,7 @@ function isScheduleActiveOnDate(
 
 export const Schedules: React.FC = () => {
   const { user } = useAuthStore();
-  const isAdminOrDean = useMemo(() => {
-    return hasRole(user, ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'dao_tao']);
-  }, [user]);
+  const isAdminOrDean = useMemo(() => canManageSubjects(user), [user]);
 
   // 1. View Mode: 'matrix' (Thời khóa biểu tuần) | 'lecturer' (Theo giảng viên) | 'table' (Dạng bảng) | 'calendar' (Lịch tháng)
   const [viewMode, setViewMode] = useState<ViewMode>('matrix');
@@ -463,38 +399,54 @@ export const Schedules: React.FC = () => {
   const [isEditing, setIsEditing] = useState<boolean>(false);
 
   // Form State
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    userId: string;
+    shiftId: string;
+    subjectId: string;
+    roomId: string;
+    co_so: string;
+    weekday: number | '';
+    startPeriod: number | '';
+    periodCount: number | '';
+    startTime: string;
+    endTime: string;
+    startDate: string;
+    endDate: string;
+    isRecurring: boolean;
+    scheduleType: ScheduleType;
+    makeupDate: string;
+    academicYear: string;
+    semester: number | '';
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+    la_truc_tuyen: boolean;
+  }>({
     userId: '',
     shiftId: '',
     subjectId: '',
     roomId: '',
     co_so: '',
-    weekday: 1,
-    startPeriod: 1,
-    periodCount: 4,
-    startTime: '07:00',
-    endTime: '11:30',
-    startDate: toIsoDateString(new Date()),
-    endDate: toIsoDateString(new Date(new Date().setMonth(new Date().getMonth() + 4))),
+    weekday: '',
+    startPeriod: '',
+    periodCount: '',
+    startTime: '',
+    endTime: '',
+    startDate: '',
+    endDate: '',
     isRecurring: true,
     scheduleType: 'chinh_khoa' as ScheduleType,
     makeupDate: '',
-    weekNumbers: Array.from({ length: 15 }, (_, i) => i + 1),
-    academicYear: (() => {
-      const m = new Date().getMonth() + 1;
-      const y = new Date().getFullYear();
-      const startY = m >= 8 ? y : y - 1;
-      return `${startY}-${startY + 1}`;
-    })(),
-    semester: new Date().getMonth() + 1 >= 8 ? 1 : 2,
+    academicYear: '',
+    semester: '',
     latitude: 20.9752,
     longitude: 105.7628,
     radiusMeters: 100,
     la_truc_tuyen: false,
   });
-  const [weeksInput, setWeeksInput] = useState<string>('1-15');
   const [formSubmitting, setFormSubmitting] = useState<boolean>(false);
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const [formValidationErrors, setFormValidationErrors] = useState<string[]>([]);
 
   // Exception Form State
   const [exceptionData, setExceptionData] = useState({
@@ -526,7 +478,7 @@ export const Schedules: React.FC = () => {
 
   const loadMeta = useCallback(async () => {
     try {
-      const canFetchUsers = hasRole(user, ['admin', 'bgh', 'tccb', 'dao_tao', 'truong_khoa', 'pho_khoa', 'truong_bo_mon']);
+      const canFetchUsers = hasRole(user, ['admin', 'bgh', 'tccb', 'dao_tao', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon']);
       const [shiftsRes, subjectsRes, usersRes, deptsRes, holidaysList] = await Promise.all([
         scheduleApi.getShifts().catch(() => ({ data: [] })),
         scheduleApi.getSubjects().catch(() => ({ data: [] })),
@@ -542,7 +494,10 @@ export const Schedules: React.FC = () => {
       if (subjectList.length > 0) setSubjects(subjectList);
 
       const userList = extractArray<UserProfile>(usersRes);
-      if (userList.length > 0) setLecturers(userList);
+      if (userList.length > 0) {
+        // Ẩn tài khoản Quản trị hệ thống (admin) và Ban Giám Hiệu (bgh) khỏi danh sách phân công lịch giảng dạy
+        setLecturers(userList.filter((u) => !isSuperAdmin(u) && u.kich_hoat !== false));
+      }
 
       const deptList = extractArray<DepartmentItem>(deptsRes);
       if (deptList.length > 0) setDepartments(deptList);
@@ -898,60 +853,34 @@ export const Schedules: React.FC = () => {
     setIsEditing(false);
     setSelectedSchedule(null);
     setConflictError(null);
+    setFormValidationErrors([]);
 
-    const weekdayVal = initWeekday !== undefined ? initWeekday : 1;
-    const targetShift = initShift || sortedShifts[0];
-
-    const sTime = targetShift?.gio_bat_dau || '07:00';
-    const eTime = targetShift?.gio_ket_thuc || '11:30';
-    const sHour = parseInt(sTime.split(':')[0], 10) || 7;
-    let initialStartPeriod = 1;
-    let initialPeriodCount = 4;
-    if (sHour >= 17) {
-      initialStartPeriod = 9;
-      initialPeriodCount = 4;
-    } else if (sHour >= 12) {
-      initialStartPeriod = 5;
-      initialPeriodCount = 4;
-    }
-
-    const todayStr = toIsoDateString(new Date());
-    const endFourMonths = new Date();
-    endFourMonths.setMonth(endFourMonths.getMonth() + 4);
-    const defaultEndDate = toIsoDateString(endFourMonths);
-    const defaultWeeks = Array.from({ length: 15 }, (_, i) => i + 1);
     setIsFormLecturerOpen(false);
     setFormLecturerSearch('');
 
-    const nowMonth = new Date().getMonth() + 1;
-    const nowYear = new Date().getFullYear();
-    const startAcYear = nowMonth >= 8 ? nowYear : nowYear - 1;
-
     setFormData({
-      userId: initUserId || filteredLecturerOptions[0]?.id || lecturers[0]?.id || user?.id || '',
-      shiftId: targetShift?.id || '',
-      subjectId: subjects[0]?.id || '',
+      userId: initUserId || '',
+      shiftId: initShift?.id || '',
+      subjectId: '',
       roomId: '',
       co_so: '',
-      weekday: weekdayVal,
-      startPeriod: initialStartPeriod,
-      periodCount: initialPeriodCount,
-      startTime: sTime,
-      endTime: eTime,
-      startDate: todayStr,
-      endDate: defaultEndDate,
+      weekday: initWeekday !== undefined ? initWeekday : '',
+      startPeriod: '',
+      periodCount: '',
+      startTime: initShift?.gio_bat_dau || '',
+      endTime: initShift?.gio_ket_thuc || '',
+      startDate: '',
+      endDate: '',
       isRecurring: true,
       scheduleType: 'chinh_khoa',
       makeupDate: '',
-      weekNumbers: defaultWeeks,
-      academicYear: `${startAcYear}-${startAcYear + 1}`,
-      semester: nowMonth >= 8 ? 1 : 2,
+      academicYear: '',
+      semester: '',
       latitude: 20.9752,
       longitude: 105.7628,
       radiusMeters: 100,
       la_truc_tuyen: false,
     });
-    setWeeksInput(formatWeeksSummary(defaultWeeks));
     setIsFormModalOpen(true);
   };
 
@@ -960,17 +889,14 @@ export const Schedules: React.FC = () => {
     setIsEditing(true);
     setSelectedSchedule(item);
     setConflictError(null);
+    setFormValidationErrors([]);
 
     const uId = getScheduleLecturerId(item);
     const shId = getScheduleShift(item, shifts)?.id || (typeof item.ca_id === 'string' ? item.ca_id : item.ca_id?.id);
     const subId = item.mon_hoc?.id || (typeof item.mon_hoc_id === 'object' ? item.mon_hoc_id?.id : item.mon_hoc_id);
 
-    const editWeeks =
-      item.danh_sach_tuan && item.danh_sach_tuan.length > 0
-        ? item.danh_sach_tuan
-        : Array.from({ length: 15 }, (_, i) => i + 1);
     const editStartDate = toSafeIsoDateOnly(item.ngay_bat_dau) || toIsoDateString(new Date());
-    const editEndDate = toSafeIsoDateOnly(item.ngay_ket_thuc) || calculateEndDateFromWeeks(editStartDate, editWeeks);
+    const editEndDate = toSafeIsoDateOnly(item.ngay_ket_thuc) || editStartDate;
 
     setFormData({
       userId: uId || user?.id || '',
@@ -988,7 +914,6 @@ export const Schedules: React.FC = () => {
       isRecurring: item.lap_lai_hang_tuan ?? true,
       scheduleType: (item.loai_lich || 'chinh_khoa') as ScheduleType,
       makeupDate: toSafeIsoDateOnly(item.ngay_day_bu),
-      weekNumbers: editWeeks,
       academicYear: item.nam_hoc || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
       semester: item.hoc_ky || 1,
       latitude: item.vi_do ?? 20.9752,
@@ -996,7 +921,6 @@ export const Schedules: React.FC = () => {
       radiusMeters: item.ban_kinh_met ?? 100,
       la_truc_tuyen: item.la_truc_tuyen ?? false,
     });
-    setWeeksInput(formatWeeksSummary(editWeeks));
     setIsDetailModalOpen(false);
     setIsFormModalOpen(true);
   };
@@ -1023,35 +947,42 @@ export const Schedules: React.FC = () => {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setConflictError(null);
+    setFormValidationErrors([]);
 
-    if (!formData.userId) {
-      toast.error('Vui lòng chọn nhân sự / giảng viên phụ trách');
-      return;
+    const missingErrors: string[] = [];
+    if (!formData.userId) missingErrors.push('Nhân sự / Giảng viên phụ trách');
+    if (!formData.shiftId) missingErrors.push('Ca làm việc');
+    if (formData.weekday === '' || formData.weekday === null || formData.weekday === undefined) {
+      missingErrors.push('Thứ trong tuần');
     }
-    if (!formData.roomId.trim()) {
-      toast.error('Vui lòng nhập tên phòng / giảng đường');
-      return;
+    if (!formData.roomId.trim()) missingErrors.push('Phòng học / Địa điểm');
+    if (!formData.startTime) missingErrors.push('Giờ bắt đầu');
+    if (!formData.endTime) missingErrors.push('Giờ kết thúc');
+    if (formData.startTime && formData.endTime && formData.startTime >= formData.endTime) {
+      missingErrors.push('Giờ bắt đầu phải trước giờ kết thúc');
     }
-    if (!formData.startDate || !formData.endDate) {
-      toast.error('Vui lòng chọn ngày bắt đầu và kết thúc');
-      return;
+    if (formData.startPeriod === '' || !Number.isInteger(Number(formData.startPeriod)) || Number(formData.startPeriod) < 1) {
+      missingErrors.push('Tiết bắt đầu (số nguyên từ 1 trở lên)');
     }
-    if (formData.startDate > formData.endDate) {
-      toast.error('Ngày bắt đầu không được lớn hơn ngày kết thúc');
-      return;
+    if (formData.periodCount === '' || !Number.isInteger(Number(formData.periodCount)) || Number(formData.periodCount) < 1) {
+      missingErrors.push('Số tiết (số nguyên từ 1 trở lên)');
     }
-    if (formData.startTime >= formData.endTime) {
-      toast.error('Giờ bắt đầu phải trước giờ kết thúc');
-      return;
+    if (!String(formData.academicYear || '').trim()) missingErrors.push('Năm học');
+    if (formData.semester === '' || ![1, 2, 3].includes(Number(formData.semester))) {
+      missingErrors.push('Học kỳ');
     }
     if (formData.scheduleType === 'day_bu' && !formData.makeupDate) {
-      toast.error('Vui lòng chọn ngày dạy bù');
-      return;
+      missingErrors.push('Ngày dạy bù');
+    }
+    if (!formData.startDate) missingErrors.push('Hiệu lực từ ngày');
+    if (!formData.endDate) missingErrors.push('Đến hết ngày');
+    if (formData.startDate && formData.endDate && formData.startDate > formData.endDate) {
+      missingErrors.push('Ngày bắt đầu không được lớn hơn ngày kết thúc');
     }
 
-    const parsedWeeks = parseWeeksInput(weeksInput);
-    if (parsedWeeks.length === 0) {
-      toast.error('Vui lòng nhập tuần học hợp lệ (VD: 1-15 hoặc 1-7, 9-16)');
+    if (missingErrors.length > 0) {
+      setFormValidationErrors(missingErrors);
+      toast.error(`Chưa điền đầy đủ thông tin bắt buộc: ${missingErrors[0]}`);
       return;
     }
 
@@ -1062,7 +993,7 @@ export const Schedules: React.FC = () => {
         ca_id: formData.shiftId || undefined,
         mon_hoc_id: formData.subjectId || undefined,
         phong_hoc: formData.roomId.trim(),
-      co_so: formData.co_so.trim(),
+        co_so: formData.co_so.trim(),
         thu_trong_tuan: Number(formData.weekday),
         tiet_bat_dau: Number(formData.startPeriod),
         so_tiet: Number(formData.periodCount),
@@ -1073,7 +1004,6 @@ export const Schedules: React.FC = () => {
         lap_lai_hang_tuan: formData.isRecurring,
         loai_lich: formData.scheduleType,
         ngay_day_bu: formData.makeupDate || undefined,
-        danh_sach_tuan: parsedWeeks,
         nam_hoc: formData.academicYear,
         hoc_ky: Number(formData.semester),
         vi_do: Number(formData.latitude),
@@ -1181,7 +1111,6 @@ export const Schedules: React.FC = () => {
           'Email': sanitizeExcelCell(lec?.email || '--'),
           'Khoa / Phòng Ban': sanitizeExcelCell(getUserDepartmentName(lec)),
           'Phòng Học': sanitizeExcelCell(item.phong_hoc || '--'),
-          'Danh Sách Tuần': sanitizeExcelCell(Array.isArray(item.danh_sach_tuan) ? item.danh_sach_tuan.join(', ') : '1-15'),
           'Ngày Bắt Đầu': sanitizeExcelCell(formatDateFull(item.ngay_bat_dau)),
           'Ngày Kết Thúc': sanitizeExcelCell(formatDateFull(item.ngay_ket_thuc)),
           'Loại Lịch': item.loai_lich === 'day_bu' ? 'Dạy bù' : 'Chính khóa',
@@ -1538,9 +1467,9 @@ export const Schedules: React.FC = () => {
                                         <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold whitespace-nowrap shrink-0 ${cardStyle.badgeColor}`}>
                                           {item.loai_lich === 'day_bu'
                                             ? 'Dạy bù'
-                                            : Array.isArray(item.danh_sach_tuan) && item.danh_sach_tuan.length > 0
-                                              ? `T${formatWeeksSummary(item.danh_sach_tuan)}`
-                                              : 'Cả kỳ'}
+                                            : item.lap_lai_hang_tuan === false
+                                              ? '1 buổi'
+                                              : 'Chính khóa'}
                                         </span>
                                       </div>
                                     </div>
@@ -1733,11 +1662,6 @@ export const Schedules: React.FC = () => {
                                         {Array.isArray(item.ngoai_le) && item.ngoai_le.length > 0 ? ` • ${item.ngoai_le.length} NL` : ''}
                                       </span>
                                     </div>
-                                    {Array.isArray(item.danh_sach_tuan) && item.danh_sach_tuan.length > 0 && (
-                                      <div className="text-[9px] text-slate-400 font-mono truncate mt-0.5">
-                                        Tuần: {formatWeeksSummary(item.danh_sach_tuan)}
-                                      </div>
-                                    )}
                                   </div>
                                 );
                               })
@@ -1867,11 +1791,6 @@ export const Schedules: React.FC = () => {
                         <Clock className="w-3 h-3 text-slate-400 shrink-0" />
                         {item.gio_bat_dau} - {item.gio_ket_thuc}
                       </div>
-                      {Array.isArray(item.danh_sach_tuan) && item.danh_sach_tuan.length > 0 && (
-                        <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                          Tuần: {formatWeeksSummary(item.danh_sach_tuan)}
-                        </div>
-                      )}
                     </td>
 
                     {/* Shift */}
@@ -2671,7 +2590,20 @@ export const Schedules: React.FC = () => {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleFormSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+            <form noValidate onSubmit={handleFormSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+              {formValidationErrors.length > 0 && (
+                <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                  <div>
+                    <strong className="font-bold">Vui lòng kiểm tra và điền đầy đủ thông tin bắt buộc:</strong>
+                    <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                      {formValidationErrors.map((errMsg, idx) => (
+                        <li key={idx}>{errMsg}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
               {conflictError && (
                 <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2.5">
                   <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
@@ -2729,6 +2661,7 @@ export const Schedules: React.FC = () => {
                         <div className="max-h-48 overflow-y-auto space-y-0.5 custom-scrollbar">
                           {lecturers
                             .filter((lec) => {
+                              if (isSuperAdmin(lec) || lec.kich_hoat === false) return false;
                               if (!formLecturerSearch.trim()) return true;
                               const q = formLecturerSearch.toLowerCase();
                               return (
@@ -2786,21 +2719,13 @@ export const Schedules: React.FC = () => {
                     value={formData.shiftId}
                     onChange={(e) => {
                       const sh = shifts.find((s) => s.id === e.target.value);
-                      const sTime = sh?.gio_bat_dau || formData.startTime;
-                      const sHour = parseInt((sTime || '07:00').split(':')[0], 10) || 7;
-                      let sp = 1;
-                      if (sHour >= 17) sp = 9;
-                      else if (sHour >= 12) sp = 5;
-
                       setFormData({
                         ...formData,
                         shiftId: e.target.value,
-                        startTime: sTime,
+                        startTime: sh?.gio_bat_dau || formData.startTime,
                         endTime: sh?.gio_ket_thuc || formData.endTime,
-                        startPeriod: sp,
                       });
                     }}
-                    required
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
                   >
                     <option value="">-- Chọn ca làm việc --</option>
@@ -2818,10 +2743,15 @@ export const Schedules: React.FC = () => {
                   </label>
                   <select
                     value={formData.weekday}
-                    onChange={(e) => setFormData({ ...formData, weekday: Number(e.target.value) })}
-                    required
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        weekday: e.target.value === '' ? '' : Number(e.target.value),
+                      })
+                    }
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
                   >
+                    <option value="">-- Chọn thứ trong tuần --</option>
                     {WEEKDAYS.map((w) => (
                       <option key={w.value} value={w.value}>
                         {w.label} ({w.shortLabel})
@@ -2945,32 +2875,118 @@ export const Schedules: React.FC = () => {
                 </div>
               </div>
 
-              {/* Giờ bắt đầu & Kết thúc */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Giờ bắt đầu, Kết thúc & Tiết học */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Giờ bắt đầu
+                    Giờ bắt đầu <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="time"
                     value={formData.startTime}
                     onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                    required
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-mono"
                   />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Giờ kết thúc
+                    Giờ kết thúc <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="time"
                     value={formData.endTime}
                     onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                    required
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-mono"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Tiết bắt đầu <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    placeholder="VD: 1"
+                    value={formData.startPeriod}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        startPeriod: e.target.value === '' ? '' : Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Số tiết <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={15}
+                    placeholder="VD: 3"
+                    value={formData.periodCount}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        periodCount: e.target.value === '' ? '' : Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-mono"
+                  />
+                </div>
+              </div>
+              {formData.startPeriod !== '' && formData.periodCount !== '' && (
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 -mt-2">
+                  {(() => {
+                    const sMin = toMinutesOfDay(formData.startTime);
+                    const eMin = toMinutesOfDay(formData.endTime);
+                    const mins = formData.startTime && formData.endTime && eMin > sMin ? eMin - sMin : 0;
+                    const endPeriod = Number(formData.startPeriod) + Number(formData.periodCount) - 1;
+                    return `Khung tiết: Tiết ${formData.startPeriod} – ${endPeriod} (${formData.periodCount} tiết)${mins > 0 ? ` • Thời lượng ca: ${mins} phút` : ''}`;
+                  })()}
+                </div>
+              )}
+
+              {/* Năm học & Học kỳ */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Năm học <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.academicYear}
+                    onChange={(e) => setFormData({ ...formData, academicYear: e.target.value })}
+                    placeholder="VD: 2026-2027"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Học kỳ <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={formData.semester}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        semester: e.target.value === '' ? '' : Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                  >
+                    <option value="">-- Chọn học kỳ --</option>
+                    <option value={1}>Học kỳ 1</option>
+                    <option value={2}>Học kỳ 2</option>
+                    <option value={3}>Học kỳ Hè</option>
+                  </select>
                 </div>
               </div>
 
@@ -3056,57 +3072,6 @@ export const Schedules: React.FC = () => {
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-mono"
                   />
                 </div>
-              </div>
-
-              {/* Tuần học áp dụng */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    {(() => {
-                      const activeWeeks = parseWeeksInput(weeksInput);
-                      const displayWeeks = activeWeeks.length > 0 ? activeWeeks : formData.weekNumbers;
-                      return `Tuần học áp dụng (${displayWeeks.length} tuần: ${formatWeeksSummary(displayWeeks)})`;
-                    })()}
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const weeks15 = Array.from({ length: 15 }, (_, i) => i + 1);
-                        setFormData({ ...formData, weekNumbers: weeks15 });
-                        setWeeksInput('1-15');
-                      }}
-                      className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-50 hover:text-blue-600"
-                    >
-                      1–15 tuần
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const weeks18 = Array.from({ length: 18 }, (_, i) => i + 1);
-                        setFormData({ ...formData, weekNumbers: weeks18 });
-                        setWeeksInput('1-18');
-                      }}
-                      className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-50 hover:text-blue-600"
-                    >
-                      1–18 tuần
-                    </button>
-                  </div>
-                </div>
-                <input
-                  type="text"
-                  value={weeksInput}
-                  onChange={(e) => setWeeksInput(e.target.value)}
-                  onBlur={() => {
-                    const parsed = parseWeeksInput(weeksInput);
-                    if (parsed.length > 0) {
-                      setFormData({ ...formData, weekNumbers: parsed });
-                      setWeeksInput(formatWeeksSummary(parsed));
-                    }
-                  }}
-                  placeholder="VD: 1-15 hoặc 1-7, 9-16"
-                  className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                />
               </div>
 
               {/* Footer Buttons */}
@@ -3304,16 +3269,10 @@ export const Schedules: React.FC = () => {
                       <div className="sm:col-span-2">
                         <span className="text-slate-400">Năm học / Học kỳ: </span>
                         <strong className="text-slate-800 dark:text-slate-200 font-mono">
-                          {selectedSchedule.nam_hoc || '—'}{selectedSchedule.hoc_ky ? ` • Học kỳ ${selectedSchedule.hoc_ky}` : ''}
+                          {selectedSchedule.nam_hoc || '—'}{selectedSchedule.hoc_ky ? ` • ${formatSemesterLabel(selectedSchedule.hoc_ky)}` : ''}
                         </strong>
                       </div>
                     )}
-                    <div className="sm:col-span-2">
-                      <span className="text-slate-400">Tuần học áp dụng: </span>
-                      <strong className="text-slate-800 dark:text-slate-200 font-mono">
-                        {formatWeeksSummary(selectedSchedule.danh_sach_tuan)}
-                      </strong>
-                    </div>
                     <div>
                       <span className="text-slate-400">Ngày tạo: </span>
                       <strong className="text-slate-800 dark:text-slate-200 font-mono">

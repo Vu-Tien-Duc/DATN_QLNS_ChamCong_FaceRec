@@ -261,6 +261,17 @@ export const payrollApi = {
   },
 
   /**
+   * Đánh dấu phiếu lương đã chi trả (da_duyet -> da_chi_tra)
+   */
+  async markPayrollPaid(payload: LockPayrollPayload): Promise<any> {
+    const url = payload.id ? `/phieu-luong/${payload.id}/chi-tra` : '/phieu-luong/chi-tra';
+    const res = payload.id
+      ? await apiClient.put<any>(url, payload)
+      : await apiClient.post<any>(url, payload);
+    return res.data?.data ?? res.data;
+  },
+
+  /**
    * Trích xuất dữ liệu bảng lương định dạng Excel
    */
   async exportExcel(month: number, year: number, departmentId?: string): Promise<PayrollExcelExportData> {

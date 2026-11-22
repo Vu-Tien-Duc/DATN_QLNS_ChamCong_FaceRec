@@ -520,7 +520,6 @@ describe('Luồng 4.4 - Express RBAC, IDOR, removeSchedule FK & addScheduleExcep
     stub(models.NgoaiLeLichTrinh, 'findAll', async () => []);
     stub(models.DonNghiPhep, 'findAll', async () => []);
     stub(models.LichTrinh, 'create', async (payload) => ({ id: SCHED_1, ...payload }));
-    stub(models.LichTrinhTuan, 'bulkCreate', async () => []);
     stub(models.LichTrinh, 'findByPk', async () => ({
       id: SCHED_1,
       nguoi_dung_id: UUID_3,
@@ -590,6 +589,72 @@ describe('Luồng 4.4 - Express RBAC, IDOR, removeSchedule FK & addScheduleExcep
         ),
       (err) => err.statusCode === 403
     );
+
+    // Chặn chuyển lịch sang tài khoản admin (kể cả qua vai trò phụ) trong updateExistingSchedule
+    stub(models.NguoiDung, 'findByPk', async () => ({
+      id: UUID_3,
+      vai_tro_chinh: 'giang_vien',
+      danh_sach_vai_tro: [{ ma_vai_tro: 'admin', tu_ngay: '2020-01-01', den_ngay: '2099-12-31' }],
+    }));
+    await assert.rejects(
+      () =>
+        updateExistingSchedule(
+          SCHED_1,
+          { nguoi_dung_id: UUID_3 },
+          { id: UUID_1, vai_tro_chinh: 'admin', danh_sach_vai_tro: [] }
+        ),
+      (err) => err.statusCode === 403 && err.errorCode === 'SCHEDULE_ADMIN_EXEMPT'
+    );
+
+    // detectScheduleConflicts tôn trọng lap_lai_hang_tuan = false và danh_sach_tuan không giao nhau
+    stub(models.LichTrinh, 'findAll', async () => [
+      {
+        id: 'sch-week-odd',
+        nguoi_dung_id: UUID_2,
+        phong_hoc: 'A1-101',
+        thu_trong_tuan: 1,
+        tiet_bat_dau: 1,
+        so_tiet: 3,
+        gio_bat_dau: '07:00',
+        gio_ket_thuc: '09:30',
+        ngay_bat_dau: '2026-09-14', // Thứ 2 tuần sau
+        ngay_ket_thuc: '2026-12-20',
+        lap_lai_hang_tuan: true,
+        danh_sach_tuan: [1, 3, 5],
+        ngoai_le: [],
+        giang_vien: { ho_ten: 'GV B' },
+      },
+    ]);
+    stub(models.NgoaiLeLichTrinh, 'findAll', async () => []);
+    stub(models.DonNghiPhep, 'findAll', async () => []);
+
+    // Lịch chỉ diễn ra duy nhất ngày 2026-09-07 (lap_lai_hang_tuan = false) không đụng lịch bắt đầu từ 2026-09-14
+    await detectScheduleConflicts({
+      nguoi_dung_id: UUID_2,
+      phong_hoc: 'A1-101',
+      thu_trong_tuan: 1,
+      tiet_bat_dau: 1,
+      so_tiet: 3,
+      gio_bat_dau: '07:00',
+      gio_ket_thuc: '09:30',
+      ngay_bat_dau: '2026-09-07',
+      ngay_ket_thuc: '2026-12-20',
+      lap_lai_hang_tuan: false,
+    });
+    // Lịch lặp lại nhưng danh_sach_tuan [2, 4] không giao [1, 3, 5] -> không xung đột
+    await detectScheduleConflicts({
+      nguoi_dung_id: UUID_2,
+      phong_hoc: 'A1-101',
+      thu_trong_tuan: 1,
+      tiet_bat_dau: 1,
+      so_tiet: 3,
+      gio_bat_dau: '07:00',
+      gio_ket_thuc: '09:30',
+      ngay_bat_dau: '2026-09-14',
+      ngay_ket_thuc: '2026-12-20',
+      lap_lai_hang_tuan: true,
+      danh_sach_tuan: [2, 4],
+    });
   });
 
   it('removeSchedule chặn xóa khi lịch nằm trong ds_lich_trinh_id; addScheduleException chặn trùng lễ & khóa đổi ca', async () => {

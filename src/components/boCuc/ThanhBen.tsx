@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Camera,
@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { apiClient } from '../../api/apiClient';
-import { hasRole } from '../../utils/phanQuyen';
+import { hasRole, canManageSubjects } from '../../utils/phanQuyen';
 import { cameraManager } from '../../utils/quanLyCamera';
 
 interface SidebarProps {
@@ -40,6 +40,7 @@ interface NavChildItem {
   badge?: string;
   roles?: string[];
   excludeRoles?: string[];
+  customCheck?: (user: any) => boolean;
 }
 
 interface SidebarEntry {
@@ -50,6 +51,7 @@ interface SidebarEntry {
   badge?: string;
   roles?: string[];
   excludeRoles?: string[];
+  customCheck?: (user: any) => boolean;
   children?: NavChildItem[];
 }
 
@@ -68,7 +70,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+
+  const handleLogout = async () => {
+    onMobileClose();
+    await logout();
+    navigate('/dang-nhap', { replace: true });
+  };
 
   // Fetch real count of pending leave requests from backend
   useEffect(() => {
@@ -97,8 +106,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [user]);
 
-  // Check if current user has access to a menu item based on allowed & excluded roles
-  const hasRoleAccess = (allowedRoles?: string[], excludeRoles?: string[]): boolean => {
+  // Check if current user has access to a menu item based on allowed & excluded roles or custom predicate
+  const hasRoleAccess = (
+    allowedRoles?: string[],
+    excludeRoles?: string[],
+    customCheck?: (u: any) => boolean
+  ): boolean => {
+    if (customCheck) return customCheck(user);
     return hasRole(user, allowedRoles, excludeRoles);
   };
 
@@ -190,13 +204,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               name: 'Danh Mục Môn Học',
               path: '/mon-hoc',
               icon: BookOpen,
-              roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao'],
+              customCheck: canManageSubjects,
             },
             {
               name: 'Ca Làm Việc & Giờ',
               path: '/ca-lam-viec',
               icon: Clock,
-              roles: ['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao'],
+              roles: ['admin', 'bgh', 'dao_tao'],
             },
             {
               name: 'Lịch Nghỉ Lễ & Tết',
@@ -362,9 +376,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             // Lọc các entries có ít nhất 1 quyền truy cập hợp lệ
             const validEntries = section.entries.filter((entry) => {
               if (!entry.children) {
-                return hasRoleAccess(entry.roles, entry.excludeRoles) && Boolean(entry.path);
+                return hasRoleAccess(entry.roles, entry.excludeRoles, entry.customCheck) && Boolean(entry.path);
               }
-              return entry.children.some((child) => hasRoleAccess(child.roles, child.excludeRoles));
+              return entry.children.some((child) => hasRoleAccess(child.roles, child.excludeRoles, child.customCheck));
             });
 
             if (validEntries.length === 0) return null;
@@ -382,7 +396,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                   // Case 1: Mục 1 chạm (không có menu con)
                   if (!entry.children) {
-                    if (!hasRoleAccess(entry.roles, entry.excludeRoles) || !entry.path) return null;
+                    if (!hasRoleAccess(entry.roles, entry.excludeRoles, entry.customCheck) || !entry.path) return null;
                     const isActive = location.pathname === entry.path;
 
                     return (
@@ -429,7 +443,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                   // Case 2: Nhóm cha có menu con
                   const visibleChildren = entry.children.filter((child) =>
-                    hasRoleAccess(child.roles, child.excludeRoles)
+                    hasRoleAccess(child.roles, child.excludeRoles, child.customCheck)
                   );
                   if (visibleChildren.length === 0) return null;
 
@@ -561,7 +575,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex flex-col items-center">
               <button
                 type="button"
-                onClick={logout}
+                onClick={handleLogout}
                 className="w-10 h-10 rounded-xl text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center justify-center transition-colors cursor-pointer"
                 title="Đăng xuất tài khoản"
               >
@@ -579,7 +593,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               <button
                 type="button"
-                onClick={logout}
+                onClick={handleLogout}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer shrink-0"
                 title="Đăng xuất tài khoản"
               >

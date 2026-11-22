@@ -646,25 +646,29 @@ export const Dashboard: React.FC = () => {
               Xuất sáng nay
             </Button>
 
-            <Button
-              onClick={() => navigate('/don-nghi-phep')}
-              variant="outline"
-              size="sm"
-              leftIcon={<CheckCheck className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />}
-              type="button"
-            >
-              Nộp đơn phép
-            </Button>
+            {canPersonalCheckIn(user) && (
+              <>
+                <Button
+                  onClick={() => navigate('/don-nghi-phep')}
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<CheckCheck className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />}
+                  type="button"
+                >
+                  Nộp đơn phép
+                </Button>
 
-            <Button
-              onClick={() => setScannerMode('check-in')}
-              variant="primary"
-              size="sm"
-              leftIcon={<Camera className="w-3.5 h-3.5" />}
-              type="button"
-            >
-              Điểm danh Face ID
-            </Button>
+                <Button
+                  onClick={() => setScannerMode('check-in')}
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Camera className="w-3.5 h-3.5" />}
+                  type="button"
+                >
+                  Điểm danh Face ID
+                </Button>
+              </>
+            )}
           </div>
         }
       />

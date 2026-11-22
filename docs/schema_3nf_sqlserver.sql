@@ -310,18 +310,7 @@ CREATE NONCLUSTERED INDEX [IX_lich_trinh_user_thu] ON [lich_trinh] ([nguoi_dung_
 CREATE NONCLUSTERED INDEX [IX_lich_trinh_ngay] ON [lich_trinh] ([ngay_bat_dau], [ngay_ket_thuc]);
 GO
 
--- 12. Danh sách tuần học của lịch trình (3NF - Tách mảng tuần đạt chuẩn 1NF nguyên tử) (Schedule Weeks)
-CREATE TABLE [lich_trinh_tuan] (
-    [lich_trinh_id] UNIQUEIDENTIFIER NOT NULL,
-    [tuan_thu] INT NOT NULL,
-    CONSTRAINT [PK_lich_trinh_tuan] PRIMARY KEY CLUSTERED ([lich_trinh_id], [tuan_thu]),
-    CONSTRAINT [FK_lich_trinh_tuan] FOREIGN KEY ([lich_trinh_id]) REFERENCES [lich_trinh] ([id]) ON DELETE CASCADE,
-    CONSTRAINT [CK_lich_trinh_tuan_thu] CHECK ([tuan_thu] BETWEEN 1 AND 53)
-);
-CREATE NONCLUSTERED INDEX [IX_lich_trinh_tuan_id] ON [lich_trinh_tuan] ([lich_trinh_id]);
-GO
-
--- 13. Ngoại lệ lịch trình (3NF - Tách ngoại lệ) (Schedule Exceptions)
+-- 12. Ngoại lệ lịch trình (3NF - Tách ngoại lệ) (Schedule Exceptions)
 CREATE TABLE [ngoai_le_lich_trinh] (
     [id] UNIQUEIDENTIFIER NOT NULL DEFAULT NEWSEQUENTIALID(),
     [lich_trinh_id] UNIQUEIDENTIFIER NOT NULL,

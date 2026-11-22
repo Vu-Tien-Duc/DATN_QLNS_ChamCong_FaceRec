@@ -33,6 +33,7 @@ export interface DepartmentItem {
   };
   ban_kinh_met?: number;
   so_luong_thanh_vien?: number;
+  tong_so_thanh_vien?: number;
   so_luong_mon_hoc?: number;
   danh_sach_con?: DepartmentItem[];
   tao_luc?: string;
@@ -44,6 +45,8 @@ export interface CreateDepartmentPayload {
   loai_don_vi: DepartmentType;
   don_vi_cha_id?: string | null;
   truong_don_vi_id?: string | null;
+  vi_do?: number | null;
+  kinh_do?: number | null;
   toa_do?: {
     vi_do?: number | null;
     kinh_do?: number | null;

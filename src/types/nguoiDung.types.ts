@@ -161,3 +161,15 @@ export interface CreateUserPayload {
 export type UpdateUserPayload = Partial<CreateUserPayload> & {
   kich_hoat?: boolean;
 };
+
+export interface ImportUsersExcelRowError {
+  rowNumber: number;
+  ma_can_bo?: string;
+  email?: string;
+  message: string;
+}
+
+export interface ImportUsersExcelResult {
+  totalCreated: number;
+  users: UserProfile[];
+}

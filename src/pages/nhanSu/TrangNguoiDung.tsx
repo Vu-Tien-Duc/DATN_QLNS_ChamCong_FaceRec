@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
@@ -23,14 +23,17 @@ import {
   ChevronDown,
   ChevronUp,
   Camera,
-  Upload,
   FileSpreadsheet,
   Plus,
   ShieldCheck,
+  AlertCircle,
+  Upload,
+  Calendar,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { userApi } from '../../api/nguoiDung.api';
 import { Button } from '../../components/chung/NutBam';
+import { ModalNhapExcelNhanSu } from '../../components/nhanSu/ModalNhapExcelNhanSu';
 import {
   UserProfile,
   DepartmentItem,
@@ -60,11 +63,40 @@ import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
 // HẰNG SỐ VÀ BẢNG ÁNH XẠ CHUẨN ĐẠI HỌC (CSDL v2.5)
 // =============================================================================
 
-const ROLE_SCOPE_LABELS: Record<RoleScopeType, string> = {
-  toan_truong: 'Toàn trường',
-  khoa: 'Khoa',
-  bo_mon: 'Bộ môn',
-  phong_ban: 'Phòng ban',
+const GLOBAL_SCOPE_ROLES = new Set(['admin', 'bgh', 'tccb', 'dao_tao', 'ke_toan']);
+const DEPUTY_DELEGATION_ROLES = new Set(['pho_khoa', 'pho_bo_mon', 'pho_phong']);
+const SECONDARY_FORBIDDEN_ROLES = new Set(['admin', 'truong_khoa', 'truong_bo_mon', 'truong_phong']);
+
+const formatDateVN = (raw?: string | null): string => {
+  const iso = toDateInputValue(raw);
+  if (!iso) return 'Chưa cập nhật';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+};
+
+const getAllowedDeptsForSecondaryRole = (role: string, departments: DepartmentItem[]): DepartmentItem[] => {
+  if (GLOBAL_SCOPE_ROLES.has(role)) return [];
+  if (role === 'pho_khoa') return departments.filter((d) => getDeptCategory(d) === 'khoa');
+  if (role === 'pho_bo_mon') return departments.filter((d) => getDeptCategory(d) === 'bo_mon');
+  if (role === 'giang_vien') return departments.filter((d) => ['khoa', 'bo_mon'].includes(getDeptCategory(d)));
+  if (role === 'pho_phong' || role === 'nhan_vien') return departments.filter((d) => getDeptCategory(d) === 'phong_ban');
+  return departments.filter((d) => getDeptCategory(d) !== 'bgh');
+};
+
+const toDateInputValue = (raw: unknown): string => {
+  if (!raw) return '';
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    const isoMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (isoMatch) return isoMatch[1];
+  }
+  const parsed = raw instanceof Date ? raw : new Date(String(raw));
+  if (Number.isNaN(parsed.getTime())) return '';
+  const y = parsed.getFullYear();
+  const m = String(parsed.getMonth() + 1).padStart(2, '0');
+  const d = String(parsed.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 };
 
 const inferRoleScope = (
@@ -72,12 +104,16 @@ const inferRoleScope = (
   deptId: string | null | undefined,
   departments: DepartmentItem[]
 ): RoleScopeType => {
-  if (['admin', 'bgh', 'tccb', 'dao_tao', 'ke_toan'].includes(role)) {
+  if (GLOBAL_SCOPE_ROLES.has(role)) {
     return 'toan_truong';
   }
   const dept = deptId ? departments.find((d) => String(d.id) === String(deptId)) : null;
   if (dept?.loai_don_vi === 'bo_mon') return 'bo_mon';
   if (dept?.loai_don_vi === 'phong_ban') return 'phong_ban';
+  if (dept?.loai_don_vi === 'khoa') return 'khoa';
+  if (role === 'pho_khoa' || role === 'truong_khoa') return 'khoa';
+  if (role === 'pho_bo_mon' || role === 'truong_bo_mon') return 'bo_mon';
+  if (role === 'pho_phong' || role === 'truong_phong') return 'phong_ban';
   return deptId ? 'khoa' : 'toan_truong';
 };
 
@@ -303,21 +339,17 @@ const getInitials = (fullName = '') => {
 };
 
 // =============================================================================
-// COMPONENT AVATAR THÔNG MINH (HIỂN THỊ ẢNH THẬT + FALLBACK SVG SẮC NÉT + TẢI ẢNH)
+// COMPONENT AVATAR THÔNG MINH (HIỂN THỊ ẢNH THẬT + FALLBACK SVG SẮC NÉT)
 // =============================================================================
 
 interface StaffAvatarProps {
   user: UserProfile;
   size?: 'sm' | 'md' | 'lg' | 'xl';
-  canUpload?: boolean;
-  onQuickUpload?: (user: UserProfile, file: File) => void;
 }
 
 const StaffAvatar: React.FC<StaffAvatarProps> = ({
   user,
   size = 'md',
-  canUpload = false,
-  onQuickUpload,
 }) => {
   const statusColor =
     user.kich_hoat === false
@@ -336,8 +368,6 @@ const StaffAvatar: React.FC<StaffAvatarProps> = ({
       shape="circle"
       showStatusDot={true}
       statusColor={statusColor}
-      canUpload={canUpload}
-      onQuickUpload={onQuickUpload ? (file) => onQuickUpload(user, file) : undefined}
     />
   );
 };
@@ -350,6 +380,7 @@ export const Users: React.FC = () => {
   const navigate = useNavigate();
   const { user: currentUser } = useAuthStore();
 
+  const isBghViewer = hasRole(currentUser, ['bgh']);
   const isTopAdminViewer = hasRole(currentUser, ['admin', 'bgh']);
   const canCreateOrDelete = hasRole(currentUser, ['admin', 'bgh', 'tccb']);
   const canLockAccount = isTopAdminViewer;
@@ -384,8 +415,6 @@ export const Users: React.FC = () => {
   const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState<boolean>(false);
-  const [modalAvatarPreview, setModalAvatarPreview] = useState<string | null>(null);
 
   // State bộ lọc & Tìm kiếm
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -408,6 +437,7 @@ export const Users: React.FC = () => {
 
   // State Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
+  const [isImportExcelModalOpen, setIsImportExcelModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [detailUser, setDetailUser] = useState<UserProfile | null>(null);
   const [detailTab, setDetailTab] = useState<'chi_tiet' | 'face' | 'role'>('chi_tiet');
@@ -417,8 +447,10 @@ export const Users: React.FC = () => {
   }, [detailUser?.id]);
   const [activeFormTab, setActiveFormTab] = useState<'basic' | 'academic' | 'salary'>('basic');
   const [roleAssignments, setRoleAssignments] = useState<UserRoleAssignmentPayload[]>([]);
+  const [primaryRoleDelegated, setPrimaryRoleDelegated] = useState<boolean>(false);
+  const [primaryRoleStartDate, setPrimaryRoleStartDate] = useState<string>(() => getTodayVietnamIso());
+  const [expandedRoleDateRows, setExpandedRoleDateRows] = useState<Record<number, boolean>>({});
   const [roleAssignmentsDirty, setRoleAssignmentsDirty] = useState(false);
-  const modalAvatarInputRef = useRef<HTMLInputElement | null>(null);
 
   // Form State
   const [formData, setFormData] = useState<CreateUserPayload & { kich_hoat?: boolean }>({
@@ -453,6 +485,7 @@ export const Users: React.FC = () => {
     chi_nhanh_ngan_hang: '',
     kich_hoat: true,
   });
+  const [formValidationErrors, setFormValidationErrors] = useState<string[]>([]);
 
   const handleSetViewMode = (mode: 'table' | 'grid' | 'department') => {
     setViewMode(mode);
@@ -654,62 +687,12 @@ export const Users: React.FC = () => {
   }, [filteredUsers, validCurrentPage, pageSize]);
 
   // ---------------------------------------------------------------------------
-  // XỬ LÝ TẢI LÊN AVATAR NHANH & TRONG MODAL
-  // ---------------------------------------------------------------------------
-  const handleQuickAvatarUpload = async (targetUser: UserProfile, file: File) => {
-    const toastId = toast.loading(`Đang tải ảnh đại diện cho ${formatNameAndTitle(targetUser.ho_ten).name}...`);
-    try {
-      const uploadRes = await userApi.uploadAvatar(file);
-      const uploadedUrl = uploadRes.data?.duong_dan_tep;
-      if (!uploadedUrl) {
-        throw new Error('Không nhận được đường dẫn ảnh sau khi tải lên.');
-      }
-
-      const avatarWithCacheBust = `${uploadedUrl}?v=${Date.now()}`;
-      await userApi.updateUser(targetUser.id, { anh_dai_dien: avatarWithCacheBust });
-
-      setUsers((prev) =>
-        prev.map((u) => (u.id === targetUser.id ? { ...u, anh_dai_dien: avatarWithCacheBust } : u))
-      );
-      if (detailUser && detailUser.id === targetUser.id) {
-        setDetailUser((prev) => (prev ? { ...prev, anh_dai_dien: avatarWithCacheBust } : null));
-      }
-
-      toast.success('Đã cập nhật ảnh đại diện thành công!', { id: toastId });
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Lỗi khi tải lên ảnh đại diện.', { id: toastId });
-    }
-  };
-
-  const handleModalAvatarFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const localBlobUrl = URL.createObjectURL(file);
-    setModalAvatarPreview(localBlobUrl);
-    setUploadingAvatar(true);
-    try {
-      const uploadRes = await userApi.uploadAvatar(file);
-      const uploadedUrl = uploadRes.data?.duong_dan_tep;
-      if (uploadedUrl) {
-        setFormData((prev) => ({ ...prev, anh_dai_dien: `${uploadedUrl}?v=${Date.now()}` }));
-        toast.success('Đã tải ảnh đại diện lên thành công!');
-      }
-    } catch (error: any) {
-      setModalAvatarPreview(null);
-      toast.error(error?.response?.data?.message || 'Không thể tải ảnh lên.');
-    } finally {
-      setUploadingAvatar(false);
-      e.target.value = '';
-    }
-  };
-
-  // ---------------------------------------------------------------------------
   // XỬ LÝ MỞ MODAL THÊM / SỬA
   // ---------------------------------------------------------------------------
   const handleOpenCreateModal = () => {
     setEditingUser(null);
-    setModalAvatarPreview(null);
     setActiveFormTab('basic');
+    setFormValidationErrors([]);
     const nextIdx = users.length + 1;
     const suggestedCode = `GV${String(nextIdx).padStart(3, '0')}`;
 
@@ -748,67 +731,143 @@ export const Users: React.FC = () => {
       kich_hoat: true,
     });
     setRoleAssignments([]);
+    setPrimaryRoleDelegated(false);
+    setPrimaryRoleStartDate(getTodayVietnamIso());
+    setExpandedRoleDateRows({});
     setRoleAssignmentsDirty(false);
     setIsFormModalOpen(true);
   };
 
-  const handleOpenEditModal = (u: UserProfile) => {
-    setEditingUser(u);
-    setModalAvatarPreview(null);
-    setActiveFormTab('basic');
-    const todayIso = getTodayVietnamIso();
-    const mappedRoles: UserRoleAssignmentPayload[] = Array.isArray(u.danh_sach_vai_tro)
-      ? u.danh_sach_vai_tro.map((r: any) => {
-          const code = normalizeRoleKey(r?.ma_vai_tro || u.vai_tro_chinh);
-          const rawDeptId =
-            r?.don_vi_id && typeof r.don_vi_id === 'object'
-              ? String(r.don_vi_id.id || '')
-              : r?.don_vi_id || '';
-          const phamVi = (r?.pham_vi || inferRoleScope(code, rawDeptId, departments)) as RoleScopeType;
-          return {
-            ma_vai_tro: code,
-            pham_vi: phamVi,
-            don_vi_id: phamVi === 'toan_truong' ? null : rawDeptId || getDepartmentIdValue(u) || null,
-            duoc_uy_quyen: Boolean(r?.duoc_uy_quyen),
-            tu_ngay: r?.tu_ngay ? String(r.tu_ngay).slice(0, 10) : todayIso,
-            den_ngay: r?.den_ngay ? String(r.den_ngay).slice(0, 10) : null,
-          };
-        })
-      : [];
-    setRoleAssignments(mappedRoles);
-    setRoleAssignmentsDirty(false);
-    setFormData({
+  const mapUserToFormData = useCallback((u: UserProfile) => {
+    const hoSo = ((u as any).ho_so && typeof (u as any).ho_so === 'object' ? (u as any).ho_so : {}) as Record<string, any>;
+    const pick = <T,>(topVal: T | undefined | null, profileKey: string, fallback: T): T => {
+      if (topVal !== undefined && topVal !== null && topVal !== '') return topVal;
+      const nested = hoSo[profileKey];
+      if (nested !== undefined && nested !== null && nested !== '') return nested as T;
+      return fallback;
+    };
+    const roleKey = normalizeRoleKey(u.vai_tro_chinh);
+    return {
       ho_ten: u.ho_ten || '',
       email: u.email || '',
       mat_khau: '',
       ma_can_bo: u.ma_can_bo || '',
-      vai_tro_chinh: normalizeRoleKey(u.vai_tro_chinh),
+      vai_tro_chinh: roleKey,
       don_vi_chinh_id: getDepartmentIdValue(u),
       so_dien_thoai: u.so_dien_thoai || '',
-      chuc_vu: typeof u.chuc_vu === 'string' ? u.chuc_vu : '',
-      hoc_ham: u.hoc_ham || 'khong',
-      hoc_vi: u.hoc_vi || 'thac_si',
-      loai_nhan_su: u.loai_nhan_su || (normalizeRoleKey(u.vai_tro_chinh) === 'nhan_vien' ? 'nhan_vien' : 'giang_vien'),
-      loai_hop_dong: u.loai_hop_dong || 'toan_thoi_gian',
-      ngach_luong: u.ngach_luong || 'V.07.01.03',
-      he_so_luong: u.he_so_luong ?? 2.34,
-      so_nguoi_phu_thuoc: u.so_nguoi_phu_thuoc ?? 0,
-      han_muc_phep_nam: u.han_muc_phep_nam ?? 12,
-      gioi_tinh: u.gioi_tinh || 'nam',
-      ngay_sinh: u.ngay_sinh ? String(u.ngay_sinh).slice(0, 10) : '',
-      ngay_vao_lam: u.ngay_vao_lam ? String(u.ngay_vao_lam).slice(0, 10) : getTodayVietnamIso(),
-      dia_chi: u.dia_chi || '',
-      trang_thai_lam_viec: u.trang_thai_lam_viec || 'dang_lam_viec',
+      chuc_vu: typeof pick(u.chuc_vu, 'chuc_vu', '') === 'string' ? pick(u.chuc_vu, 'chuc_vu', '') : '',
+      hoc_ham: pick(u.hoc_ham, 'hoc_ham', 'khong') as AcademicRankType,
+      hoc_vi: pick(u.hoc_vi, 'hoc_vi', 'thac_si') as DegreeType,
+      loai_nhan_su: pick(
+        u.loai_nhan_su,
+        'loai_nhan_su',
+        roleKey === 'nhan_vien' ? 'nhan_vien' : 'giang_vien'
+      ) as StaffType,
+      loai_hop_dong: pick(u.loai_hop_dong, 'loai_hop_dong', 'toan_thoi_gian') as ContractType,
+      ngach_luong: pick(u.ngach_luong, 'ngach_luong', 'V.07.01.03'),
+      he_so_luong: Number(u.he_so_luong ?? hoSo.he_so_luong ?? 2.34),
+      so_nguoi_phu_thuoc: Number(u.so_nguoi_phu_thuoc ?? hoSo.so_nguoi_phu_thuoc ?? 0),
+      han_muc_phep_nam: Number(u.han_muc_phep_nam ?? hoSo.han_muc_phep_nam ?? 12),
+      gioi_tinh: pick(u.gioi_tinh, 'gioi_tinh', 'nam') as GenderType,
+      ngay_sinh: toDateInputValue(u.ngay_sinh ?? hoSo.ngay_sinh),
+      ngay_vao_lam: toDateInputValue(u.ngay_vao_lam ?? hoSo.ngay_vao_lam) || getTodayVietnamIso(),
+      dia_chi: pick(u.dia_chi, 'dia_chi', ''),
+      trang_thai_lam_viec: (u.trang_thai_lam_viec || 'dang_lam_viec') as EmploymentStatusType,
       anh_dai_dien: u.anh_dai_dien || '',
-      ngay_het_han_hop_dong: u.ngay_het_han_hop_dong ? String(u.ngay_het_han_hop_dong).slice(0, 10) : '',
-      ngay_bat_dau_giang_day: u.ngay_bat_dau_giang_day ? String(u.ngay_bat_dau_giang_day).slice(0, 10) : '',
-      so_cccd: u.so_cccd || '',
-      ma_so_thue: u.ma_so_thue || '',
-      so_tai_khoan_ngan_hang: u.so_tai_khoan_ngan_hang || '',
-      ten_ngan_hang: u.ten_ngan_hang || '',
-      chi_nhanh_ngan_hang: u.chi_nhanh_ngan_hang || '',
+      ngay_het_han_hop_dong: toDateInputValue(u.ngay_het_han_hop_dong ?? hoSo.ngay_het_han_hop_dong),
+      ngay_bat_dau_giang_day: toDateInputValue(u.ngay_bat_dau_giang_day ?? hoSo.ngay_bat_dau_giang_day),
+      so_cccd: pick(u.so_cccd, 'so_cccd', ''),
+      ma_so_thue: pick(u.ma_so_thue, 'ma_so_thue', ''),
+      so_tai_khoan_ngan_hang: pick(u.so_tai_khoan_ngan_hang, 'so_tai_khoan_ngan_hang', ''),
+      ten_ngan_hang: pick(u.ten_ngan_hang, 'ten_ngan_hang', ''),
+      chi_nhanh_ngan_hang: pick(u.chi_nhanh_ngan_hang, 'chi_nhanh_ngan_hang', ''),
       kich_hoat: u.kich_hoat !== false,
-    });
+    };
+  }, []);
+
+  const extractRoleStateFromUser = useCallback(
+    (u: UserProfile) => {
+      const todayIso = getTodayVietnamIso();
+      const primaryCode = normalizeRoleKey(u.vai_tro_chinh);
+      const primaryDeptId = GLOBAL_SCOPE_ROLES.has(primaryCode) ? null : (getDepartmentIdValue(u) || null);
+      let primaryDelegated = false;
+      let primaryStartDate = todayIso;
+      const secondaryRows: UserRoleAssignmentPayload[] = [];
+
+      if (Array.isArray(u.danh_sach_vai_tro)) {
+        for (const r of u.danh_sach_vai_tro as any[]) {
+          if (!r) continue;
+          const code = normalizeRoleKey(r?.ma_vai_tro || u.vai_tro_chinh);
+          const rawDeptId =
+            r?.don_vi_id && typeof r.don_vi_id === 'object'
+              ? String(r.don_vi_id.id || '')
+              : r?.don_vi_id
+                ? String(r.don_vi_id)
+                : '';
+          const effectiveDeptId = GLOBAL_SCOPE_ROLES.has(code) ? null : (rawDeptId || null);
+          const phamVi = inferRoleScope(code, effectiveDeptId, departments);
+
+          const isPrimaryRow =
+            code === primaryCode &&
+            String(effectiveDeptId || '') === String(primaryDeptId || '');
+
+          if (isPrimaryRow) {
+            primaryDelegated = DEPUTY_DELEGATION_ROLES.has(code) && Boolean(r?.duoc_uy_quyen);
+            primaryStartDate = toDateInputValue(r?.tu_ngay) || todayIso;
+            continue;
+          }
+
+          secondaryRows.push({
+            ma_vai_tro: code,
+            pham_vi: phamVi,
+            don_vi_id: effectiveDeptId,
+            duoc_uy_quyen: DEPUTY_DELEGATION_ROLES.has(code) ? Boolean(r?.duoc_uy_quyen) : false,
+            tu_ngay: toDateInputValue(r?.tu_ngay) || todayIso,
+            den_ngay: toDateInputValue(r?.den_ngay) || null,
+          });
+        }
+      }
+
+      return { primaryDelegated, primaryStartDate, secondaryRows };
+    },
+    [departments]
+  );
+
+  const handleOpenDetailModal = useCallback(async (u: UserProfile) => {
+    setDetailUser(u);
+    try {
+      const res = await userApi.getUserById(String(u.id));
+      if (res?.data && String(res.data.id) === String(u.id)) {
+        setDetailUser((current) =>
+          current && String(current.id) === String(u.id) ? res.data : current
+        );
+      }
+    } catch {
+      // Giữ nguyên dữ liệu từ danh sách nếu tải chi tiết thất bại
+    }
+  }, []);
+
+  const handleOpenEditModal = async (u: UserProfile) => {
+    let sourceUser = u;
+    try {
+      const res = await userApi.getUserById(String(u.id));
+      if (res?.data && String(res.data.id) === String(u.id)) {
+        sourceUser = res.data;
+      }
+    } catch {
+      // Dự phòng dùng dữ liệu từ danh sách nếu tải chi tiết thất bại
+    }
+
+    const extractedRoles = extractRoleStateFromUser(sourceUser);
+    setEditingUser(sourceUser);
+    setActiveFormTab('basic');
+    setFormValidationErrors([]);
+    setPrimaryRoleDelegated(extractedRoles.primaryDelegated);
+    setPrimaryRoleStartDate(extractedRoles.primaryStartDate);
+    setRoleAssignments(extractedRoles.secondaryRows);
+    setExpandedRoleDateRows({});
+    setRoleAssignmentsDirty(false);
+    setFormData(mapUserToFormData(sourceUser));
     setIsFormModalOpen(true);
   };
 
@@ -895,6 +954,28 @@ export const Users: React.FC = () => {
   // ---------------------------------------------------------------------------
   // ĐỒNG BỘ THÔNG MINH 2 CHIỀU: ĐƠN VỊ & VAI TRÒ HỆ THỐNG (RBAC)
   // ---------------------------------------------------------------------------
+  const syncRolesAfterPrimaryChange = useCallback(
+    (nextRole: string, nextDeptId: string) => {
+      if (!DEPUTY_DELEGATION_ROLES.has(nextRole) && primaryRoleDelegated) {
+        setPrimaryRoleDelegated(false);
+        setRoleAssignmentsDirty(true);
+      }
+      const nextPrimaryEffDept = GLOBAL_SCOPE_ROLES.has(nextRole) ? null : (nextDeptId || null);
+      const nextPrimaryKey = `${nextRole}::${nextPrimaryEffDept || 'ALL'}`;
+      setRoleAssignments((prev) => {
+        const filtered = prev.filter((item) => {
+          const itemEffDept = GLOBAL_SCOPE_ROLES.has(item.ma_vai_tro) ? null : (item.don_vi_id || null);
+          return `${item.ma_vai_tro}::${itemEffDept || 'ALL'}` !== nextPrimaryKey;
+        });
+        if (filtered.length !== prev.length) {
+          setRoleAssignmentsDirty(true);
+        }
+        return filtered;
+      });
+    },
+    [primaryRoleDelegated]
+  );
+
   const handleDepartmentChange = (deptId: string) => {
     const selectedDept = departments.find((d) => String(d.id) === String(deptId));
     let newRole = formData.vai_tro_chinh || 'giang_vien';
@@ -933,8 +1014,9 @@ export const Users: React.FC = () => {
       don_vi_chinh_id: deptId,
       vai_tro_chinh: newRole,
       loai_nhan_su: newStaffType,
-      chuc_vu: newPosition,
+      chuc_vu: editingUser && prev.chuc_vu?.trim() ? prev.chuc_vu : newPosition,
     }));
+    syncRolesAfterPrimaryChange(newRole, deptId);
   };
 
   const handleRoleChange = (newRole: string) => {
@@ -999,8 +1081,9 @@ export const Users: React.FC = () => {
       vai_tro_chinh: newRole,
       don_vi_chinh_id: newDeptId,
       loai_nhan_su: newStaffType,
-      chuc_vu: newPosition,
+      chuc_vu: editingUser && prev.chuc_vu?.trim() ? prev.chuc_vu : newPosition,
     }));
+    syncRolesAfterPrimaryChange(newRole, newDeptId);
   };
 
   const availableRoleOptions = useMemo(() => {
@@ -1013,25 +1096,221 @@ export const Users: React.FC = () => {
     return ROLE_OPTIONS;
   }, [isUnitLeaderViewer, isTopAdminViewer]);
 
+  const secondaryRoleOptions = useMemo(() => {
+    return availableRoleOptions.filter((r) => {
+      if (SECONDARY_FORBIDDEN_ROLES.has(r.value)) return false;
+      if (r.value === 'bgh' && !isBghViewer) return false;
+      return true;
+    });
+  }, [availableRoleOptions, isBghViewer]);
+
+  const handleAddSecondaryRole = useCallback(() => {
+    const todayIso = getTodayVietnamIso();
+    const currentPrimaryRole = formData.vai_tro_chinh || 'giang_vien';
+    const currentPrimaryEffDept = GLOBAL_SCOPE_ROLES.has(currentPrimaryRole)
+      ? null
+      : (formData.don_vi_chinh_id || null);
+
+    const usedKeys = new Set<string>([
+      `${currentPrimaryRole}::${currentPrimaryEffDept || 'ALL'}`,
+      ...roleAssignments.map((r) => {
+        const effDept = GLOBAL_SCOPE_ROLES.has(r.ma_vai_tro) ? null : (r.don_vi_id || null);
+        return `${r.ma_vai_tro}::${effDept || 'ALL'}`;
+      }),
+    ]);
+
+    const allowedValues = new Set(secondaryRoleOptions.map((o) => o.value));
+    const basePriority =
+      currentPrimaryRole === 'giang_vien'
+        ? ['pho_khoa', 'pho_bo_mon', 'dao_tao', 'tccb', 'ke_toan', 'pho_phong', 'nhan_vien', 'bgh']
+        : ['giang_vien', 'dao_tao', 'tccb', 'ke_toan', 'pho_khoa', 'pho_bo_mon', 'pho_phong', 'nhan_vien', 'bgh'];
+    const priorityOrder = basePriority.filter((r) => allowedValues.has(r) && r !== currentPrimaryRole);
+
+    let chosenRole = priorityOrder[0] || secondaryRoleOptions[0]?.value || 'giang_vien';
+    let chosenDeptId: string | null = null;
+
+    for (const candidateRole of priorityOrder) {
+      if (GLOBAL_SCOPE_ROLES.has(candidateRole)) {
+        if (!usedKeys.has(`${candidateRole}::ALL`)) {
+          chosenRole = candidateRole;
+          chosenDeptId = null;
+          break;
+        }
+        continue;
+      }
+      const allowedDepts = getAllowedDeptsForSecondaryRole(candidateRole, departments);
+      const preferredOrder = [
+        ...allowedDepts.filter((d) => String(d.id) === String(formData.don_vi_chinh_id || '')),
+        ...allowedDepts.filter((d) => String(d.id) !== String(formData.don_vi_chinh_id || '')),
+      ];
+      const freeDept = preferredOrder.find((d) => !usedKeys.has(`${candidateRole}::${d.id}`));
+      if (freeDept) {
+        chosenRole = candidateRole;
+        chosenDeptId = freeDept.id;
+        break;
+      }
+    }
+
+    const chosenScope = inferRoleScope(chosenRole, chosenDeptId, departments);
+    setRoleAssignments((prev) => [
+      ...prev,
+      {
+        ma_vai_tro: chosenRole,
+        pham_vi: chosenScope,
+        don_vi_id: chosenScope === 'toan_truong' ? null : chosenDeptId,
+        duoc_uy_quyen: false,
+        tu_ngay: todayIso,
+        den_ngay: null,
+      },
+    ]);
+    setRoleAssignmentsDirty(true);
+  }, [departments, formData.don_vi_chinh_id, formData.vai_tro_chinh, roleAssignments, secondaryRoleOptions]);
+
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.ho_ten.trim()) {
-      toast.error('Vui lòng nhập họ và tên cán bộ / giảng viên.');
-      return;
-    }
-    if (!formData.email.trim()) {
-      toast.error('Vui lòng nhập địa chỉ email công vụ.');
-      return;
-    }
+    setFormValidationErrors([]);
+
+    const validationErrors: string[] = [];
+    let firstErrorTab: 'basic' | 'academic' | 'salary' | null = null;
+    const addErr = (tab: 'basic' | 'academic' | 'salary', msg: string) => {
+      if (!firstErrorTab) firstErrorTab = tab;
+      validationErrors.push(msg);
+    };
+
+    const trimmedName = formData.ho_ten.trim();
+    const trimmedEmail = formData.email.trim();
     const staffCode = (formData.ma_can_bo || '').trim().toUpperCase();
     const primaryRole = formData.vai_tro_chinh || 'giang_vien';
-    if (!staffCode) {
-      toast.error('Vui lòng nhập mã cán bộ (VD: GV005, CV003).');
-      return;
+    const cleanPhone = (formData.so_dien_thoai || '').replace(/[\s.-]/g, '').trim();
+    const cleanCccd = (formData.so_cccd || '').trim();
+    const cleanTaxCode = (formData.ma_so_thue || '').trim();
+    const cleanBankAccount = (formData.so_tai_khoan_ngan_hang || '').trim();
+    const cleanBankName = (formData.ten_ngan_hang || '').trim();
+    const trimmedPosition = (formData.chuc_vu || '').trim();
+    const trimmedAddress = (formData.dia_chi || '').trim();
+    const todayIsoCheck = getTodayVietnamIso();
+    const isLecturerForm =
+      formData.loai_nhan_su === 'giang_vien' ||
+      ['giang_vien', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon'].includes(primaryRole);
+    const isFixedTermContract = ['ban_thoi_gian', 'thinh_giang', 'hop_dong_vu_viec'].includes(
+      formData.loai_hop_dong || ''
+    );
+
+    // Tab 1: Thông tin cơ bản & Đơn vị
+    if (!trimmedName) addErr('basic', 'Họ và tên đầy đủ');
+    if (!staffCode) addErr('basic', 'Mã cán bộ / giảng viên');
+    if (!trimmedEmail) {
+      addErr('basic', 'Email công vụ');
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      addErr('basic', 'Email công vụ không đúng định dạng');
     }
+
+    if (!editingUser) {
+      if (!formData.mat_khau || formData.mat_khau.trim().length < 6) {
+        addErr('basic', 'Mật khẩu khởi tạo (tối thiểu 6 ký tự)');
+      }
+    } else if (formData.mat_khau && formData.mat_khau.trim().length > 0 && formData.mat_khau.trim().length < 6) {
+      addErr('basic', 'Mật khẩu mới (phải có tối thiểu 6 ký tự nếu muốn đổi)');
+    }
+
+    if (!cleanPhone) {
+      addErr('basic', 'Số điện thoại liên hệ');
+    } else if (!/^(0|\+84)\d{9,10}$/.test(cleanPhone)) {
+      addErr('basic', 'Số điện thoại không hợp lệ (cần 10–11 số bắt đầu bằng 0 hoặc +84)');
+    }
+
     if (!formData.don_vi_chinh_id) {
-      toast.error('Vui lòng chọn Khoa / Bộ môn / Phòng ban trực thuộc.');
+      addErr('basic', 'Khoa / Bộ môn / Phòng ban trực thuộc');
+    }
+    if (!formData.ngay_sinh) {
+      addErr('basic', 'Ngày sinh');
+    } else if (formData.ngay_sinh > todayIsoCheck) {
+      addErr('basic', 'Ngày sinh không được lớn hơn ngày hiện tại');
+    }
+
+    if (!cleanCccd) {
+      addErr('basic', 'Số CCCD / CMND');
+    } else if (!/^\d{9}$|^\d{12}$/.test(cleanCccd)) {
+      addErr('basic', 'Số CCCD / CMND phải gồm đúng 9 hoặc 12 chữ số');
+    }
+
+    if (!trimmedPosition) addErr('basic', 'Chức vụ / Chức danh');
+
+    // Tab 2: Học hàm, Học vị & Biên chế
+    if (!formData.ngay_vao_lam) addErr('academic', 'Ngày vào trường công tác');
+    if (isLecturerForm && !formData.ngay_bat_dau_giang_day) {
+      addErr('academic', 'Ngày bắt đầu giảng dạy (bắt buộc đối với giảng viên)');
+    } else if (formData.ngay_bat_dau_giang_day) {
+      if (formData.ngay_bat_dau_giang_day > todayIsoCheck) {
+        addErr('academic', 'Ngày bắt đầu giảng dạy không được lớn hơn ngày hiện tại');
+      } else if (formData.ngay_sinh && formData.ngay_bat_dau_giang_day <= formData.ngay_sinh) {
+        addErr('academic', 'Ngày bắt đầu giảng dạy phải sau ngày sinh');
+      }
+    }
+    if (isFixedTermContract && !formData.ngay_het_han_hop_dong) {
+      addErr('academic', 'Ngày hết hạn hợp đồng (bắt buộc đối với hợp đồng có thời hạn)');
+    } else if (
+      formData.ngay_het_han_hop_dong &&
+      formData.ngay_vao_lam &&
+      formData.ngay_het_han_hop_dong < formData.ngay_vao_lam
+    ) {
+      addErr('academic', 'Ngày hết hạn hợp đồng phải sau hoặc bằng ngày vào trường');
+    }
+    if (!trimmedAddress) addErr('academic', 'Địa chỉ thường trú / Liên hệ');
+
+    // Tab 3: Ngạch lương, Thuế & Ngân hàng
+    const isVisitingContract = ['thinh_giang', 'hop_dong_vu_viec'].includes(formData.loai_hop_dong || '');
+    const coeffVal = Number(formData.he_so_luong);
+    if (!Number.isFinite(coeffVal) || coeffVal < 0 || coeffVal > 30 || (!isVisitingContract && coeffVal <= 0)) {
+      addErr('salary', 'Hệ số lương hiện hưởng (phải > 0 đối với hợp đồng cơ hữu)');
+    }
+    const leaveQuotaVal = Number(formData.han_muc_phep_nam);
+    if (!Number.isFinite(leaveQuotaVal) || leaveQuotaVal < 0 || leaveQuotaVal > 45) {
+      addErr('salary', 'Quỹ nghỉ phép năm định mức (0–45 ngày)');
+    }
+    if (cleanTaxCode && !/^\d{10}(\d{3})?$/.test(cleanTaxCode)) {
+      addErr('salary', 'Mã số thuế cá nhân phải gồm đúng 10 hoặc 13 chữ số');
+    }
+    if (cleanBankAccount && !cleanBankName) {
+      addErr('salary', 'Tên ngân hàng (bắt buộc khi đã nhập số tài khoản)');
+    } else if (cleanBankName && !cleanBankAccount) {
+      addErr('salary', 'Số tài khoản ngân hàng (bắt buộc khi đã nhập tên ngân hàng)');
+    }
+
+    // Kiểm tra danh sách vai trò kiêm nhiệm (nếu người dùng có quyền quản lý phân vai)
+    const primaryDeptIdCheck = formData.don_vi_chinh_id || null;
+    const primaryScopeCheck = inferRoleScope(primaryRole, primaryDeptIdCheck, departments);
+    if (canCreateOrDelete && roleAssignments.length > 0) {
+      const primaryEffDeptCheck = primaryScopeCheck === 'toan_truong' ? null : primaryDeptIdCheck;
+      const seenRoleKeys = new Set<string>([`${primaryRole}::${primaryEffDeptCheck || 'ALL'}`]);
+      roleAssignments.forEach((row, idx) => {
+        const lineNum = idx + 1;
+        if (SECONDARY_FORBIDDEN_ROLES.has(row.ma_vai_tro)) {
+          addErr(
+            'basic',
+            `Vai trò kiêm nhiệm #${lineNum}: Không được gán Admin hoặc Trưởng đơn vị tại mục kiêm nhiệm`
+          );
+        }
+        const isGlobal = GLOBAL_SCOPE_ROLES.has(row.ma_vai_tro);
+        if (!isGlobal && !row.don_vi_id) {
+          addErr('basic', `Vai trò kiêm nhiệm #${lineNum}: Vui lòng chọn đơn vị áp dụng`);
+        }
+        if (row.den_ngay && row.tu_ngay && row.den_ngay < row.tu_ngay) {
+          addErr('basic', `Vai trò kiêm nhiệm #${lineNum}: Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu`);
+        }
+        const rowKey = `${row.ma_vai_tro}::${isGlobal ? 'ALL' : (row.don_vi_id || 'ALL')}`;
+        if (seenRoleKeys.has(rowKey)) {
+          addErr('basic', `Vai trò kiêm nhiệm #${lineNum}: Bị trùng vai trò và đơn vị`);
+        }
+        seenRoleKeys.add(rowKey);
+      });
+    }
+
+    if (validationErrors.length > 0) {
+      setFormValidationErrors(validationErrors);
+      if (firstErrorTab) setActiveFormTab(firstErrorTab);
+      toast.error(`Chưa điền đủ hoặc sai thông tin: ${validationErrors[0]}`);
       return;
     }
 
@@ -1073,36 +1352,30 @@ export const Users: React.FC = () => {
     let preparedRoleAssignments: UserRoleAssignmentPayload[] | undefined;
 
     if (canCreateOrDelete && roleAssignmentsDirty) {
-      const normalizedRows = roleAssignments.map((r) => ({
-        ...r,
-        don_vi_id: r.pham_vi === 'toan_truong' ? null : r.don_vi_id || primaryDeptId,
-      }));
-      const seenKeys = new Set<string>();
-      for (const row of normalizedRows) {
-        const key = `${row.ma_vai_tro}::${row.don_vi_id || 'ALL'}`;
-        if (seenKeys.has(key)) {
-          toast.error('Danh sách vai trò bị trùng vai trò và đơn vị. Vui lòng chọn vai trò hoặc đơn vị khác.');
-          return;
-        }
-        seenKeys.add(key);
-      }
+      const normalizedSecondaryRows: UserRoleAssignmentPayload[] = roleAssignments.map((r) => {
+        const isGlobal = GLOBAL_SCOPE_ROLES.has(r.ma_vai_tro);
+        const effDeptId = isGlobal ? null : (r.don_vi_id || null);
+        const effScope = inferRoleScope(r.ma_vai_tro, effDeptId, departments);
+        return {
+          ma_vai_tro: r.ma_vai_tro,
+          pham_vi: effScope,
+          don_vi_id: effDeptId,
+          duoc_uy_quyen: DEPUTY_DELEGATION_ROLES.has(r.ma_vai_tro) ? Boolean(r.duoc_uy_quyen) : false,
+          tu_ngay: r.tu_ngay || todayIso,
+          den_ngay: r.den_ngay || null,
+        };
+      });
 
-      const primaryKey = `${primaryRole}::${(primaryScope === 'toan_truong' ? null : primaryDeptId) || 'ALL'}`;
-      const matchedPrimary = normalizedRows.find(
-        (r) => `${r.ma_vai_tro}::${r.don_vi_id || 'ALL'}` === primaryKey
-      );
       preparedRoleAssignments = [
         {
           ma_vai_tro: primaryRole,
           pham_vi: primaryScope,
           don_vi_id: primaryScope === 'toan_truong' ? null : primaryDeptId,
-          duoc_uy_quyen: Boolean(matchedPrimary?.duoc_uy_quyen),
-          tu_ngay: matchedPrimary?.tu_ngay || todayIso,
-          den_ngay: matchedPrimary?.den_ngay || null,
+          duoc_uy_quyen: DEPUTY_DELEGATION_ROLES.has(primaryRole) ? primaryRoleDelegated : false,
+          tu_ngay: primaryRoleStartDate || todayIso,
+          den_ngay: null,
         },
-        ...normalizedRows.filter(
-          (r) => `${r.ma_vai_tro}::${r.don_vi_id || 'ALL'}` !== primaryKey
-        ),
+        ...normalizedSecondaryRows,
       ];
     }
 
@@ -1132,7 +1405,9 @@ export const Users: React.FC = () => {
           ngay_vao_lam: formData.ngay_vao_lam || undefined,
           dia_chi: formData.dia_chi?.trim() || '',
           trang_thai_lam_viec: formData.trang_thai_lam_viec,
-          anh_dai_dien: formData.anh_dai_dien?.trim() || null,
+          ...(canCreateOrDelete && editingUser.anh_dai_dien && !formData.anh_dai_dien?.trim()
+            ? { anh_dai_dien: null }
+            : {}),
           ngay_het_han_hop_dong: formData.ngay_het_han_hop_dong || null,
           ngay_bat_dau_giang_day: formData.ngay_bat_dau_giang_day || null,
           so_cccd: formData.so_cccd?.trim() || null,
@@ -1177,7 +1452,6 @@ export const Users: React.FC = () => {
           ngay_vao_lam: formData.ngay_vao_lam || undefined,
           dia_chi: formData.dia_chi?.trim() || '',
           trang_thai_lam_viec: formData.trang_thai_lam_viec,
-          anh_dai_dien: formData.anh_dai_dien?.trim() || null,
           ngay_het_han_hop_dong: formData.ngay_het_han_hop_dong || null,
           ngay_bat_dau_giang_day: formData.ngay_bat_dau_giang_day || null,
           so_cccd: formData.so_cccd?.trim() || null,
@@ -1193,7 +1467,7 @@ export const Users: React.FC = () => {
       setIsFormModalOpen(false);
       await fetchAllData();
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi lưu hồ sơ cán bộ.');
+      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi lưu hồ sơ cán bộ.', { duration: 6000 });
     } finally {
       setSubmitting(false);
     }
@@ -1218,7 +1492,7 @@ export const Users: React.FC = () => {
       }
       await fetchAllData();
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Không thể thay đổi trạng thái tài khoản.');
+      toast.error(error?.response?.data?.message || 'Không thể thay đổi trạng thái tài khoản.', { duration: 6000 });
     }
   };
 
@@ -1270,6 +1544,19 @@ export const Users: React.FC = () => {
             >
               <span className="hidden sm:inline">Xuất Excel</span>
             </Button>
+
+            {canCreateOrDelete && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsImportExcelModalOpen(true)}
+                leftIcon={<Upload className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+                title="Thêm nhanh nhiều nhân sự từ file Excel (.xlsx)"
+              >
+                <span className="hidden sm:inline">Nhập Excel</span>
+              </Button>
+            )}
 
             {canCreateOrDelete && (
               <Button
@@ -1503,13 +1790,11 @@ export const Users: React.FC = () => {
                           <StaffAvatar
                             user={emp}
                             size="sm"
-                            canUpload={canEdit}
-                            onQuickUpload={handleQuickAvatarUpload}
                           />
                           <div className="flex flex-col min-w-0 flex-1 leading-tight">
                             <button
                               type="button"
-                              onClick={() => setDetailUser(emp)}
+                              onClick={() => handleOpenDetailModal(emp)}
                               className="font-semibold text-slate-800 dark:text-slate-100 hover:text-brand-600 dark:hover:text-brand-400 text-xs truncate text-left transition-colors cursor-pointer"
                               title={parsed.name}
                             >
@@ -1604,7 +1889,7 @@ export const Users: React.FC = () => {
                         <div className="lg:hidden flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => setDetailUser(emp)}
+                            onClick={() => handleOpenDetailModal(emp)}
                             className="w-7 h-7 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 flex items-center justify-center"
                             title="Xem chi tiết"
                           >
@@ -1627,7 +1912,7 @@ export const Users: React.FC = () => {
                       <div className="hidden lg:flex items-center justify-end gap-1 shrink-0">
                         <button
                           type="button"
-                          onClick={() => setDetailUser(emp)}
+                          onClick={() => handleOpenDetailModal(emp)}
                           className="w-7 h-7 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-center cursor-pointer"
                           title="Xem hồ sơ chi tiết"
                         >
@@ -1702,12 +1987,10 @@ export const Users: React.FC = () => {
                           <StaffAvatar
                             user={emp}
                             size="lg"
-                            canUpload={canEdit}
-                            onQuickUpload={handleQuickAvatarUpload}
                           />
                           <div className="min-w-0">
                             <h4
-                              onClick={() => setDetailUser(emp)}
+                              onClick={() => handleOpenDetailModal(emp)}
                               className="font-bold text-slate-900 dark:text-white hover:text-brand-600 text-sm truncate cursor-pointer"
                               title={parsed.name}
                             >
@@ -1779,7 +2062,7 @@ export const Users: React.FC = () => {
                     <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setDetailUser(emp)}
+                        onClick={() => handleOpenDetailModal(emp)}
                         className="flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5 text-slate-500" />
@@ -1865,14 +2148,12 @@ export const Users: React.FC = () => {
                                 <StaffAvatar
                                   user={emp}
                                   size="md"
-                                  canUpload={canEdit}
-                                  onQuickUpload={handleQuickAvatarUpload}
                                 />
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <button
                                       type="button"
-                                      onClick={() => setDetailUser(emp)}
+                                      onClick={() => handleOpenDetailModal(emp)}
                                       className="font-bold text-slate-900 dark:text-white hover:text-brand-600 truncate cursor-pointer"
                                     >
                                       {parsed.name}
@@ -1905,7 +2186,7 @@ export const Users: React.FC = () => {
 
                                 <button
                                   type="button"
-                                  onClick={() => setDetailUser(emp)}
+                                  onClick={() => handleOpenDetailModal(emp)}
                                   className="px-2.5 py-1 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 border border-slate-200 dark:border-slate-700 cursor-pointer"
                                 >
                                   Chi tiết
@@ -1949,7 +2230,7 @@ export const Users: React.FC = () => {
         />
       </div>
 
-      {/* ── 4. MODAL THÊM / CẬP NHẬT HỒ SƠ CÁN BỘ (CÓ UPLOAD AVATAR) ──────────── */}
+      {/* ── 4. MODAL THÊM / CẬP NHẬT HỒ SƠ CÁN BỘ ───────────────────────────── */}
       {isFormModalOpen && (
         <Portal>
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
@@ -1979,39 +2260,21 @@ export const Users: React.FC = () => {
             </div>
 
             <div className="flex flex-1 min-h-0 flex-col md:flex-row">
-              {/* Cột trái: Ảnh đại diện & thông tin tóm tắt */}
+              {/* Cột trái: Ảnh đại diện mặc định / hiện tại & thông tin tóm tắt */}
               <HoSoBenTrai
                 className="md:w-64 md:shrink-0 md:border-r border-b md:border-b-0 bg-slate-50/60 dark:bg-slate-900/80 max-h-56 md:max-h-none"
                 anhDaiDien={
-                  <div className="relative">
-                    <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-brand-500 to-indigo-600 text-white flex items-center justify-center font-bold text-2xl overflow-hidden shadow-md ring-4 ring-white dark:ring-slate-800">
-                      {(modalAvatarPreview || formData.anh_dai_dien) ? (
-                        <AnhBaoMat
-                          src={modalAvatarPreview || formData.anh_dai_dien}
-                          alt={formData.ho_ten || 'Avatar'}
-                          className="w-full h-full object-cover"
-                          fallback={getInitials(formData.ho_ten || 'CB')}
-                        />
-                      ) : (
-                        getInitials(formData.ho_ten || 'CB')
-                      )}
-                    </div>
-                    <input
-                      ref={modalAvatarInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="hidden"
-                      onChange={handleModalAvatarFileSelect}
-                    />
-                    <button
-                      type="button"
-                      disabled={uploadingAvatar}
-                      onClick={() => modalAvatarInputRef.current?.click()}
-                      title="Tải ảnh từ máy"
-                      className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center shadow-lg ring-2 ring-white dark:ring-slate-900 cursor-pointer disabled:opacity-50"
-                    >
-                      <Camera className="w-4 h-4" />
-                    </button>
+                  <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-brand-500 to-indigo-600 text-white flex items-center justify-center font-bold text-2xl overflow-hidden shadow-md ring-4 ring-white dark:ring-slate-800">
+                    {editingUser && formData.anh_dai_dien ? (
+                      <AnhBaoMat
+                        src={formData.anh_dai_dien}
+                        alt={formData.ho_ten || 'Avatar'}
+                        className="w-full h-full object-cover"
+                        fallback={getInitials(formData.ho_ten || 'CB')}
+                      />
+                    ) : (
+                      getInitials(formData.ho_ten || 'CB')
+                    )}
                   </div>
                 }
                 maCanBo={formData.ma_can_bo || (editingUser ? '' : 'MÃ MỚI')}
@@ -2025,30 +2288,25 @@ export const Users: React.FC = () => {
                   },
                 ]}
                 thaoTac={
-                  <>
-                    <button
-                      type="button"
-                      disabled={uploadingAvatar}
-                      onClick={() => modalAvatarInputRef.current?.click()}
-                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-brand-50 transition-colors cursor-pointer"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{uploadingAvatar ? 'Đang tải...' : 'Tải ảnh từ máy'}</span>
-                    </button>
-                    {(modalAvatarPreview || formData.anh_dai_dien) && (
+                  <div className="space-y-2 w-full">
+                    <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 text-center">
+                      {editingUser
+                        ? 'Ảnh đại diện do cán bộ tự cập nhật tại mục Hồ sơ cá nhân.'
+                        : 'Ảnh đại diện khởi tạo mặc định. Cán bộ sẽ tự cập nhật tại Hồ sơ cá nhân.'}
+                    </p>
+                    {editingUser && canCreateOrDelete && formData.anh_dai_dien && (
                       <button
                         type="button"
                         onClick={() => {
-                          setModalAvatarPreview(null);
                           setFormData((prev) => ({ ...prev, anh_dai_dien: '' }));
                         }}
                         className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        <span>Xóa ảnh đại diện</span>
+                        <span>Đặt lại ảnh mặc định</span>
                       </button>
                     )}
-                  </>
+                  </div>
                 }
               />
 
@@ -2065,7 +2323,20 @@ export const Users: React.FC = () => {
                 />
 
             {/* Form Body */}
-            <form onSubmit={handleSubmitForm} className="p-6 overflow-y-auto space-y-4 flex-1">
+            <form noValidate onSubmit={handleSubmitForm} className="p-6 overflow-y-auto space-y-4 flex-1">
+              {formValidationErrors.length > 0 && (
+                <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                  <div>
+                    <strong className="font-bold">Vui lòng kiểm tra và điền đầy đủ thông tin bắt buộc (kiểm tra cả 3 tab):</strong>
+                    <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                      {formValidationErrors.map((errMsg, idx) => (
+                        <li key={idx}>{errMsg}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
               {activeFormTab === 'basic' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2">
@@ -2126,7 +2397,7 @@ export const Users: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Số điện thoại liên hệ
+                      Số điện thoại liên hệ <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -2179,194 +2450,298 @@ export const Users: React.FC = () => {
                     )}
                   </div>
 
-                  {canCreateOrDelete && (
-                    <div className="sm:col-span-2 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="w-4 h-4 text-brand-600 dark:text-brand-400" />
-                          <div>
-                            <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                              Vai trò kiêm nhiệm &amp; Ủy quyền duyệt (VaiTroNguoiDung)
-                            </h4>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                              Vai trò chính được tự động gán; thêm dòng nếu cán bộ kiêm nhiệm hoặc được ủy quyền duyệt đơn.
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const todayIso = getTodayVietnamIso();
-                            const currentPrimaryRole = formData.vai_tro_chinh || 'giang_vien';
-                            const baseScope = inferRoleScope(currentPrimaryRole, formData.don_vi_chinh_id, departments);
-                            const seed: UserRoleAssignmentPayload[] =
-                              roleAssignments.length > 0
-                                ? roleAssignments
-                                : [
-                                    {
-                                      ma_vai_tro: currentPrimaryRole,
-                                      pham_vi: baseScope,
-                                      don_vi_id: baseScope === 'toan_truong' ? null : formData.don_vi_chinh_id || null,
-                                      duoc_uy_quyen: false,
-                                      tu_ngay: todayIso,
-                                      den_ngay: null,
-                                    },
-                                  ];
-                            setRoleAssignments([
-                              ...seed,
-                              {
-                                ma_vai_tro: formData.vai_tro_chinh === 'pho_khoa' ? 'giang_vien' : 'pho_khoa',
-                                pham_vi: formData.don_vi_chinh_id ? 'khoa' : 'toan_truong',
-                                don_vi_id: formData.don_vi_chinh_id || null,
-                                duoc_uy_quyen: false,
-                                tu_ngay: todayIso,
-                                den_ngay: null,
-                              },
-                            ]);
-                            setRoleAssignmentsDirty(true);
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/40 cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Thêm vai trò</span>
-                        </button>
-                      </div>
+                  {canCreateOrDelete && (() => {
+                    const currentPrimaryRole = formData.vai_tro_chinh || 'giang_vien';
+                    const isPrimaryDeputy = DEPUTY_DELEGATION_ROLES.has(currentPrimaryRole);
 
-                      {roleAssignments.length > 0 && (
-                        <div className="space-y-2">
-                          {roleAssignments.map((ra, rIdx) => (
-                            <div
-                              key={rIdx}
-                              className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center"
-                            >
-                              <div className="sm:col-span-3">
-                                <select
-                                  value={ra.ma_vai_tro}
-                                  onChange={(e) => {
-                                    const nextRole = e.target.value;
-                                    setRoleAssignments((prev) =>
-                                      prev.map((item, idx) =>
-                                        idx === rIdx ? { ...item, ma_vai_tro: nextRole } : item
-                                      )
-                                    );
-                                    setRoleAssignmentsDirty(true);
-                                  }}
-                                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-                                >
-                                  {availableRoleOptions.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                      {opt.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div className="sm:col-span-2">
-                                <select
-                                  value={ra.pham_vi}
-                                  onChange={(e) => {
-                                    const nextScope = e.target.value as RoleScopeType;
-                                    setRoleAssignments((prev) =>
-                                      prev.map((item, idx) =>
-                                        idx === rIdx
-                                          ? {
-                                              ...item,
-                                              pham_vi: nextScope,
-                                              don_vi_id: nextScope === 'toan_truong' ? null : item.don_vi_id || formData.don_vi_chinh_id || null,
-                                            }
-                                          : item
-                                      )
-                                    );
-                                    setRoleAssignmentsDirty(true);
-                                  }}
-                                  className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-                                >
-                                  {Object.entries(ROLE_SCOPE_LABELS).map(([k, label]) => (
-                                    <option key={k} value={k}>
-                                      {label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div className="sm:col-span-3">
-                                <select
-                                  disabled={ra.pham_vi === 'toan_truong'}
-                                  value={ra.pham_vi === 'toan_truong' ? '' : ra.don_vi_id || ''}
-                                  onChange={(e) => {
-                                    const nextDept = e.target.value || null;
-                                    setRoleAssignments((prev) =>
-                                      prev.map((item, idx) =>
-                                        idx === rIdx ? { ...item, don_vi_id: nextDept } : item
-                                      )
-                                    );
-                                    setRoleAssignmentsDirty(true);
-                                  }}
-                                  className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white disabled:opacity-50"
-                                >
-                                  <option value="">{ra.pham_vi === 'toan_truong' ? 'Toàn trường' : '-- Chọn đơn vị --'}</option>
-                                  {departments.map((d) => (
-                                    <option key={d.id} value={d.id}>
-                                      {d.ten_phong_ban}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div className="sm:col-span-2 flex items-center gap-1.5">
-                                <label className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={Boolean(ra.duoc_uy_quyen)}
-                                    onChange={(e) => {
-                                      const checked = e.target.checked;
-                                      setRoleAssignments((prev) =>
-                                        prev.map((item, idx) =>
-                                          idx === rIdx ? { ...item, duoc_uy_quyen: checked } : item
-                                        )
-                                      );
-                                      setRoleAssignmentsDirty(true);
-                                    }}
-                                    className="w-3.5 h-3.5 rounded text-brand-600"
-                                  />
-                                  <span>Ủy quyền</span>
-                                </label>
-                              </div>
-
-                              <div className="sm:col-span-2 flex items-center justify-end gap-1">
-                                <input
-                                  type="date"
-                                  title="Hiệu lực đến ngày (bỏ trống = vô thời hạn)"
-                                  value={ra.den_ngay || ''}
-                                  onChange={(e) => {
-                                    const nextEnd = e.target.value || null;
-                                    setRoleAssignments((prev) =>
-                                      prev.map((item, idx) =>
-                                        idx === rIdx ? { ...item, den_ngay: nextEnd } : item
-                                      )
-                                    );
-                                    setRoleAssignmentsDirty(true);
-                                  }}
-                                  className="w-full px-1.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-mono text-slate-800 dark:text-slate-200"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setRoleAssignments((prev) => prev.filter((_, idx) => idx !== rIdx));
-                                    setRoleAssignmentsDirty(true);
-                                  }}
-                                  title="Xóa dòng vai trò này"
-                                  className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer shrink-0"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                    return (
+                      <div className="sm:col-span-2 space-y-2.5">
+                        {/* Chỉ hiện nút gạt ủy quyền khi vai trò chính là cấp Phó đơn vị */}
+                        {isPrimaryDeputy && (
+                          <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                                Ủy quyền duyệt đơn thay Trưởng đơn vị
+                              </p>
+                              <p className="text-[11px] text-amber-700/90 dark:text-amber-300/80">
+                                Cho phép duyệt đơn nghỉ phép, đổi ca cấp 1 tại đơn vị khi Trưởng đơn vị vắng mặt.
+                              </p>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={primaryRoleDelegated}
+                              onClick={() => {
+                                setPrimaryRoleDelegated((prev) => !prev);
+                                setRoleAssignmentsDirty(true);
+                              }}
+                              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                                primaryRoleDelegated
+                                  ? 'bg-brand-600'
+                                  : 'bg-slate-300 dark:bg-slate-600'
+                              }`}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                                  primaryRoleDelegated ? 'translate-x-4' : 'translate-x-0.5'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Chức vụ kiêm nhiệm: mặc định thu gọn 1 dòng, chỉ mở khung khi có dòng kiêm nhiệm */}
+                        {roleAssignments.length === 0 ? (
+                          <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <ShieldCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                Chức vụ kiêm nhiệm (nếu cán bộ đảm nhiệm thêm vai trò khác)
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleAddSecondaryRole}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 whitespace-nowrap shrink-0 cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Kiêm nhiệm chức vụ khác</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <ShieldCheck className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />
+                                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                                  Chức vụ kiêm nhiệm ({roleAssignments.length})
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleAddSecondaryRole}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/40 whitespace-nowrap shrink-0 cursor-pointer"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Thêm</span>
+                              </button>
+                            </div>
+
+                            <div className="space-y-2">
+                              {roleAssignments.map((ra, rIdx) => {
+                                const isGlobalSecondary = GLOBAL_SCOPE_ROLES.has(ra.ma_vai_tro);
+                                const isDeputySecondary = DEPUTY_DELEGATION_ROLES.has(ra.ma_vai_tro);
+                                const allowedDepts = getAllowedDeptsForSecondaryRole(ra.ma_vai_tro, departments);
+                                const isLegacyOption = !secondaryRoleOptions.some((o) => o.value === ra.ma_vai_tro);
+                                const legacyMeta = isLegacyOption ? getRoleMeta(ra.ma_vai_tro) : null;
+                                const showDateRow = Boolean(expandedRoleDateRows[rIdx] || ra.den_ngay);
+
+                                return (
+                                  <div
+                                    key={rIdx}
+                                    className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 space-y-2"
+                                  >
+                                    {/* 1 hàng ngang duy nhất: Chức vụ + Đơn vị + Đặt hạn + Xóa */}
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                      <select
+                                        aria-label="Chức vụ kiêm nhiệm"
+                                        value={ra.ma_vai_tro}
+                                        onChange={(e) => {
+                                          const nextRole = e.target.value;
+                                          const nextIsGlobal = GLOBAL_SCOPE_ROLES.has(nextRole);
+                                          const nextAllowedDepts = getAllowedDeptsForSecondaryRole(nextRole, departments);
+                                          setRoleAssignments((prev) =>
+                                            prev.map((item, idx) => {
+                                              if (idx !== rIdx) return item;
+                                              const keepCurrentDept =
+                                                !nextIsGlobal &&
+                                                item.don_vi_id &&
+                                                nextAllowedDepts.some((d) => String(d.id) === String(item.don_vi_id));
+                                              const nextDeptId = nextIsGlobal
+                                                ? null
+                                                : keepCurrentDept
+                                                  ? item.don_vi_id
+                                                  : nextAllowedDepts[0]?.id || null;
+                                              return {
+                                                ...item,
+                                                ma_vai_tro: nextRole,
+                                                don_vi_id: nextDeptId,
+                                                pham_vi: inferRoleScope(nextRole, nextDeptId, departments),
+                                                duoc_uy_quyen: DEPUTY_DELEGATION_ROLES.has(nextRole)
+                                                  ? Boolean(item.duoc_uy_quyen)
+                                                  : false,
+                                              };
+                                            })
+                                          );
+                                          setRoleAssignmentsDirty(true);
+                                        }}
+                                        className="w-full sm:w-[44%] h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                      >
+                                        {isLegacyOption && legacyMeta && (
+                                          <option value={ra.ma_vai_tro} disabled>
+                                            {legacyMeta.label} (Vui lòng đổi hoặc xóa)
+                                          </option>
+                                        )}
+                                        {secondaryRoleOptions.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+
+                                      {isGlobalSecondary ? (
+                                        <div className="flex-1 h-9 px-3 rounded-lg border border-slate-200/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 flex items-center text-xs text-slate-500 dark:text-slate-400">
+                                          Toàn trường
+                                        </div>
+                                      ) : (
+                                        <select
+                                          aria-label="Đơn vị kiêm nhiệm"
+                                          value={ra.don_vi_id || ''}
+                                          onChange={(e) => {
+                                            const nextDept = e.target.value || null;
+                                            setRoleAssignments((prev) =>
+                                              prev.map((item, idx) =>
+                                                idx === rIdx
+                                                  ? {
+                                                      ...item,
+                                                      don_vi_id: nextDept,
+                                                      pham_vi: inferRoleScope(item.ma_vai_tro, nextDept, departments),
+                                                    }
+                                                  : item
+                                              )
+                                            );
+                                            setRoleAssignmentsDirty(true);
+                                          }}
+                                          className="flex-1 h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                        >
+                                          <option value="">-- Chọn đơn vị --</option>
+                                          {allowedDepts.map((d) => (
+                                            <option key={d.id} value={d.id}>
+                                              {d.ten_phong_ban}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      )}
+
+                                      <div className="flex items-center justify-end gap-1 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setExpandedRoleDateRows((prev) => ({
+                                              ...prev,
+                                              [rIdx]: !showDateRow,
+                                            }))
+                                          }
+                                          title={ra.den_ngay ? `Hiệu lực đến ${ra.den_ngay}` : 'Đặt ngày hết hiệu lực (tùy chọn)'}
+                                          className={`inline-flex items-center gap-1 h-9 px-2 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                                            showDateRow
+                                              ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300'
+                                              : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+                                          }`}
+                                        >
+                                          <Calendar className="w-3.5 h-3.5" />
+                                          <span className="hidden sm:inline">{ra.den_ngay ? 'Có hạn' : 'Đặt hạn'}</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setRoleAssignments((prev) => prev.filter((_, idx) => idx !== rIdx));
+                                            setExpandedRoleDateRows((prev) => {
+                                              const next: Record<number, boolean> = {};
+                                              Object.entries(prev).forEach(([k, v]) => {
+                                                const idxNum = Number(k);
+                                                if (idxNum < rIdx) next[idxNum] = v;
+                                                else if (idxNum > rIdx) next[idxNum - 1] = v;
+                                              });
+                                              return next;
+                                            });
+                                            setRoleAssignmentsDirty(true);
+                                          }}
+                                          title="Xóa chức vụ kiêm nhiệm"
+                                          className="h-9 w-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Dòng phụ CHỈ hiện khi là cấp Phó (nút gạt ủy quyền) hoặc khi người dùng bật "Đặt hạn" */}
+                                    {(isDeputySecondary || showDateRow) && (
+                                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                        {isDeputySecondary ? (
+                                          <label className="inline-flex items-center gap-2 text-[11px] font-semibold text-amber-800 dark:text-amber-300 cursor-pointer select-none">
+                                            <input
+                                              type="checkbox"
+                                              checked={Boolean(ra.duoc_uy_quyen)}
+                                              onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                setRoleAssignments((prev) =>
+                                                  prev.map((item, idx) =>
+                                                    idx === rIdx ? { ...item, duoc_uy_quyen: checked } : item
+                                                  )
+                                                );
+                                                setRoleAssignmentsDirty(true);
+                                              }}
+                                              className="w-3.5 h-3.5 rounded text-brand-600 focus:ring-brand-500"
+                                            />
+                                            <span>Ủy quyền duyệt đơn thay Trưởng đơn vị</span>
+                                          </label>
+                                        ) : (
+                                          <span />
+                                        )}
+
+                                        {showDateRow && (
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                              Hiệu lực đến:
+                                            </span>
+                                            <input
+                                              type="date"
+                                              min={ra.tu_ngay || undefined}
+                                              value={ra.den_ngay || ''}
+                                              onChange={(e) => {
+                                                const nextEnd = e.target.value || null;
+                                                setRoleAssignments((prev) =>
+                                                  prev.map((item, idx) =>
+                                                    idx === rIdx ? { ...item, den_ngay: nextEnd } : item
+                                                  )
+                                                );
+                                                setRoleAssignmentsDirty(true);
+                                              }}
+                                              className="h-7 px-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                            />
+                                            {ra.den_ngay && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setRoleAssignments((prev) =>
+                                                    prev.map((item, idx) =>
+                                                      idx === rIdx ? { ...item, den_ngay: null } : item
+                                                    )
+                                                  );
+                                                  setExpandedRoleDateRows((prev) => ({ ...prev, [rIdx]: false }));
+                                                  setRoleAssignmentsDirty(true);
+                                                }}
+                                                title="Xóa ngày hết hạn (vô thời hạn)"
+                                                className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                              >
+                                                <X className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -2385,7 +2760,7 @@ export const Users: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Ngày sinh
+                      Ngày sinh <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="date"
@@ -2397,7 +2772,7 @@ export const Users: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Số CCCD / CMND
+                      Số CCCD / CMND <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -2410,7 +2785,7 @@ export const Users: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Chức vụ / Chức danh
+                      Chức vụ / Chức danh <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -2522,7 +2897,7 @@ export const Users: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Ngày vào trường công tác
+                      Ngày vào trường công tác <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="date"
@@ -2535,6 +2910,10 @@ export const Users: React.FC = () => {
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       Ngày bắt đầu giảng dạy
+                      {(formData.loai_nhan_su === 'giang_vien' ||
+                        ['giang_vien', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon'].includes(
+                          formData.vai_tro_chinh || ''
+                        )) && <span className="text-rose-500"> *</span>}
                     </label>
                     <input
                       type="date"
@@ -2547,6 +2926,9 @@ export const Users: React.FC = () => {
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       Ngày hết hạn hợp đồng
+                      {['ban_thoi_gian', 'thinh_giang', 'hop_dong_vu_viec'].includes(formData.loai_hop_dong || '') && (
+                        <span className="text-rose-500"> *</span>
+                      )}
                     </label>
                     <input
                       type="date"
@@ -2558,7 +2940,7 @@ export const Users: React.FC = () => {
 
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Địa chỉ thường trú / Liên hệ
+                      Địa chỉ thường trú / Liên hệ <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -2599,7 +2981,7 @@ export const Users: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Hệ số lương hiện hưởng
+                      Hệ số lương hiện hưởng <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="number"
@@ -2771,47 +3153,83 @@ export const Users: React.FC = () => {
               </div>
 
               <div className="flex flex-1 min-h-0 flex-col md:flex-row">
-                <HoSoBenTrai
-                  className="md:w-64 md:shrink-0 md:border-r border-b md:border-b-0 bg-slate-50/60 dark:bg-slate-900/80 max-h-60 md:max-h-none"
-                  anhDaiDien={
-                    <StaffAvatar
-                      user={detailUser}
-                      size="xl"
-                      canUpload={canEdit}
-                      onQuickUpload={handleQuickAvatarUpload}
+                {(() => {
+                  const isAccountLocked = detailUser.kich_hoat === false;
+                  const workStatusLabel = isAccountLocked
+                    ? 'Tài khoản đã khóa'
+                    : EMPLOYMENT_STATUS_OPTIONS.find((s) => s.value === detailUser.trang_thai_lam_viec)?.label ||
+                      'Đang làm việc';
+                  const isWorkingActive =
+                    !isAccountLocked && detailUser.trang_thai_lam_viec !== 'da_nghi_viec';
+                  const primaryCode = normalizeRoleKey(detailUser.vai_tro_chinh);
+                  const primaryDeptId = GLOBAL_SCOPE_ROLES.has(primaryCode)
+                    ? null
+                    : (getDepartmentIdValue(detailUser) || null);
+                  const todayIso = getTodayVietnamIso();
+                  const secondaryActiveCount = (Array.isArray(detailUser.danh_sach_vai_tro)
+                    ? detailUser.danh_sach_vai_tro
+                    : []
+                  ).filter((r: any) => {
+                    if (!r) return false;
+                    const code = normalizeRoleKey(r?.ma_vai_tro);
+                    const rawDept =
+                      r?.don_vi_id && typeof r.don_vi_id === 'object'
+                        ? String(r.don_vi_id.id || '')
+                        : r?.don_vi_id
+                          ? String(r.don_vi_id)
+                          : '';
+                    const effDept = GLOBAL_SCOPE_ROLES.has(code) ? null : (rawDept || null);
+                    const isPrimary =
+                      code === primaryCode &&
+                      String(effDept || '') === String(primaryDeptId || '');
+                    if (isPrimary) return false;
+                    const endIso = toDateInputValue(r?.den_ngay);
+                    return !endIso || endIso >= todayIso;
+                  }).length;
+
+                  return (
+                    <HoSoBenTrai
+                      className="md:w-64 md:shrink-0 md:border-r border-b md:border-b-0 bg-slate-50/60 dark:bg-slate-900/80 max-h-60 md:max-h-none"
+                      anhDaiDien={
+                        <StaffAvatar
+                          user={detailUser}
+                          size="xl"
+                        />
+                      }
+                      maCanBo={detailUser.ma_can_bo || 'CHƯA CẤP MÃ'}
+                      trangThai={workStatusLabel}
+                      trangThaiHoatDong={isWorkingActive}
+                      hoTen={formatNameAndTitle(detailUser.ho_ten).name}
+                      thongTinChinh={[
+                        {
+                          icon: <Building2 className="w-3.5 h-3.5" />,
+                          text: getDepartmentName(detailUser, departments),
+                        },
+                        {
+                          icon: <UsersIcon className="w-3.5 h-3.5" />,
+                          text:
+                            detailUser.chuc_vu ||
+                            formatNameAndTitle(detailUser.ho_ten).title ||
+                            getRoleMeta(detailUser.vai_tro_chinh).label,
+                        },
+                      ]}
+                      lienHe={[
+                        { icon: <Phone className="w-3.5 h-3.5" />, text: detailUser.so_dien_thoai || 'Chưa cập nhật' },
+                        { icon: <Mail className="w-3.5 h-3.5" />, text: detailUser.email },
+                      ]}
+                      cacNhomPhu={[
+                        {
+                          tieuDe: 'Ngày vào trường',
+                          noiDung: formatDateVN(detailUser.ngay_vao_lam),
+                        },
+                        { tieuDe: 'Vai trò chính', noiDung: getRoleMeta(detailUser.vai_tro_chinh).label },
+                        ...(secondaryActiveCount > 0
+                          ? [{ tieuDe: 'Kiêm nhiệm', noiDung: `${secondaryActiveCount} chức vụ đang hiệu lực` }]
+                          : []),
+                      ]}
                     />
-                  }
-                  maCanBo={detailUser.ma_can_bo || 'CHƯA CẤP MÃ'}
-                  trangThai={
-                    EMPLOYMENT_STATUS_OPTIONS.find((s) => s.value === detailUser.trang_thai_lam_viec)?.label ||
-                    'Đang làm việc'
-                  }
-                  trangThaiHoatDong={detailUser.trang_thai_lam_viec !== 'da_nghi_viec' && detailUser.kich_hoat !== false}
-                  hoTen={formatNameAndTitle(detailUser.ho_ten).name}
-                  thongTinChinh={[
-                    {
-                      icon: <Building2 className="w-3.5 h-3.5" />,
-                      text: getDepartmentName(detailUser, departments),
-                    },
-                    {
-                      icon: <UsersIcon className="w-3.5 h-3.5" />,
-                      text: formatNameAndTitle(detailUser.ho_ten).title || getRoleMeta(detailUser.vai_tro_chinh).label,
-                    },
-                  ]}
-                  lienHe={[
-                    { icon: <Phone className="w-3.5 h-3.5" />, text: detailUser.so_dien_thoai || 'Chưa cập nhật' },
-                    { icon: <Mail className="w-3.5 h-3.5" />, text: detailUser.email },
-                  ]}
-                  cacNhomPhu={[
-                    {
-                      tieuDe: 'Ngày vào trường',
-                      noiDung: detailUser.ngay_vao_lam
-                        ? new Date(detailUser.ngay_vao_lam).toLocaleDateString('vi-VN')
-                        : 'Chưa cập nhật',
-                    },
-                    { tieuDe: 'Vai trò chính', noiDung: getRoleMeta(detailUser.vai_tro_chinh).label },
-                  ]}
-                />
+                  );
+                })()}
 
                 <div className="flex-1 min-w-0 flex flex-col min-h-0">
                   <ThanhTabHoSo
@@ -2828,15 +3246,29 @@ export const Users: React.FC = () => {
                     {(() => {
                       const Field = TruongThongTin;
                       const grid = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4';
-                      const fmtDate = (v?: string | null) =>
-                        v ? new Date(v).toLocaleDateString('vi-VN') : 'Chưa cập nhật';
 
                       if (detailTab === 'chi_tiet') {
+                        const academicRankLabel =
+                          detailUser.hoc_ham && detailUser.hoc_ham !== 'khong'
+                            ? ACADEMIC_RANK_OPTIONS.find((a) => a.value === detailUser.hoc_ham)?.label || ''
+                            : '';
+                        const degreeLabel = detailUser.hoc_vi
+                          ? DEGREE_OPTIONS.find((d) => d.value === detailUser.hoc_vi)?.label || ''
+                          : '';
+                        const academicSummary = [academicRankLabel, degreeLabel].filter(Boolean).join(' • ') || 'Chưa cập nhật';
+                        const isLecturerDetail =
+                          detailUser.loai_nhan_su === 'giang_vien' || Boolean(detailUser.ngay_bat_dau_giang_day);
+                        const contractExpiryDisplay = detailUser.ngay_het_han_hop_dong
+                          ? formatDateVN(detailUser.ngay_het_han_hop_dong)
+                          : detailUser.loai_hop_dong === 'toan_thoi_gian'
+                            ? 'Không thời hạn'
+                            : 'Chưa cập nhật';
+
                         return (
                           <div className="space-y-5">
                             <div>
                               <h4 className="text-[11px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400 mb-3">
-                                1. Thông tin cá nhân & định danh
+                                1. Thông tin cá nhân &amp; định danh
                               </h4>
                               <div className={grid}>
                                 <Field label="Họ và tên" value={formatNameAndTitle(detailUser.ho_ten).name} />
@@ -2847,7 +3279,7 @@ export const Users: React.FC = () => {
                                     detailUser.gioi_tinh === 'nu' ? 'Nữ' : detailUser.gioi_tinh === 'khac' ? 'Khác' : 'Nam'
                                   }
                                 />
-                                <Field label="Ngày sinh" value={fmtDate(detailUser.ngay_sinh)} />
+                                <Field label="Ngày sinh" value={formatDateVN(detailUser.ngay_sinh)} />
                                 <Field label="Số CCCD / CMND" value={detailUser.so_cccd || 'Chưa cập nhật'} mono />
                                 <Field label="Địa chỉ" value={detailUser.dia_chi || 'Chưa cập nhật'} />
                               </div>
@@ -2855,28 +3287,19 @@ export const Users: React.FC = () => {
 
                             <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
                               <h4 className="text-[11px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400 mb-3">
-                                2. Công tác, học thuật & hợp đồng
+                                2. Công tác, học thuật &amp; hợp đồng
                               </h4>
                               <div className={grid}>
                                 <Field label="Đơn vị công tác" value={getDepartmentName(detailUser, departments)} />
+                                <Field label="Chức vụ" value={detailUser.chuc_vu || 'Chưa cập nhật'} />
                                 <Field
-                                  label="Chức vụ / Phân loại"
+                                  label="Phân loại nhân sự"
                                   value={
-                                    detailUser.chuc_vu ||
                                     STAFF_TYPE_OPTIONS.find((s) => s.value === detailUser.loai_nhan_su)?.label ||
                                     'Chưa cập nhật'
                                   }
                                 />
-                                <Field
-                                  label="Học hàm & Học vị"
-                                  value={`${
-                                    detailUser.hoc_ham && detailUser.hoc_ham !== 'khong'
-                                      ? `${
-                                          ACADEMIC_RANK_OPTIONS.find((a) => a.value === detailUser.hoc_ham)?.label
-                                        } • `
-                                      : ''
-                                  }${DEGREE_OPTIONS.find((d) => d.value === detailUser.hoc_vi)?.label || 'Cử nhân'}`}
-                                />
+                                <Field label="Học hàm & Học vị" value={academicSummary} />
                                 <Field
                                   label="Loại hợp đồng"
                                   value={
@@ -2895,35 +3318,34 @@ export const Users: React.FC = () => {
                                   label="Ngày vào trường"
                                   value={
                                     detailUser.ngay_vao_lam
-                                      ? `${fmtDate(detailUser.ngay_vao_lam)}${
-                                          detailUser.tham_nien_nam ? ` (${detailUser.tham_nien_nam} năm)` : ''
+                                      ? `${formatDateVN(detailUser.ngay_vao_lam)}${
+                                          detailUser.tham_nien_nam && detailUser.tham_nien_nam > 0
+                                            ? ` (${detailUser.tham_nien_nam} năm)`
+                                            : ''
                                         }`
                                       : 'Chưa cập nhật'
                                   }
                                 />
-                                <Field
-                                  label="Bắt đầu giảng dạy / Hạn HĐ"
-                                  value={
-                                    detailUser.ngay_bat_dau_giang_day || detailUser.ngay_het_han_hop_dong
-                                      ? `${fmtDate(detailUser.ngay_bat_dau_giang_day)} • ${fmtDate(
-                                          detailUser.ngay_het_han_hop_dong
-                                        )}`
-                                      : 'Chưa cập nhật'
-                                  }
-                                />
+                                {isLecturerDetail && (
+                                  <Field
+                                    label="Ngày bắt đầu giảng dạy"
+                                    value={formatDateVN(detailUser.ngay_bat_dau_giang_day)}
+                                  />
+                                )}
+                                <Field label="Ngày hết hạn hợp đồng" value={contractExpiryDisplay} />
                               </div>
                             </div>
 
                             <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
                               <h4 className="text-[11px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400 mb-3">
-                                3. Lương, thuế & tài khoản ngân hàng
+                                3. Lương, thuế &amp; tài khoản ngân hàng
                               </h4>
                               <div className={grid}>
                                 <Field label="Ngạch lương" value={detailUser.ngach_luong || 'Chưa cập nhật'} mono />
                                 <Field
                                   label="Hệ số lương"
                                   value={
-                                    detailUser.he_so_luong !== undefined
+                                    detailUser.he_so_luong !== undefined && detailUser.he_so_luong !== null
                                       ? Number(detailUser.he_so_luong).toFixed(2)
                                       : 'Chưa cập nhật'
                                   }
@@ -3031,9 +3453,73 @@ export const Users: React.FC = () => {
                           </div>
                         );
                       }
-                      const roleItems = (detailUser.danh_sach_vai_tro || []) as any[];
+                      const primaryCode = normalizeRoleKey(detailUser.vai_tro_chinh);
+                      const primaryDeptId = GLOBAL_SCOPE_ROLES.has(primaryCode)
+                        ? null
+                        : (getDepartmentIdValue(detailUser) || null);
+                      const todayIso = getTodayVietnamIso();
+
+                      const rawRoleItems = (Array.isArray(detailUser.danh_sach_vai_tro)
+                        ? detailUser.danh_sach_vai_tro
+                        : []) as any[];
+
+                      const parsedRoleItems = rawRoleItems.map((r, i) => {
+                        const code = normalizeRoleKey(r?.ma_vai_tro || detailUser.vai_tro_chinh);
+                        const isGlobal = GLOBAL_SCOPE_ROLES.has(code);
+                        const rawDeptId =
+                          r?.don_vi_id && typeof r.don_vi_id === 'object'
+                            ? String(r.don_vi_id.id || '')
+                            : r?.don_vi_id
+                              ? String(r.don_vi_id)
+                              : '';
+                        const effectiveDeptId = isGlobal ? null : (rawDeptId || null);
+                        const matchedDept = effectiveDeptId
+                          ? departments.find((d) => String(d.id) === String(effectiveDeptId))
+                          : null;
+                        const deptName = isGlobal
+                          ? 'Toàn trường'
+                          : r?.don_vi?.ten_phong_ban || matchedDept?.ten_phong_ban || 'Chưa gắn đơn vị';
+                        const isPrimary =
+                          code === primaryCode &&
+                          String(effectiveDeptId || '') === String(primaryDeptId || '');
+                        const fromIso = toDateInputValue(r?.tu_ngay);
+                        const toIso = toDateInputValue(r?.den_ngay);
+                        const isExpired = Boolean(toIso && toIso < todayIso);
+                        const isUpcoming = Boolean(fromIso && fromIso > todayIso);
+
+                        return {
+                          key: r?.id || `${code}-${effectiveDeptId || 'all'}-${i}`,
+                          code,
+                          deptName,
+                          isPrimary,
+                          isDelegated: DEPUTY_DELEGATION_ROLES.has(code) && Boolean(r?.duoc_uy_quyen),
+                          fromIso,
+                          toIso,
+                          isExpired,
+                          isUpcoming,
+                        };
+                      });
+
+                      if (!parsedRoleItems.some((item) => item.isPrimary)) {
+                        parsedRoleItems.unshift({
+                          key: `primary-${primaryCode}`,
+                          code: primaryCode,
+                          deptName: GLOBAL_SCOPE_ROLES.has(primaryCode)
+                            ? 'Toàn trường'
+                            : getDepartmentName(detailUser, departments),
+                          isPrimary: true,
+                          isDelegated: false,
+                          fromIso: toDateInputValue(detailUser.ngay_vao_lam),
+                          toIso: '',
+                          isExpired: false,
+                          isUpcoming: false,
+                        });
+                      }
+
+                      parsedRoleItems.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+
                       return (
-                        <div className="space-y-3">
+                        <div className="space-y-5">
                           <div className={grid}>
                             <Field label="Vai trò chính" value={getRoleMeta(detailUser.vai_tro_chinh).label} />
                             <Field
@@ -3043,16 +3529,16 @@ export const Users: React.FC = () => {
                             <Field
                               label="Đăng nhập gần nhất"
                               value={
-                                (detailUser.lan_dang_nhap_cuoi)
-                                  ? new Date(detailUser.lan_dang_nhap_cuoi || '').toLocaleString('vi-VN')
+                                detailUser.lan_dang_nhap_cuoi
+                                  ? new Date(detailUser.lan_dang_nhap_cuoi).toLocaleString('vi-VN')
                                   : 'Chưa ghi nhận'
                               }
                             />
                             <Field
                               label="Đổi mật khẩu gần nhất"
                               value={
-                                (detailUser.doi_mat_khau_luc)
-                                  ? new Date(detailUser.doi_mat_khau_luc || '').toLocaleString('vi-VN')
+                                detailUser.doi_mat_khau_luc
+                                  ? new Date(detailUser.doi_mat_khau_luc).toLocaleString('vi-VN')
                                   : 'Chưa thay đổi'
                               }
                             />
@@ -3073,53 +3559,64 @@ export const Users: React.FC = () => {
                               }
                             />
                           </div>
-                          {roleItems.length > 0 && (
+
+                          <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-2.5">
+                            <h4 className="text-[11px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
+                              Vai trò &amp; Chức vụ kiêm nhiệm ({parsedRoleItems.length})
+                            </h4>
                             <div className="space-y-2">
-                              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                                Danh sách vai trò được gán ({roleItems.length})
-                              </h4>
-                              <div className="space-y-2">
-                                {roleItems.map((r, i) => {
-                                  const rawDeptId =
-                                    r?.don_vi_id && typeof r.don_vi_id === 'object'
-                                      ? String(r.don_vi_id.id || '')
-                                      : r?.don_vi_id || '';
-                                  const matchedDept = rawDeptId
-                                    ? departments.find((d) => String(d.id) === String(rawDeptId))
-                                    : null;
-                                  const scopeKey = (r?.pham_vi || 'toan_truong') as RoleScopeType;
-                                  const scopeLabel = ROLE_SCOPE_LABELS[scopeKey] || scopeKey;
-                                  const fromDate = r?.tu_ngay;
-                                  const toDate = r?.den_ngay;
-                                  return (
-                                    <div
-                                      key={r?.id || i}
-                                      className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 flex flex-wrap items-center justify-between gap-2 text-xs"
+                              {parsedRoleItems.map((item) => (
+                                <div
+                                  key={item.key}
+                                  className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs ${
+                                    item.isExpired
+                                      ? 'border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 opacity-70'
+                                      : item.isPrimary
+                                        ? 'border-brand-200/80 dark:border-brand-900/60 bg-brand-50/30 dark:bg-brand-950/20'
+                                        : 'border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50'
+                                  }`}
+                                >
+                                  <div className="flex items-center flex-wrap gap-2 min-w-0">
+                                    <span
+                                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                                        item.isPrimary
+                                          ? 'bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300'
+                                          : 'bg-slate-200/80 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+                                      }`}
                                     >
-                                      <div className="flex items-center flex-wrap gap-2">
-                                        <span className="font-bold text-slate-900 dark:text-white">
-                                          {getRoleMeta(r?.ma_vai_tro).label}
-                                        </span>
-                                        <span className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-300">
-                                          {scopeLabel}
-                                          {matchedDept ? `: ${matchedDept.ten_phong_ban}` : ''}
-                                        </span>
-                                        {Boolean(r?.duoc_uy_quyen) && (
-                                          <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/35 border border-amber-200 dark:border-amber-700/70 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
-                                            Được ủy quyền duyệt
-                                          </span>
-                                        )}
-                                      </div>
-                                      <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                                        {fromDate ? String(fromDate).slice(0, 10) : '—'} →{' '}
-                                        {toDate ? String(toDate).slice(0, 10) : 'Không thời hạn'}
+                                      {item.isPrimary ? 'Chính' : 'Kiêm nhiệm'}
+                                    </span>
+                                    <span className="font-bold text-slate-900 dark:text-white">
+                                      {getRoleMeta(item.code).label}
+                                    </span>
+                                    <span className="text-slate-300 dark:text-slate-600">•</span>
+                                    <span className="text-slate-600 dark:text-slate-300 font-medium">
+                                      {item.deptName}
+                                    </span>
+                                    {item.isDelegated && (
+                                      <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/35 border border-amber-200 dark:border-amber-700/70 text-[10px] font-semibold text-amber-800 dark:text-amber-300">
+                                        Ủy quyền duyệt cấp 1
                                       </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                                    )}
+                                    {item.isExpired && (
+                                      <span className="px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-[10px] font-semibold text-rose-700 dark:text-rose-300">
+                                        Đã hết hạn
+                                      </span>
+                                    )}
+                                    {item.isUpcoming && (
+                                      <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                                        Chưa hiệu lực
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 shrink-0">
+                                    {item.fromIso ? formatDateVN(item.fromIso) : '—'} →{' '}
+                                    {item.toIso ? formatDateVN(item.toIso) : 'Vô thời hạn'}
+                                  </span>
+                                </div>
+                              ))}
                             </div>
-                          )}
+                          </div>
                         </div>
                       );
                     })()}
@@ -3155,6 +3652,21 @@ export const Users: React.FC = () => {
           </div>
         </Portal>
       )}
+
+      <ModalNhapExcelNhanSu
+        isOpen={isImportExcelModalOpen}
+        onClose={() => setIsImportExcelModalOpen(false)}
+        departments={departments}
+        existingUsers={users}
+        currentUserRole={
+          hasRole(currentUser, ['bgh'])
+            ? 'bgh'
+            : isTopAdminViewer
+              ? 'admin'
+              : normalizeRoleKey(currentUser?.vai_tro_chinh)
+        }
+        onSuccess={fetchAllData}
+      />
     </div>
   );
 };

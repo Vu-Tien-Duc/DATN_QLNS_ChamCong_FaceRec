@@ -241,9 +241,22 @@ const generateRefreshToken = (user, existingFamily = null) => {
 
 // Chuẩn hóa thông tin người dùng trả về client (ẩn mật khẩu băm, gộp hồ sơ cán bộ và trạng thái Face ID)
 const formatUserResponse = (userInstance, faceTemplate) => {
-  const raw = userInstance.toJSON ? userInstance.toJSON() : { ...userInstance };
+  const raw =
+    typeof userInstance.get === 'function'
+      ? userInstance.get({ plain: true })
+      : userInstance.toJSON
+        ? userInstance.toJSON()
+        : { ...userInstance };
   delete raw.mat_khau_ma_hoa;
-  const profile = raw.ho_so && typeof raw.ho_so === 'object' ? { ...raw.ho_so } : {};
+  const rawProfile =
+    raw.ho_so && typeof raw.ho_so === 'object'
+      ? typeof raw.ho_so.get === 'function'
+        ? raw.ho_so.get({ plain: true })
+        : typeof raw.ho_so.toJSON === 'function'
+          ? raw.ho_so.toJSON()
+          : { ...raw.ho_so }
+      : {};
+  const profile = { ...rawProfile };
   delete profile.id;
   delete profile.nguoi_dung_id;
   delete profile.tao_luc;

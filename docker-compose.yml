@@ -91,7 +91,7 @@ services:
   # 4. MinIO S3-Compatible Object Storage Service
   # -------------------------------------------------------------
   minio:
-    image: minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
     container_name: qlns_minio
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]

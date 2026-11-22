@@ -64,19 +64,6 @@ const isScheduleActiveOnDate = (schedule, date = new Date()) => {
     if (checkTime > endTime) return false;
   }
 
-  // 3. Kiểm tra lịch có nằm trong danh sách tuần học áp dụng
-  const rawWeeks =
-    schedule.danh_sach_tuan ||
-    (Array.isArray(schedule.tuan_hoc) ? schedule.tuan_hoc.map((w) => w.tuan_thu) : null);
-  if (Array.isArray(rawWeeks) && rawWeeks.length > 0) {
-    const diffDays = Math.round((checkTime - startTime) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return false;
-    const currentWeekNum = Math.floor(diffDays / 7) + 1;
-    if (!rawWeeks.includes(currentWeekNum)) {
-      return false;
-    }
-  }
-
   return true;
 };
 
@@ -143,7 +130,6 @@ const resolveActiveSchedulesForUserDate = ({
     if (hasHoliday && !plain._hasExplicitMakeupToday && !plain._isSubstituteOverride) {
       return false;
     }
-    plain.danh_sach_tuan = (plain.tuan_hoc || []).map((w) => Number(w.tuan_thu));
     return isScheduleActiveOnDate(plain, now);
   });
 };

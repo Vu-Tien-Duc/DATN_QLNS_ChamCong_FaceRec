@@ -41,7 +41,7 @@ import { userApi } from '../../api/nguoiDung.api';
 import { DepartmentSelect, DepartmentItem } from '../../components/chung/ChonDonVi';
 import { FaceRegistrationModal } from '../../components/sinhTracHoc/ModalDangKyKhuonMat';
 import { useAuthStore } from '../../stores/useXacThucStore';
-import { hasRole } from '../../utils/phanQuyen';
+import { hasRole, isAdmin } from '../../utils/phanQuyen';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { Portal } from '../../components/chung/CongDichChuyen';
@@ -214,7 +214,8 @@ export const FaceRegistrationPage: React.FC = () => {
         });
       }
       if (Array.isArray(users)) {
-        setEmployeeList(users);
+        // Quản trị viên hệ thống (admin) chỉ quản trị, không tham gia chấm công sinh trắc học
+        setEmployeeList(users.filter((u: any) => !isAdmin(u)));
       }
     } catch (_) {
     } finally {
@@ -236,6 +237,10 @@ export const FaceRegistrationPage: React.FC = () => {
   }, [canManageOthers]);
 
   const handleOpenEmployeeEnroll = (emp: any) => {
+    if (isAdmin(emp)) {
+      toast.error('Tài khoản Quản trị viên hệ thống không tham gia chấm công nên không cần đăng ký khuôn mặt.');
+      return;
+    }
     if (authUser?.id && String(emp?.id) === String(authUser.id)) {
       toast.error('Bạn không thể tự đăng ký khuôn mặt của chính mình. Vui lòng nhờ cấp trên thực hiện.');
       return;

@@ -238,8 +238,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       admin: 'admin@ntu.edu.vn',
       bgh: 'hieutruong@ntu.edu.vn',
       truong_khoa: 'truongkhoa.cntt@ntu.edu.vn',
+      pho_khoa: 'phokhoa.cntt@ntu.edu.vn',
+      truong_bo_mon: 'truongbomon.cnpm@ntu.edu.vn',
       giang_vien: 'ducvt.gv@ntu.edu.vn',
       tccb: 'tccb@ntu.edu.vn',
+      dao_tao: 'daotao@ntu.edu.vn',
       ke_toan: 'ketoan@ntu.edu.vn',
     };
 

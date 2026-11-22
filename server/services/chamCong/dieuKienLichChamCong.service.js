@@ -3,7 +3,6 @@ const { Op } = require('sequelize');
 const {
   NhatKyChamCong,
   LichTrinh,
-  LichTrinhTuan,
   NgoaiLeLichTrinh,
   CaLamViec,
   NguoiDung,
@@ -70,7 +69,6 @@ const evaluateUserScheduleForCheckIn = async (
   const scheduleIncludes = [
     { model: CaLamViec, as: 'ca' },
     { model: NguoiDung, as: 'giang_vien', attributes: ['id', 'ho_ten', 'email', 'vai_tro_chinh'] },
-    { model: LichTrinhTuan, as: 'tuan_hoc', attributes: ['tuan_thu'] },
     { model: NgoaiLeLichTrinh, as: 'ngoai_le' },
   ];
 
@@ -116,7 +114,6 @@ const evaluateUserScheduleForCheckIn = async (
   const schedules = [];
   const toPlainSchedule = (s, overrideEx = null) => {
     const plain = s.toJSON();
-    plain.danh_sach_tuan = (plain.tuan_hoc || []).map((w) => Number(w.tuan_thu));
     if (overrideEx) {
       plain._isSubstituteOverride = true;
       if (overrideEx.giang_vien_day_thay_id) {

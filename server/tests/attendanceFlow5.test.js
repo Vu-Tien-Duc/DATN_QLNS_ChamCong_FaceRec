@@ -180,6 +180,40 @@ describe('Luồng 5 - Service & Nghiệp vụ đa phương thức', () => {
       () => processScanQRCode({ nguoi_dung_id: USER_1, qrToken, vi_do: null, kinh_do: null }),
       (err) => err.statusCode === 409 && err.errorCode === 'QR_REPLAY_DETECTED'
     );
+
+    // QR mới nhưng quét lỗi (thiếu GPS cho lịch offline) không được đốt nonce replay
+    stub(models.LichTrinh, 'findByPk', async () => ({ id: SCH_1, la_truc_tuyen: false }));
+    stub(models.LichTrinh, 'findAll', async () => [
+      wrapSchedule({
+        id: SCH_1,
+        nguoi_dung_id: USER_1,
+        ca_id: SHIFT_1,
+        thu_trong_tuan: nowVN.getDay(),
+        ngay_bat_dau: dateStr,
+        ngay_ket_thuc: dateStr,
+        gio_bat_dau: startHm,
+        gio_ket_thuc: endHm,
+        co_so: 'Gia Lâm',
+        la_truc_tuyen: false,
+        so_tiet: 3,
+        ca: { id: SHIFT_1, ten_ca: 'Ca 1', gio_bat_dau: startHm, gio_ket_thuc: endHm, nguong_di_muon_phut: 30 },
+        tuan_hoc: [],
+        ngoai_le: [],
+      }),
+    ]);
+    const { qrToken: offlineQrToken } = generateDynamicQRCode({ roomId: 'OFFLINE_01' });
+    await assert.rejects(
+      () => processScanQRCode({ nguoi_dung_id: USER_1, qrToken: offlineQrToken, vi_do: null, kinh_do: null }),
+      (err) => err.statusCode === 400 && err.errorCode === 'ATTENDANCE_GPS_REQUIRED'
+    );
+    const qrRetryWithGps = await processScanQRCode({
+      nguoi_dung_id: USER_1,
+      qrToken: offlineQrToken,
+      vi_do: 20.9752,
+      kinh_do: 105.7628,
+      do_chinh_xac: 15,
+    });
+    assert.equal(qrRetryWithGps.loai_quet, 'check_in');
   });
 
   it('B8 + Song song: check-in khối dạy 2 chỉ đóng khối dạy 1 sang thieu_check_out và giữ ca hành chính mở', async () => {
@@ -866,5 +900,23 @@ describe('Luồng 5 - Integration Express Routes, RBAC, Multer & Liveness', () =
       formData: fdReplay,
     });
     assert.equal(rReplay.status, 409);
+
+    // Bắt buộc livenessTicket khi ENFORCE_LIVENESS_TICKET=true (trừ verifyOnly) và chống replay vé
+    const { consumeLivenessTicket } = require('../services/khuonMat/thuThachLiveness.service');
+    process.env.ENFORCE_LIVENESS_TICKET = 'true';
+    try {
+      await assert.rejects(
+        () => consumeLivenessTicket('', USER_1),
+        (err) => err.statusCode === 400 && err.errorCode === 'LIVENESS_TICKET_REQUIRED'
+      );
+      assert.ok(rVerify.body.data.livenessTicket);
+      await consumeLivenessTicket(rVerify.body.data.livenessTicket, USER_1);
+      await assert.rejects(
+        () => consumeLivenessTicket(rVerify.body.data.livenessTicket, USER_1),
+        (err) => err.statusCode === 409 && err.errorCode === 'LIVENESS_TICKET_REPLAY'
+      );
+    } finally {
+      delete process.env.ENFORCE_LIVENESS_TICKET;
+    }
   });
 });

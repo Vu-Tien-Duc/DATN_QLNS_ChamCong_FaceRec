@@ -11,7 +11,7 @@ const {
   CauHinhHeThong,
 } = require('../../models');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
-const { normalizeRole, isSystemAdminUser } = require('../../utils/vaiTro.utils');
+const { normalizeRole, isSystemAdminUser, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
 const ServiceError = require('../../utils/loiNghiepVu');
 
 const DEFAULT_TAX_BRACKETS = [
@@ -268,7 +268,8 @@ const calculateUserPayroll = async ({ user, month, year, configParams, createdBy
 
   const isFaculty =
     isVisitingLecturer ||
-    ['giang_vien', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon'].includes(userRole);
+    (profile.loai_nhan_su || '').toLowerCase() === 'giang_vien' ||
+    hasAnyActiveRole(user, ['giang_vien', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon']);
   const uuDaiRate = isVisitingLecturer
     ? 0
     : isFaculty

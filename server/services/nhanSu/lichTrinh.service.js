@@ -1,11 +1,11 @@
-// Quản lý thời khóa biểu giảng dạy, lịch tuần, ngoại lệ lịch và kiểm tra trùng lịch.
+// Quản lý thời khóa biểu giảng dạy, ngoại lệ lịch và kiểm tra trùng lịch.
 const { Op } = require('sequelize');
 const {
   LichTrinh,
-  LichTrinhTuan,
   NgoaiLeLichTrinh,
   CaLamViec,
   NguoiDung,
+  VaiTroNguoiDung,
   MonHoc,
   DonNghiPhep,
   NgayNghiLe,
@@ -17,7 +17,7 @@ const { isScheduleActiveOnDate } = require('../../utils/ngayLichTrinh.utils');
 const { getVietnamTime, getVietnamDayRange } = require('../../utils/thoiGianChamCong.utils');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { withDistributedLock } = require('../../utils/khoaPhanTan');
-const { UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
+const { UNIT_LEADER_ROLES, GLOBAL_ADMIN_ROLES, ROLES, hasAnyActiveRole } = require('../../utils/vaiTro.utils');
 const { PERMISSIONS, hasPermission } = require('../../config/permissions');
 const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize');
 const { isValidCalendarDate } = require('./ngayNghiLe.service');
@@ -27,7 +27,6 @@ const INCLUDE_SCHEDULE = [
   { model: NguoiDung, as: 'giang_vien', attributes: ['id', 'ho_ten', 'email', 'ma_can_bo', 'vai_tro_chinh', 'don_vi_chinh_id', 'anh_dai_dien'] },
   { model: CaLamViec, as: 'ca', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc', 'nguong_di_muon_phut'] },
   { model: MonHoc, as: 'mon_hoc', attributes: ['id', 'ten_mon', 'ma_mon', 'so_tin_chi', 'phong_ban_id'] },
-  { model: LichTrinhTuan, as: 'tuan_hoc', attributes: ['tuan_thu'] },
   {
     model: NgoaiLeLichTrinh,
     as: 'ngoai_le',
@@ -46,11 +45,6 @@ const isUnitLeaderOnly = (user) => !isGlobalScheduleManager(user) && hasAnyActiv
 const formatScheduleOutput = (sched) => {
   if (!sched) return null;
   const raw = sched.toJSON ? sched.toJSON() : { ...sched };
-  const weeks = Array.isArray(raw.tuan_hoc)
-    ? raw.tuan_hoc.map((w) => Number(w.tuan_thu)).sort((a, b) => a - b)
-    : Array.isArray(raw.danh_sach_tuan)
-    ? raw.danh_sach_tuan.map(Number).sort((a, b) => a - b)
-    : [];
 
   return {
     ...raw,
@@ -59,7 +53,6 @@ const formatScheduleOutput = (sched) => {
     ca_id: (typeof raw.ca_id === 'object' ? raw.ca_id?.id : raw.ca_id) || raw.ca?.id || null,
     mon_hoc_id: (typeof raw.mon_hoc_id === 'object' ? raw.mon_hoc_id?.id : raw.mon_hoc_id) || raw.mon_hoc?.id || null,
     ngay_day_bu: raw.loai_lich === 'day_bu' && raw.ngay_bat_dau ? String(raw.ngay_bat_dau).slice(0, 10) : (raw.ngay_day_bu || null),
-    danh_sach_tuan: weeks,
     ngoai_le: raw.ngoai_le || [],
   };
 };
@@ -136,8 +129,8 @@ const toUtcDayMs = (dateStr) => {
 
 const msToIsoDate = (ms) => new Date(ms).toISOString().slice(0, 10);
 
-// Sinh tập các ngày dương lịch thực tế (YYYY-MM-DD) mà lịch trình diễn ra
-const getEffectiveCalendarDates = (sched, weeks = []) => {
+// Sinh tập các ngày dương lịch thực tế (YYYY-MM-DD) mà lịch trình diễn ra theo [ngay_bat_dau, ngay_ket_thuc]
+const getEffectiveCalendarDates = (sched) => {
   const result = new Set();
   const startMs = toUtcDayMs(sched.ngay_bat_dau);
   const endMs = toUtcDayMs(sched.ngay_ket_thuc || sched.ngay_bat_dau);
@@ -145,7 +138,6 @@ const getEffectiveCalendarDates = (sched, weeks = []) => {
 
   const DAY_MS = 24 * 60 * 60 * 1000;
   const targetWeekday = Number(sched.thu_trong_tuan);
-  const weekSet = Array.isArray(weeks) && weeks.length > 0 ? new Set(weeks.map(Number)) : null;
   const exceptions = Array.isArray(sched.ngoai_le) ? sched.ngoai_le : [];
 
   const isExcludedOnDate = (dateIso) =>
@@ -166,19 +158,17 @@ const getEffectiveCalendarDates = (sched, weeks = []) => {
       return false;
     });
 
+  const isRecurring = sched.lap_lai_hang_tuan !== false;
   const maxSpanDays = Math.min(400, Math.floor((endMs - startMs) / DAY_MS) + 1);
   for (let offset = 0; offset < maxSpanDays; offset++) {
     const curMs = startMs + offset * DAY_MS;
     const curWeekday = new Date(curMs).getUTCDay();
     if (curWeekday !== targetWeekday) continue;
-    if (weekSet) {
-      const weekNum = Math.floor(offset / 7) + 1;
-      if (!weekSet.has(weekNum)) continue;
-    }
     const iso = msToIsoDate(curMs);
     if (!isExcludedOnDate(iso)) {
       result.add(iso);
     }
+    if (!isRecurring) break;
   }
   return result;
 };
@@ -209,14 +199,18 @@ const detectScheduleConflicts = async ({
   ngay_bat_dau,
   ngay_ket_thuc,
   danh_sach_tuan = [],
+  lap_lai_hang_tuan = true,
   loai_lich = 'chinh_khoa',
   excludeScheduleId = null,
   excludeExceptionNgay = null,
 }) => {
-  const incomingDates = getEffectiveCalendarDates(
-    { ngay_bat_dau, ngay_ket_thuc, thu_trong_tuan, loai_lich },
-    danh_sach_tuan
-  );
+  const incomingDates = getEffectiveCalendarDates({
+    ngay_bat_dau,
+    ngay_ket_thuc,
+    thu_trong_tuan,
+    lap_lai_hang_tuan,
+    loai_lich,
+  });
 
   // Fallback nếu khoảng ngày quá dài (> 400 ngày) hoặc chưa đủ thông tin để sinh ngày cụ thể
   const startStr = ngay_bat_dau ? String(ngay_bat_dau).slice(0, 10) : null;
@@ -237,7 +231,6 @@ const detectScheduleConflicts = async ({
       where,
       include: [
         { model: NguoiDung, as: 'giang_vien', attributes: ['id', 'ho_ten', 'email', 'ma_can_bo'] },
-        { model: LichTrinhTuan, as: 'tuan_hoc', attributes: ['tuan_thu'] },
         { model: NgoaiLeLichTrinh, as: 'ngoai_le', attributes: ['ngay', 'trang_thai', 'ngay_day_bu', 'giang_vien_day_thay_id'] },
       ],
     }),
@@ -321,14 +314,13 @@ const detectScheduleConflicts = async ({
   };
 
   for (const exist of existingSchedules) {
-    const existWeeks = (exist.tuan_hoc || []).map((w) => w.tuan_thu);
+    if (!hasCommonWeek(danh_sach_tuan, exist.danh_sach_tuan)) continue;
     if (incomingDates.size > 0) {
-      const existDates = getEffectiveCalendarDates(exist, existWeeks);
+      const existDates = getEffectiveCalendarDates(exist);
       const hasSharedDate = Array.from(incomingDates).some((d) => existDates.has(d));
       if (!hasSharedDate) continue;
     } else {
       if (Number(exist.thu_trong_tuan) !== Number(thu_trong_tuan)) continue;
-      if (!hasCommonWeek(danh_sach_tuan, existWeeks)) continue;
     }
 
     assertNoConflictWithCandidate(
@@ -566,7 +558,7 @@ const createNewSchedule = async (data, currentUser) => {
     ngay_ket_thuc,
     loai_lich = 'chinh_khoa',
     ngay_day_bu,
-    danh_sach_tuan = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    danh_sach_tuan = [],
     nam_hoc = '2025-2026',
     hoc_ky = 1,
   } = data;
@@ -586,13 +578,23 @@ const createNewSchedule = async (data, currentUser) => {
   }
 
   const [lecturerDoc, shiftDoc, subjectDoc] = await Promise.all([
-    NguoiDung.findByPk(nguoi_dung_id, { attributes: ['id', 'kich_hoat', 'trang_thai_lam_viec'] }),
+    NguoiDung.findByPk(nguoi_dung_id, {
+      attributes: ['id', 'vai_tro_chinh', 'kich_hoat', 'trang_thai_lam_viec'],
+      include: [{ model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro', 'tu_ngay', 'den_ngay'] }],
+    }),
     CaLamViec.findByPk(ca_id),
     mon_hoc_id ? MonHoc.findByPk(mon_hoc_id, { attributes: ['id'] }) : Promise.resolve(null),
   ]);
 
   if (!lecturerDoc) {
     throw new ServiceError('Không tìm thấy giảng viên / nhân sự được chọn.', 404);
+  }
+  if (hasAnyActiveRole(lecturerDoc, [ROLES.ADMIN])) {
+    throw new ServiceError(
+      'Tài khoản Quản trị viên hệ thống (Admin) không tham gia chấm công hoặc giảng dạy.',
+      403,
+      'SCHEDULE_ADMIN_EXEMPT'
+    );
   }
   if (!shiftDoc) {
     throw new ServiceError('Không tìm thấy ca làm việc được chọn.', 404);
@@ -660,6 +662,7 @@ const createNewSchedule = async (data, currentUser) => {
       ngay_bat_dau: effectiveStartDate,
       ngay_ket_thuc: effectiveEndDate,
       danh_sach_tuan: effectiveWeeks,
+      lap_lai_hang_tuan: effectiveRecurring,
       loai_lich,
       nam_hoc,
       hoc_ky,
@@ -692,16 +695,6 @@ const createNewSchedule = async (data, currentUser) => {
         { transaction }
       );
       createdId = newSchedule.id;
-
-      if (Array.isArray(effectiveWeeks) && effectiveWeeks.length > 0) {
-        const uniqueWeeks = [...new Set(effectiveWeeks.map(Number).filter((w) => w >= 1 && w <= 53))];
-        if (uniqueWeeks.length > 0) {
-          await LichTrinhTuan.bulkCreate(
-            uniqueWeeks.map((tuan_thu) => ({ lich_trinh_id: newSchedule.id, tuan_thu })),
-            { transaction }
-          );
-        }
-      }
     });
   });
 
@@ -717,7 +710,7 @@ const createNewSchedule = async (data, currentUser) => {
   return fetchScheduleById(createdId, currentUser);
 };
 
-// Cập nhật lịch trình, tuần học và kiểm tra lại xung đột lịch (có kiểm tra IDOR & khóa phân tán)
+// Cập nhật lịch trình và kiểm tra lại xung đột lịch (có kiểm tra IDOR & khóa phân tán)
 const updateExistingSchedule = async (scheduleId, data, currentUser) => {
   if (!canManageSchedules(currentUser)) {
     throw new ServiceError('Tài khoản Giảng viên / Nhân viên không có quyền chỉnh sửa phân công lịch trình.', 403);
@@ -726,9 +719,7 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
     throw new ServiceError('ID lịch trình không hợp lệ.', 400);
   }
 
-  const schedule = await LichTrinh.findByPk(scheduleId, {
-    include: [{ model: LichTrinhTuan, as: 'tuan_hoc', attributes: ['tuan_thu'] }],
-  });
+  const schedule = await LichTrinh.findByPk(scheduleId);
   if (!schedule) {
     throw new ServiceError('Không tìm thấy lịch cần cập nhật.', 404);
   }
@@ -749,9 +740,19 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
   }
 
   if (data.nguoi_dung_id || data.giang_vien_id) {
-    const lecDoc = await NguoiDung.findByPk(nextUserId, { attributes: ['id'] });
+    const lecDoc = await NguoiDung.findByPk(nextUserId, {
+      attributes: ['id', 'vai_tro_chinh'],
+      include: [{ model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro', 'tu_ngay', 'den_ngay'] }],
+    });
     if (!lecDoc) {
       throw new ServiceError('Không tìm thấy giảng viên / nhân sự được chọn.', 404);
+    }
+    if (hasAnyActiveRole(lecDoc, [ROLES.ADMIN])) {
+      throw new ServiceError(
+        'Tài khoản Quản trị viên hệ thống (Admin) không tham gia chấm công hoặc giảng dạy.',
+        403,
+        'SCHEDULE_ADMIN_EXEMPT'
+      );
     }
   }
 
@@ -779,7 +780,6 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
     }
   }
 
-  const currentWeeks = (schedule.tuan_hoc || []).map((w) => w.tuan_thu);
   const nextRoom = data.phong_hoc !== undefined ? data.phong_hoc : schedule.phong_hoc;
   const nextOnline = data.la_truc_tuyen !== undefined ? Boolean(data.la_truc_tuyen) : Boolean(schedule.la_truc_tuyen);
   const nextLoaiLich = data.loai_lich || schedule.loai_lich;
@@ -793,7 +793,6 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
   const nextEndTime = String(
     data.gio_ket_thuc || (shiftChanged && nextShiftDoc ? nextShiftDoc.gio_ket_thuc : schedule.gio_ket_thuc)
   ).slice(0, 5);
-  let nextWeekNumbers = Array.isArray(data.danh_sach_tuan) ? data.danh_sach_tuan : currentWeeks;
   const nextAcademicYear = data.nam_hoc || schedule.nam_hoc;
   const nextSemester = data.hoc_ky !== undefined ? data.hoc_ky : schedule.hoc_ky;
   let nextStartDate = String(data.ngay_bat_dau || schedule.ngay_bat_dau).slice(0, 10);
@@ -808,8 +807,7 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
     nextStartDate = makeupStr;
     nextEndDate = makeupStr;
     nextWeekday = getVietnamTime(`${makeupStr}T08:00:00+07:00`).getDay();
-    nextWeekNumbers = [1];
-    data = { ...data, lap_lai_hang_tuan: false, danh_sach_tuan: [1] };
+    data = { ...data, lap_lai_hang_tuan: false };
   }
 
   validateScheduleTimeAndDates({
@@ -835,7 +833,8 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
       gio_ket_thuc: nextEndTime,
       ngay_bat_dau: nextStartDate,
       ngay_ket_thuc: nextEndDate,
-      danh_sach_tuan: nextWeekNumbers,
+      danh_sach_tuan: data.danh_sach_tuan !== undefined ? data.danh_sach_tuan : schedule.danh_sach_tuan,
+      lap_lai_hang_tuan: data.lap_lai_hang_tuan !== undefined ? Boolean(data.lap_lai_hang_tuan) : schedule.lap_lai_hang_tuan,
       loai_lich: nextLoaiLich,
       nam_hoc: nextAcademicYear,
       hoc_ky: nextSemester,
@@ -861,17 +860,6 @@ const updateExistingSchedule = async (scheduleId, data, currentUser) => {
       schedule.tiet_bat_dau = nextStartPeriod;
       schedule.so_tiet = nextPeriodCount;
       await schedule.save({ transaction });
-
-      if (Array.isArray(data.danh_sach_tuan)) {
-        await LichTrinhTuan.destroy({ where: { lich_trinh_id: schedule.id }, transaction });
-        const uniqueWeeks = [...new Set(data.danh_sach_tuan.map(Number).filter((w) => w >= 1 && w <= 53))];
-        if (uniqueWeeks.length > 0) {
-          await LichTrinhTuan.bulkCreate(
-            uniqueWeeks.map((tuan_thu) => ({ lich_trinh_id: schedule.id, tuan_thu })),
-            { transaction }
-          );
-        }
-      }
     });
   });
 

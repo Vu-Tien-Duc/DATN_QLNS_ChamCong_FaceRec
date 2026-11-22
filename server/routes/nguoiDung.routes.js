@@ -5,6 +5,7 @@ const {
   getAllUsers,
   getUserById,
   createUser,
+  importUsersExcel,
   updateUser,
   deleteUser,
   registerFaceDescriptor,
@@ -19,10 +20,13 @@ const { UNIT_LEADER_ROLES } = require('../utils/vaiTro.utils');
 router.use(verifyToken);
 
 // 1. Xem danh sách người dùng (Admin, BGH, TCCB và Trưởng khoa - Trưởng khoa tự động lọc theo khoa)
-router.get('/', verifyRole(['admin', 'bgh', 'tccb', ...UNIT_LEADER_ROLES]), getAllUsers);
+router.get('/', verifyRole(['admin', 'bgh', 'tccb', 'dao_tao', ...UNIT_LEADER_ROLES]), getAllUsers);
 
 // 2. Thêm người dùng mới (Chỉ Admin / BGH / TCCB)
 router.post('/', verifyRole(['admin', 'bgh', 'tccb']), createUser);
+
+// 2b. Thêm nhanh hàng loạt nhân sự từ Excel (Chỉ Admin / BGH / TCCB)
+router.post('/nhap-excel', verifyRole(['admin', 'bgh', 'tccb']), importUsersExcel);
 
 // Đăng ký và xóa dữ liệu Face ID theo người dùng
 router.post('/:id/khuon-mat', verifyRole(['admin', 'bgh', 'tccb', ...UNIT_LEADER_ROLES]), uploadFaceImages, registerFaceDescriptor);

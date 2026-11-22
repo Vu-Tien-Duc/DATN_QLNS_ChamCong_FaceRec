@@ -111,6 +111,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
   const [countdown, setCountdown] = useState<number>(15);
   const [confirming, setConfirming] = useState<boolean>(false);
   const pendingBlobRef = useRef<Blob | null>(null);
+  const pendingLivenessTicketRef = useRef<string | null>(null);
 
   const stableFaceCountRef = useRef<number>(0);
   const isExecutingRef = useRef<boolean>(false);
@@ -165,6 +166,8 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       setIsFaceMismatch(false);
       setMismatchMessage('');
       setFaceDetected(false);
+      pendingBlobRef.current = null;
+      pendingLivenessTicketRef.current = null;
       stableFaceCountRef.current = 0;
       isExecutingRef.current = false;
       cooldownUntilRef.current = Date.now() + 600;
@@ -294,6 +297,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
     setMismatchMessage('');
     setSuccessInfo(null);
     pendingBlobRef.current = null;
+    pendingLivenessTicketRef.current = null;
     setConfirming(false);
     onClose();
   };
@@ -325,25 +329,30 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       if (!coords) {
         try {
           const cfg = await attendanceApi.getCampusConfig();
-          if (typeof cfg?.lat === 'number' && typeof cfg?.lng === 'number') {
-            coords = { lat: cfg.lat, lng: cfg.lng };
+          const cfgLat = cfg?.lat ?? cfg?.vi_do;
+          const cfgLng = cfg?.lng ?? cfg?.kinh_do;
+          if (typeof cfgLat === 'number' && typeof cfgLng === 'number') {
+            coords = { lat: cfgLat, lng: cfgLng };
           }
         } catch {
           coords = { lat: 20.9752, lng: 105.7628 };
         }
       }
       const isCheckIn = activeMode === 'check-in';
+      const livenessTicket = pendingLivenessTicketRef.current || undefined;
 
       let res: any;
       if (isCheckIn) {
         res = await attendanceApi.checkInWithFace(blob, {
           location: coords,
           deviceId: 'MODAL_SCANNER_01',
+          livenessTicket,
         });
       } else {
         res = await attendanceApi.checkOutWithFace(blob, {
           location: coords,
           deviceId: 'MODAL_SCANNER_01',
+          livenessTicket,
         });
       }
 
@@ -354,6 +363,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
 
         setSuccessInfo(null);
         pendingBlobRef.current = null;
+        pendingLivenessTicketRef.current = null;
         if (onSuccess) onSuccess();
         onClose();
       } else {
@@ -495,6 +505,16 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       LOOK_DOWN: { icon: '👇', text: 'Cúi xuống' },
     };
     lastPoseInfoRef.current = poseMap[pose] || { icon: '🎯', text: pose };
+
+    const qualityObj = data.quality && typeof data.quality === 'object' ? data.quality : null;
+    if (qualityObj && qualityObj.valid === false) {
+      stableFaceCountRef.current = 0;
+      const reason = Array.isArray(qualityObj.reasons) && qualityObj.reasons.length > 0
+        ? String(qualityObj.reasons[0])
+        : 'Ảnh khuôn mặt bị mờ hoặc thiếu sáng, vui lòng điều chỉnh lại.';
+      setStatusText(`⚠️ ${reason}`);
+      return;
+    }
 
     // Tự động kích hoạt nhận diện khi mặt ổn định 3 frame liên tiếp
     stableFaceCountRef.current += 1;
@@ -821,6 +841,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
         if (!livenessRes?.passed) {
           throw new Error(`Chưa thực hiện đúng thử thách: ${instruction.toLowerCase()}. Vui lòng thử lại.`);
         }
+        pendingLivenessTicketRef.current = livenessRes?.livenessTicket || null;
       }
 
       if (verifySuccess) {

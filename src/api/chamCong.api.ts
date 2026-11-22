@@ -195,6 +195,7 @@ export const attendanceApi = {
       useQueue?: boolean;
       location?: { lat: number; lng: number; accuracy?: number } | null;
       deviceId?: string;
+      livenessTicket?: string;
     }
   ): Promise<AttendancePunchResult> {
     const formData = new FormData();
@@ -211,6 +212,10 @@ export const attendanceApi = {
 
     if (options?.deviceId) {
       formData.append('thiet_bi_id', options.deviceId);
+    }
+
+    if (options?.livenessTicket) {
+      formData.append('livenessTicket', options.livenessTicket);
     }
 
     if (options?.verifyOnly) {
@@ -243,6 +248,7 @@ export const attendanceApi = {
       actionType?: 'check_in' | 'check_out';
       location?: { lat: number; lng: number; accuracy?: number } | null;
       deviceId?: string;
+      livenessTicket?: string;
     }
   ): Promise<AttendancePunchResult> {
     const formData = new FormData();
@@ -258,6 +264,9 @@ export const attendanceApi = {
     }
     if (options?.deviceId) {
       formData.append('thiet_bi_id', options.deviceId);
+    }
+    if (options?.livenessTicket) {
+      formData.append('livenessTicket', options.livenessTicket);
     }
 
     const res = await apiClient.post<any>('/cham-cong/khuon-mat', formData, {

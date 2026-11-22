@@ -36,7 +36,7 @@ import { useAuthStore } from '../../stores/useXacThucStore';
 import { authApi } from '../../api/xacThuc.api';
 import { userApi } from '../../api/nguoiDung.api';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
-import { getRoleLabel } from '../../utils/phanQuyen';
+import { getRoleLabel, isAdmin } from '../../utils/phanQuyen';
 import { HoSoBenTrai, ThanhTabHoSo } from '../../components/chung/HoSoBenTrai';
 import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
 
@@ -305,6 +305,7 @@ export const Profile: React.FC = () => {
   };
 
   const roleInfo = getRoleBadge(user?.vai_tro_chinh);
+  const isAdminAccount = isAdmin(user);
   const isFaceRegistered = Boolean(user?.da_dang_ky_face);
   const currentAvatarUrl = previewAvatar || user?.anh_dai_dien;
   const userExtra = (user || {}) as Record<string, any>;
@@ -438,7 +439,12 @@ export const Profile: React.FC = () => {
               { tieuDe: 'Ngày vào làm', noiDung: formatDateVi(user?.ngay_vao_lam) },
               {
                 tieuDe: 'Sinh trắc học Face ID',
-                noiDung: (
+                noiDung: isAdminAccount ? (
+                  <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                    <span className="w-2 h-2 rounded-full bg-slate-400" />
+                    Miễn sinh trắc học (Quản trị IT)
+                  </span>
+                ) : (
                   <span className="flex items-center gap-1.5">
                     <span
                       className={`w-2 h-2 rounded-full ${isFaceRegistered ? 'bg-emerald-500' : 'bg-amber-500'}`}
@@ -485,7 +491,9 @@ export const Profile: React.FC = () => {
               tabs={[
                 { id: 'info', label: 'Thông tin cá nhân & liên hệ', icon: <User className="w-3.5 h-3.5" /> },
                 { id: 'hrm', label: 'Hồ sơ công tác & học thuật', icon: <Briefcase className="w-3.5 h-3.5" /> },
-                { id: 'face', label: 'Sinh trắc học Face ID', icon: <Camera className="w-3.5 h-3.5" /> },
+                ...(!isAdminAccount
+                  ? [{ id: 'face', label: 'Sinh trắc học Face ID', icon: <Camera className="w-3.5 h-3.5" /> }]
+                  : []),
                 { id: 'security', label: 'Bảo mật & mật khẩu', icon: <KeyRound className="w-3.5 h-3.5" /> },
               ]}
               className="border-b-0"

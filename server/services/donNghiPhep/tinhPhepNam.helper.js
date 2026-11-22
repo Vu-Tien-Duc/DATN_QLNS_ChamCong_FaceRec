@@ -1,10 +1,10 @@
 // Tính số ngày nghỉ hợp lệ (loại trừ Chủ nhật, ngày lễ), thống kê quỹ phép năm và định dạng dữ liệu đơn từ
 const { Op } = require('sequelize');
-const { DonNghiPhep, LichSuDuyetDon, NguoiDung, PhongBan, NgayNghiLe, CaLamViec, LichTrinh, LichTrinhTuan, MonHoc, NhatKyChamCong } = require('../../models');
+const { DonNghiPhep, LichSuDuyetDon, NguoiDung, PhongBan, NgayNghiLe, CaLamViec, LichTrinh, MonHoc, NhatKyChamCong, VaiTroNguoiDung } = require('../../models');
 const { detectScheduleConflicts } = require('../nhanSu/lichTrinh.service');
 const ServiceError = require('../../utils/loiNghiepVu');
 
-const PENDING_LEAVE_STATUSES = ['pending', 'pending_bgh'];
+const PENDING_LEAVE_STATUSES = ['pending', 'pending_dean', 'pending_bgh'];
 
 // Chuyển mốc thời gian sang chuỗi YYYY-MM-DD theo múi giờ Việt Nam
 const getVietnamDateKey = (date) =>
@@ -184,7 +184,10 @@ const leaveInclude = [
     model: NguoiDung,
     as: 'nguoi_dung',
     attributes: ['id', 'ho_ten', 'email', 'vai_tro_chinh', 'ma_can_bo', 'don_vi_chinh_id', 'anh_dai_dien'],
-    include: [{ model: PhongBan, as: 'don_vi_chinh', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] }],
+    include: [
+      { model: PhongBan, as: 'don_vi_chinh', attributes: ['id', 'ten_phong_ban', 'loai_don_vi'] },
+      { model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro', 'tu_ngay', 'den_ngay'] },
+    ],
   },
   {
     model: NguoiDung,
@@ -276,9 +279,6 @@ const validateLeaveScheduleConflict = async ({
     usingNewShift = true;
   }
 
-  const weeks = Array.isArray(targetSchedule.tuan_hoc)
-    ? targetSchedule.tuan_hoc.map((w) => Number(w.tuan_thu))
-    : [];
   const conflictWeekday = new Date(`${conflictDateStr}T12:00:00+07:00`).getDay();
 
   await detectScheduleConflicts({
@@ -291,7 +291,6 @@ const validateLeaveScheduleConflict = async ({
     gio_ket_thuc: targetEndTime,
     ngay_bat_dau: conflictDateStr,
     ngay_ket_thuc: conflictDateStr,
-    danh_sach_tuan: weeks,
     nam_hoc: targetSchedule.nam_hoc,
     hoc_ky: targetSchedule.hoc_ky,
     excludeScheduleId: targetSchedule.id,

@@ -1,7 +1,7 @@
-// Khởi tạo và liên kết quan hệ giữa toàn bộ 24 mô hình Sequelize trong hệ thống.
+// Khởi tạo và liên kết quan hệ giữa toàn bộ 23 mô hình Sequelize trong hệ thống.
 const { sequelize, Sequelize } = require('../config/db');
 
-// Danh sách 24 mô hình bảng dữ liệu SQL Server
+// Danh sách 23 mô hình bảng dữ liệu SQL Server
 const CauHinhHeThong = require('./cauHinhHeThong.model');
 const NgayNghiLe = require('./ngayNghiLe.model');
 const CaLamViec = require('./caLamViec.model');
@@ -13,7 +13,6 @@ const XacThucOtp = require('./xacThucOtp.model');
 const MauKhuonMat = require('./mauKhuonMat.model');
 const MonHoc = require('./monHoc.model');
 const LichTrinh = require('./lichTrinh.model');
-const LichTrinhTuan = require('./lichTrinhTuan.model');
 const NgoaiLeLichTrinh = require('./ngoaiLeLichTrinh.model');
 const NhatKyChamCong = require('./nhatKyChamCong.model');
 const LuotQuetChamCong = require('./luotQuetChamCong.model');
@@ -67,9 +66,6 @@ CaLamViec.hasMany(LichTrinh, { foreignKey: 'ca_id', as: 'lich_trinh', ...noActio
 LichTrinh.belongsTo(CaLamViec, { foreignKey: 'ca_id', as: 'ca', ...noAction });
 MonHoc.hasMany(LichTrinh, { foreignKey: 'mon_hoc_id', as: 'lich_trinh', ...noAction });
 LichTrinh.belongsTo(MonHoc, { foreignKey: 'mon_hoc_id', as: 'mon_hoc', ...noAction });
-
-LichTrinh.hasMany(LichTrinhTuan, { foreignKey: 'lich_trinh_id', as: 'tuan_hoc', ...cascade });
-LichTrinhTuan.belongsTo(LichTrinh, { foreignKey: 'lich_trinh_id', as: 'lich_trinh', ...cascade });
 
 // Alias ngoai_le dùng bởi utils/ngayLichTrinh.utils.js
 LichTrinh.hasMany(NgoaiLeLichTrinh, { foreignKey: 'lich_trinh_id', as: 'ngoai_le', ...cascade });
@@ -139,7 +135,6 @@ module.exports = {
   MauKhuonMat,
   MonHoc,
   LichTrinh,
-  LichTrinhTuan,
   NgoaiLeLichTrinh,
   NhatKyChamCong,
   LuotQuetChamCong,

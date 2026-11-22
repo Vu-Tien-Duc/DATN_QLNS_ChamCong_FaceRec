@@ -310,12 +310,38 @@ export const FaceAttendance: React.FC = () => {
         if (!coords) {
           try {
             const cfg = await attendanceApi.getCampusConfig();
-            if (typeof cfg?.lat === 'number' && typeof cfg?.lng === 'number') {
-              coords = { lat: cfg.lat, lng: cfg.lng };
+            const cfgLat = cfg?.lat ?? cfg?.vi_do;
+            const cfgLng = cfg?.lng ?? cfg?.kinh_do;
+            if (typeof cfgLat === 'number' && typeof cfgLng === 'number') {
+              coords = { lat: cfgLat, lng: cfgLng };
             }
           } catch {
             coords = { lat: 20.9752, lng: 105.7628 };
           }
+        }
+
+        const LIVENESS_LABELS: Record<string, string> = {
+          LOOK_UP: 'ngẩng mặt lên',
+          LOOK_DOWN: 'cúi mặt xuống',
+          TURN_LEFT: 'quay mặt sang trái',
+          TURN_RIGHT: 'quay mặt sang phải',
+        };
+        const { challenge, challengeToken } = await attendanceApi.getLivenessChallenge();
+        const instruction = `Vui lòng ${LIVENESS_LABELS[challenge] || 'thực hiện tư thế yêu cầu'}`;
+        setScanStatus({
+          type: 'scanning',
+          message: 'Xác thực người thật (Liveness)...',
+          detail: instruction,
+        });
+        toast(instruction, { id: 'face-liveness-toast', icon: '🧑‍💻', duration: 3000 });
+        await new Promise((resolve) => setTimeout(resolve, 2200));
+        const livenessCapture = await captureFrameBlob();
+        if (!livenessCapture) {
+          throw new Error('Không thể chụp khung hình xác thực Liveness.');
+        }
+        const livenessRes = await attendanceApi.verifyLivenessChallenge(livenessCapture.blob, challengeToken);
+        if (!livenessRes?.passed || !livenessRes?.livenessTicket) {
+          throw new Error(`Chưa thực hiện đúng thử thách: ${instruction.toLowerCase()}. Vui lòng thử lại.`);
         }
 
         let res: AttendancePunchResult;
@@ -324,12 +350,14 @@ export const FaceAttendance: React.FC = () => {
             actionType: 'check_out',
             location: coords,
             deviceId: 'STATION_CAMERA_01',
+            livenessTicket: livenessRes.livenessTicket,
           });
         } else {
           res = await attendanceApi.checkInWithFace(capture.blob, {
             actionType: 'check_in',
             location: coords,
             deviceId: 'STATION_CAMERA_01',
+            livenessTicket: livenessRes.livenessTicket,
           });
         }
 

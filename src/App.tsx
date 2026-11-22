@@ -24,6 +24,7 @@ import { PublicLayout } from './pages/congKhai/BoCucCongKhai';
 import { FacultyDirectory } from './pages/congKhai/DanhBaGiangVien';
 import { FacultyDetail } from './pages/congKhai/ChiTietGiangVien';
 import { ProtectedRoute } from './components/xacThuc/TuyenBaoVe';
+import { canManageSubjects } from './utils/phanQuyen';
 import { useThemeStore } from './stores/useGiaoDienStore';
 import { useAuthStore } from './stores/useXacThucStore';
 
@@ -131,7 +132,7 @@ export const App: React.FC = () => {
           <Route
             path="mon-hoc"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao']}>
+              <ProtectedRoute customCheck={canManageSubjects}>
                 <Subjects />
               </ProtectedRoute>
             }
@@ -173,7 +174,7 @@ export const App: React.FC = () => {
           <Route
             path="ca-lam-viec"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'bgh', 'truong_khoa', 'pho_khoa', 'dao_tao']}>
+              <ProtectedRoute allowedRoles={['admin', 'bgh', 'dao_tao']}>
                 <Shifts />
               </ProtectedRoute>
             }

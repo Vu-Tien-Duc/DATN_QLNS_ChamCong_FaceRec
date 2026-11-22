@@ -6,7 +6,6 @@ const {
   PhongBan,
   VaiTroNguoiDung,
   LichTrinh,
-  LichTrinhTuan,
   NgoaiLeLichTrinh,
   NgayNghiLe,
   CaLamViec,
@@ -85,11 +84,10 @@ const getLecturerContextData = async (userId) => {
     const todayStr = getVietnamTodayString(now);
     const dayOfWeek = vnWallClock.getDay();
 
-    // 1. Kiểm tra ngày nghỉ lễ & lịch giảng dạy trong ngày (xét tuan_hoc, day_bu, doi_ca và loại trừ lịch nghỉ/hủy)
+    // 1. Kiểm tra ngày nghỉ lễ & lịch giảng dạy trong ngày (xét day_bu, doi_ca và loại trừ lịch nghỉ/hủy)
     const scheduleIncludes = [
       { model: CaLamViec, as: 'ca', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc'] },
       { model: MonHoc, as: 'mon_hoc', attributes: ['id', 'ten_mon', 'ma_mon'] },
-      { model: LichTrinhTuan, as: 'tuan_hoc', attributes: ['tuan_thu'] },
       { model: NgoaiLeLichTrinh, as: 'ngoai_le' },
     ];
 

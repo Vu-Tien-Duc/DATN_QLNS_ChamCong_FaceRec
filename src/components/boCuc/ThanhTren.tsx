@@ -28,7 +28,7 @@ import { useAuthStore } from '../../stores/useXacThucStore';
 import { ThemeToggle } from '../chung/NutChuyenGiaoDien';
 import { ModalCaiDatGiaoDien } from '../chung/ModalCaiDatGiaoDien';
 import { UserAvatar } from '../chung/AnhDaiDienNguoiDung';
-import { hasRole, getRoleLabel } from '../../utils/phanQuyen';
+import { hasRole, getRoleLabel, isAdmin } from '../../utils/phanQuyen';
 import { attendanceApi, AttendanceHistoryItem } from '../../api/chamCong.api';
 import { leaveRequestApi } from '../../api/donNghiPhep.api';
 import { thongBaoApi } from '../../api/thongBao.api';
@@ -65,6 +65,7 @@ const SEARCH_ITEMS: QuickSearchItem[] = [
     path: '/diem-danh-khuon-mat',
     icon: Camera,
     description: 'Trạm camera điểm danh nhận diện khuôn mặt 512D & GPS Geofence',
+    excludeRoles: ['admin'],
   },
   {
     id: 'att-manage',
@@ -292,7 +293,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
   const handleLogout = async () => {
     setShowUserMenu(false);
     await logout();
-    navigate('/dang-nhap');
+    navigate('/dang-nhap', { replace: true });
   };
 
   const markAllNotificationsRead = () => {
@@ -390,15 +391,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onMobileOpen }) => {
              =================================================================== */}
           <div ref={dropdownGroupRef} className="flex items-center gap-2 shrink-0">
             {/* Quick Action Button (Flux Style New Action Button) */}
-            <button
-              type="button"
-              onClick={() => navigate('/diem-danh-khuon-mat')}
-              className="hidden md:inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-xs hover:shadow-brand-500/25 transition-all cursor-pointer shrink-0"
-              title="Mở trạm điểm danh AI"
-            >
-              <Camera className="w-3.5 h-3.5" />
-              <span>+ Điểm danh</span>
-            </button>
+            {!isAdmin(user) && (
+              <button
+                type="button"
+                onClick={() => navigate('/diem-danh-khuon-mat')}
+                className="hidden md:inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-xs hover:shadow-brand-500/25 transition-all cursor-pointer shrink-0"
+                title="Mở trạm điểm danh AI"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>+ Điểm danh</span>
+              </button>
+            )}
             {/* 1. Realtime Digital Clock */}
             <div className="hidden xl:flex items-center gap-2 h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/70 text-xs whitespace-nowrap shrink-0">
               <Clock className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />

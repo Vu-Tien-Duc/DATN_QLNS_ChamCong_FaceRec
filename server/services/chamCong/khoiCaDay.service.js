@@ -1,6 +1,6 @@
 // Xác định khối ca dạy liên tục (block) chứa một lịch trình của giảng viên trong một ngày công
 const { Op } = require('sequelize');
-const { LichTrinh, LichTrinhTuan, NgoaiLeLichTrinh, CaLamViec, NhatKyChamCong } = require('../../models');
+const { LichTrinh, NgoaiLeLichTrinh, CaLamViec, NhatKyChamCong } = require('../../models');
 const { getConfigSync } = require('../heThong/cauHinhHeThong.service');
 const { getVietnamTime, ServiceError, calculateCheckOutStatus } = require('../../utils/thoiGianChamCong.utils');
 const { isScheduleActiveOnDate } = require('../../utils/ngayLichTrinh.utils');
@@ -19,7 +19,6 @@ const layKhoiTheoLichTrinh = async (nguoiDungId, lichTrinhId, ngayCong) => {
   const weekday = getVietnamTime(refDate).getDay();
 
   const scheduleIncludes = [
-    { model: LichTrinhTuan, as: 'tuan_hoc', attributes: ['tuan_thu'] },
     { model: NgoaiLeLichTrinh, as: 'ngoai_le' },
   ];
 

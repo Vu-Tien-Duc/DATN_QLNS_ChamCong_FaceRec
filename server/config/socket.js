@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const { NguoiDung, VaiTroNguoiDung } = require('../models');
 const { isTokenRevokedAsync } = require('../utils/thuHoiToken');
 const { isValidUuid } = require('../utils/hoTroSequelize');
+const { getDeanDepartmentIds } = require('../utils/phamViTruongKhoa');
 const { UNIT_LEADER_ROLES, normalizeRole, getActiveUserRoles, hasAnyActiveRole } = require('../utils/vaiTro.utils');
 
 let io = null;
@@ -151,21 +152,34 @@ const initSocketServer = (httpServer, customOptions = {}) => {
     }
   });
 
-  io.on('connection', (socket) => {
+  io.on('connection', async (socket) => {
     const user = socket.user || {};
     const userId = user.id ? user.id.toString() : socket.id;
     const isAdminViewer = hasAnyActiveRole(user, ['admin', 'bgh', 'tccb']);
     const isDeptLeader = hasAnyActiveRole(user, UNIT_LEADER_ROLES);
+    const leaderDeptSet = new Set();
 
-    // Tự động đưa socket vào room cá nhân, room toàn trường (admin) và room đơn vị (lãnh đạo)
+    if (user.don_vi_chinh_id) {
+      leaderDeptSet.add(String(user.don_vi_chinh_id));
+    }
+    if (isDeptLeader) {
+      const scopedDepts = await getDeanDepartmentIds(user).catch(() => []);
+      for (const deptId of scopedDepts) {
+        if (deptId) leaderDeptSet.add(String(deptId));
+      }
+    }
+
+    // Tự động đưa socket vào room cá nhân, room toàn trường (admin) và tất cả room đơn vị thuộc quyền lãnh đạo (kể cả bộ môn con & kiêm nhiệm)
     socket.join(`user:${userId}`);
 
     if (isAdminViewer) {
       socket.join('admin-room');
     }
 
-    if (user.don_vi_chinh_id && (isDeptLeader || isAdminViewer)) {
-      socket.join(`dept:${user.don_vi_chinh_id.toString()}`);
+    if (isDeptLeader || isAdminViewer) {
+      for (const deptId of leaderDeptSet) {
+        socket.join(`dept:${deptId}`);
+      }
     }
 
     // Cho client xin vào room bổ sung nhưng vẫn kiểm tra quyền để tránh IDOR
@@ -177,7 +191,7 @@ const initSocketServer = (httpServer, customOptions = {}) => {
       }
       if (roomName.startsWith('dept:')) {
         const targetDept = roomName.slice(5);
-        if (isAdminViewer || (isDeptLeader && user.don_vi_chinh_id && String(user.don_vi_chinh_id) === targetDept)) {
+        if (isAdminViewer || (isDeptLeader && leaderDeptSet.has(targetDept))) {
           socket.join(roomName);
         }
         return;

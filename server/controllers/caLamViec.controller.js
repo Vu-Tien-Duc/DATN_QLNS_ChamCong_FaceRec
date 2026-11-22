@@ -1,14 +1,6 @@
 // Quản lý danh mục ca làm việc (giờ vào, giờ ra, ngưỡng đi muộn)
 const shiftService = require('../services/nhanSu/caLamViec.service');
-const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
-
-// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
-const handleError = (res, error, next) => {
-  if (error instanceof shiftService.ServiceError || error.statusCode) {
-    return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
-  }
-  return next(error);
-};
+const { sendSuccess } = require('../utils/phanHoiHttp');
 
 // Lọc các trường hợp lệ của ca làm việc từ request body
 const mapShiftBodyToCanonical = (body) => {
@@ -24,53 +16,33 @@ const mapShiftBodyToCanonical = (body) => {
 };
 
 // Lấy danh sách toàn bộ ca làm việc
-const getAllShiftConfigs = async (req, res, next) => {
-  try {
-    const shifts = await shiftService.getAllShiftConfigs();
-    return sendSuccess(res, 'Lấy danh sách ca làm việc thành công.', shifts);
-  } catch (error) {
-    return handleError(res, error, next);
-  }
+const getAllShiftConfigs = async (req, res) => {
+  const shifts = await shiftService.getAllShiftConfigs();
+  return sendSuccess(res, 'Lấy danh sách ca làm việc thành công.', shifts);
 };
 
 // Lấy chi tiết một ca làm việc theo ID
-const getShiftConfigById = async (req, res, next) => {
-  try {
-    const shift = await shiftService.getShiftConfigById(req.params.id);
-    return sendSuccess(res, 'Lấy chi tiết ca làm việc thành công.', shift);
-  } catch (error) {
-    return handleError(res, error, next);
-  }
+const getShiftConfigById = async (req, res) => {
+  const shift = await shiftService.getShiftConfigById(req.params.id);
+  return sendSuccess(res, 'Lấy chi tiết ca làm việc thành công.', shift);
 };
 
 // Tạo ca làm việc mới
-const createShiftConfig = async (req, res, next) => {
-  try {
-    const shift = await shiftService.createShiftConfig(mapShiftBodyToCanonical(req.body), req.user);
-    return sendSuccess(res, 'Tạo mới ca làm việc thành công.', shift, 201);
-  } catch (error) {
-    return handleError(res, error, next);
-  }
+const createShiftConfig = async (req, res) => {
+  const shift = await shiftService.createShiftConfig(mapShiftBodyToCanonical(req.body), req.user);
+  return sendSuccess(res, 'Tạo mới ca làm việc thành công.', shift, 201);
 };
 
 // Cập nhật thông tin ca làm việc
-const updateShiftConfig = async (req, res, next) => {
-  try {
-    const shift = await shiftService.updateShiftConfig(req.params.id, mapShiftBodyToCanonical(req.body), req.user);
-    return sendSuccess(res, 'Cập nhật ca làm việc thành công.', shift);
-  } catch (error) {
-    return handleError(res, error, next);
-  }
+const updateShiftConfig = async (req, res) => {
+  const shift = await shiftService.updateShiftConfig(req.params.id, mapShiftBodyToCanonical(req.body), req.user);
+  return sendSuccess(res, 'Cập nhật ca làm việc thành công.', shift);
 };
 
 // Xóa ca làm việc
-const deleteShiftConfig = async (req, res, next) => {
-  try {
-    await shiftService.deleteShiftConfig(req.params.id, req.user);
-    return sendSuccess(res, 'Xóa ca làm việc thành công.');
-  } catch (error) {
-    return handleError(res, error, next);
-  }
+const deleteShiftConfig = async (req, res) => {
+  await shiftService.deleteShiftConfig(req.params.id, req.user);
+  return sendSuccess(res, 'Xóa ca làm việc thành công.');
 };
 
 module.exports = {

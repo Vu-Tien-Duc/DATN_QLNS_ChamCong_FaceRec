@@ -25,6 +25,7 @@ const {
 const {
   assertCanManageFace,
   registerFaceDescriptorForUser,
+  registerFaceImagesForUser,
   removeFaceDescriptorForUser,
 } = require('../services/khuonMat/mauKhuonMat.service');
 
@@ -560,5 +561,47 @@ describe('Luồng 3.6 - Xóa NĐ 13/2023 dọn sạch MauKhuonMat.anh_dai_dien &
     assert.ok(cacheTplWhere.trang_thai);
     assert.equal(cacheUserWhere.kich_hoat, true);
     assert.ok(cacheUserWhere.trang_thai_lam_viec);
+
+    // Chặn ảnh giả mạo (liveness.is_live === false) và ảnh kém chất lượng (quality.valid === false) ở /nguoi-dung/:id/khuon-mat
+    let spoofOrQualityPayload = {
+      status: 'face_detected',
+      embeddingDimensions: 512,
+      embedding: makeUnitVec(1),
+      liveness: { is_live: false, score: 0.12 },
+      quality: { valid: true, reasons: [] },
+    };
+    stub(global, 'fetch', async () => ({
+      ok: true,
+      text: async () => JSON.stringify(spoofOrQualityPayload),
+    }));
+    const validFile = { buffer: JPEG_MAGIC_BUF, mimetype: 'image/jpeg', originalname: 'front.jpg' };
+    await assert.rejects(
+      () =>
+        registerFaceImagesForUser({
+          id: STAFF_IN_ID,
+          files: [validFile],
+          sampleAngles: ['straight'],
+          currentUser: { id: ADMIN_ID, vai_tro_chinh: 'admin', danh_sach_vai_tro: [] },
+        }),
+      (err) => err.statusCode === 400 && err.errorCode === 'SPOOF_DETECTED'
+    );
+
+    spoofOrQualityPayload = {
+      status: 'face_detected',
+      embeddingDimensions: 512,
+      embedding: makeUnitVec(1),
+      liveness: { is_live: true, score: 0.95 },
+      quality: { valid: false, reasons: ['BLURRY_IMAGE'] },
+    };
+    await assert.rejects(
+      () =>
+        registerFaceImagesForUser({
+          id: STAFF_IN_ID,
+          files: [validFile],
+          sampleAngles: ['straight'],
+          currentUser: { id: ADMIN_ID, vai_tro_chinh: 'admin', danh_sach_vai_tro: [] },
+        }),
+      (err) => err.statusCode === 400 && err.errorCode === 'LOW_FACE_QUALITY'
+    );
   });
 });

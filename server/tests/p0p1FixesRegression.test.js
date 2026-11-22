@@ -178,8 +178,13 @@ describe('P1 Regression - Luồng 1 & 2 (Socket Logout, SMTP Transaction, RBAC S
       }
       return { id: UUID_1, vai_tro_chinh: 'giang_vien', don_vi_chinh_id: DEPT_KHOA };
     });
+    let clearedDeptManagerWhere = null;
     stub(models.PhongBan, 'findByPk', async () => ({ id: DEPT_KHOA, loai_don_vi: 'khoa' }));
     stub(models.PhongBan, 'findAll', async () => [{ id: DEPT_KHOA, don_vi_cha_id: null }]);
+    stub(models.PhongBan, 'update', async (values, opts) => {
+      if (values?.truong_don_vi_id === null) clearedDeptManagerWhere = opts?.where || null;
+      return [1];
+    });
     stub(models.VaiTroNguoiDung, 'destroy', async (opts) => {
       destroyedWhere.push(opts.where);
       return 1;
@@ -195,6 +200,7 @@ describe('P1 Regression - Luồng 1 & 2 (Socket Logout, SMTP Transaction, RBAC S
       { id: UUID_2, vai_tro_chinh: 'admin', danh_sach_vai_tro: [] }
     );
     assert.ok(destroyedWhere.some((w) => w.ma_vai_tro === 'truong_khoa' && w.nguoi_dung_id === UUID_1));
+    assert.deepEqual(clearedDeptManagerWhere, { truong_don_vi_id: UUID_1 });
 
     // Chặn đổi khoa có bộ môn con sang phong_ban
     stub(models.PhongBan, 'findByPk', async () => ({
@@ -482,5 +488,73 @@ describe('P1 Regression - Luồng 5, 6, 7, 8, 9, 10', () => {
     const mockRes = await generateAIResponse({ prompt: 'Xin chào', provider: 'offline_mock' });
     assert.equal(mockRes.provider, 'offline_mock');
     assert.equal(mockRes.fallbackErrors, undefined);
+  });
+
+  it('khoiTaoDuLieuMau seed đủ 19 cấu hình chuẩn, Ca Hành chính, cây Khoa->Bộ môn và đồng bộ truong_don_vi_id', async () => {
+    stubTransactionPassThrough();
+    const { seedDatabase } = require('../utils/khoiTaoDuLieuMau');
+    const { CAU_HINH_MAC_DINH } = require('../models/cauHinhHeThong.model');
+    const { ALLOWED_CONFIG_KEYS } = require('../services/heThong/cauHinhHeThong.service');
+
+    const seededConfigs = [];
+    const seededShifts = [];
+    const seededDepts = [];
+    const seededUsers = [];
+    const seededRoles = [];
+    let deptSeq = 1;
+    let userSeq = 1;
+
+    stub(models.CauHinhHeThong, 'findOrCreate', async ({ defaults }) => {
+      seededConfigs.push(defaults);
+      return [defaults, true];
+    });
+    stub(models.CaLamViec, 'findOrCreate', async ({ defaults }) => {
+      seededShifts.push(defaults);
+      return [defaults, true];
+    });
+    stub(models.PhongBan, 'findOrCreate', async ({ defaults }) => {
+      const dept = {
+        id: `d0000000-0000-4000-8000-00000000000${deptSeq++}`,
+        ...defaults,
+        truong_don_vi_id: null,
+        save: async () => dept,
+      };
+      seededDepts.push(dept);
+      return [dept, true];
+    });
+    stub(models.NguoiDung, 'findOrCreate', async ({ defaults }) => {
+      const user = { id: `u0000000-0000-4000-8000-00000000000${userSeq++}`, ...defaults };
+      seededUsers.push(user);
+      return [user, true];
+    });
+    stub(models.HoSoCanBo, 'findOrCreate', async ({ defaults }) => [defaults, true]);
+    stub(models.VaiTroNguoiDung, 'findOrCreate', async ({ defaults }) => {
+      seededRoles.push(defaults);
+      return [defaults, true];
+    });
+    stub(models.MonHoc, 'findOrCreate', async ({ defaults }) => [defaults, true]);
+    stub(models.NgayNghiLe, 'findOrCreate', async ({ defaults }) => [defaults, true]);
+
+    const res = await seedDatabase({ silent: true });
+    assert.equal(res.success, true);
+
+    assert.equal(seededConfigs.length, Object.keys(CAU_HINH_MAC_DINH).length);
+    for (const cfg of seededConfigs) {
+      assert.equal(ALLOWED_CONFIG_KEYS.has(cfg.khoa_cau_hinh), true);
+    }
+    assert.equal(seededConfigs.some((c) => c.khoa_cau_hinh === 'DON_GIA_GIO_VUOT'), false);
+    assert.equal(seededConfigs.some((c) => c.khoa_cau_hinh === 'CAMPUS_GEOFENCE'), false);
+
+    assert.ok(seededShifts.some((s) => s.ten_ca === 'Ca Hành chính'));
+
+    const cntt = seededDepts.find((d) => d.ten_phong_ban === 'Khoa Công nghệ Thông tin');
+    const cnpm = seededDepts.find((d) => d.ten_phong_ban === 'Bộ môn Công nghệ Phần mềm');
+    assert.equal(cnpm.don_vi_cha_id, cntt.id);
+    assert.ok(cntt.truong_don_vi_id);
+    assert.ok(cnpm.truong_don_vi_id);
+
+    assert.ok(seededUsers.some((u) => u.vai_tro_chinh === 'dao_tao'));
+    assert.ok(seededUsers.some((u) => u.vai_tro_chinh === 'pho_khoa'));
+    assert.ok(seededRoles.some((r) => r.ma_vai_tro === 'pho_khoa' && r.duoc_uy_quyen === true));
   });
 });

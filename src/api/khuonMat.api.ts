@@ -31,14 +31,22 @@ export interface FaceLandmarks {
   mouth_left: { x: number; y: number };
 }
 
+export interface FaceQualityInfo {
+  valid: boolean;
+  brightness: number;
+  blur_score: number;
+  contrast?: number;
+  reasons: string[];
+}
+
 export interface DetectPoseResponse {
   face_detected: boolean;
   faceCount?: number;
   bbox?: BoundingBox | null;
   pose?: HeadPose;
   landmarks?: FaceLandmarks | null;
-  liveness?: number | null;
-  quality?: number | null;
+  liveness?: number | { is_live?: boolean; score?: number } | null;
+  quality?: FaceQualityInfo | number | null;
   offline?: boolean;
   message?: string;
 }

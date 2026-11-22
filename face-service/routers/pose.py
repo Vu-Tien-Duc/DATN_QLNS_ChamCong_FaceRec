@@ -6,6 +6,7 @@ from typing import Annotated, Any, Dict
 from fastapi import APIRouter, File, UploadFile
 import numpy as np
 from services.face_engine import face_engine
+from services.liveness import FaceQualityChecker
 from services.pose_estimator import HeadPose3DEstimator
 
 router = APIRouter(tags=["Head Pose"])
@@ -30,6 +31,7 @@ async def detect_face_pose(image: Annotated[UploadFile, File()]) -> Dict[str, An
     box = [round(float(v), 2) for v in np.asarray(face["bbox"], dtype=np.float32).tolist()]
     kps = face.get("kps")
     pose_result = HeadPose3DEstimator.calculate_euler_angles(kps)
+    quality_result = FaceQualityChecker.check_quality(decoded, box)
 
     landmarks_dict = None
     if kps is not None and len(kps) >= 5:
@@ -54,4 +56,5 @@ async def detect_face_pose(image: Annotated[UploadFile, File()]) -> Dict[str, An
         "yaw": pose_result["yaw_deg"],
         "roll": pose_result["roll_deg"],
         "landmarks": landmarks_dict,
+        "quality": quality_result,
     }

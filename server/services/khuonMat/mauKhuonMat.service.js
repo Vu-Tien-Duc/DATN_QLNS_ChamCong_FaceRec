@@ -13,7 +13,7 @@ const { withDistributedLock } = require('../../utils/khoaPhanTan');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 const ServiceError = require('../../utils/loiNghiepVu');
 const { isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
-const { hasAnyActiveRole, UNIT_LEADER_ROLES } = require('../../utils/vaiTro.utils');
+const { hasAnyActiveRole, ROLES, UNIT_LEADER_ROLES } = require('../../utils/vaiTro.utils');
 const { detectImageSignature } = require('../../middlewares/taiAnhKhuonMat.middleware');
 const minioStorage = require('../../config/minio');
 const { extractFaceEmbedding, addFaissTemplate, removeFaissTemplate } = require('./ketNoiDichVuKhuonMat');
@@ -84,6 +84,14 @@ const assertCanManageFace = async (currentUser, targetUser, actionLabel = 'thao 
       `Bạn không thể tự ${actionLabel} khuôn mặt của chính mình. Vui lòng nhờ cấp trên thực hiện.`,
       403,
       'FACE_SELF_MANAGE_FORBIDDEN'
+    );
+  }
+
+  if (hasAnyActiveRole(targetUser, [ROLES.ADMIN])) {
+    throw new ServiceError(
+      `Tài khoản Quản trị viên hệ thống (Admin) chỉ thực hiện quản trị và không tham gia chấm công, không cần ${actionLabel} khuôn mặt.`,
+      403,
+      'FACE_ADMIN_EXEMPT'
     );
   }
 
@@ -333,6 +341,26 @@ const registerFaceImagesForUser = async ({ id, files, sampleAngles, aiModel, for
           ? 'có nhiều hơn một khuôn mặt lọt vào khung hình'
           : 'không trích xuất được vector chuẩn 512 chiều';
       throw new ServiceError(`Ảnh ${poseLabel} ${msg}. Vui lòng chụp lại riêng góc này.`, 400);
+    }
+
+    if (extraction.liveness && extraction.liveness.is_live === false) {
+      throw new ServiceError(
+        `Ảnh ${poseLabel} không vượt qua kiểm tra người thật (Liveness). Vui lòng chụp trực tiếp khuôn mặt thật.`,
+        400,
+        'SPOOF_DETECTED'
+      );
+    }
+
+    if (extraction.quality && extraction.quality.valid === false) {
+      const qualityReasons =
+        Array.isArray(extraction.quality.reasons) && extraction.quality.reasons.length > 0
+          ? extraction.quality.reasons.join('; ')
+          : 'ảnh mờ, thiếu sáng hoặc lệch khung hình';
+      throw new ServiceError(
+        `Ảnh ${poseLabel} chưa đạt chất lượng sinh trắc (${qualityReasons}). Vui lòng chụp lại rõ nét.`,
+        400,
+        'LOW_FACE_QUALITY'
+      );
     }
 
     descriptors.push(extraction.embedding);

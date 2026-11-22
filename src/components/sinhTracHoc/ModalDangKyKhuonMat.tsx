@@ -101,6 +101,29 @@ export const ANGLES_CONFIG: AngleConfigItem[] = [
 export const REQUIRED_HOLD_FRAMES = 4; // Giữ để tương thích
 export const HOLD_DURATION_MS = 1000; // Giữ ổn định liên tục 1.0 giây: Thời gian thực tế chuẩn để trích xuất đầy đủ 512D ArcFace vector và ảnh HD sắc nét
 
+export function getFaceQualityStatus(quality: any): { valid: boolean; shortLabel: string; message: string } {
+  if (!quality || typeof quality !== 'object') {
+    return { valid: true, shortLabel: '', message: '' };
+  }
+  if (quality.valid !== false) {
+    return { valid: true, shortLabel: '', message: '' };
+  }
+  const reason = Array.isArray(quality.reasons) && quality.reasons.length > 0
+    ? String(quality.reasons[0])
+    : 'Chất lượng ảnh chưa đạt chuẩn nhận diện';
+  let shortLabel = '⚠️ ẢNH CHƯA ĐẠT CHUẨN';
+  if (reason.toLowerCase().includes('tối') || reason.toLowerCase().includes('ngược sáng')) {
+    shortLabel = '⚠️ THIẾU SÁNG / NGƯỢC SÁNG';
+  } else if (reason.toLowerCase().includes('chói') || reason.toLowerCase().includes('lóa')) {
+    shortLabel = '⚠️ ÁNH SÁNG QUÁ CHÓI';
+  } else if (reason.toLowerCase().includes('mờ') || reason.toLowerCase().includes('tương phản')) {
+    shortLabel = '⚠️ ẢNH BỊ MỜ / THIẾU NÉT';
+  } else if (reason.toLowerCase().includes('nhỏ') || reason.toLowerCase().includes('xa')) {
+    shortLabel = '⚠️ ĐƯA MẶT LẠI GẦN HƠN';
+  }
+  return { valid: false, shortLabel, message: reason };
+}
+
 export function checkAngleTargetMet(
   stepIndex: number,
   _pose: string,
@@ -345,7 +368,7 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      const mode = initialMode || 'enroll';
+      const mode = initialMode === 'test' && !canTestRecognition ? 'enroll' : initialMode || 'enroll';
       setMainMode(mode);
       mainModeRef.current = mode;
       setTestResult(null);
@@ -473,6 +496,7 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
       isStepTransitioningRef.current = false;
       setStepSuccessFlash(null);
       setErrorMsg('');
+      setDuplicateConflict(null);
       setTestResult(null);
       setCurrentDetectedPose('Đang khởi tạo camera...');
       setTelemetry({
@@ -855,14 +879,19 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
 
     const allAnglesDone = ANGLES_CONFIG.every((a) => Boolean(capturedImagesRef.current[a.key]?.previewUrl));
     const currentAngleCaptured = Boolean(capturedImagesRef.current[currentAngle.key]?.previewUrl);
+    const hasMultipleFaces = Number(data.faceCount || 1) > 1;
+    const qualityStatus = getFaceQualityStatus(data.quality);
+    const isQualityValid = qualityStatus.valid && !hasMultipleFaces;
 
-    // Kiểm tra điều kiện góc mục tiêu và tính tiến trình chạy mượt mà 0% -> 100%
+    // Kiểm tra điều kiện góc mục tiêu, chất lượng ảnh và tính tiến trình chạy mượt mà 0% -> 100%
     let isTargetMet = false;
     let targetProgress = 0;
 
     if (isTestMode) {
       targetProgress = 0;
-      if (
+      if (hasMultipleFaces || !isQualityValid) {
+        testStableCountRef.current = 0;
+      } else if (
         !hasAutoTestedRef.current &&
         !isExecutingTestRef.current &&
         !isTestingRecognitionRef.current &&
@@ -878,6 +907,11 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
       targetProgress = 100;
       isTargetMet = true;
       holdStartTimeRef.current = null;
+    } else if (!isQualityValid) {
+      // Khung hình bị mờ, thiếu sáng, ngược sáng hoặc quá xa -> tạm dừng khóa vector để bảo đảm độ chính xác
+      isTargetMet = false;
+      holdStartTimeRef.current = null;
+      targetProgress = 0;
     } else if (autoScanEnabledRef.current && !isCapturingRef.current && !isStepTransitioningRef.current && initialWarmupRef.current) {
       const isCurrentlyHolding = holdStartTimeRef.current !== null;
       isTargetMet = checkAngleTargetMet(currentStepIndex, pose, yawDeg, pitchDeg, isCurrentlyHolding);
@@ -936,7 +970,9 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
       setFaceInFrame(true);
 
       let guidanceText = '';
-      if (isTestMode) {
+      if (hasMultipleFaces) {
+        guidanceText = '⚠️ Phát hiện nhiều khuôn mặt — vui lòng chỉ để 1 người trong khung hình';
+      } else if (isTestMode) {
         if (isTestingRecognitionRef.current || isExecutingTestRef.current) {
           guidanceText = '⚡ Đang đối soát vector sinh trắc học với CSDL RAM FAISS...';
         } else if (testResultRef.current?.khop_khuon_mat) {
@@ -994,9 +1030,12 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
       ? '#ef4444'
       : '#06b6d4';
     const isSuccessBorder = allAnglesDone || currentAngleCaptured || isTargetMet;
-    ctx.strokeStyle = isTestMode ? testColor : (isSuccessBorder ? '#10b981' : currentAngle.color);
+    const enrollFrameColor = !isQualityValid && !allAnglesDone && !currentAngleCaptured
+      ? '#f59e0b'
+      : (isSuccessBorder ? '#10b981' : currentAngle.color);
+    ctx.strokeStyle = isTestMode ? (!isQualityValid && !testResultRef.current ? '#f59e0b' : testColor) : enrollFrameColor;
     ctx.lineWidth = isTestMode ? 3.5 : (isSuccessBorder ? 3.5 : 2.5);
-    ctx.shadowColor = isTestMode ? testColor : (isSuccessBorder ? '#10b981' : currentAngle.color);
+    ctx.shadowColor = ctx.strokeStyle;
     ctx.shadowBlur = isTestMode ? 14 : (isSuccessBorder ? 14 : 8);
 
     // Góc trên-trái
@@ -1156,6 +1195,10 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
         badgeText = '✕ KHÔNG TRÙNG KHỚP';
         badgeBg = 'rgba(153, 27, 27, 0.95)';
         badgeBorder = '#ef4444';
+      } else if (!isQualityValid) {
+        badgeText = hasMultipleFaces ? '⚠️ NHIỀU KHUÔN MẶT' : qualityStatus.shortLabel;
+        badgeBg = 'rgba(120, 53, 15, 0.95)';
+        badgeBorder = '#f59e0b';
       } else {
         badgeText = '🎯 HƯỚNG MẶT ĐỂ KIỂM THỬ';
         badgeBg = 'rgba(15, 23, 42, 0.9)';
@@ -1165,8 +1208,10 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
       const isBadgeSuccess = allAnglesDone || currentAngleCaptured || isTargetMet;
       badgeBg = (allAnglesDone || currentAngleCaptured)
         ? 'rgba(6, 95, 70, 0.95)'
-        : (isTargetMet ? 'rgba(6, 95, 70, 0.95)' : 'rgba(15, 23, 42, 0.88)');
-      badgeBorder = isBadgeSuccess ? '#10b981' : currentAngle.color;
+        : !isQualityValid
+          ? 'rgba(120, 53, 15, 0.95)'
+          : (isTargetMet ? 'rgba(6, 95, 70, 0.95)' : 'rgba(15, 23, 42, 0.88)');
+      badgeBorder = isBadgeSuccess ? '#10b981' : (!isQualityValid ? '#f59e0b' : currentAngle.color);
 
       if (allAnglesDone) {
         badgeText = '🎉 ĐÃ ĐỦ 5/5 GÓC (DỪNG CHỤP)';
@@ -1176,6 +1221,8 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
         badgeBorder = '#10b981';
       } else if (currentAngleCaptured) {
         badgeText = `✓ ĐÃ KHÓA VECTOR GÓC ${currentAngle.label.split('. ')[1].toUpperCase()}`;
+      } else if (!isQualityValid) {
+        badgeText = hasMultipleFaces ? '⚠️ NHIỀU KHUÔN MẶT' : qualityStatus.shortLabel;
       } else if (isTargetMet) {
         if (holdProgress >= 100) {
           badgeText = `✓ ĐÃ TRÍCH XUẤT XONG (100%)`;
@@ -1234,6 +1281,21 @@ export const FaceRegistrationModal: React.FC<FaceRegistrationModalProps> = ({
   // Chụp ảnh góc hiện tại với độ nét cao HD (1280x720)
   const triggerCaptureCurrentAngle = () => {
     if (!videoRef.current || isCapturingRef.current) return;
+
+    if (Number(targetDataRef.current?.faceCount || 1) > 1) {
+      holdStartTimeRef.current = null;
+      smoothProgressRef.current = 0;
+      toast.error('Phát hiện nhiều khuôn mặt trong khung hình. Vui lòng chỉ để 1 người trước camera.');
+      return;
+    }
+
+    const latestQuality = getFaceQualityStatus(targetDataRef.current?.quality);
+    if (!latestQuality.valid) {
+      holdStartTimeRef.current = null;
+      smoothProgressRef.current = 0;
+      toast.error(latestQuality.message || 'Ảnh khuôn mặt chưa đủ nét hoặc thiếu sáng, vui lòng điều chỉnh lại trước khi chụp.');
+      return;
+    }
 
     const currentStepIndex = activeStepRef.current;
 

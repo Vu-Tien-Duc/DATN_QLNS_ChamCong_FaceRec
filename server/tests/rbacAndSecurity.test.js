@@ -63,6 +63,18 @@ describe('RBAC Permissions & Active Roles', () => {
     assert.equal(hasPermission(delegatedVice, PERMISSIONS.DON_TU_DUYET_CAP_1), true);
   });
 
+  it('cấp đủ quyền tự chấm công, giải trình và tạo/hủy đơn cho khối tccb, dao_tao, ke_toan (trừ admin và bgh)', () => {
+    for (const role of ['tccb', 'dao_tao', 'ke_toan']) {
+      const staff = { vai_tro_chinh: role, danh_sach_vai_tro: [] };
+      assert.equal(hasPermission(staff, PERMISSIONS.DON_TU_TAO), true, `${role} phải có DON_TU_TAO`);
+      assert.equal(hasPermission(staff, PERMISSIONS.DON_TU_HUY), true, `${role} phải có DON_TU_HUY`);
+      assert.equal(hasPermission(staff, PERMISSIONS.CONG_QUET_MAT), true, `${role} phải có CONG_QUET_MAT`);
+      assert.equal(hasPermission(staff, PERMISSIONS.CONG_GIAI_TRINH), true, `${role} phải có CONG_GIAI_TRINH`);
+    }
+    assert.equal(hasPermission({ vai_tro_chinh: 'bgh', danh_sach_vai_tro: [] }, PERMISSIONS.CONG_QUET_MAT), false);
+    assert.equal(hasPermission({ vai_tro_chinh: 'bgh', danh_sach_vai_tro: [] }, PERMISSIONS.DON_TU_TAO), false);
+  });
+
   it('loại trừ lịch gốc đã đổi ca sang giảng viên dạy thay và giữ nguyên bản ghi cho người dạy thay', () => {
     const ownerSchedule = {
       id: 'sch-1',

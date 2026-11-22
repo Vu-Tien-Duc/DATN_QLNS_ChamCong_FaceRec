@@ -545,6 +545,7 @@ const bulkUpdateConfigs = async (configs = [], currentUser = null, req = null) =
 module.exports = {
   SECRET_CONFIG_KEYS,
   ALLOWED_CONFIG_KEYS,
+  CANONICAL_CONFIG_META,
   maskSecretValue,
   isMaskedSecretPlaceholder,
   loadConfigsIntoCache,

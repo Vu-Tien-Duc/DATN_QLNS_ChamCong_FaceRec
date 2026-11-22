@@ -376,7 +376,17 @@ export const Payroll: React.FC = () => {
   );
 
   const canManagePayroll = useMemo(() => {
-    return hasRole(user, ['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']);
+    return hasRole(user, [
+      'admin',
+      'bgh',
+      'ke_toan',
+      'truong_khoa',
+      'pho_khoa',
+      'truong_bo_mon',
+      'pho_bo_mon',
+      'truong_phong',
+      'pho_phong',
+    ]);
   }, [user]);
 
   const canGeneratePayroll = useMemo(() => {
@@ -677,6 +687,39 @@ export const Payroll: React.FC = () => {
     }
   };
 
+  const handleMarkPayrollPaid = async (payrollId?: string) => {
+    const confirmMsg = payrollId
+      ? 'Xác nhận đánh dấu ĐÃ CHI TRẢ cho phiếu lương này? Sau khi chi trả, phiếu lương không thể mở khóa lại.'
+      : `Xác nhận đánh dấu ĐÃ CHI TRẢ cho các phiếu lương đã khóa sổ Tháng ${selectedMonth}/${selectedYear}?`;
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await payrollApi.markPayrollPaid({
+        id: payrollId,
+        thang: selectedMonth,
+        nam: selectedYear,
+        don_vi_id: !payrollId && selectedDepartment !== 'ALL' ? selectedDepartment : undefined,
+      });
+      toast.success(res?.thong_bao || 'Đã đánh dấu chi trả phiếu lương thành công!');
+      if (payrollId && selectedPayrollDetail?.id === payrollId) {
+        setSelectedPayrollDetail((prev) => (prev ? { ...prev, trang_thai: 'da_chi_tra' } : null));
+      }
+      await fetchData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể đánh dấu chi trả bảng lương.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const hasApprovedPayrolls = useMemo(
+    () => payrolls.some((p) => p.trang_thai === 'da_duyet'),
+    [payrolls]
+  );
+
   // Computed display stats
   const totalNet = summary?.tong_thuc_linh ?? payrolls.reduce((sum, p) => sum + (p.thuc_linh_net ?? p.thuc_linh ?? 0), 0);
   const totalGross = summary?.tong_thu_nhap ?? payrolls.reduce((sum, p) => sum + (p.tong_thu_nhap_gross ?? 0), 0);
@@ -746,6 +789,18 @@ export const Payroll: React.FC = () => {
                         type="button"
                       >
                         Mở khóa phần đã chốt
+                      </Button>
+                    )}
+                    {hasApprovedPayrolls && (
+                      <Button
+                        onClick={() => handleMarkPayrollPaid()}
+                        variant="outline"
+                        size="sm"
+                        disabled={isSubmitting}
+                        leftIcon={<CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+                        type="button"
+                      >
+                        Đánh dấu đã chi trả
                       </Button>
                     )}
                   </div>
@@ -1309,15 +1364,28 @@ export const Payroll: React.FC = () => {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
-              <button
-                type="button"
-                onClick={() => handlePrintPayslip(selectedPayrollDetail.id)}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
-              >
-                <Printer className="w-3.5 h-3.5 text-slate-500" />
-                <span>In Phiếu Lương</span>
-              </button>
+            <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50/50 shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePrintPayslip(selectedPayrollDetail.id)}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-500" />
+                  <span>In Phiếu Lương</span>
+                </button>
+                {canLockOrUnlock && selectedPayrollDetail.trang_thai === 'da_duyet' && (
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => handleMarkPayrollPaid(selectedPayrollDetail.id)}
+                    className="px-3.5 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Đánh dấu đã chi trả</span>
+                  </button>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedPayrollDetail(null)}

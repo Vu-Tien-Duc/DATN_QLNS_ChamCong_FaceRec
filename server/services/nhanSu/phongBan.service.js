@@ -21,6 +21,14 @@ const DEPT_LEADER_META = {
   phong_ban: { role: 'truong_phong', scope: 'phong_ban', fallbackRole: 'nhan_vien' },
 };
 
+const ACADEMIC_MANAGER_ROLES = new Set(['giang_vien', 'truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon']);
+const ADMIN_DEPT_MANAGER_ROLES = new Set(['nhan_vien', 'tccb', 'dao_tao', 'ke_toan', 'truong_phong', 'pho_phong']);
+
+const isBghDepartmentName = (name = '') => {
+  const lower = String(name || '').toLowerCase();
+  return lower.includes('giám hiệu') || lower.includes('hội đồng trường');
+};
+
 const getTodayVietnamDate = () =>
   new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Ho_Chi_Minh',
@@ -49,10 +57,28 @@ const syncDepartmentManager = async (deptId, newDeptType, newManagerId, oldManag
     });
 
     if (otherManagedCount === 0) {
-      await NguoiDung.update(
+      const [demotedCount] = await NguoiDung.update(
         { vai_tro_chinh: prevMeta.fallbackRole },
         { where: { id: oldManagerId, vai_tro_chinh: prevMeta.role }, ...txOpts }
       );
+      if (demotedCount > 0) {
+        const existingFallback = await VaiTroNguoiDung.findOne({
+          where: { nguoi_dung_id: oldManagerId, ma_vai_tro: prevMeta.fallbackRole, don_vi_id: deptId },
+          ...txOpts,
+        });
+        if (!existingFallback) {
+          await VaiTroNguoiDung.create(
+            {
+              nguoi_dung_id: oldManagerId,
+              ma_vai_tro: prevMeta.fallbackRole,
+              pham_vi: prevMeta.scope,
+              don_vi_id: deptId,
+              tu_ngay: getTodayVietnamDate(),
+            },
+            txOpts
+          );
+        }
+      }
     }
   }
 
@@ -63,15 +89,31 @@ const syncDepartmentManager = async (deptId, newDeptType, newManagerId, oldManag
     });
     if (userToUpdate && !getActiveUserRoles(userToUpdate).has('admin')) {
       const currentPrimaryRole = normalizeRole(userToUpdate.vai_tro_chinh);
-      const updates = {};
-      if (currentPrimaryRole !== 'bgh') {
-        updates.vai_tro_chinh = nextMeta.role;
+      // Cán bộ Ban Giám Hiệu (bgh) giữ nguyên vai trò BGH toàn trường, không gắn thêm vai trò truong_phong
+      if (currentPrimaryRole === 'bgh') {
+        return;
       }
-      if (!userToUpdate.don_vi_chinh_id || (currentPrimaryRole !== 'bgh' && String(userToUpdate.don_vi_chinh_id) !== String(deptId))) {
+
+      const previousDeptId = userToUpdate.don_vi_chinh_id || null;
+      const updates = { vai_tro_chinh: nextMeta.role };
+      if (!previousDeptId || String(previousDeptId) !== String(deptId)) {
         updates.don_vi_chinh_id = deptId;
       }
-      if (Object.keys(updates).length > 0) {
-        await userToUpdate.update(updates, txOpts);
+      await userToUpdate.update(updates, txOpts);
+
+      // Thu hồi dòng vai trò chính cũ nếu chuyển vai trò hoặc chuyển trong phạm vi Khoa <-> Bộ môn trực thuộc
+      if (
+        currentPrimaryRole &&
+        (currentPrimaryRole !== nextMeta.role || String(previousDeptId || '') !== String(deptId))
+      ) {
+        await VaiTroNguoiDung.destroy({
+          where: {
+            nguoi_dung_id: newManagerId,
+            ma_vai_tro: currentPrimaryRole,
+            don_vi_id: previousDeptId,
+          },
+          ...txOpts,
+        });
       }
 
       const existingRole = await VaiTroNguoiDung.findOne({
@@ -134,8 +176,14 @@ const validateDepartmentHierarchy = async (loaiDonVi, donViChaId) => {
   return 'Loại đơn vị không hợp lệ. Chỉ chấp nhận khoa, bo_mon hoặc phong_ban.';
 };
 
-// Kiểm tra điều kiện bổ nhiệm người phụ trách đơn vị (không cho Admin hoặc kiêm nhiệm nhiều Khoa)
-const validateManagerEligibility = async (truongDonViId, loaiDonVi, currentDeptId = null, transaction = null) => {
+// Kiểm tra điều kiện bổ nhiệm người phụ trách đơn vị (nội bộ đúng đơn vị, đúng khối, không kiêm nhiệm nhiều đơn vị)
+const validateManagerEligibility = async (
+  truongDonViId,
+  loaiDonVi,
+  currentDeptId = null,
+  transaction = null,
+  options = {}
+) => {
   if (!truongDonViId) return null;
   if (!isValidUuid(truongDonViId)) {
     return 'ID người quản lý (truong_don_vi_id) không đúng định dạng UUID.';
@@ -155,35 +203,74 @@ const validateManagerEligibility = async (truongDonViId, loaiDonVi, currentDeptI
 
   const managerActiveRoles = getActiveUserRoles(manager);
   const managerRole = normalizeRole(manager.vai_tro_chinh);
+  const managerName = manager.ho_ten || 'Cán bộ';
   if (managerActiveRoles.has('admin')) {
     return 'Tài khoản Quản trị viên (Admin) không thể được bổ nhiệm làm Trưởng khoa hay người phụ trách đơn vị.';
   }
 
-  const managerName = manager.ho_ten || 'Cán bộ';
-  if (loaiDonVi === 'khoa') {
-    const count = await PhongBan.count({
-      where: {
-        truong_don_vi_id: truongDonViId,
-        loai_don_vi: 'khoa',
-        ...(currentDeptId ? { id: { [Op.ne]: currentDeptId } } : {}),
-      },
-      ...txOpts,
-    });
-    if (count > 0) {
-      return `Giảng viên "${managerName}" hiện đã là Trưởng khoa của một Khoa khác. Một cán bộ không thể kiêm nhiệm Trưởng khoa của nhiều Khoa cùng lúc.`;
+  // 1. Kiểm tra tương thích khối công tác (học thuật vs hành chính)
+  const deptName = options.deptName || '';
+  if (loaiDonVi === 'khoa' || loaiDonVi === 'bo_mon') {
+    if (!ACADEMIC_MANAGER_ROLES.has(managerRole)) {
+      return `Cán bộ "${managerName}" thuộc khối hành chính/chức năng, không thể bổ nhiệm làm ${loaiDonVi === 'khoa' ? 'Trưởng Khoa' : 'Trưởng Bộ môn'}.`;
     }
-  } else if (managerRole === 'truong_khoa' || managerActiveRoles.has('truong_khoa')) {
-    const facultyCount = await PhongBan.count({
-      where: {
-        truong_don_vi_id: truongDonViId,
-        loai_don_vi: 'khoa',
-        ...(currentDeptId ? { id: { [Op.ne]: currentDeptId } } : {}),
-      },
-      ...txOpts,
-    });
-    if (facultyCount > 0) {
-      return `Người dùng "${managerName}" đang là Trưởng khoa của một Khoa khác, không thể kiêm nhiệm phụ trách Phòng ban hoặc Bộ môn.`;
+  } else if (loaiDonVi === 'phong_ban') {
+    const isBghUnit = isBghDepartmentName(deptName);
+    if (isBghUnit) {
+      if (managerRole !== 'bgh') {
+        return `Đơn vị Ban Giám Hiệu chỉ cho phép chọn Lãnh đạo có vai trò Ban Giám Hiệu (BGH) làm người đứng đầu.`;
+      }
+    } else if (!ADMIN_DEPT_MANAGER_ROLES.has(managerRole)) {
+      return `Cán bộ "${managerName}" không thuộc khối phòng ban/chức năng, không thể bổ nhiệm làm Trưởng Phòng ban. Vui lòng điều chuyển đơn vị & vai trò tại mục Quản lý Người dùng trước.`;
     }
+  }
+
+  // 2. Kiểm tra người được bổ nhiệm phải trực thuộc nội bộ đơn vị (cấm "bốc" người từ đơn vị khác sang)
+  const managerDeptId = manager.don_vi_chinh_id ? String(manager.don_vi_chinh_id) : null;
+  const parentDeptId = options.parentDeptId ? String(options.parentDeptId) : null;
+
+  if (!currentDeptId) {
+    // Đang TẠO MỚI đơn vị
+    if (loaiDonVi === 'khoa' || loaiDonVi === 'phong_ban') {
+      return 'Đơn vị mới tạo chưa có nhân sự trực thuộc. Vui lòng tạo đơn vị trước (để trống người phụ trách), phân bổ nhân sự vào đơn vị rồi mới bổ nhiệm Trưởng đơn vị.';
+    }
+    if (loaiDonVi === 'bo_mon') {
+      if (!parentDeptId || managerDeptId !== parentDeptId) {
+        return `Cán bộ "${managerName}" không thuộc Khoa trực thuộc của Bộ môn mới này. Chỉ có thể bổ nhiệm giảng viên thuộc Khoa cha hoặc để trống bổ nhiệm sau.`;
+      }
+    }
+  } else {
+    // Đang CẬP NHẬT đơn vị đã tồn tại
+    const allowedDeptIds = new Set([String(currentDeptId)]);
+    if (loaiDonVi === 'khoa') {
+      const childBomons = await PhongBan.findAll({
+        where: { don_vi_cha_id: currentDeptId },
+        attributes: ['id'],
+        ...txOpts,
+      });
+      for (const child of childBomons) {
+        if (child?.id) allowedDeptIds.add(String(child.id));
+      }
+    } else if (loaiDonVi === 'bo_mon' && parentDeptId) {
+      allowedDeptIds.add(parentDeptId);
+    }
+
+    if (!managerDeptId || !allowedDeptIds.has(managerDeptId)) {
+      return `Cán bộ "${managerName}" hiện đang công tác tại đơn vị khác, không thể bổ nhiệm phụ trách đơn vị này. Vui lòng điều chuyển đơn vị công tác của cán bộ tại mục Quản lý Người dùng trước.`;
+    }
+  }
+
+  // 3. Cấm kiêm nhiệm Trưởng đơn vị ở nhiều đơn vị cùng lúc (Khoa, Bộ môn hoặc Phòng ban khác)
+  const otherManagedDept = await PhongBan.findOne({
+    where: {
+      truong_don_vi_id: truongDonViId,
+      ...(currentDeptId ? { id: { [Op.ne]: currentDeptId } } : {}),
+    },
+    attributes: ['id', 'ten_phong_ban', 'loai_don_vi'],
+    ...txOpts,
+  });
+  if (otherManagedDept) {
+    return `Cán bộ "${managerName}" hiện đang là Trưởng đơn vị của "${otherManagedDept.ten_phong_ban}". Vui lòng miễn nhiệm ở đơn vị cũ trước khi bổ nhiệm mới.`;
   }
 
   return null;
@@ -223,6 +310,7 @@ const formatDepartmentDoc = (d, countMaps = null) => {
 
   const idStr = raw.id ? String(raw.id) : '';
   const memberCount = countMaps?.userCounts?.get(idStr) ?? 0;
+  const totalMemberCount = countMaps?.totalUserCounts?.get(idStr) ?? memberCount;
   const subjectCount = countMaps?.subjectCounts?.get(idStr) ?? 0;
 
   return {
@@ -238,22 +326,31 @@ const formatDepartmentDoc = (d, countMaps = null) => {
     toa_do: { vi_do: viDo, kinh_do: kinhDo },
     ban_kinh_met: banKinhMet,
     so_luong_thanh_vien: memberCount,
+    tong_so_thanh_vien: totalMemberCount,
     so_luong_mon_hoc: subjectCount,
     tao_luc: raw.tao_luc,
     cap_nhat_luc: raw.cap_nhat_luc,
   };
 };
 
-// Thống kê số lượng nhân sự đang làm việc và môn học theo từng đơn vị
+// Thống kê số lượng nhân sự đang hoạt động, tổng nhân sự gắn FK và môn học theo từng đơn vị
 const fetchDepartmentStatsMaps = async () => {
   try {
-    const [userAgg, subjectAgg] = await Promise.all([
+    const [activeUserAgg, totalUserAgg, subjectAgg] = await Promise.all([
       NguoiDung.findAll({
         attributes: ['don_vi_chinh_id', [sequelize.fn('COUNT', sequelize.col('id')), 'cnt']],
         where: {
           don_vi_chinh_id: { [Op.ne]: null },
           kich_hoat: true,
           trang_thai_lam_viec: { [Op.ne]: 'da_nghi_viec' },
+        },
+        group: ['don_vi_chinh_id'],
+        raw: true,
+      }),
+      NguoiDung.findAll({
+        attributes: ['don_vi_chinh_id', [sequelize.fn('COUNT', sequelize.col('id')), 'cnt']],
+        where: {
+          don_vi_chinh_id: { [Op.ne]: null },
         },
         group: ['don_vi_chinh_id'],
         raw: true,
@@ -266,12 +363,13 @@ const fetchDepartmentStatsMaps = async () => {
       }),
     ]);
 
-    const userCounts = new Map(userAgg.map((i) => [String(i.don_vi_chinh_id), Number(i.cnt)]));
+    const userCounts = new Map(activeUserAgg.map((i) => [String(i.don_vi_chinh_id), Number(i.cnt)]));
+    const totalUserCounts = new Map(totalUserAgg.map((i) => [String(i.don_vi_chinh_id), Number(i.cnt)]));
     const subjectCounts = new Map(subjectAgg.map((i) => [String(i.phong_ban_id), Number(i.cnt)]));
-    return { userCounts, subjectCounts };
+    return { userCounts, totalUserCounts, subjectCounts };
   } catch (err) {
     console.error('[DepartmentService] fetchDepartmentStatsMaps error:', err.message);
-    return { userCounts: new Map(), subjectCounts: new Map() };
+    return { userCounts: new Map(), totalUserCounts: new Map(), subjectCounts: new Map() };
   }
 };
 
@@ -283,10 +381,7 @@ const buildDepartmentTree = (departments, parentId = null, visited = new Set(), 
   const targetParentId = parentId ? String(parentId) : null;
 
   for (const dept of departments) {
-    const rawParent = dept.don_vi_cha_id;
-    const deptParentId = rawParent && typeof rawParent === 'object'
-      ? (rawParent.id ? String(rawParent.id) : null)
-      : (rawParent ? String(rawParent) : null);
+    const deptParentId = dept.don_vi_cha_id ? String(dept.don_vi_cha_id) : null;
 
     if (deptParentId === targetParentId) {
       const deptIdStr = String(dept.id);
@@ -416,14 +511,25 @@ const parseCoordinatesAndRadius = (body = {}, current = null) => {
     result.kinh_do = null;
   }
 
+  const currentLat = current?.vi_do !== null && current?.vi_do !== undefined ? Number(current.vi_do) : null;
+  const currentLng = current?.kinh_do !== null && current?.kinh_do !== undefined ? Number(current.kinh_do) : null;
+  const finalLat = hasLat ? result.vi_do : currentLat;
+  const finalLng = hasLng ? result.kinh_do : currentLng;
+  if ((finalLat === null) !== (finalLng === null)) {
+    throw new ServiceError(
+      'Vui lòng cung cấp đầy đủ cả Vĩ độ (vi_do) và Kinh độ (kinh_do), hoặc để trống cả hai để kế thừa tọa độ mặc định của trường.',
+      400
+    );
+  }
+
   if (hasRadius) {
     const rawRadius = body.ban_kinh_met;
     if (rawRadius === '' || rawRadius === null) {
       result.ban_kinh_met = 200;
     } else {
       const radiusNum = Number(rawRadius);
-      if (!Number.isFinite(radiusNum) || radiusNum <= 0) {
-        throw new ServiceError('Bán kính geofence (ban_kinh_met) phải là số dương lớn hơn 0.', 400);
+      if (!Number.isFinite(radiusNum) || radiusNum < 10 || radiusNum > 5000) {
+        throw new ServiceError('Bán kính geofence (ban_kinh_met) phải nằm trong khoảng 10 đến 5000 mét.', 400);
       }
       result.ban_kinh_met = Math.round(radiusNum);
     }
@@ -471,7 +577,13 @@ const createDepartment = async (payload) => {
       throw new ServiceError(`Đơn vị mang tên "${trimmedName}" đã tồn tại trong cùng cấp phân cấp.`, 409);
     }
 
-    const managerError = await validateManagerEligibility(truong_don_vi_id, loai_don_vi, null, transaction);
+    const managerError = await validateManagerEligibility(
+      truong_don_vi_id,
+      loai_don_vi,
+      null,
+      transaction,
+      { parentDeptId: normalizedParentId, deptName: trimmedName }
+    );
     if (managerError) throw new ServiceError(managerError, 400);
 
     newDept = await PhongBan.create(
@@ -540,16 +652,6 @@ const updateDepartment = async ({ id, body = {}, actorId, ipAddress }) => {
     if (hierarchyError) throw new ServiceError(hierarchyError, 400);
   }
 
-  if (nextType !== 'khoa') {
-    const childCount = await PhongBan.count({ where: { don_vi_cha_id: id } });
-    if (childCount > 0) {
-      throw new ServiceError(
-        `Không thể chuyển đổi loại đơn vị vì đang có ${childCount} đơn vị con trực thuộc.`,
-        400
-      );
-    }
-  }
-
   const nextName = ten_phong_ban !== undefined ? String(ten_phong_ban).trim() : existingDept.ten_phong_ban;
   if (!nextName || nextName.length > 150) {
     throw new ServiceError('Tên đơn vị không hợp lệ (1 - 150 ký tự).', 400);
@@ -560,8 +662,41 @@ const updateDepartment = async ({ id, body = {}, actorId, ipAddress }) => {
 
   const oldManagerId = existingDept.truong_don_vi_id;
   const oldDeptType = existingDept.loai_don_vi;
+  const isChangingBlock = (oldDeptType === 'phong_ban') !== (nextType === 'phong_ban');
 
   await runInTransaction(async (transaction) => {
+    if (nextType !== 'khoa') {
+      const childCount = await PhongBan.count({ where: { don_vi_cha_id: id }, transaction });
+      if (childCount > 0) {
+        throw new ServiceError(
+          `Không thể chuyển đổi loại đơn vị vì đang có ${childCount} đơn vị con trực thuộc.`,
+          400,
+          'DEPARTMENT_HAS_CHILDREN'
+        );
+      }
+    }
+
+    if (isChangingBlock) {
+      const [memberCount, subjectCount] = await Promise.all([
+        NguoiDung.count({ where: { don_vi_chinh_id: id }, transaction }),
+        MonHoc.count({ where: { phong_ban_id: id }, transaction }),
+      ]);
+      if (memberCount > 0) {
+        throw new ServiceError(
+          `Không thể chuyển đổi loại đơn vị chéo khối vì đang có ${memberCount} nhân sự gắn với đơn vị này. Vui lòng điều chuyển nhân sự trước.`,
+          400,
+          'DEPARTMENT_HAS_MEMBERS'
+        );
+      }
+      if (subjectCount > 0) {
+        throw new ServiceError(
+          `Không thể chuyển đổi loại đơn vị chéo khối vì đang có ${subjectCount} môn học thuộc đơn vị này. Vui lòng chuyển môn học sang khoa/bộ môn khác trước.`,
+          400,
+          'DEPARTMENT_HAS_SUBJECTS'
+        );
+      }
+    }
+
     if (ten_phong_ban !== undefined || don_vi_cha_id !== undefined) {
       const duplicate = await PhongBan.findOne({
         where: {
@@ -576,8 +711,14 @@ const updateDepartment = async ({ id, body = {}, actorId, ipAddress }) => {
       }
     }
 
-    if (truong_don_vi_id !== undefined || loai_don_vi !== undefined) {
-      const managerError = await validateManagerEligibility(nextManager, nextType, id, transaction);
+    if (truong_don_vi_id !== undefined || loai_don_vi !== undefined || don_vi_cha_id !== undefined) {
+      const managerError = await validateManagerEligibility(
+        nextManager,
+        nextType,
+        id,
+        transaction,
+        { parentDeptId: nextParent, deptName: nextName }
+      );
       if (managerError) throw new ServiceError(managerError, 400);
     }
 

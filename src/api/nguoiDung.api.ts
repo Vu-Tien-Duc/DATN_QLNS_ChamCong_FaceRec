@@ -5,6 +5,7 @@ import {
   CreateUserPayload,
   UpdateUserPayload,
   DepartmentItem,
+  ImportUsersExcelResult,
 } from '../types';
 
 export interface UserListResponse {
@@ -45,6 +46,18 @@ export const userApi = {
   },
 
   /**
+   * 3b. Thêm nhanh hàng loạt nhân sự từ Excel (Admin / BGH / TCCB)
+   */
+  importUsersExcel: async (
+    danh_sach: CreateUserPayload[]
+  ): Promise<ApiResponse<ImportUsersExcelResult>> => {
+    const res = await apiClient.post<ApiResponse<ImportUsersExcelResult>>('/nguoi-dung/nhap-excel', {
+      danh_sach,
+    });
+    return res.data;
+  },
+
+  /**
    * 4. Cập nhật thông tin hồ sơ nhân sự (Admin / BGH / TCCB / Trưởng khoa)
    */
   updateUser: async (id: string, payload: UpdateUserPayload): Promise<ApiResponse<UserProfile>> => {
@@ -75,22 +88,6 @@ export const userApi = {
     const res = await apiClient.get<ApiResponse<DepartmentItem[]>>('/phong-ban', {
       params: { cay: 'false' },
     });
-    return res.data;
-  },
-
-  /**
-   * 8. Tải lên ảnh đại diện (Avatar) lên MinIO Object Storage
-   */
-  uploadAvatar: async (file: File): Promise<ApiResponse<{ ten_tep: string; duong_dan_tep: string; duong_dan_day_du: string }>> => {
-    const formData = new FormData();
-    formData.append('avatar', file);
-    const res = await apiClient.post<ApiResponse<{ ten_tep: string; duong_dan_tep: string; duong_dan_day_du: string }>>(
-      '/tai-tep',
-      formData,
-      {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      }
-    );
     return res.data;
   },
 };

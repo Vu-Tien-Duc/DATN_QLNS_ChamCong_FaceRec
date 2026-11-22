@@ -263,9 +263,12 @@ export const AttendanceMe: React.FC = () => {
       try {
         const cfg = await attendanceApi.getCampusConfig();
         if (cfg && active) {
-          if (typeof cfg.lat === 'number') targetLat = cfg.lat;
-          if (typeof cfg.lng === 'number') targetLng = cfg.lng;
-          if (cfg.name) setCampusName(cfg.name);
+          const cfgLat = cfg.lat ?? cfg.vi_do;
+          const cfgLng = cfg.lng ?? cfg.kinh_do;
+          const cfgName = cfg.name || cfg.ten_co_so;
+          if (typeof cfgLat === 'number') targetLat = cfgLat;
+          if (typeof cfgLng === 'number') targetLng = cfgLng;
+          if (cfgName) setCampusName(cfgName);
         }
       } catch {
         // Fallback sang tọa độ mặc định GEOFENCE_TRUONG

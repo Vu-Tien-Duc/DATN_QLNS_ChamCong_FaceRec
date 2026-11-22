@@ -5,7 +5,6 @@ const {
   LuotQuetChamCong,
   DonNghiPhep,
   LichTrinh,
-  LichTrinhTuan,
   NgoaiLeLichTrinh,
   NgayNghiLe,
   CaLamViec,
@@ -214,14 +213,13 @@ const getNotifications = async ({ nguoi_dung_id, thoi_diem_doc_gan_nhat }) => {
     }
   }
 
-  // 3. Thông báo lịch giảng dạy hôm nay (xét tuần học, ngày nghỉ lễ và ngoại lệ nghỉ/hủy/dạy bù/đổi ca)
+  // 3. Thông báo lịch giảng dạy hôm nay (xét ngày nghỉ lễ và ngoại lệ nghỉ/hủy/dạy bù/đổi ca)
   const now = new Date();
   const nowVN = getVietnamTime(now);
   const { startOfDay, dateStr } = getVietnamDayRange(nowVN);
 
   const scheduleIncludes = [
     { model: CaLamViec, as: 'ca', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc'] },
-    { model: LichTrinhTuan, as: 'tuan_hoc', attributes: ['tuan_thu'] },
     { model: NgoaiLeLichTrinh, as: 'ngoai_le' },
   ];
 

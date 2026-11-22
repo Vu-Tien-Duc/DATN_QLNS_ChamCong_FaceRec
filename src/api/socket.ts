@@ -44,9 +44,10 @@ export function getSocket(): Socket {
 export function updateSocketAuthToken(token: string) {
   if (socketInstance) {
     socketInstance.auth = { token };
-    if (!socketInstance.connected) {
-      socketInstance.connect();
+    if (socketInstance.connected) {
+      socketInstance.disconnect();
     }
+    socketInstance.connect();
   }
 }
 

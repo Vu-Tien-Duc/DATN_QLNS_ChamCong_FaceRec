@@ -653,5 +653,43 @@ describe('Luồng 6 - Integration Express Routes, RBAC, Optimistic Locking & Gi�
     });
     assert.equal(rConflict.status, 409);
     assert.equal(rConflict.body.errorCode, 'OPTIMISTIC_LOCK_CONFLICT');
+
+    // 4. Chặn ngày dạy bù rơi vào quá khứ và Chủ nhật
+    stub(models.NgayNghiLe, 'findAll', async () => []);
+    const rPastMakeup = await dispatchExpress(app, {
+      method: 'POST',
+      url: '/api/don-nghi-phep',
+      headers: { Authorization: `Bearer ${gvToken}` },
+      jsonBody: {
+        loai_don: 'day_bu',
+        ly_do: 'Dạy bù lịch đã lỡ',
+        ngay_bat_dau: '2099-09-07',
+        ngay_ket_thuc: '2099-09-07',
+        lich_trinh_id: SCH_1,
+        ngay_day_bu: '2020-01-06',
+      },
+    });
+    assert.equal(rPastMakeup.status, 400);
+    assert.equal(rPastMakeup.body.errorCode, 'PAST_MAKEUP_DATE');
+
+    const rSundayMakeup = await dispatchExpress(app, {
+      method: 'POST',
+      url: '/api/don-nghi-phep',
+      headers: { Authorization: `Bearer ${gvToken}` },
+      jsonBody: {
+        loai_don: 'day_bu',
+        ly_do: 'Dạy bù Chủ nhật',
+        ngay_bat_dau: '2099-09-07',
+        ngay_ket_thuc: '2099-09-07',
+        lich_trinh_id: SCH_1,
+        ngay_day_bu: '2099-09-06', // 2099-09-06 là Chủ nhật
+      },
+    });
+    assert.equal(rSundayMakeup.status, 400);
+    assert.equal(rSundayMakeup.body.errorCode, 'INVALID_MAKEUP_DATE');
+
+    // 5. Hỗ trợ trạng thái pending_dean trong danh sách chờ duyệt
+    const { PENDING_LEAVE_STATUSES } = require('../services/donNghiPhep/tinhPhepNam.helper');
+    assert.equal(PENDING_LEAVE_STATUSES.includes('pending_dean'), true);
   });
 });

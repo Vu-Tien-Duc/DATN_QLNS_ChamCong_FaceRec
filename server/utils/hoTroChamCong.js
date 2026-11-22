@@ -1,8 +1,6 @@
 // Tiện ích sinh trắc học khuôn mặt, định vị GPS/IP nội bộ trường và mã QR động chấm công.
 
-const fs = require('fs');
 const net = require('net');
-const path = require('path');
 const crypto = require('crypto');
 const User = require('../models/nguoiDung.model');
 const FaceTemplate = require('../models/mauKhuonMat.model');
@@ -267,58 +265,13 @@ const findBestFaceMatch = (descriptor, usersWithFace, threshold = FACE_MATCH_THR
 
 // Hàng rào địa lý GPS và mạng nội bộ
 
-const CAMPUS_CONFIG_FILE = path.join(__dirname, '../config/campus_config.json');
-
-// Đọc cấu hình khuôn viên trường từ tệp campus_config.json hoặc biến môi trường
-const loadPersistedCampusConfig = () => {
-  const defaultConfig = {
-    name: process.env.CAMPUS_NAME || 'Khuôn viên Cơ sở chính - Trường Đại học',
-    lat: Number(process.env.CAMPUS_LAT || '20.965483'),
-    lng: Number(process.env.CAMPUS_LNG || '105.729905'),
-    radiusMeters: Number(process.env.CAMPUS_RADIUS_METERS || '500'),
-  };
-  if (!fs.existsSync(CAMPUS_CONFIG_FILE)) {
-    return defaultConfig;
-  }
-
-  const data = JSON.parse(fs.readFileSync(CAMPUS_CONFIG_FILE, 'utf8'));
-  if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    throw new Error('[Geofence] campus_config.json phải chứa một đối tượng cấu hình.');
-  }
-
-  const config = {
-    name: data.name === undefined ? defaultConfig.name : String(data.name).trim(),
-    lat: data.lat === undefined ? defaultConfig.lat : Number(data.lat),
-    lng: data.lng === undefined ? defaultConfig.lng : Number(data.lng),
-    radiusMeters: data.radiusMeters === undefined ? defaultConfig.radiusMeters : Number(data.radiusMeters),
-  };
-  if (
-    !config.name ||
-    !Number.isFinite(config.lat) ||
-    config.lat < -90 ||
-    config.lat > 90 ||
-    !Number.isFinite(config.lng) ||
-    config.lng < -180 ||
-    config.lng > 180 ||
-    !Number.isInteger(config.radiusMeters) ||
-    config.radiusMeters < 1 ||
-    config.radiusMeters > 100000
-  ) {
-    throw new Error('[Geofence] Giá trị trong campus_config.json không hợp lệ.');
-  }
-  return config;
+// Cấu hình mặc định khuôn viên trường từ biến môi trường (fallback khi DB CauHinhHeThong chưa nạp)
+const CAMPUS_CONFIG = {
+  name: process.env.CAMPUS_NAME || 'Khuôn viên Cơ sở chính - Trường Đại học',
+  lat: Number(process.env.CAMPUS_LAT || '20.965483'),
+  lng: Number(process.env.CAMPUS_LNG || '105.729905'),
+  radiusMeters: Number(process.env.CAMPUS_RADIUS_METERS || '500'),
 };
-
-// Lưu cấu hình khuôn viên trường xuống tệp campus_config.json
-const savePersistedCampusConfig = (cfg) => {
-  try {
-    fs.writeFileSync(CAMPUS_CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf8');
-  } catch {
-    // Không bắt buộc ghi file vì đã có Collection SystemConfig và .env
-  }
-};
-
-const CAMPUS_CONFIG = loadPersistedCampusConfig();
 
 // Tính khoảng cách theo mét giữa 2 tọa độ GPS (công thức Haversine)
 const calculateDistanceMeters = (lat1, lon1, lat2, lon2) => {
@@ -759,7 +712,6 @@ const updateCampusConfig = (newConfig = {}) => {
     updatedConfig.radiusMeters = radius;
   }
 
-  savePersistedCampusConfig(updatedConfig);
   Object.assign(CAMPUS_CONFIG, updatedConfig);
   return { ...CAMPUS_CONFIG };
 };

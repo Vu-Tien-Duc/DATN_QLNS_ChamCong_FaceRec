@@ -52,7 +52,7 @@ import { shiftApi } from '../../api/caLamViec.api';
 import { holidayApi, HolidayItem } from '../../api/ngayNghiLe.api';
 import { apiClient, extractArray } from '../../api/apiClient';
 import { DepartmentItem, ShiftItem } from '../../types/index';
-import { isAdmin as checkIsAdmin, hasRole, canApproveLevel1 } from '../../utils/phanQuyen';
+import { isAdmin as checkIsAdmin, hasRole, canApproveLevel1, getUserRoles } from '../../utils/phanQuyen';
 import { useSocketEvent } from '../../api/socket';
 import { formatDateVN, formatDateTimeVN } from '../../utils/dinhDang';
 import { ModalPheDuyetDon } from './components/ModalPheDuyetDon';
@@ -190,6 +190,7 @@ function getLeaveStatusMeta(status?: string) {
   const norm = (status || '').toLowerCase();
   switch (norm) {
     case 'pending':
+    case 'pending_dean':
       return {
         label: 'Chờ Cấp 1 (Khoa)',
         badgeClass: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-300 dark:border-amber-800',
@@ -242,10 +243,10 @@ export const LeaveRequests: React.FC = () => {
   const { user } = useAuthStore();
   const currentUserId = user?.id;
 
-  // Quyền Admin IT, quyền nộp đơn (theo permissions.js: không cấp cho admin/bgh/tccb/dao_tao/ke_toan) & thẩm quyền xét duyệt
+  // Quyền Admin IT, quyền nộp đơn (theo permissions.js: trừ admin và bgh, mọi nhân sự đều có thể gửi đơn/giải trình) & thẩm quyền xét duyệt
   const isAdmin = useMemo(() => checkIsAdmin(user), [user]);
   const canCreateLeave = useMemo(
-    () => !hasRole(user, ['admin', 'bgh', 'tccb', 'dao_tao', 'ke_toan']),
+    () => !hasRole(user, ['admin', 'bgh']),
     [user]
   );
   const isBghOrAdminApprover = useMemo(() => hasRole(user, ['admin', 'bgh']), [user]);
@@ -351,16 +352,18 @@ export const LeaveRequests: React.FC = () => {
       const applicant = req.nguoi_dung;
       const applicantId = applicant?.id || req.nguoi_dung_id;
       if (applicantId === currentUserId) return false;
-      const applicantRole = String(applicant?.vai_tro_chinh || '').trim().toLowerCase();
+      const applicantRoles = applicant ? getUserRoles(applicant as any) : new Set<string>();
       const st = req.trang_thai || '';
       if (st === 'pending_bgh') {
         if (!isBghOrHrApprover) return false;
-        if (!isBghOrAdminApprover && ['admin', 'bgh'].includes(applicantRole)) return false;
+        if (!isBghOrAdminApprover && (applicantRoles.has('admin') || applicantRoles.has('bgh'))) return false;
         return true;
       }
-      if (st === 'pending') {
+      if (st === 'pending' || st === 'pending_dean') {
         if (!isUnitApprover) return false;
-        if (!isBghOrHrApprover && ['truong_khoa', 'admin', 'bgh'].includes(applicantRole)) return false;
+        if (!isBghOrHrApprover && (applicantRoles.has('truong_khoa') || applicantRoles.has('admin') || applicantRoles.has('bgh'))) {
+          return false;
+        }
         return true;
       }
       return false;
@@ -376,10 +379,10 @@ export const LeaveRequests: React.FC = () => {
       const isBghOrAdmin = hasRole(user, ['admin', 'bgh']);
       const st = req.trang_thai || '';
       if (isBghOrAdmin) {
-        return ['pending', 'pending_bgh', 'approved'].includes(st);
+        return ['pending', 'pending_dean', 'pending_bgh', 'approved'].includes(st);
       }
       if (!isOwner) return false;
-      if (['pending', 'pending_bgh'].includes(st)) return true;
+      if (['pending', 'pending_dean', 'pending_bgh'].includes(st)) return true;
       if (st === 'approved' && req.ngay_bat_dau) {
         return String(req.ngay_bat_dau).slice(0, 10) > toLocalIsoDate(new Date());
       }
@@ -517,7 +520,7 @@ export const LeaveRequests: React.FC = () => {
 
   const metrics = useMemo(() => {
     const totalMonth = leaveRequests.length;
-    const step1Count = leaveRequests.filter((r) => r.trang_thai === 'pending').length;
+    const step1Count = leaveRequests.filter((r) => r.trang_thai === 'pending' || r.trang_thai === 'pending_dean').length;
     const step2Count = leaveRequests.filter((r) => r.trang_thai === 'pending_bgh').length;
     const approvedCount = leaveRequests.filter((r) => r.trang_thai === 'approved').length;
     const rejectedCount = leaveRequests.filter((r) => r.trang_thai === 'rejected').length;
@@ -616,7 +619,7 @@ export const LeaveRequests: React.FC = () => {
       // 4. Lọc Trạng thái luồng duyệt
       if (selectedWorkflowStatus !== 'all') {
         const st = req.trang_thai || '';
-        if (selectedWorkflowStatus === 'step1' && st !== 'pending') return false;
+        if (selectedWorkflowStatus === 'step1' && st !== 'pending' && st !== 'pending_dean') return false;
         if (selectedWorkflowStatus === 'step2' && st !== 'pending_bgh') return false;
         if (selectedWorkflowStatus === 'approved' && st !== 'approved') return false;
         if (selectedWorkflowStatus === 'rejected' && st !== 'rejected') return false;

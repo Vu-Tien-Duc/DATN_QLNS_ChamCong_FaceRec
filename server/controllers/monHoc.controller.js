@@ -1,14 +1,6 @@
 // Quản lý danh mục môn học / học phần phục vụ xếp lịch giảng dạy
 const subjectService = require('../services/nhanSu/monHoc.service');
-const { sendSuccess, sendError } = require('../utils/phanHoiHttp');
-
-// Ánh xạ lỗi nghiệp vụ sang phản hồi HTTP chuẩn
-const handleError = (res, error, next) => {
-  if (error instanceof subjectService.ServiceError || error.statusCode) {
-    return sendError(res, error.message, error.data || null, error.statusCode, error.errorCode || null);
-  }
-  return next(error);
-};
+const { sendSuccess } = require('../utils/phanHoiHttp');
 
 // Lọc các trường hợp lệ của môn học từ request body
 const mapSubjectBodyToCanonical = (body) => {
@@ -25,64 +17,42 @@ const mapSubjectBodyToCanonical = (body) => {
 };
 
 // Lấy danh sách môn học theo bộ lọc và phân trang
-const getSubjects = async (req, res, next) => {
-  try {
-    const { tim_kiem, phong_ban_id, kich_hoat, so_tin_chi, trang, gioi_han, page, limit } = req.query;
+const getSubjects = async (req, res) => {
+  const { tim_kiem, phong_ban_id, kich_hoat, so_tin_chi, trang, gioi_han, page, limit } = req.query;
 
-    const result = await subjectService.getSubjects({
-      tim_kiem,
-      phong_ban_id,
-      kich_hoat,
-      so_tin_chi,
-      page: trang ?? page,
-      limit: gioi_han ?? limit,
-    });
-    return sendSuccess(res, 'Lấy danh sách môn học thành công.', result);
-  } catch (error) {
-    return handleError(res, error, next);
-  }
+  const result = await subjectService.getSubjects({
+    tim_kiem,
+    phong_ban_id,
+    kich_hoat,
+    so_tin_chi,
+    page: trang ?? page,
+    limit: gioi_han ?? limit,
+  });
+  return sendSuccess(res, 'Lấy danh sách môn học thành công.', result);
 };
 
 // Lấy chi tiết một môn học theo ID
-const getSubjectById = async (req, res, next) => {
-  try {
-    const subject = await subjectService.getSubjectById(req.params.id);
-    return sendSuccess(res, 'Lấy chi tiết môn học thành công.', subject);
-  } catch (error) {
-    return handleError(res, error, next);
-  }
+const getSubjectById = async (req, res) => {
+  const subject = await subjectService.getSubjectById(req.params.id);
+  return sendSuccess(res, 'Lấy chi tiết môn học thành công.', subject);
 };
 
 // Tạo môn học mới
-const createSubject = async (req, res, next) => {
-  try {
-    const canonicalBody = mapSubjectBodyToCanonical(req.body);
-    const subject = await subjectService.createSubject(canonicalBody, req.user);
-    return sendSuccess(res, 'Tạo mới môn học thành công.', subject, 201);
-  } catch (error) {
-    return handleError(res, error, next);
-  }
+const createSubject = async (req, res) => {
+  const subject = await subjectService.createSubject(mapSubjectBodyToCanonical(req.body), req.user);
+  return sendSuccess(res, 'Tạo mới môn học thành công.', subject, 201);
 };
 
 // Cập nhật thông tin môn học
-const updateSubject = async (req, res, next) => {
-  try {
-    const canonicalBody = mapSubjectBodyToCanonical(req.body);
-    const subject = await subjectService.updateSubject(req.params.id, canonicalBody, req.user);
-    return sendSuccess(res, 'Cập nhật môn học thành công.', subject);
-  } catch (error) {
-    return handleError(res, error, next);
-  }
+const updateSubject = async (req, res) => {
+  const subject = await subjectService.updateSubject(req.params.id, mapSubjectBodyToCanonical(req.body), req.user);
+  return sendSuccess(res, 'Cập nhật môn học thành công.', subject);
 };
 
 // Xóa môn học
-const deleteSubject = async (req, res, next) => {
-  try {
-    const subject = await subjectService.deleteSubject(req.params.id, req.user);
-    return sendSuccess(res, `Đã xóa môn học "${subject.ten_mon}" thành công.`);
-  } catch (error) {
-    return handleError(res, error, next);
-  }
+const deleteSubject = async (req, res) => {
+  const subject = await subjectService.deleteSubject(req.params.id, req.user);
+  return sendSuccess(res, `Đã xóa môn học "${subject.ten_mon}" thành công.`);
 };
 
 module.exports = { getSubjects, getSubjectById, createSubject, updateSubject, deleteSubject };

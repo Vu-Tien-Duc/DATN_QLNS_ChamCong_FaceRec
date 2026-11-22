@@ -5,12 +5,7 @@ const { uuidPk, uuidFk, timeColumn, decimalColumn, trimmedString } = require('./
 
 const LOAI_LICH = ['chinh_khoa', 'day_bu'];
 
-class LichTrinh extends Model {
-  // Lấy danh sách số tuần học từ association tuan_hoc
-  layDanhSachTuan() {
-    return (this.tuan_hoc || []).map((w) => w.tuan_thu).sort((a, b) => a - b);
-  }
-}
+class LichTrinh extends Model {}
 
 LichTrinh.init(
   {

@@ -5,6 +5,7 @@ const {
   generatePayroll,
   lockPayroll,
   unlockPayroll,
+  markPayrollPaid,
   getPayrolls,
   getPayrollById,
   getMyPayroll,
@@ -14,6 +15,7 @@ const {
 } = require('../controllers/phieuLuong.controller');
 const { verifyToken, verifyRole, requirePermission, requireAnyPermission } = require('../middlewares/xacThuc.middleware');
 const { PERMISSIONS } = require('../config/permissions');
+const { UNIT_LEADER_ROLES } = require('../utils/vaiTro.utils');
 
 router.use(verifyToken);
 
@@ -31,7 +33,7 @@ router.get('/cua-toi', requirePermission(PERMISSIONS.LUONG_XEM_BAN_THAN), getMyP
 router.get(
   '/tong-hop',
   requireAnyPermission(PAYROLL_VIEW_PERMS),
-  verifyRole(['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']),
+  verifyRole(['admin', 'bgh', 'ke_toan', ...UNIT_LEADER_ROLES]),
   getPayrollSummary
 );
 
@@ -39,7 +41,7 @@ router.get(
 router.get(
   '/xuat-excel',
   requireAnyPermission(PAYROLL_VIEW_PERMS),
-  verifyRole(['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']),
+  verifyRole(['admin', 'bgh', 'ke_toan', ...UNIT_LEADER_ROLES]),
   exportPayrollExcel
 );
 
@@ -61,6 +63,10 @@ router.put('/:id/khoa', requirePermission(PERMISSIONS.LUONG_KHOA), verifyRole(['
 // 7. Mở khóa sổ lương tháng (POST /mo-khoa hoặc PUT /:id/mo-khoa)
 router.post('/mo-khoa', requirePermission(PERMISSIONS.LUONG_KHOA), verifyRole(['admin', 'bgh', 'ke_toan']), unlockPayroll);
 router.put('/:id/mo-khoa', requirePermission(PERMISSIONS.LUONG_KHOA), verifyRole(['admin', 'bgh', 'ke_toan']), unlockPayroll);
+
+// 7b. Đánh dấu đã chi trả lương (POST /chi-tra hoặc PUT /:id/chi-tra)
+router.post('/chi-tra', requirePermission(PERMISSIONS.LUONG_KHOA), verifyRole(['admin', 'bgh', 'ke_toan']), markPayrollPaid);
+router.put('/:id/chi-tra', requirePermission(PERMISSIONS.LUONG_KHOA), verifyRole(['admin', 'bgh', 'ke_toan']), markPayrollPaid);
 
 // 8. Tra cứu danh sách bảng lương
 router.get('/', requireAnyPermission(PAYROLL_VIEW_PERMS), getPayrolls);

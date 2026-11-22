@@ -10,7 +10,6 @@ try {
 
 const {
   LichTrinh,
-  LichTrinhTuan,
   NgoaiLeLichTrinh,
   NhatKyChamCong,
   LuotQuetChamCong,
@@ -53,7 +52,6 @@ const getTodayActiveSchedules = async (targetDate = new Date()) => {
       { model: NguoiDung, as: 'giang_vien', attributes: ['id', 'ho_ten', 'email', 'vai_tro_chinh', 'don_vi_chinh_id'] },
       { model: CaLamViec, as: 'ca', attributes: ['id', 'ten_ca', 'gio_bat_dau', 'gio_ket_thuc', 'nguong_di_muon_phut'] },
       { model: MonHoc, as: 'mon_hoc', attributes: ['id', 'ten_mon', 'ma_mon', 'so_tin_chi', 'phong_ban_id'] },
-      { model: LichTrinhTuan, as: 'tuan_hoc', attributes: ['tuan_thu'] },
       { model: NgoaiLeLichTrinh, as: 'ngoai_le' },
     ];
 

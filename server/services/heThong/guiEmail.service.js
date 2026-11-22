@@ -1,223 +1,6 @@
 // Tạo và gửi email thông báo nghỉ phép, chấm công và báo cáo tổng kết cuối ngày.
-const escapeHtml = (value) =>
-  String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-
 const { transporter } = require('../../config/mailer');
 
-// Gửi email thông báo đơn nghỉ được duyệt
-const sendLeaveApprovedEmail = async ({
-  to,
-  fullName,
-  fromDate,
-  toDate,
-  approvalNote = '',
-}) => {
-  if (!to) {
-    throw new Error(
-      'Không có email người nhận'
-    );
-  }
-
-  const mailOptions = {
-    from: `"Hệ thống quản lý chấm công" <${process.env.MAIL_USER || process.env.EMAIL_USER}>`,
-    to,
-    subject: 'Đơn xin nghỉ của bạn đã được duyệt',
-
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <h2>Thông báo duyệt đơn xin nghỉ</h2>
-
-        <p>Xin chào <strong>${escapeHtml(fullName)}</strong>,</p>
-
-        <p>
-          Đơn xin nghỉ của bạn đã được
-          <strong>DUYỆT</strong>.
-        </p>
-
-        <table style="border-collapse: collapse;">
-          <tr>
-            <td style="padding: 6px 12px 6px 0;">
-              Từ ngày:
-            </td>
-            <td>
-              <strong>${formatDate(fromDate)}</strong>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding: 6px 12px 6px 0;">
-              Đến ngày:
-            </td>
-            <td>
-              <strong>${formatDate(toDate)}</strong>
-            </td>
-          </tr>
-        </table>
-
-        ${approvalNote
-        ? `
-              <p>
-                <strong>Ghi chú:</strong>
-                ${escapeHtml(approvalNote)}
-              </p>
-            `
-        : ''
-      }
-
-        <p>
-          Vui lòng kiểm tra hệ thống để xem
-          thông tin chi tiết.
-        </p>
-
-        <p>
-          Trân trọng,<br>
-          <strong>Hệ thống quản lý chấm công</strong>
-        </p>
-      </div>
-    `,
-
-
-  };
-
-  return await transporter.sendMail(mailOptions);
-};
-
-// Gửi email thông báo đơn nghỉ bị từ chối
-const sendLeaveRejectedEmail = async ({
-  to,
-  fullName,
-  fromDate,
-  toDate,
-  rejectionReason,
-}) => {
-  if (!to) {
-    throw new Error(
-      'Không có email người nhận'
-    );
-  }
-
-  const mailOptions = {
-    from: `"Hệ thống quản lý chấm công" <${process.env.MAIL_USER || process.env.EMAIL_USER}>`,
-    to,
-
-    subject: 'Đơn xin nghỉ của bạn đã bị từ chối',
-
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <h2>Thông báo từ chối đơn xin nghỉ</h2>
-
-        <p>Xin chào <strong>${escapeHtml(fullName)}</strong>,</p>
-
-        <p>
-          Đơn xin nghỉ của bạn đã bị
-          <strong>TỪ CHỐI</strong>.
-        </p>
-
-        <table style="border-collapse: collapse;">
-          <tr>
-            <td style="padding: 6px 12px 6px 0;">
-              Từ ngày:
-            </td>
-            <td>
-              <strong>${formatDate(fromDate)}</strong>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding: 6px 12px 6px 0;">
-              Đến ngày:
-            </td>
-            <td>
-              <strong>${formatDate(toDate)}</strong>
-            </td>
-          </tr>
-        </table>
-
-        <p>
-          <strong>Lý do từ chối:</strong>
-          ${escapeHtml(rejectionReason)}
-        </p>
-
-        <p>
-          Vui lòng đăng nhập hệ thống để xem
-          thông tin chi tiết.
-        </p>
-
-        <p>
-          Trân trọng,<br>
-          <strong>Hệ thống quản lý chấm công</strong>
-        </p>
-      </div>
-    `,
-
-
-  };
-
-  return await transporter.sendMail(mailOptions);
-};
-
-// Định dạng ngày theo DD/MM/YYYY (cố định múi giờ Asia/Ho_Chi_Minh)
-const formatDate = (date) => {
-  if (!date) return '';
-
-  const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return String(date);
-
-  return d.toLocaleDateString('vi-VN', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-};
-
-// Gửi email cảnh báo vắng mặt không phép
-const sendAbsentWarningEmail = async ({ to, fullName, shiftName, date }) => {
-  if (!to) return null;
-  const dateStr = formatDate(date);
-
-  const mailOptions = {
-    from: `"Hệ thống Quản lý Chấm công Đại học" <${process.env.EMAIL_USER || process.env.MAIL_USER || 'no-reply@university.edu.vn'}>`,
-    to,
-    subject: `[CẢNH BÁO] Ghi nhận vắng mặt ca dạy ngày ${dateStr} - Hệ Thống Chấm Công`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; color: #333;">
-        <div style="background-color: #d32f2f; color: #ffffff; padding: 20px; text-align: center;">
-          <h2 style="margin: 0; font-size: 20px;">CẢNH BÁO GHI NHẬN VẮNG MẶT</h2>
-        </div>
-        <div style="padding: 24px; line-height: 1.6;">
-          <p>Kính gửi Thầy/Cô <strong>${escapeHtml(fullName)}</strong>,</p>
-          <p>Hệ thống quản lý chấm công tự động ghi nhận Thầy/Cô đã <strong>VẮNG MẶT (Không phát sinh dữ liệu chấm công)</strong> trong ca làm việc/giảng dạy:</p>
-          <div style="background-color: #fdf2f2; border-left: 4px solid #d32f2f; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
-            <p style="margin: 4px 0;"><strong>Ca làm việc / Tiết dạy:</strong> ${escapeHtml(shiftName || 'Không xác định')}</p>
-            <p style="margin: 4px 0;"><strong>Ngày ghi nhận:</strong> ${dateStr}</p>
-            <p style="margin: 4px 0;"><strong>Trạng thái:</strong> <span style="color: #d32f2f; font-weight: bold;">VẮNG MẶT (ABSENT)</span></p>
-          </div>
-          <p><strong>Hướng dẫn xử lý giải trình:</strong></p>
-          <ul style="padding-left: 20px; color: #555;">
-            <li>Nếu có sự cố kỹ thuật về thiết bị chấm công hoặc lý do bất khả kháng, Thầy/Cô vui lòng đăng nhập vào cổng thông tin để <strong>Tạo đơn giải trình / Đơn xin dạy bù</strong> trong vòng 48 giờ.</li>
-            <li>Đơn giải trình sẽ được Trưởng Khoa / Ban Giám Hiệu xem xét và cập nhật lại trạng thái công nếu được phê duyệt.</li>
-          </ul>
-          <p style="margin-top: 24px;">Trân trọng,<br><strong>Phòng Đào tạo & Quản trị Nhân sự</strong></p>
-        </div>
-        <div style="background-color: #f5f5f5; color: #777; padding: 12px; text-align: center; font-size: 12px; border-top: 1px solid #eee;">
-          Email tự động được gửi từ Hệ thống Quản lý Chấm công Trường Đại học. Vui lòng không trả lời trực tiếp email này.
-        </div>
-      </div>
-    `,
-
-
-  };
-
-  return await transporter.sendMail(mailOptions);
-};
-
-// Gửi email thông báo vào ca thành công
 const ATTENDANCE_METHOD_LABELS = {
   face_ai: 'Sinh trắc học Face ID (Máy chấm công)',
   qr_code: 'Quét mã QR Code Động (Điện thoại)',
@@ -226,10 +9,25 @@ const ATTENDANCE_METHOD_LABELS = {
   system_auto: 'Tự động hệ thống',
 };
 
-// Đổi mã phương thức chấm công sang mô tả tiếng Việt để hiển thị trong email
-const formatAttendanceMethodText = (method) => {
-  const normalized = String(method || '').trim().toLowerCase();
-  return ATTENDANCE_METHOD_LABELS[normalized] || method || 'Không xác định';
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+// Định dạng ngày theo DD/MM/YYYY (cố định múi giờ Asia/Ho_Chi_Minh)
+const formatDate = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return String(date);
+  return d.toLocaleDateString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 };
 
 // Định dạng giờ HH:mm:ss theo múi giờ Việt Nam
@@ -241,8 +39,179 @@ const formatVietnamTime = (dateValue) =>
     second: '2-digit',
   });
 
-// Gửi email thông báo chấm công vào ca thành công
-const sendCheckInNotificationEmail = async ({
+const formatDurationMinutes = (minutes) => {
+  const total = Math.max(0, Number(minutes) || 0);
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  return hours > 0 ? `${hours} giờ ${mins} phút` : `${total} phút`;
+};
+
+const formatAttendanceMethodText = (method) => {
+  const normalized = String(method || '').trim().toLowerCase();
+  return ATTENDANCE_METHOD_LABELS[normalized] || method || 'Không xác định';
+};
+
+// Render khung email thống nhất dùng chung cho mọi loại thông báo
+const renderEmailLayout = ({
+  title,
+  subtitle = '',
+  badge = '',
+  headerBg = '#1e3a8a',
+  maxWidth = 600,
+  signature = 'Phòng Đào tạo & Quản trị Nhân sự',
+  footerText = 'Email tự động được gửi từ Hệ thống Quản lý Chấm công Trường Đại học.',
+  bodyHtml,
+}) => `
+  <div style="font-family: Arial, sans-serif; max-width: ${maxWidth}px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #1e293b; background-color: #ffffff;">
+    <div style="background: ${headerBg}; color: #ffffff; padding: 20px 24px; text-align: center;">
+      ${badge ? `<div style="display: inline-block; background-color: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; margin-bottom: 8px;">${badge}</div>` : ''}
+      <h2 style="margin: 0; font-size: 20px; font-weight: bold;">${title}</h2>
+      ${subtitle ? `<p style="margin: 6px 0 0; font-size: 13px; opacity: 0.9;">${subtitle}</p>` : ''}
+    </div>
+    <div style="padding: 24px; line-height: 1.6; font-size: 14px;">
+      ${bodyHtml}
+      <p style="margin-top: 20px;">Trân trọng,<br><strong>${signature}</strong></p>
+    </div>
+    <div style="background-color: #f1f5f9; color: #64748b; padding: 12px; text-align: center; font-size: 12px; border-top: 1px solid #e2e8f0;">
+      ${footerText}
+    </div>
+  </div>
+`;
+
+const renderInfoBox = (rows, accentColor) => `
+  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 5px solid ${accentColor}; padding: 14px 18px; margin: 16px 0; border-radius: 8px;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+      ${rows
+        .filter(Boolean)
+        .map(
+          ([label, valueHtml]) => `
+        <tr>
+          <td style="padding: 5px 12px 5px 0; color: #64748b; width: 145px;">${label}:</td>
+          <td style="padding: 5px 0; color: #0f172a;">${valueHtml}</td>
+        </tr>`
+        )
+        .join('')}
+    </table>
+  </div>
+`;
+
+const renderBadge = (text, bg, color) =>
+  `<span style="display: inline-block; background-color: ${bg}; color: ${color}; font-weight: bold; padding: 2px 10px; border-radius: 6px; font-size: 12px;">${text}</span>`;
+
+const renderSummarySectionTable = ({ title, titleColor, borderBottom, headBg, headColor, cellBorder, headers, rowsHtml, emptyText }) => `
+  <h3 style="font-size: 15px; color: ${titleColor}; border-bottom: 2px solid ${borderBottom}; padding-bottom: 6px; margin: 20px 0 10px 0;">${title}</h3>
+  ${rowsHtml
+    ? `<table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 18px;">
+        <thead><tr style="background-color: ${headBg}; color: ${headColor}; text-align: left;">
+          ${headers.map((h) => `<th style="padding: 8px; border: 1px solid ${cellBorder};">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>`
+    : `<p style="font-size: 13px; color: #059669; background-color: #ecfdf5; padding: 10px; border-radius: 6px; margin-bottom: 18px;">${emptyText}</p>`}
+`;
+
+// Hàm gửi mail dùng chung (hỗ trợ requireRecipient cho luồng đơn từ)
+const sendHtmlMail = async ({ to, subject, html, requireRecipient = false, logTag = null }) => {
+  if (!to) {
+    if (requireRecipient) throw new Error('Không có email người nhận');
+    return null;
+  }
+
+  const fromEmail = process.env.EMAIL_USER || process.env.MAIL_USER || 'no-reply@university.edu.vn';
+  const result = await transporter.sendMail({
+    from: `"Hệ thống Quản lý Chấm công Đại học" <${fromEmail}>`,
+    to,
+    subject,
+    html,
+  });
+
+  if (logTag) {
+    console.log(`[EmailService] [${logTag}] Đã gửi email tới ${to} (Subject: "${subject}")`);
+  }
+  return result;
+};
+
+// 1. Gửi email thông báo đơn nghỉ được duyệt
+const sendLeaveApprovedEmail = ({ to, fullName, fromDate, toDate, approvalNote = '' }) =>
+  sendHtmlMail({
+    to,
+    requireRecipient: true,
+    subject: 'Đơn xin nghỉ của bạn đã được duyệt',
+    html: renderEmailLayout({
+      title: 'THÔNG BÁO DUYỆT ĐƠN XIN NGHỈ',
+      headerBg: '#16a34a',
+      signature: 'Hệ thống quản lý chấm công',
+      bodyHtml: `
+        <p>Xin chào <strong>${escapeHtml(fullName)}</strong>,</p>
+        <p>Đơn xin nghỉ của bạn đã được ${renderBadge('ĐÃ DUYỆT', '#dcfce7', '#15803d')}.</p>
+        ${renderInfoBox(
+          [
+            ['Từ ngày', `<strong>${formatDate(fromDate)}</strong>`],
+            ['Đến ngày', `<strong>${formatDate(toDate)}</strong>`],
+            approvalNote ? ['Ghi chú', escapeHtml(approvalNote)] : null,
+          ],
+          '#16a34a'
+        )}
+        <p>Vui lòng kiểm tra hệ thống để xem thông tin chi tiết.</p>
+      `,
+    }),
+  });
+
+// 2. Gửi email thông báo đơn nghỉ bị từ chối
+const sendLeaveRejectedEmail = ({ to, fullName, fromDate, toDate, rejectionReason }) =>
+  sendHtmlMail({
+    to,
+    requireRecipient: true,
+    subject: 'Đơn xin nghỉ của bạn đã bị từ chối',
+    html: renderEmailLayout({
+      title: 'THÔNG BÁO TỪ CHỐI ĐƠN XIN NGHỈ',
+      headerBg: '#dc2626',
+      signature: 'Hệ thống quản lý chấm công',
+      bodyHtml: `
+        <p>Xin chào <strong>${escapeHtml(fullName)}</strong>,</p>
+        <p>Đơn xin nghỉ của bạn đã bị ${renderBadge('TỪ CHỐI', '#fee2e2', '#b91c1c')}.</p>
+        ${renderInfoBox(
+          [
+            ['Từ ngày', `<strong>${formatDate(fromDate)}</strong>`],
+            ['Đến ngày', `<strong>${formatDate(toDate)}</strong>`],
+            ['Lý do từ chối', escapeHtml(rejectionReason)],
+          ],
+          '#dc2626'
+        )}
+        <p>Vui lòng đăng nhập hệ thống để xem thông tin chi tiết.</p>
+      `,
+    }),
+  });
+
+// 3. Gửi email cảnh báo vắng mặt không phép
+const sendAbsentWarningEmail = ({ to, fullName, shiftName, date }) => {
+  const dateStr = formatDate(date);
+  return sendHtmlMail({
+    to,
+    subject: `[CẢNH BÁO] Ghi nhận vắng mặt ca dạy ngày ${dateStr} - Hệ Thống Chấm Công`,
+    html: renderEmailLayout({
+      title: 'CẢNH BÁO GHI NHẬN VẮNG MẶT',
+      headerBg: '#d32f2f',
+      footerText: 'Email tự động được gửi từ Hệ thống Quản lý Chấm công Trường Đại học. Vui lòng không trả lời trực tiếp email này.',
+      bodyHtml: `
+        <p>Kính gửi Thầy/Cô <strong>${escapeHtml(fullName)}</strong>,</p>
+        <p>Hệ thống tự động ghi nhận Thầy/Cô đã <strong>VẮNG MẶT</strong> trong ca làm việc/giảng dạy:</p>
+        ${renderInfoBox(
+          [
+            ['Ca / Tiết dạy', `<strong>${escapeHtml(shiftName || 'Không xác định')}</strong>`],
+            ['Ngày ghi nhận', `<strong>${dateStr}</strong>`],
+            ['Trạng thái', renderBadge('VẮNG MẶT (ABSENT)', '#fee2e2', '#d32f2f')],
+          ],
+          '#d32f2f'
+        )}
+        <p>Nếu có sự cố kỹ thuật hoặc lý do bất khả kháng, Thầy/Cô vui lòng tạo <strong>Đơn giải trình / Dạy bù</strong> trên cổng thông tin trong vòng 48 giờ.</p>
+      `,
+    }),
+  });
+};
+
+// 4. Gửi email thông báo chấm công vào ca thành công
+const sendCheckInNotificationEmail = ({
   to,
   fullName,
   shiftName,
@@ -254,103 +223,46 @@ const sendCheckInNotificationEmail = async ({
   subjectName,
   roomId,
 }) => {
-  if (!to) return;
   const timeStr = formatVietnamTime(checkInTime);
   const dateStr = formatDate(checkInTime);
   const isLate = status === 'late' || lateMinutes > 0;
-  const lateHours = Math.floor(lateMinutes / 60);
-  const remainingMins = lateMinutes % 60;
-  const lateTimeFormatted = lateHours > 0 ? `${lateHours} giờ ${remainingMins} phút` : `${lateMinutes} phút`;
-
-
-
-
-
-
-
-  const methodStr = formatAttendanceMethodText(method);
-
+  const lateTimeFormatted = formatDurationMinutes(lateMinutes);
   const headerColor = isLate ? '#d97706' : '#16a34a';
-  const statusTitle = isLate ? `ĐI MUỘN (${lateTimeFormatted})` : 'ĐÚNG GIỜ';
   const subject = isLate
     ? `[CẢNH BÁO ĐI MUỘN] Check-in ca dạy ngày ${dateStr} (Đi muộn ${lateTimeFormatted}) - Hệ Thống Chấm Công`
     : `[XÁC NHẬN CHẤM CÔNG] Check-in Vào Ca Thành Công (${dateStr}) - Hệ Thống Chấm Công`;
 
-  const mailOptions = {
-    from: `"Hệ thống Quản lý Chấm công Đại học" <${process.env.EMAIL_USER || process.env.MAIL_USER || 'no-reply@university.edu.vn'}>`,
+  return sendHtmlMail({
     to,
     subject,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #1e293b; background-color: #ffffff;">
-        <div style="background-color: ${headerColor}; color: #ffffff; padding: 22px; text-align: center;">
-          <h2 style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 0.5px;">XÁC NHẬN ĐIỂM DANH VÀO CA</h2>
-          <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">Hệ Thống Chấm Công Sinh Trắc Học & QR Code Đại Học</p>
-        </div>
-        <div style="padding: 24px; line-height: 1.6;">
-          <p style="font-size: 15px; margin-top: 0;">Kính gửi Thầy/Cô <strong>${escapeHtml(fullName)}</strong>,</p>
-          <p style="font-size: 14px; color: #475569;">
-            Hệ thống đã ghi nhận lượt điểm danh <strong>Check-in (Vào ca)</strong> của Thầy/Cô với thông tin chi tiết như sau:
-          </p>
-          
-          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 5px solid ${headerColor}; padding: 16px 20px; margin: 18px 0; border-radius: 8px;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-              <tr>
-                <td style="padding: 6px 0; color: #64748b; width: 140px;">Ca làm việc:</td>
-                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${escapeHtml(shiftName || 'Không xác định')} ${shiftHours ? `(${escapeHtml(shiftHours)})` : ''}</td>
-              </tr>
-              ${subjectName ? `
-              <tr>
-                <td style="padding: 6px 0; color: #64748b;">Môn học / Tiết dạy:</td>
-                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${escapeHtml(subjectName)} ${roomId ? `(Phòng ${escapeHtml(roomId)})` : ''}</td>
-              </tr>
-              ` : ''}
-              <tr>
-                <td style="padding: 6px 0; color: #64748b;">Thời gian Check-in:</td>
-                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${timeStr} &bull; ${dateStr}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #64748b;">Trạng thái:</td>
-                <td style="padding: 6px 0;">
-                  <span style="display: inline-block; background-color: ${isLate ? '#fef3c7' : '#dcfce7'}; color: ${isLate ? '#b45309' : '#15803d'}; font-weight: bold; padding: 3px 10px; border-radius: 6px; font-size: 13px;">
-                    ${statusTitle}
-                  </span>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #64748b;">Phương thức:</td>
-                <td style="padding: 6px 0; color: #334155;">${methodStr}</td>
-              </tr>
-            </table>
-          </div>
-
-          ${isLate ? `
-          <div style="background-color: #fffbeb; border: 1px solid #fde68a; padding: 12px 16px; border-radius: 8px; margin-bottom: 18px; font-size: 13px; color: #92400e;">
-            <strong>Lưu ý:</strong> Thầy/Cô đã check-in muộn <strong>${lateTimeFormatted}</strong> so với giờ bắt đầu ca dạy quy định. Nếu có lý do khách quan, Thầy/Cô có thể gửi Đơn giải trình trên cổng thông tin trong vòng 48h.
-          </div>
-          ` : `
-          <p style="font-size: 13px; color: #15803d; margin-bottom: 18px;">
-            ✓ Thầy/Cô đã có mặt đúng giờ theo quy định giảng dạy của nhà trường. Chúc Thầy/Cô có buổi làm việc hiệu quả!
-          </p>
-          `}
-
-          <p style="margin-top: 20px; font-size: 14px;">Trân trọng,<br><strong>Phòng Đào tạo & Quản trị Nhân sự</strong></p>
-        </div>
-        <div style="background-color: #f1f5f9; color: #64748b; padding: 12px; text-align: center; font-size: 12px; border-top: 1px solid #e2e8f0;">
-          Email tự động được gửi từ Hệ thống Quản lý Chấm công Trường Đại học.
-        </div>
-      </div>
-    `,
-
-
-  };
-
-  const result = await transporter.sendMail(mailOptions);
-  console.log(`[EmailService] [CHECK-IN EMAIL] Đã gửi thông báo check-in thành công tới ${to} (Subject: "${subject}")`);
-  return result;
+    logTag: 'CHECK-IN EMAIL',
+    html: renderEmailLayout({
+      title: 'XÁC NHẬN ĐIỂM DANH VÀO CA',
+      subtitle: 'Hệ Thống Chấm Công Sinh Trắc Học & QR Code Đại Học',
+      headerBg: headerColor,
+      bodyHtml: `
+        <p>Kính gửi Thầy/Cô <strong>${escapeHtml(fullName)}</strong>,</p>
+        <p>Hệ thống đã ghi nhận lượt điểm danh <strong>Check-in (Vào ca)</strong> với thông tin:</p>
+        ${renderInfoBox(
+          [
+            ['Ca làm việc', `<strong>${escapeHtml(shiftName || 'Không xác định')}</strong> ${shiftHours ? `(${escapeHtml(shiftHours)})` : ''}`],
+            subjectName ? ['Môn học / Tiết dạy', `<strong>${escapeHtml(subjectName)}</strong> ${roomId ? `(Phòng ${escapeHtml(roomId)})` : ''}`] : null,
+            ['Thời gian Check-in', `<strong>${timeStr} &bull; ${dateStr}</strong>`],
+            ['Trạng thái', isLate ? renderBadge(`ĐI MUỘN (${lateTimeFormatted})`, '#fef3c7', '#b45309') : renderBadge('ĐÚNG GIỜ', '#dcfce7', '#15803d')],
+            ['Phương thức', escapeHtml(formatAttendanceMethodText(method))],
+          ],
+          headerColor
+        )}
+        ${isLate
+          ? `<div style="background-color: #fffbeb; border: 1px solid #fde68a; padding: 12px 16px; border-radius: 8px; font-size: 13px; color: #92400e;"><strong>Lưu ý:</strong> Thầy/Cô đã check-in muộn <strong>${lateTimeFormatted}</strong>. Nếu có lý do khách quan, vui lòng gửi Đơn giải trình trong vòng 48h.</div>`
+          : `<p style="font-size: 13px; color: #15803d;">✓ Thầy/Cô đã có mặt đúng giờ theo quy định.</p>`}
+      `,
+    }),
+  });
 };
 
-// Gửi email thông báo tan ca thành công
-const sendCheckOutNotificationEmail = async ({
+// 5. Gửi email thông báo tan ca thành công
+const sendCheckOutNotificationEmail = ({
   to,
   fullName,
   shiftName,
@@ -361,345 +273,159 @@ const sendCheckOutNotificationEmail = async ({
   earlyMinutes = 0,
   method = 'face_ai',
 }) => {
-  if (!to) return;
   const checkInTimeStr = checkInTime ? formatVietnamTime(checkInTime) : '--:--:--';
   const checkOutTimeStr = formatVietnamTime(checkOutTime);
   const dateStr = formatDate(checkOutTime);
-
-
-
-
-
-
-
-  const methodStr = formatAttendanceMethodText(method);
-
-  const earlyHours = Math.floor(earlyMinutes / 60);
-  const remainingEarlyMins = earlyMinutes % 60;
-  const earlyTimeFormatted = earlyHours > 0 ? `${earlyHours} giờ ${remainingEarlyMins} phút` : `${earlyMinutes} phút`;
-
+  const earlyTimeFormatted = formatDurationMinutes(earlyMinutes);
   const headerColor = isEarlyLeave ? '#f59e0b' : '#0284c7';
-  const statusTitle = isEarlyLeave ? `VỀ SỚM (${earlyTimeFormatted})` : 'HOÀN THÀNH CA DẠY';
   const subject = isEarlyLeave
     ? `[CẢNH BÁO VỀ SỚM] Check-out ca dạy ngày ${dateStr} (Về sớm ${earlyTimeFormatted}) - Hệ Thống Chấm Công`
     : `[XÁC NHẬN CHẤM CÔNG] Check-out Hoàn Thành Ca Dạy (${dateStr}) - Hệ Thống Chấm Công`;
 
-  const mailOptions = {
-    from: `"Hệ thống Quản lý Chấm công Đại học" <${process.env.EMAIL_USER || process.env.MAIL_USER || 'no-reply@university.edu.vn'}>`,
+  return sendHtmlMail({
     to,
     subject,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #1e293b; background-color: #ffffff;">
-        <div style="background-color: ${headerColor}; color: #ffffff; padding: 22px; text-align: center;">
-          <h2 style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 0.5px;">XÁC NHẬN ĐIỂM DANH RA VỀ</h2>
-          <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">Hệ Thống Chấm Công Sinh Trắc Học & QR Code Đại Học</p>
-        </div>
-        <div style="padding: 24px; line-height: 1.6;">
-          <p style="font-size: 15px; margin-top: 0;">Kính gửi Thầy/Cô <strong>${escapeHtml(fullName)}</strong>,</p>
-          <p style="font-size: 14px; color: #475569;">
-            Hệ thống đã ghi nhận lượt điểm danh <strong>Check-out (Ra về)</strong> của Thầy/Cô với thông tin chi tiết:
-          </p>
-          
-          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 5px solid ${headerColor}; padding: 16px 20px; margin: 18px 0; border-radius: 8px;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-              <tr>
-                <td style="padding: 6px 0; color: #64748b; width: 140px;">Ca làm việc:</td>
-                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${escapeHtml(shiftName || 'Không xác định')}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #64748b;">Thời gian Vào ca:</td>
-                <td style="padding: 6px 0; color: #334155;">${checkInTimeStr}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #64748b;">Thời gian Ra về:</td>
-                <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${checkOutTimeStr} &bull; ${dateStr}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #64748b;">Tổng thời gian dạy:</td>
-                <td style="padding: 6px 0; font-weight: bold; color: #0284c7;">${durationFormatted || 'Chưa ghi nhận'}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #64748b;">Trạng thái:</td>
-                <td style="padding: 6px 0;">
-                  <span style="display: inline-block; background-color: ${isEarlyLeave ? '#fef3c7' : '#e0f2fe'}; color: ${isEarlyLeave ? '#b45309' : '#0369a1'}; font-weight: bold; padding: 3px 10px; border-radius: 6px; font-size: 13px;">
-                    ${statusTitle}
-                  </span>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #64748b;">Phương thức:</td>
-                <td style="padding: 6px 0; color: #334155;">${methodStr}</td>
-              </tr>
-            </table>
-          </div>
-
-          ${isEarlyLeave ? `
-          <div style="background-color: #fffbeb; border: 1px solid #fde68a; padding: 12px 16px; border-radius: 8px; margin-bottom: 18px; font-size: 13px; color: #92400e;">
-            <strong>Lưu ý:</strong> Hệ thống ghi nhận Thầy/Cô kết thúc ca dạy sớm <strong>${earlyTimeFormatted}</strong> trước giờ tan ca quy định.
-          </div>
-          ` : `
-          <p style="font-size: 13px; color: #0284c7; margin-bottom: 18px;">
-            ✓ Thầy/Cô đã hoàn thành trọn vẹn thời lượng tiết dạy theo kế hoạch đào tạo.
-          </p>
-          `}
-
-          <p style="margin-top: 20px; font-size: 14px;">Trân trọng,<br><strong>Phòng Đào tạo & Quản trị Nhân sự</strong></p>
-        </div>
-        <div style="background-color: #f1f5f9; color: #64748b; padding: 12px; text-align: center; font-size: 12px; border-top: 1px solid #e2e8f0;">
-          Email tự động được gửi từ Hệ thống Quản lý Chấm công Trường Đại học.
-        </div>
-      </div>
-    `,
-
-
-  };
-
-  const result = await transporter.sendMail(mailOptions);
-  console.log(`[EmailService] [CHECK-OUT EMAIL] Đã gửi thông báo check-out thành công tới ${to} (Subject: "${subject}")`);
-  return result;
+    logTag: 'CHECK-OUT EMAIL',
+    html: renderEmailLayout({
+      title: 'XÁC NHẬN ĐIỂM DANH RA VỀ',
+      subtitle: 'Hệ Thống Chấm Công Sinh Trắc Học & QR Code Đại Học',
+      headerBg: headerColor,
+      bodyHtml: `
+        <p>Kính gửi Thầy/Cô <strong>${escapeHtml(fullName)}</strong>,</p>
+        <p>Hệ thống đã ghi nhận lượt điểm danh <strong>Check-out (Ra về)</strong> với thông tin:</p>
+        ${renderInfoBox(
+          [
+            ['Ca làm việc', `<strong>${escapeHtml(shiftName || 'Không xác định')}</strong>`],
+            ['Thời gian Vào ca', checkInTimeStr],
+            ['Thời gian Ra về', `<strong>${checkOutTimeStr} &bull; ${dateStr}</strong>`],
+            ['Tổng thời gian', `<strong style="color: #0284c7;">${escapeHtml(durationFormatted || 'Chưa ghi nhận')}</strong>`],
+            ['Trạng thái', isEarlyLeave ? renderBadge(`VỀ SỚM (${earlyTimeFormatted})`, '#fef3c7', '#b45309') : renderBadge('HOÀN THÀNH CA DẠY', '#e0f2fe', '#0369a1')],
+            ['Phương thức', escapeHtml(formatAttendanceMethodText(method))],
+          ],
+          headerColor
+        )}
+        ${isEarlyLeave
+          ? `<div style="background-color: #fffbeb; border: 1px solid #fde68a; padding: 12px 16px; border-radius: 8px; font-size: 13px; color: #92400e;"><strong>Lưu ý:</strong> Kết thúc sớm <strong>${earlyTimeFormatted}</strong> trước giờ tan ca quy định.</div>`
+          : `<p style="font-size: 13px; color: #0284c7;">✓ Thầy/Cô đã hoàn thành trọn vẹn thời lượng ca làm việc.</p>`}
+      `,
+    }),
+  });
 };
 
-// Gửi email báo cáo tổng kết chấm công toàn trường cuối ngày cho quản trị viên
-const sendDailyAttendanceSummaryEmail = async ({
+// 6. Gửi email báo cáo tổng kết chấm công toàn trường cuối ngày cho quản trị viên
+const sendDailyAttendanceSummaryEmail = ({
   to,
   dateStr,
   totalSchedules = 0,
-  stats = {
-    onTimeCount: 0,
-    lateCount: 0,
-    earlyCount: 0,
-    excusedCount: 0,
-    absentCount: 0,
-  },
+  stats = { onTimeCount: 0, lateCount: 0, earlyCount: 0, excusedCount: 0, absentCount: 0 },
   absentList = [],
   lateList = [],
   earlyList = [],
   excusedList = [],
   presentList = [],
 }) => {
-  if (!to) return;
-
   const totalAttended = (stats.onTimeCount || 0) + (stats.lateCount || 0) + (stats.earlyCount || 0);
-  const attendanceRate = totalSchedules > 0 
-    ? Math.min(100, Math.round(((totalAttended + (stats.excusedCount || 0)) / totalSchedules) * 100)) 
+  const attendanceRate = totalSchedules > 0
+    ? Math.min(100, Math.round(((totalAttended + (stats.excusedCount || 0)) / totalSchedules) * 100))
     : 100;
 
-  const subject = `[BÁO CÁO CUỐI NGÀY] Tổng Hợp Điểm Danh & Chuyên Cần Ngày ${dateStr} - Hệ Thống Chấm Công`;
+  const statCards = [
+    ['Tổng Ca Dạy', totalSchedules, '#f8fafc', '#e2e8f0', '#64748b', '#0f172a'],
+    ['Đúng Giờ', stats.onTimeCount, '#ecfdf5', '#a7f3d0', '#047857', '#059669'],
+    ['Đi Muộn', stats.lateCount, '#fffbeb', '#fde68a', '#b45309', '#d97706'],
+    ['Về Sớm', stats.earlyCount, '#fff7ed', '#fed7aa', '#c2410c', '#ea580c'],
+    ['Nghỉ Có Phép', stats.excusedCount, '#eff6ff', '#bfdbfe', '#1d4ed8', '#2563eb'],
+    ['Vắng Không Phép', stats.absentCount, '#fef2f2', '#fecaca', '#b91c1c', '#dc2626'],
+  ];
 
-  const mailOptions = {
-    from: `"Hệ thống Quản lý Chấm công Đại học" <${process.env.EMAIL_USER || process.env.MAIL_USER || 'no-reply@university.edu.vn'}>`,
+  const absentRows = absentList.map((i) => `<tr>
+    <td style="padding: 8px; border: 1px solid #fecaca; font-weight: bold;">${escapeHtml(i.fullName)}</td>
+    <td style="padding: 8px; border: 1px solid #fecaca;">${escapeHtml(i.shiftName)} ${i.roomId ? `(${escapeHtml(i.roomId)})` : ''}</td>
+    <td style="padding: 8px; border: 1px solid #fecaca; color: #64748b;">${escapeHtml(i.departmentName || 'Khoa / Đơn vị')}</td>
+    <td style="padding: 8px; border: 1px solid #fecaca; text-align: center; color: #dc2626; font-weight: bold;">${i.emailSent ? '✓ Đã gửi mail' : 'Chưa gửi'}</td>
+  </tr>`).join('');
+
+  const lateEarlyRows = [
+    ...lateList.map((i) => `<tr>
+      <td style="padding: 8px; border: 1px solid #fde68a; font-weight: bold;">${escapeHtml(i.fullName)}</td>
+      <td style="padding: 8px; border: 1px solid #fde68a;">${escapeHtml(i.shiftName)}</td>
+      <td style="padding: 8px; border: 1px solid #fde68a; color: #d97706; font-weight: bold;">Đi muộn ${escapeHtml(i.lateTimeFormatted || `${i.lateMinutes} phút`)} (Vào ${escapeHtml(i.checkInTimeStr)})</td>
+      <td style="padding: 8px; border: 1px solid #fde68a; text-align: center;">${escapeHtml(i.method)}</td>
+    </tr>`),
+    ...earlyList.map((i) => `<tr>
+      <td style="padding: 8px; border: 1px solid #fde68a; font-weight: bold;">${escapeHtml(i.fullName)}</td>
+      <td style="padding: 8px; border: 1px solid #fde68a;">${escapeHtml(i.shiftName)}</td>
+      <td style="padding: 8px; border: 1px solid #fde68a; color: #ea580c; font-weight: bold;">Về sớm ${escapeHtml(i.earlyTimeFormatted || `${i.earlyMinutes} phút`)} (Tan ${escapeHtml(i.checkOutTimeStr)})</td>
+      <td style="padding: 8px; border: 1px solid #fde68a; text-align: center;">${escapeHtml(i.method)}</td>
+    </tr>`),
+  ].join('');
+
+  const presentRows = presentList.map((i) => `<tr>
+    <td style="padding: 8px; border: 1px solid #a7f3d0; font-weight: bold;">${escapeHtml(i.fullName)}</td>
+    <td style="padding: 8px; border: 1px solid #a7f3d0;">${escapeHtml(i.shiftName)} ${i.roomId ? `(${escapeHtml(i.roomId)})` : ''}</td>
+    <td style="padding: 8px; border: 1px solid #a7f3d0; text-align: center; color: #047857; font-weight: bold;">${escapeHtml(i.checkInTimeStr)}</td>
+    <td style="padding: 8px; border: 1px solid #a7f3d0; text-align: center;">${escapeHtml(i.method)}</td>
+  </tr>`).join('');
+
+  const excusedRows = excusedList.map((i) => `<tr>
+    <td style="padding: 8px; border: 1px solid #bfdbfe; font-weight: bold;">${escapeHtml(i.fullName)}</td>
+    <td style="padding: 8px; border: 1px solid #bfdbfe;">${escapeHtml(i.shiftName)}</td>
+    <td style="padding: 8px; border: 1px solid #bfdbfe; color: #2563eb;">Đơn nghỉ phép đã được phê duyệt</td>
+  </tr>`).join('');
+
+  return sendHtmlMail({
     to,
-    subject,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #1e293b; background-color: #ffffff;">
-        <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); color: #ffffff; padding: 24px; text-align: center;">
-          <span style="display: inline-block; background-color: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px;">
-            Báo Cáo Tự Động Cuối Ngày
-          </span>
-          <h2 style="margin: 6px 0; font-size: 22px; font-weight: bold;">TỔNG HỢP ĐIỂM DANH & CHUYÊN CẦN</h2>
-          <p style="margin: 4px 0 0 0; font-size: 14px; opacity: 0.9;">Ngày: <strong>${dateStr}</strong> &bull; Hệ thống Điểm danh Sinh trắc học & QR Code</p>
+    subject: `[BÁO CÁO CUỐI NGÀY] Tổng Hợp Điểm Danh & Chuyên Cần Ngày ${dateStr} - Hệ Thống Chấm Công`,
+    logTag: 'DAILY SUMMARY EMAIL',
+    html: renderEmailLayout({
+      title: 'TỔNG HỢP ĐIỂM DANH & CHUYÊN CẦN',
+      badge: 'Báo Cáo Tự Động Cuối Ngày',
+      subtitle: `Ngày: <strong>${escapeHtml(dateStr)}</strong> &bull; Tỷ lệ hợp lệ: <strong>${attendanceRate}%</strong>`,
+      headerBg: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)',
+      maxWidth: 680,
+      footerText: 'Báo cáo tự động tổng hợp lúc 23:59 hàng ngày từ Hệ thống Quản trị Chấm công Trường Đại học.',
+      bodyHtml: `
+        <p style="margin-top: 0;">Kính gửi <strong>Ban Giám Hiệu & Quản Trị Viên Hệ Thống</strong>,</p>
+        <p>Thống kê điểm danh toàn trường ngày <strong>${escapeHtml(dateStr)}</strong>:</p>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0;">
+          ${statCards.map(([label, val, bg, bd, lc, vc]) => `
+            <div style="background-color: ${bg}; border: 1px solid ${bd}; border-radius: 8px; padding: 10px; text-align: center;">
+              <div style="font-size: 11px; color: ${lc}; font-weight: bold; text-transform: uppercase;">${label}</div>
+              <div style="font-size: 20px; font-weight: bold; color: ${vc}; margin-top: 2px;">${val}</div>
+            </div>`).join('')}
         </div>
-
-        <div style="padding: 24px; line-height: 1.6;">
-          <p style="margin-top: 0; font-size: 15px;">Kính gửi <strong>Ban Giám Hiệu & Quản Trị Viên Hệ Thống</strong>,</p>
-          <p style="font-size: 14px; color: #475569;">
-            Hệ thống đã hoàn tất tiến trình rà soát và đối chiếu dữ liệu chấm công toàn trường vào cuối ngày <strong>${dateStr}</strong>. Dưới đây là thống kê chi tiết:
-          </p>
-
-          <!-- Bảng số liệu thống kê nhanh -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0;">
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center;">
-              <div style="font-size: 11px; color: #64748b; font-weight: bold; text-transform: uppercase;">Tổng Ca Dạy</div>
-              <div style="font-size: 22px; font-weight: bold; color: #0f172a; margin-top: 4px;">${totalSchedules}</div>
-            </div>
-            <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 12px; text-align: center;">
-              <div style="font-size: 11px; color: #047857; font-weight: bold; text-transform: uppercase;">Đúng Giờ</div>
-              <div style="font-size: 22px; font-weight: bold; color: #059669; margin-top: 4px;">${stats.onTimeCount}</div>
-            </div>
-            <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px; text-align: center;">
-              <div style="font-size: 11px; color: #b45309; font-weight: bold; text-transform: uppercase;">Đi Muộn</div>
-              <div style="font-size: 22px; font-weight: bold; color: #d97706; margin-top: 4px;">${stats.lateCount}</div>
-            </div>
-            <div style="background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 12px; text-align: center;">
-              <div style="font-size: 11px; color: #c2410c; font-weight: bold; text-transform: uppercase;">Về Sớm</div>
-              <div style="font-size: 22px; font-weight: bold; color: #ea580c; margin-top: 4px;">${stats.earlyCount}</div>
-            </div>
-            <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px; text-align: center;">
-              <div style="font-size: 11px; color: #1d4ed8; font-weight: bold; text-transform: uppercase;">Nghỉ Có Phép</div>
-              <div style="font-size: 22px; font-weight: bold; color: #2563eb; margin-top: 4px;">${stats.excusedCount}</div>
-            </div>
-            <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; text-align: center;">
-              <div style="font-size: 11px; color: #b91c1c; font-weight: bold; text-transform: uppercase;">Vắng Không Phép</div>
-              <div style="font-size: 22px; font-weight: bold; color: #dc2626; margin-top: 4px;">${stats.absentCount}</div>
-            </div>
-          </div>
-
-          <!-- Tỷ lệ chuyên cần -->
-          <div style="background-color: #f1f5f9; padding: 14px 16px; border-radius: 8px; margin-bottom: 24px;">
-            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
-              <span><strong>Tỷ lệ giảng dạy / có mặt hợp lệ:</strong></span>
-              <strong style="color: #2563eb;">${attendanceRate}%</strong>
-            </div>
-            <div style="background-color: #e2e8f0; border-radius: 4px; height: 8px; overflow: hidden;">
-              <div style="background-color: #2563eb; height: 100%; width: ${Math.min(100, attendanceRate)}%;"></div>
-            </div>
-          </div>
-
-          <!-- 1. Danh sách Vắng mặt không phép (Cần chú ý đặc biệt) -->
-          <h3 style="font-size: 15px; color: #b91c1c; border-bottom: 2px solid #fee2e2; padding-bottom: 6px; margin: 20px 0 10px 0;">
-            1. Danh Sách Vắng Mặt Không Phép (${absentList.length})
-          </h3>
-          ${absentList.length > 0 ? `
-          <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 18px;">
-            <thead>
-              <tr style="background-color: #fef2f2; color: #991b1b; text-align: left;">
-                <th style="padding: 8px; border: 1px solid #fecaca;">Nhân sự / Giảng viên</th>
-                <th style="padding: 8px; border: 1px solid #fecaca;">Ca dạy / Lịch</th>
-                <th style="padding: 8px; border: 1px solid #fecaca;">Khoa / Phòng</th>
-                <th style="padding: 8px; border: 1px solid #fecaca; text-align: center;">Cảnh Báo</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${absentList.map((item) => `
-              <tr>
-                <td style="padding: 8px; border: 1px solid #fecaca; font-weight: bold; color: #1e293b;">${escapeHtml(item.fullName)}</td>
-                <td style="padding: 8px; border: 1px solid #fecaca;">${escapeHtml(item.shiftName)} ${item.roomId ? `(${escapeHtml(item.roomId)})` : ''}</td>
-                <td style="padding: 8px; border: 1px solid #fecaca; color: #64748b;">${escapeHtml(item.departmentName || 'Khoa / Đơn vị')}</td>
-                <td style="padding: 8px; border: 1px solid #fecaca; text-align: center; color: #dc2626; font-weight: bold;">
-                  ${item.emailSent ? '✓ Đã gửi mail' : 'Chưa gửi'}
-                </td>
-              </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          ` : `
-          <p style="font-size: 13px; color: #059669; background-color: #ecfdf5; padding: 10px; border-radius: 6px; margin-bottom: 18px;">
-            ✓ Xuất sắc: Ngày hôm nay không có giảng viên/nhân sự nào vắng mặt không phép!
-          </p>
-          `}
-
-          <!-- 2. Danh sách Đi muộn hoặc Về sớm -->
-          <h3 style="font-size: 15px; color: #d97706; border-bottom: 2px solid #fef3c7; padding-bottom: 6px; margin: 20px 0 10px 0;">
-            2. Danh Sách Đi Muộn & Về Sớm (${lateList.length + earlyList.length})
-          </h3>
-          ${(lateList.length + earlyList.length) > 0 ? `
-          <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 18px;">
-            <thead>
-              <tr style="background-color: #fffbeb; color: #92400e; text-align: left;">
-                <th style="padding: 8px; border: 1px solid #fde68a;">Nhân sự</th>
-                <th style="padding: 8px; border: 1px solid #fde68a;">Ca làm việc</th>
-                <th style="padding: 8px; border: 1px solid #fde68a;">Chi tiết vi phạm</th>
-                <th style="padding: 8px; border: 1px solid #fde68a; text-align: center;">Phương thức</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${lateList.map((item) => `
-              <tr>
-                <td style="padding: 8px; border: 1px solid #fde68a; font-weight: bold;">${escapeHtml(item.fullName)}</td>
-                <td style="padding: 8px; border: 1px solid #fde68a;">${escapeHtml(item.shiftName)}</td>
-                <td style="padding: 8px; border: 1px solid #fde68a; color: #d97706; font-weight: bold;">
-                  Đi muộn ${item.lateTimeFormatted || (item.lateMinutes + ' phút')} (Vào lúc ${item.checkInTimeStr})
-                </td>
-                <td style="padding: 8px; border: 1px solid #fde68a; text-align: center;">${escapeHtml(item.method)}</td>
-              </tr>
-              `).join('')}
-              ${earlyList.map((item) => `
-              <tr>
-                <td style="padding: 8px; border: 1px solid #fde68a; font-weight: bold;">${escapeHtml(item.fullName)}</td>
-                <td style="padding: 8px; border: 1px solid #fde68a;">${escapeHtml(item.shiftName)}</td>
-                <td style="padding: 8px; border: 1px solid #fde68a; color: #ea580c; font-weight: bold;">
-                  Về sớm ${item.earlyTimeFormatted || (item.earlyMinutes + ' phút')} (Tan lúc ${item.checkOutTimeStr})
-                </td>
-                <td style="padding: 8px; border: 1px solid #fde68a; text-align: center;">${escapeHtml(item.method)}</td>
-              </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          ` : `
-          <p style="font-size: 13px; color: #059669; background-color: #ecfdf5; padding: 10px; border-radius: 6px; margin-bottom: 18px;">
-            ✓ Toàn bộ giảng viên/nhân sự có mặt đều check-in và check-out đúng giờ quy định!
-          </p>
-          `}
-
-          <!-- 3. Danh sách Đã Đến Làm Việc Đúng Giờ -->
-          <h3 style="font-size: 15px; color: #059669; border-bottom: 2px solid #a7f3d0; padding-bottom: 6px; margin: 20px 0 10px 0;">
-            3. Danh Sách Đã Đến Làm Việc Đúng Giờ (${presentList.length})
-          </h3>
-          ${presentList.length > 0 ? `
-          <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 18px;">
-            <thead>
-              <tr style="background-color: #ecfdf5; color: #065f46; text-align: left;">
-                <th style="padding: 8px; border: 1px solid #a7f3d0;">Nhân sự / Giảng viên</th>
-                <th style="padding: 8px; border: 1px solid #a7f3d0;">Ca làm việc</th>
-                <th style="padding: 8px; border: 1px solid #a7f3d0; text-align: center;">Giờ Check-in</th>
-                <th style="padding: 8px; border: 1px solid #a7f3d0; text-align: center;">Phương thức</th>
-                <th style="padding: 8px; border: 1px solid #a7f3d0; text-align: center;">Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${presentList.map((item) => `
-              <tr>
-                <td style="padding: 8px; border: 1px solid #a7f3d0; font-weight: bold; color: #1e293b;">${escapeHtml(item.fullName)}</td>
-                <td style="padding: 8px; border: 1px solid #a7f3d0;">${escapeHtml(item.shiftName)} ${item.roomId ? `(${escapeHtml(item.roomId)})` : ''}</td>
-                <td style="padding: 8px; border: 1px solid #a7f3d0; text-align: center; color: #047857; font-weight: bold;">${item.checkInTimeStr}</td>
-                <td style="padding: 8px; border: 1px solid #a7f3d0; text-align: center;">${escapeHtml(item.method)}</td>
-                <td style="padding: 8px; border: 1px solid #a7f3d0; text-align: center;">
-                  <span style="display: inline-block; background-color: #d1fae5; color: #065f46; font-weight: bold; padding: 2px 8px; border-radius: 4px; font-size: 12px;">Đúng giờ</span>
-                </td>
-              </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          ` : `
-          <p style="font-size: 13px; color: #64748b; background-color: #f8fafc; border: 1px dashed #cbd5e1; padding: 10px; border-radius: 6px; margin-bottom: 18px;">
-            Hôm nay các lượt đến làm đều check-in sau giờ quy định (đã được thống kê chi tiết ở mục 2 Đi Muộn bên trên).
-          </p>
-          `}
-
-          <!-- 4. Danh sách Nghỉ có phép -->
-          ${excusedList.length > 0 ? `
-          <h3 style="font-size: 15px; color: #2563eb; border-bottom: 2px solid #dbeafe; padding-bottom: 6px; margin: 20px 0 10px 0;">
-            4. Danh Sách Nghỉ Có Phép Hợp Lệ (${excusedList.length})
-          </h3>
-          <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 18px;">
-            <thead>
-              <tr style="background-color: #eff6ff; color: #1e40af; text-align: left;">
-                <th style="padding: 8px; border: 1px solid #bfdbfe;">Nhân sự</th>
-                <th style="padding: 8px; border: 1px solid #bfdbfe;">Ca vắng</th>
-                <th style="padding: 8px; border: 1px solid #bfdbfe;">Trạng thái đơn</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${excusedList.map((item) => `
-              <tr>
-                <td style="padding: 8px; border: 1px solid #bfdbfe; font-weight: bold;">${escapeHtml(item.fullName)}</td>
-                <td style="padding: 8px; border: 1px solid #bfdbfe;">${escapeHtml(item.shiftName)}</td>
-                <td style="padding: 8px; border: 1px solid #bfdbfe; color: #2563eb;">Đơn nghỉ phép đã được Ban Giám Hiệu duyệt</td>
-              </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          ` : ''}
-
-          <p style="font-size: 13px; color: #64748b; margin-top: 24px;">
-            Thầy/Cô có thể đăng nhập cổng quản trị để xem biểu đồ phân tích trực quan hoặc trích xuất báo cáo Excel tại phân hệ <strong>Báo Cáo & Thống Kê</strong>.
-          </p>
-
-          <p style="margin-top: 20px; font-size: 14px;">Trân trọng,<br><strong>Phòng Đào tạo & Quản trị Nhân sự</strong></p>
-        </div>
-
-        <div style="background-color: #f1f5f9; color: #64748b; padding: 14px; text-align: center; font-size: 12px; border-top: 1px solid #e2e8f0;">
-          Báo cáo tự động tổng hợp lúc 23:59 hàng ngày từ Hệ thống Quản trị Chấm công Trường Đại học.
-        </div>
-      </div>
-    `,
-
-
-  };
-
-  const result = await transporter.sendMail(mailOptions);
-  console.log(`[EmailService] [DAILY SUMMARY EMAIL] Đã gửi báo cáo tổng kết cuối ngày tới ${to} (Subject: "${subject}")`);
-  return result;
+        ${renderSummarySectionTable({
+          title: `1. Vắng Mặt Không Phép (${absentList.length})`,
+          titleColor: '#b91c1c', borderBottom: '#fee2e2', headBg: '#fef2f2', headColor: '#991b1b', cellBorder: '#fecaca',
+          headers: ['Nhân sự / Giảng viên', 'Ca dạy / Lịch', 'Khoa / Phòng', 'Cảnh Báo'],
+          rowsHtml: absentRows,
+          emptyText: '✓ Hôm nay không có nhân sự nào vắng mặt không phép!',
+        })}
+        ${renderSummarySectionTable({
+          title: `2. Đi Muộn & Về Sớm (${lateList.length + earlyList.length})`,
+          titleColor: '#d97706', borderBottom: '#fef3c7', headBg: '#fffbeb', headColor: '#92400e', cellBorder: '#fde68a',
+          headers: ['Nhân sự', 'Ca làm việc', 'Chi tiết', 'Phương thức'],
+          rowsHtml: lateEarlyRows,
+          emptyText: '✓ Toàn bộ nhân sự có mặt đều check-in và check-out đúng giờ!',
+        })}
+        ${renderSummarySectionTable({
+          title: `3. Đã Đến Làm Việc Đúng Giờ (${presentList.length})`,
+          titleColor: '#059669', borderBottom: '#a7f3d0', headBg: '#ecfdf5', headColor: '#065f46', cellBorder: '#a7f3d0',
+          headers: ['Nhân sự / Giảng viên', 'Ca làm việc', 'Giờ Check-in', 'Phương thức'],
+          rowsHtml: presentRows,
+          emptyText: 'Chưa có lượt check-in đúng giờ hôm nay.',
+        })}
+        ${excusedList.length > 0 ? renderSummarySectionTable({
+          title: `4. Nghỉ Có Phép Hợp Lệ (${excusedList.length})`,
+          titleColor: '#2563eb', borderBottom: '#dbeafe', headBg: '#eff6ff', headColor: '#1e40af', cellBorder: '#bfdbfe',
+          headers: ['Nhân sự', 'Ca vắng', 'Trạng thái đơn'],
+          rowsHtml: excusedRows,
+          emptyText: '',
+        }) : ''}
+        <p style="font-size: 13px; color: #64748b;">Thầy/Cô có thể đăng nhập cổng quản trị để trích xuất báo cáo Excel tại phân hệ <strong>Báo Cáo & Thống Kê</strong>.</p>
+      `,
+    }),
+  });
 };
 
 module.exports = {
