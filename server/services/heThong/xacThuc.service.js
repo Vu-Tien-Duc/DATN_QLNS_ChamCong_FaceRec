@@ -18,7 +18,7 @@ const {
 const { revokeToken } = require('../../utils/thuHoiToken');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const minioStorage = require('../../config/minio');
-const { setGraceToken, getGraceToken, deleteGraceToken, redisSet, redisGet } = require('../../config/redis');
+const { setGraceToken, getGraceToken, deleteGraceToken, redisSet, redisGet, redisDel } = require('../../config/redis');
 const { transporter } = require('../../config/mailer');
 const { disconnectUserSockets } = require('../../config/socket');
 const { normalizeRole, getActiveUserRoles } = require('../../utils/vaiTro.utils');
@@ -767,29 +767,31 @@ const forgotPassword = async ({ email, ipAddress }) => {
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
-  const emailHash = hashToken(cleanEmail);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    throw new ServiceError('Định dạng email không hợp lệ.', 400, 'INVALID_EMAIL_FORMAT');
+  }
 
-  // Áp dụng cooldown đồng nhất theo email trước khi truy vấn CSDL để chống dò tài khoản
+  const user = await NguoiDung.findOne({ where: { email: cleanEmail } });
+  if (!user) {
+    throw new ServiceError('Email này không tồn tại trong hệ thống tài khoản.', 404, 'EMAIL_NOT_FOUND');
+  }
+  if (user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
+    throw new ServiceError('Tài khoản liên kết với email này đang bị khóa hoặc đã nghỉ việc.', 403, 'ACCOUNT_INACTIVE');
+  }
+
+  const emailHash = hashToken(cleanEmail);
   const waitSeconds = await checkAndMarkOtpCooldown(emailHash);
   if (waitSeconds > 0) {
     throw new ServiceError(`Vui lòng đợi ${waitSeconds} giây trước khi yêu cầu mã OTP mới.`, 429);
   }
 
-  const user = await NguoiDung.findOne({ where: { email: cleanEmail } });
-
-  if (!user || user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
-    return {
-      success: true,
-      message: 'Nếu email tồn tại và đang hoạt động trong hệ thống, mã OTP khôi phục mật khẩu đã được gửi.',
-    };
-  }
-
   const rawOtp = crypto.randomInt(100000, 1000000).toString();
   const hashedOtp = hashToken(rawOtp);
   const safeFullName = escapeHtml(user.ho_ten || 'Giảng viên');
+  const senderEmail = (process.env.EMAIL_USER || process.env.MAIL_USER || 'no-reply@uni.edu.vn').trim();
 
   const mailOptions = {
-    from: process.env.EMAIL_FROM || '"QLNS & Chấm Công Đại Học" <no-reply@uni.edu.vn>',
+    from: process.env.EMAIL_FROM || `"QLNS & Chấm Công Đại Học" <${senderEmail}>`,
     to: user.email,
     subject: '[QLNS] Mã OTP xác thực đặt lại mật khẩu',
     html: `
@@ -829,10 +831,22 @@ const forgotPassword = async ({ email, ipAddress }) => {
   try {
     await transporter.sendMail(mailOptions);
   } catch (err) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new ServiceError('Không thể gửi email xác thực OTP lúc này. Vui lòng thử lại sau.', 503);
-    }
     console.error('[Email OTP Error]:', err.message);
+    otpCooldownMap.delete(emailHash);
+    await redisDel(`${OTP_COOLDOWN_PREFIX}${emailHash}`).catch(() => {});
+    await XacThucOtp.update(
+      { da_su_dung: true },
+      { where: { nguoi_dung_id: user.id, loai_otp: 'forgot_password', ma_otp: hashedOtp, da_su_dung: false } }
+    ).catch(() => {});
+    const devDetail =
+      process.env.NODE_ENV === 'production'
+        ? ''
+        : ` (${err.message || 'Lỗi kết nối SMTP'})`;
+    throw new ServiceError(
+      `Không thể gửi email xác thực OTP lúc này${devDetail}. Vui lòng kiểm tra cấu hình SMTP hoặc thử lại sau.`,
+      503,
+      'EMAIL_OTP_SEND_FAILED'
+    );
   }
 
   NhatKyKiemToan.create({
@@ -847,7 +861,7 @@ const forgotPassword = async ({ email, ipAddress }) => {
 
   return {
     success: true,
-    message: 'Nếu email tồn tại và đang hoạt động trong hệ thống, mã OTP khôi phục mật khẩu đã được gửi.',
+    message: 'Mã OTP khôi phục mật khẩu đã được gửi tới email của bạn. Vui lòng kiểm tra hộp thư (kể cả Spam/Thư rác).',
   };
 };
 

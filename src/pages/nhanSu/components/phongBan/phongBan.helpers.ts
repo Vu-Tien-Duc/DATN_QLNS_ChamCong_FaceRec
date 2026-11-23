@@ -89,6 +89,17 @@ export const getUnitLeaderTitle = (deptType?: string | null, deptName?: string |
   return 'Trưởng Phòng ban';
 };
 
+export const getUnitDeputyMeta = (
+  deptType?: string | null,
+  deptName?: string | null
+): { role: string; title: string } | null => {
+  if (isBghDepartmentName(deptName)) return null;
+  if (deptType === 'khoa') return { role: 'pho_khoa', title: 'Phó Trưởng Khoa' };
+  if (deptType === 'bo_mon') return { role: 'pho_bo_mon', title: 'Phó Trưởng Bộ môn' };
+  if (deptType === 'phong_ban') return { role: 'pho_phong', title: 'Phó Trưởng Phòng' };
+  return null;
+};
+
 export const getRoleDisplayLabel = (role?: string | null): string => {
   const key = String(role || '').toLowerCase().trim();
   return ROLE_LABELS[key] || key || 'Cán bộ';

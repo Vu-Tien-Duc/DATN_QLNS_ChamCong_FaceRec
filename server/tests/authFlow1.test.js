@@ -571,20 +571,23 @@ describe('Luồng 1 - Chống Account Enumeration, Khóa Brute-force & Quy trìn
     });
     stub(models.MaLamMoi, 'destroy', async () => 1);
 
-    // Email không tồn tại: lần 1 -> 200, lần 2 trong 60s -> 429 (giống hệt email thật)
-    const missing1 = await authService.forgotPassword({ email: 'khongtontai@ntu.edu.vn' });
-    assert.equal(missing1.success, true);
+    // Email không tồn tại -> báo lỗi 404 EMAIL_NOT_FOUND rõ ràng và không gửi mail
     await assert.rejects(
-      () => authService.forgotPassword({ email: 'khongtontai@ntu.edu.vn' }),
-      (err) => err.statusCode === 429
+      () => authService.forgotPassword({ email: 'khongtontai@gmail.com' }),
+      (err) => err.statusCode === 404 && err.errorCode === 'EMAIL_NOT_FOUND'
     );
+    assert.equal(sentEmails.length, 0);
 
-    // Email thật: gửi mail có escape HTML XSS
+    // Email thật: gửi mail có escape HTML XSS và áp dụng cooldown 429 khi gửi lặp trong 60s
     const real1 = await authService.forgotPassword({ email: 'gv.test@ntu.edu.vn' });
     assert.equal(real1.success, true);
     assert.equal(sentEmails.length, 1);
     assert.doesNotMatch(sentEmails[0].html, /<script>alert/);
     assert.match(sentEmails[0].html, /&lt;script&gt;alert/);
+    await assert.rejects(
+      () => authService.forgotPassword({ email: 'gv.test@ntu.edu.vn' }),
+      (err) => err.statusCode === 429
+    );
 
     // Reset với email không tồn tại hay OTP sai đều trả cùng một thông báo đồng nhất
     let errUnknownMsg = '';

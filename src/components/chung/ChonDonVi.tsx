@@ -114,16 +114,21 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
   // Trạng thái mở rộng danh sách bộ môn của từng Khoa (Accordion)
   const [expandedKhoas, setExpandedKhoas] = useState<Record<string, boolean>>({});
 
-  // Tính vị trí nổi cố định theo nút bấm để không phá vỡ hoặc làm phình khung modal/form cha
+  // Tính vị trí nổi cố định theo nút bấm (tối thiểu 320px để không cắt tên khoa/bộ môn dài)
   const updateMenuPosition = useCallback(() => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
-    const placeAbove = spaceBelow < 340 && rect.top > spaceBelow;
+    const placeAbove = spaceBelow < 360 && rect.top > spaceBelow;
+    const menuWidth = Math.min(window.innerWidth - 16, Math.max(rect.width, 320));
+    const alignedLeft =
+      rect.left + menuWidth > window.innerWidth - 8
+        ? Math.max(8, rect.right - menuWidth)
+        : Math.max(8, rect.left);
     setMenuPos({
       top: placeAbove ? rect.top - 6 : rect.bottom + 6,
-      left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)),
-      width: rect.width,
+      left: alignedLeft,
+      width: menuWidth,
       placeAbove,
     });
   }, []);
@@ -383,25 +388,25 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                 ? { bottom: window.innerHeight - menuPos.top }
                 : { top: menuPos.top }),
             }}
-            className="z-[150] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden animate-in fade-in duration-100"
+            className="z-[150] bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700/80 rounded-2xl shadow-xl shadow-slate-900/10 dark:shadow-black/40 overflow-hidden animate-in fade-in duration-100"
           >
-          {/* Thanh tìm kiếm nhỏ gọn */}
-          <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/50">
+          {/* Thanh tìm kiếm gọn gàng */}
+          <div className="p-2.5 border-b border-slate-100 dark:border-slate-800">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 ref={searchInputRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Tìm Khoa, Bộ môn hoặc Phòng ban..."
-                className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="w-full pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/15 transition-all"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -409,42 +414,41 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
             </div>
           </div>
 
-          {/* Danh sách phân cấp cuộn - Thoáng đãng, không bị cắt text */}
-          <div className="max-h-72 overflow-y-auto p-1.5 space-y-2.5 divide-y divide-slate-100 dark:divide-slate-800/60 custom-scrollbar">
+          {/* Danh sách phân cấp phẳng, sạch, không lồng khung & không dùng emoji */}
+          <div className="max-h-80 overflow-y-auto p-2 space-y-3 custom-scrollbar">
             {filteredTree.totalCount === 0 ? (
-              <div className="py-6 text-center text-xs text-slate-400">
+              <div className="py-8 text-center text-xs text-slate-400">
                 <Layers className="w-6 h-6 mx-auto mb-1.5 opacity-40" />
                 Không tìm thấy đơn vị nào phù hợp
               </div>
             ) : (
               <>
-                {/* 0. TÙY CHỌN: TẤT CẢ KHOA / ĐƠN VỊ */}
+                {/* 0. TÙY CHỌN: TẤT CẢ ĐƠN VỊ */}
                 {allowAll && (
-                  <div className="pb-1 mb-1 border-b border-slate-100 dark:border-slate-800">
+                  <div className="pb-2 border-b border-slate-100 dark:border-slate-800">
                     <div
                       onClick={() => handleSelect('ALL')}
-                      className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                      className={`w-full px-2.5 py-2 rounded-xl text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
                         isAllSelected
-                          ? 'bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 font-bold'
-                          : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 font-medium'
                       }`}
                     >
-                      <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
-                        <Building2 className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />
-                        <span className="leading-snug truncate font-semibold">
-                          {allLabel || `Tất cả Khoa / Đơn vị (${departments.length})`}
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                        <Building2 className={`w-3.5 h-3.5 shrink-0 ${isAllSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                        <span className="leading-snug truncate">
+                          {allLabel || `Tất cả đơn vị (${departments.length})`}
                         </span>
                       </div>
-                      {isAllSelected && <Check className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />}
+                      {isAllSelected && <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />}
                     </div>
                   </div>
                 )}
 
                 {/* 1. KHỐI BAN GIÁM HIỆU */}
                 {filteredTree.bghList.length > 0 && (
-                  <div className="space-y-1 pt-1 first:pt-0">
-                    <div className="px-2 py-0.5 text-[11px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <Crown className="w-3 h-3" />
+                  <div className="space-y-0.5">
+                    <div className="px-2.5 pb-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                       Ban Giám Hiệu
                     </div>
                     {filteredTree.bghList.map((dept) => {
@@ -453,48 +457,42 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                         <div
                           key={dept.id}
                           onClick={() => handleSelect(dept.id)}
-                          className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                          className={`w-full px-2.5 py-2 rounded-xl text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
                             isSelected
-                              ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-bold'
-                              : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold'
+                              : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80'
                           }`}
                         >
-                          <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
-                            <span className="text-sm shrink-0">⭐</span>
-                            <span className="leading-snug">{dept.ten_phong_ban}</span>
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                            <Crown className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-purple-500/80'}`} />
+                            <span className="leading-snug truncate">{dept.ten_phong_ban}</span>
                           </div>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
+                          {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />}
                         </div>
                       );
                     })}
                   </div>
                 )}
 
-                {/* 2. CÁC KHỐI KHOA ĐÀO TẠO & BỘ MÔN TRỰC THUỘC */}
+                {/* 2. KHỐI KHOA & BỘ MÔN */}
                 {filteredTree.khoaGroups.length > 0 && (
-                  <div className="space-y-2 pt-1.5 first:pt-0">
-                    <div className="px-2 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <GraduationCap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                      Khối Khoa & Bộ Môn
+                  <div className="space-y-0.5">
+                    <div className="px-2.5 pb-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                      Khoa & Bộ môn
                     </div>
 
                     {filteredTree.khoaGroups.map(({ khoa, canSelectKhoa, bomons }) => {
                       const isKhoaSelected = String(khoa.id) === String(value);
                       const hasBomons = bomons.length > 0;
-                      // Tự động mở nếu đang tìm kiếm hoặc nếu người dùng đã click mở
                       const isExpanded = searchQuery.trim().length > 0 || Boolean(expandedKhoas[khoa.id]);
 
                       return (
-                        <div
-                          key={khoa.id}
-                          className="rounded-lg border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/40 dark:bg-slate-900/40 p-1 space-y-0.5"
-                        >
-                          {/* Header Khoa - Chọn Khoa hoặc Mở rộng bộ môn */}
+                        <div key={khoa.id} className="space-y-0.5">
                           <div
-                            className={`px-2 py-1.5 rounded-md text-xs flex items-center justify-between transition-colors ${
+                            className={`px-2.5 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
                               isKhoaSelected
-                                ? 'bg-blue-100/80 dark:bg-blue-950/70 text-blue-800 dark:text-blue-200 font-bold'
-                                : 'text-slate-900 dark:text-white font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/40'
+                                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold'
+                                : 'text-slate-800 dark:text-slate-100 font-medium hover:bg-slate-100/80 dark:hover:bg-slate-800/80'
                             }`}
                           >
                             <div
@@ -505,64 +503,67 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                                   setExpandedKhoas((prev) => ({ ...prev, [khoa.id]: !prev[khoa.id] }));
                                 }
                               }}
-                              className="flex items-center gap-2 min-w-0 flex-1 pr-2 cursor-pointer select-none"
-                              title={canSelectKhoa ? `Chọn ${khoa.ten_phong_ban}` : `Bấm để mở danh sách bộ môn trực thuộc`}
+                              className="flex items-center gap-2.5 min-w-0 flex-1 pr-2 cursor-pointer select-none"
+                              title={canSelectKhoa ? `Chọn ${khoa.ten_phong_ban}` : 'Bấm để mở danh sách bộ môn trực thuộc'}
                             >
-                              <span className="text-sm shrink-0">🏛️</span>
+                              <GraduationCap
+                                className={`w-3.5 h-3.5 shrink-0 ${
+                                  isKhoaSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-indigo-500/80'
+                                }`}
+                              />
                               <span className="leading-snug truncate">{khoa.ten_phong_ban}</span>
                               {hasBomons && (
-                                <span className={`text-[10px] font-normal shrink-0 ${canSelectKhoa ? 'text-slate-400' : 'text-blue-500 font-medium'}`}>
-                                  {canSelectKhoa ? `(${bomons.length})` : `(${bomons.length} bộ môn)`}
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">
+                                  {bomons.length}
                                 </span>
-                              )}
-                              {isKhoaSelected && (
-                                <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                               )}
                             </div>
 
-                            {hasBomons && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExpandedKhoas((prev) => ({ ...prev, [khoa.id]: !prev[khoa.id] }));
-                                }}
-                                className="p-1 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-100/60 dark:hover:bg-blue-900/40 transition-colors shrink-0 cursor-pointer"
-                                title={isExpanded ? 'Thu gọn danh sách bộ môn' : 'Xem các bộ môn trực thuộc'}
-                              >
-                                <ChevronDown
-                                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                                    isExpanded ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''
-                                  }`}
-                                />
-                              </button>
-                            )}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {isKhoaSelected && (
+                                <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                              )}
+                              {hasBomons && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedKhoas((prev) => ({ ...prev, [khoa.id]: !prev[khoa.id] }));
+                                  }}
+                                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors cursor-pointer"
+                                  title={isExpanded ? 'Thu gọn bộ môn' : 'Xem bộ môn trực thuộc'}
+                                >
+                                  <ChevronDown
+                                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                      isExpanded ? 'rotate-180 text-indigo-600 dark:text-indigo-400' : ''
+                                    }`}
+                                  />
+                                </button>
+                              )}
+                            </div>
                           </div>
 
-                          {/* Danh sách Bộ Môn con khi Khoa được mở ra */}
+                          {/* Danh sách Bộ Môn con thụt lề mảnh gọn gàng */}
                           {hasBomons && isExpanded && (
-                            <div className="pl-3 pr-1 space-y-0.5 border-l-2 border-blue-300 dark:border-blue-700 ml-3.5 my-1">
-                              {bomons.map((bm, idx) => {
+                            <div className="ml-4 pl-2.5 border-l border-slate-200 dark:border-slate-700 space-y-0.5 py-0.5">
+                              {bomons.map((bm) => {
                                 const isBmSelected = String(bm.id) === String(value);
-                                const isLast = idx === bomons.length - 1;
                                 return (
                                   <div
                                     key={bm.id}
                                     onClick={() => handleSelect(bm.id)}
-                                    className={`px-2 py-1.5 rounded-md text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                                    className={`px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between cursor-pointer transition-colors ${
                                       isBmSelected
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 font-bold'
-                                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold'
+                                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/80'
                                     }`}
                                   >
-                                    <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-2">
-                                      <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] shrink-0 select-none">
-                                        {isLast ? '└──' : '├──'}
-                                      </span>
+                                    <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
+                                      <Layers className={`w-3 h-3 shrink-0 ${isBmSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
                                       <span className="leading-snug truncate">{bm.ten_phong_ban}</span>
                                     </div>
                                     {isBmSelected && (
-                                      <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                      <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                                     )}
                                   </div>
                                 );
@@ -577,10 +578,9 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
 
                 {/* 3. KHỐI BỘ MÔN CHƯA GẮN KHOA */}
                 {filteredTree.unassignedBomons.length > 0 && (
-                  <div className="space-y-0.5 pt-1.5 first:pt-0">
-                    <div className="px-2 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Layers className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                      Bộ Môn Khác
+                  <div className="space-y-0.5">
+                    <div className="px-2.5 pb-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                      Bộ môn khác
                     </div>
                     {filteredTree.unassignedBomons.map((bm) => {
                       const isSelected = String(bm.id) === String(value);
@@ -588,17 +588,18 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                         <div
                           key={bm.id}
                           onClick={() => handleSelect(bm.id)}
-                          className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                          className={`w-full px-2.5 py-2 rounded-xl text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
                             isSelected
-                              ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-bold'
-                              : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold'
+                              : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80'
                           }`}
                         >
-                          <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                            <Layers className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
                             <span className="leading-snug truncate">{bm.ten_phong_ban}</span>
                           </div>
                           {isSelected && (
-                            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                           )}
                         </div>
                       );
@@ -608,10 +609,9 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
 
                 {/* 4. KHỐI PHÒNG BAN CHỨC NĂNG */}
                 {filteredTree.phongList.length > 0 && (
-                  <div className="space-y-0.5 pt-1.5 first:pt-0">
-                    <div className="px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Building className="w-3 h-3" />
-                      Khối Ban Chức Năng NTU
+                  <div className="space-y-0.5">
+                    <div className="px-2.5 pb-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                      Phòng ban chức năng
                     </div>
                     {filteredTree.phongList.map((dept) => {
                       const isSelected = String(dept.id) === String(value);
@@ -619,18 +619,18 @@ export const DepartmentSelect: React.FC<DepartmentSelectProps> = ({
                         <div
                           key={dept.id}
                           onClick={() => handleSelect(dept.id)}
-                          className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                          className={`w-full px-2.5 py-2 rounded-xl text-left text-xs flex items-center justify-between cursor-pointer transition-colors ${
                             isSelected
-                              ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 font-bold'
-                              : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold'
+                              : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80'
                           }`}
                         >
-                          <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
-                            <span className="text-sm shrink-0">🏢</span>
-                            <span className="leading-snug">{dept.ten_phong_ban}</span>
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                            <Building className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                            <span className="leading-snug truncate">{dept.ten_phong_ban}</span>
                           </div>
                           {isSelected && (
-                            <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                           )}
                         </div>
                       );

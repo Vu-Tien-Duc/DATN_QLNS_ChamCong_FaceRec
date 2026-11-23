@@ -235,8 +235,16 @@ const validateManagerEligibility = async (
       return 'Đơn vị mới tạo chưa có nhân sự trực thuộc. Vui lòng tạo đơn vị trước (để trống người phụ trách), phân bổ nhân sự vào đơn vị rồi mới bổ nhiệm Trưởng đơn vị.';
     }
     if (loaiDonVi === 'bo_mon') {
-      if (!parentDeptId || managerDeptId !== parentDeptId) {
-        return `Cán bộ "${managerName}" không thuộc Khoa trực thuộc của Bộ môn mới này. Chỉ có thể bổ nhiệm giảng viên thuộc Khoa cha hoặc để trống bổ nhiệm sau.`;
+      let inParentFaculty = Boolean(parentDeptId && managerDeptId && managerDeptId === parentDeptId);
+      if (!inParentFaculty && parentDeptId && managerDeptId) {
+        const managerDept = await PhongBan.findByPk(managerDeptId, {
+          attributes: ['id', 'don_vi_cha_id'],
+          ...txOpts,
+        });
+        inParentFaculty = Boolean(managerDept?.don_vi_cha_id && String(managerDept.don_vi_cha_id) === parentDeptId);
+      }
+      if (!inParentFaculty) {
+        return `Cán bộ "${managerName}" không thuộc Khoa chủ quản (hoặc các bộ môn trực thuộc Khoa) của Bộ môn mới này. Chỉ có thể bổ nhiệm giảng viên trong cùng Khoa hoặc để trống bổ nhiệm sau.`;
       }
     }
   } else {
@@ -255,7 +263,16 @@ const validateManagerEligibility = async (
       allowedDeptIds.add(parentDeptId);
     }
 
-    if (!managerDeptId || !allowedDeptIds.has(managerDeptId)) {
+    let inAllowedScope = Boolean(managerDeptId && allowedDeptIds.has(managerDeptId));
+    if (!inAllowedScope && loaiDonVi === 'bo_mon' && parentDeptId && managerDeptId) {
+      const managerDept = await PhongBan.findByPk(managerDeptId, {
+        attributes: ['id', 'don_vi_cha_id'],
+        ...txOpts,
+      });
+      inAllowedScope = Boolean(managerDept?.don_vi_cha_id && String(managerDept.don_vi_cha_id) === parentDeptId);
+    }
+
+    if (!inAllowedScope) {
       return `Cán bộ "${managerName}" hiện đang công tác tại đơn vị khác, không thể bổ nhiệm phụ trách đơn vị này. Vui lòng điều chuyển đơn vị công tác của cán bộ tại mục Quản lý Người dùng trước.`;
     }
   }

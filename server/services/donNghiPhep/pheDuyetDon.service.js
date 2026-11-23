@@ -27,6 +27,7 @@ const {
 } = require('../../utils/thoiGianChamCong.utils');
 const { layKhoiTheoLichTrinh } = require('../chamCong/khoiCaDay.service');
 const { sendLeaveApprovedEmail, sendLeaveRejectedEmail } = require('../heThong/guiEmail.service');
+const { resolveSmtpCredentials } = require('../../config/mailer');
 const {
   ServiceError,
   PENDING_LEAVE_STATUSES,
@@ -665,8 +666,7 @@ const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong,
   }
 
   const applicant = await NguoiDung.findByPk(request.nguoi_dung_id, { attributes: ['id', 'email', 'ho_ten'] });
-  const mailUser = process.env.MAIL_USER || process.env.EMAIL_USER;
-  const mailPass = process.env.MAIL_PASSWORD || process.env.EMAIL_PASS;
+  const { user: mailUser, pass: mailPass } = resolveSmtpCredentials(String(process.env.EMAIL_HOST || 'smtp.gmail.com').trim());
   if (applicant?.email && mailUser && mailPass && isFinalApproval) {
     sendLeaveApprovedEmail({
       to: applicant.email,
@@ -758,8 +758,7 @@ const rejectLeaveRequestDomain = async ({ id, ly_do_tu_choi, phien_ban_ky_vong, 
   });
 
   const applicant = await NguoiDung.findByPk(request.nguoi_dung_id, { attributes: ['id', 'email', 'ho_ten'] });
-  const mailUser = process.env.MAIL_USER || process.env.EMAIL_USER;
-  const mailPass = process.env.MAIL_PASSWORD || process.env.EMAIL_PASS;
+  const { user: mailUser, pass: mailPass } = resolveSmtpCredentials(String(process.env.EMAIL_HOST || 'smtp.gmail.com').trim());
   if (applicant?.email && mailUser && mailPass) {
     sendLeaveRejectedEmail({
       to: applicant.email,

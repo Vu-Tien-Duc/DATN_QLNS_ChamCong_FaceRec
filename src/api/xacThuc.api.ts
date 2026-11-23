@@ -85,7 +85,11 @@ export const authApi = {
    * Yêu cầu gửi mã OTP quên mật khẩu (POST /api/xac-thuc/quen-mat-khau)
    */
   forgotPassword: async (email: string): Promise<ApiResponse<null>> => {
-    const response = await apiClient.post<ApiResponse<null>>('/xac-thuc/quen-mat-khau', { email });
+    const response = await apiClient.post<ApiResponse<null>>(
+      '/xac-thuc/quen-mat-khau',
+      { email },
+      { timeout: 25000 }
+    );
     return response.data;
   },
 

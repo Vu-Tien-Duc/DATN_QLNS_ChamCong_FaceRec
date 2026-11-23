@@ -30,6 +30,8 @@ import {
   FileSpreadsheet,
   Users,
   DollarSign,
+  QrCode,
+  User,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DepartmentSelect, DepartmentItem } from '../../components/chung/ChonDonVi';
@@ -85,6 +87,51 @@ const STATUS_CONFIGS: Record<string, { label: string; dotCls: string; badgeCls: 
     dotCls: 'bg-rose-500',
     badgeCls: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800',
   },
+};
+
+const LEAVE_TYPE_META: Record<string, { label: string; badgeCls: string }> = {
+  nghi_phep: {
+    label: 'Nghỉ phép',
+    badgeCls: 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-indigo-200/70 dark:border-indigo-800/70',
+  },
+  nghi_om: {
+    label: 'Nghỉ ốm',
+    badgeCls: 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200/70 dark:border-rose-800/70',
+  },
+  viec_rieng: {
+    label: 'Việc riêng',
+    badgeCls: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700',
+  },
+  day_bu: {
+    label: 'Dạy bù',
+    badgeCls: 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200/70 dark:border-amber-800/70',
+  },
+  doi_ca: {
+    label: 'Đổi ca',
+    badgeCls: 'bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border-sky-200/70 dark:border-sky-800/70',
+  },
+  giai_trinh_cong: {
+    label: 'Giải trình công',
+    badgeCls: 'bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 border-violet-200/70 dark:border-violet-800/70',
+  },
+  giai_trinh_thieu_check_out: {
+    label: 'Thiếu check-out',
+    badgeCls: 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border-purple-200/70 dark:border-purple-800/70',
+  },
+};
+
+const formatRoomDisplay = (room?: string | null): string => {
+  const clean = String(room || '').trim();
+  if (!clean) return 'Chưa phân phòng';
+  if (/^(phòng|zoom|meet|teams|online|lab|hội trường)/i.test(clean)) return clean;
+  return `Phòng ${clean}`;
+};
+
+const formatShortDateDDMM = (isoDate?: string | null): string => {
+  if (!isoDate) return '';
+  const match = String(isoDate).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return String(isoDate);
+  return `${match[3]}/${match[2]}`;
 };
 
 // =============================================================================
@@ -144,11 +191,12 @@ export const Dashboard: React.FC = () => {
   // Today schedules & events
   const [todaySchedules, setTodaySchedules] = useState<ScheduleItem[]>([]);
 
-  // Live recent punches, today punches & 7-day logs
-  const [recentPunches, setRecentPunches] = useState<AttendanceHistoryItem[]>([]);
+  // Today punches & 7-day logs
   const [todayAttendanceRecords, setTodayAttendanceRecords] = useState<AttendanceHistoryItem[]>([]);
   const [sevenDaysRecords, setSevenDaysRecords] = useState<AttendanceHistoryItem[]>([]);
-  const [tableFilter, setTableFilter] = useState<'ALL' | 'face_ai' | 'GPS'>('ALL');
+  const [donutScope, setDonutScope] = useState<'today' | '7days'>('today');
+  const [tableDateScope, setTableDateScope] = useState<'today' | '7days'>('today');
+  const [tableFilter, setTableFilter] = useState<'ALL' | 'face_ai' | 'qr_code' | 'GPS'>('ALL');
   const [searchPunchKeyword, setSearchPunchKeyword] = useState<string>('');
 
   // Realtime clock
@@ -239,7 +287,7 @@ export const Dashboard: React.FC = () => {
             ? leaveRes.requests
             : [];
         setPendingLeaveCount(requests.length);
-        setPendingLeaveList(requests.slice(0, 3));
+        setPendingLeaveList(requests.slice(0, 4));
       } else {
         setPendingLeaveCount(0);
         setPendingLeaveList([]);
@@ -263,19 +311,13 @@ export const Dashboard: React.FC = () => {
         setPayrollStatus('Không áp dụng');
       }
 
-      // 5. Tải lịch sử quét sinh trắc học gần nhất
-      const recentRes = await attendanceApi
-        .getAttendanceHistory({ gioi_han: 100 })
-        .catch(() => ({ records: [] }));
-      setRecentPunches(recentRes.records || []);
-
-      // 6. Tải lịch trình / thời khóa biểu hôm nay
+      // 5. Tải lịch trình / thời khóa biểu hôm nay
       const schedRes = await scheduleApi
         .getTodaySchedules({ ngay: todayDateIso })
         .catch(() => ({ data: [] }));
       setTodaySchedules(extractArray<ScheduleItem>(schedRes.data || []));
 
-      // 7. Tải dữ liệu chấm công 7 ngày gần nhất để dựng biểu đồ xu hướng theo bộ lọc đơn vị
+      // 6. Tải dữ liệu chấm công 7 ngày qua (dùng chung cho biểu đồ xu hướng, Donut và bảng lịch sử)
       const pad = (n: number) => String(n).padStart(2, '0');
       const dStart = new Date();
       dStart.setDate(dStart.getDate() - 6);
@@ -435,8 +477,8 @@ export const Dashboard: React.FC = () => {
       else if (st === 'thieu_check_out') thieuCheckOut++;
     });
 
-    const present = onTime + late + early;
-    const totalExpected = totalStaff > 0 ? totalStaff : present + absent + thieuCheckOut || 1;
+    const present = onTime + late + early + thieuCheckOut;
+    const totalExpected = totalStaff > 0 ? totalStaff : present + absent + excused || 1;
     const calculatedRate = totalExpected > 0 ? Math.round((present / totalExpected) * 100) : 0;
 
     return {
@@ -450,6 +492,45 @@ export const Dashboard: React.FC = () => {
       rate: Math.min(100, calculatedRate),
     };
   }, [todayAttendanceRecords, isLogInScopedDept, totalStaff]);
+
+  // Thống kê cho biểu đồ Donut hỗ trợ chuyển đổi linh hoạt giữa "Hôm nay" và "7 ngày gần nhất"
+  const donutStats = useMemo(() => {
+    const source = donutScope === 'today' ? todayAttendanceRecords : sevenDaysRecords;
+    const scoped = source.filter(isLogInScopedDept);
+    let onTime = 0;
+    let late = 0;
+    let early = 0;
+    let absent = 0;
+    let excused = 0;
+    let thieuCheckOut = 0;
+
+    scoped.forEach((r: any) => {
+      const st = r.trang_thai;
+      if (st === 'on_time') onTime++;
+      else if (st === 'late') late++;
+      else if (st === 'early_leave') early++;
+      else if (st === 'excused_absence') excused++;
+      else if (st === 'absent') absent++;
+      else if (st === 'thieu_check_out') thieuCheckOut++;
+    });
+
+    const lateAndEarly = late + early;
+    const present = onTime + lateAndEarly + thieuCheckOut;
+    const totalRecords = onTime + lateAndEarly + excused + absent + thieuCheckOut;
+    const denom = donutScope === 'today' && totalStaff > 0 ? Math.max(totalStaff, totalRecords) : totalRecords;
+    const rate = denom > 0 ? Math.min(100, Math.round((present / denom) * 100)) : 0;
+
+    return {
+      onTime,
+      lateAndEarly,
+      excused,
+      absent,
+      thieuCheckOut,
+      present,
+      totalRecords,
+      rate,
+    };
+  }, [donutScope, todayAttendanceRecords, sevenDaysRecords, isLogInScopedDept, totalStaff]);
 
   // Biểu đồ xu hướng 7 ngày tính động theo bộ lọc đơn vị
   const weeklyTrendData = useMemo(() => {
@@ -470,6 +551,7 @@ export const Dashboard: React.FC = () => {
       const pCount = dayLogs.filter((r: any) => r.trang_thai === 'on_time').length;
       const lCount = dayLogs.filter((r: any) => r.trang_thai === 'late' || r.trang_thai === 'early_leave').length;
       const eCount = dayLogs.filter((r: any) => r.trang_thai === 'excused_absence').length;
+      const mCount = dayLogs.filter((r: any) => r.trang_thai === 'thieu_check_out').length;
       const aCount = dayLogs.filter((r: any) => r.trang_thai === 'absent').length;
       return {
         day: item.day,
@@ -477,6 +559,7 @@ export const Dashboard: React.FC = () => {
         present: pCount,
         late: lCount,
         excused: eCount,
+        missingCo: mCount,
         absent: aCount,
       };
     });
@@ -566,21 +649,55 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  // Trích xuất tập phương thức chấm công từ toàn bộ lượt quét của bản ghi (check-in / check-out)
+  const getPunchMethodFlags = useCallback((item: any) => {
+    const methods: string[] = Array.isArray(item.luot_quet)
+      ? item.luot_quet.map((lq: any) => String(lq?.phuong_thuc || '').toLowerCase()).filter(Boolean)
+      : [];
+    const isGps = methods.some((m) => m.includes('gps'));
+    const isQr = methods.some((m) => m.includes('qr'));
+    const isFace = methods.some((m) => m.includes('face')) || (methods.length === 0 && Boolean(item.thoi_gian_vao));
+    return { isFace, isQr, isGps };
+  }, []);
+
+  // Nguồn dữ liệu bảng chấm công theo khoảng thời gian chuẩn (Hôm nay vs 7 ngày qua)
+  const scopedTodayPunches = useMemo(
+    () => (scopedDeptIds ? todayAttendanceRecords.filter(isLogInScopedDept) : todayAttendanceRecords),
+    [todayAttendanceRecords, scopedDeptIds, isLogInScopedDept]
+  );
+
+  const scopedSevenDaysPunches = useMemo(
+    () => (scopedDeptIds ? sevenDaysRecords.filter(isLogInScopedDept) : sevenDaysRecords),
+    [sevenDaysRecords, scopedDeptIds, isLogInScopedDept]
+  );
+
+  const activeTableSource = tableDateScope === 'today' ? scopedTodayPunches : scopedSevenDaysPunches;
+
+  // Đếm số lượng bản ghi theo phương thức trong phạm vi đơn vị & ngày đang chọn
+  const punchMethodCounts = useMemo(() => {
+    let all = 0;
+    let face = 0;
+    let qr = 0;
+    let gps = 0;
+    activeTableSource.forEach((item: any) => {
+      all++;
+      const { isFace, isQr, isGps } = getPunchMethodFlags(item);
+      if (isFace) face++;
+      if (isQr) qr++;
+      if (isGps) gps++;
+    });
+    return { all, face, qr, gps };
+  }, [activeTableSource, getPunchMethodFlags]);
+
   // Filtered live punch list
   const filteredPunches = useMemo(() => {
-    return recentPunches.filter((item: any) => {
-      const rawMethod = String(item.luot_quet?.[0]?.phuong_thuc || '').toLowerCase();
-      const isGps = rawMethod.includes('gps');
-      const isFace = rawMethod.includes('face') || (!rawMethod && Boolean(item.thoi_gian_vao));
+    return activeTableSource.filter((item: any) => {
+      const { isFace, isQr, isGps } = getPunchMethodFlags(item);
 
       // Filter by device type
       if (tableFilter === 'face_ai' && !isFace) return false;
+      if (tableFilter === 'qr_code' && !isQr) return false;
       if (tableFilter === 'GPS' && !isGps) return false;
-
-      // Filter by Department (đa cấp)
-      if (scopedDeptIds) {
-        if (!isLogInScopedDept(item)) return false;
-      }
 
       // Filter by keyword
       if (searchPunchKeyword.trim()) {
@@ -594,24 +711,23 @@ export const Dashboard: React.FC = () => {
 
       return true;
     });
-  }, [recentPunches, tableFilter, searchPunchKeyword, departmentFilter, departments]);
+  }, [activeTableSource, tableFilter, searchPunchKeyword, getPunchMethodFlags]);
 
-  // Donut chart calculations (100% REAL, bao gồm đủ các trạng thái)
-  const lateAndEarlyToday = todayAttendanceStats.late + todayAttendanceStats.earlyLeave;
-  const totalRecordsToday =
-    todayAttendanceStats.present + todayAttendanceStats.absent + todayAttendanceStats.excused + todayAttendanceStats.thieuCheckOut;
-  const onTimePct = totalRecordsToday > 0 ? Math.round((todayAttendanceStats.onTime / totalRecordsToday) * 100) : 0;
-  const latePct = totalRecordsToday > 0 ? Math.round((lateAndEarlyToday / totalRecordsToday) * 100) : 0;
-  const excusedPct = totalRecordsToday > 0 ? Math.round((todayAttendanceStats.excused / totalRecordsToday) * 100) : 0;
-  const absentPct = totalRecordsToday > 0 ? Math.round((todayAttendanceStats.absent / totalRecordsToday) * 100) : 0;
-  const missingCoPct = totalRecordsToday > 0 ? Math.round((todayAttendanceStats.thieuCheckOut / totalRecordsToday) * 100) : 0;
+  // Donut chart calculations (100% REAL, vẽ đủ cả 5 trạng thái bằng tỷ lệ thực không bị hở cung)
+  const totalDonutRecords = donutStats.totalRecords;
+  const onTimePct = totalDonutRecords > 0 ? Math.round((donutStats.onTime / totalDonutRecords) * 100) : 0;
+  const latePct = totalDonutRecords > 0 ? Math.round((donutStats.lateAndEarly / totalDonutRecords) * 100) : 0;
+  const excusedPct = totalDonutRecords > 0 ? Math.round((donutStats.excused / totalDonutRecords) * 100) : 0;
+  const absentPct = totalDonutRecords > 0 ? Math.round((donutStats.absent / totalDonutRecords) * 100) : 0;
+  const missingCoPct = totalDonutRecords > 0 ? Math.round((donutStats.thieuCheckOut / totalDonutRecords) * 100) : 0;
 
   // Donut SVG circumference calculation (r = 38 => circumference = 2 * PI * 38 = 238.76)
-  const circumference = 238.76;
-  const strokeOnTime = totalRecordsToday > 0 ? (onTimePct / 100) * circumference : 0;
-  const strokeLate = totalRecordsToday > 0 ? (latePct / 100) * circumference : 0;
-  const strokeExcused = totalRecordsToday > 0 ? (excusedPct / 100) * circumference : 0;
-  const strokeAbsent = totalRecordsToday > 0 ? (absentPct / 100) * circumference : 0;
+  const circumference = 2 * Math.PI * 38;
+  const strokeOnTime = totalDonutRecords > 0 ? (donutStats.onTime / totalDonutRecords) * circumference : 0;
+  const strokeLate = totalDonutRecords > 0 ? (donutStats.lateAndEarly / totalDonutRecords) * circumference : 0;
+  const strokeExcused = totalDonutRecords > 0 ? (donutStats.excused / totalDonutRecords) * circumference : 0;
+  const strokeAbsent = totalDonutRecords > 0 ? (donutStats.absent / totalDonutRecords) * circumference : 0;
+  const strokeMissingCo = totalDonutRecords > 0 ? (donutStats.thieuCheckOut / totalDonutRecords) * circumference : 0;
 
   return (
     <div className="space-y-4">
@@ -623,14 +739,14 @@ export const Dashboard: React.FC = () => {
         subtitle="Theo dõi chấm công nhận diện khuôn mặt, đơn từ và lịch trình toàn trường."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="w-full sm:w-52">
+            <div className="w-full sm:w-64">
               <DepartmentSelect
                 departments={departments}
                 value={departmentFilter}
                 onChange={(val) => setDepartmentFilter(val)}
                 allowAll={true}
-                allLabel="Toàn trường (Tất cả đơn vị)"
-                placeholder="Lọc theo Khoa / Viện..."
+                allLabel="Tất cả đơn vị"
+                placeholder="Lọc theo Khoa / Phòng ban..."
                 size="sm"
               />
             </div>
@@ -824,29 +940,29 @@ export const Dashboard: React.FC = () => {
                     return `${hk} (${academicStart}-${academicStart + 1})`;
                   })()}
                 </span>
-                <span className="px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center gap-1 border border-indigo-200 dark:border-indigo-800">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
-                  Live Data
-                </span>
               </div>
             </div>
 
-            {/* Legend */}
-            <div className="flex flex-wrap items-center gap-4 mb-4 text-xs font-medium">
+            {/* Legend — đồng bộ màu với biểu đồ Donut bên cạnh */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 text-xs font-medium">
               <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                <span className="w-3 h-3 rounded bg-brand-600"></span>
+                <span className="w-3 h-3 rounded bg-emerald-500"></span>
                 <span>Đúng giờ</span>
               </div>
               <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                <span className="w-3 h-3 rounded bg-slate-500"></span>
-                <span>Đi muộn (cho phép)</span>
+                <span className="w-3 h-3 rounded bg-amber-500"></span>
+                <span>Đi muộn / Về sớm</span>
               </div>
               <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                <span className="w-3 h-3 rounded bg-indigo-600"></span>
+                <span className="w-3 h-3 rounded bg-indigo-500"></span>
                 <span>Nghỉ có phép</span>
               </div>
               <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                <span className="w-3 h-3 rounded bg-rose-600"></span>
+                <span className="w-3 h-3 rounded bg-purple-500"></span>
+                <span>Thiếu check-out</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                <span className="w-3 h-3 rounded bg-rose-500"></span>
                 <span>Vắng không phép</span>
               </div>
             </div>
@@ -855,7 +971,7 @@ export const Dashboard: React.FC = () => {
             {(() => {
               const maxDayTotal = Math.max(
                 4,
-                ...weeklyTrendData.map((d) => d.present + d.late + d.excused + d.absent)
+                ...weeklyTrendData.map((d) => d.present + d.late + d.excused + d.missingCo + d.absent)
               );
               const yAxisTop = Math.ceil(maxDayTotal / 4) * 4;
               const chartHeight = 190;
@@ -873,34 +989,46 @@ export const Dashboard: React.FC = () => {
                     <text fill="#94A3B8" fontFamily="Inter" fontSize="10" textAnchor="end" x="30" y="166.5">{Math.round(yAxisTop / 4)}</text>
                     <line className="text-slate-300 dark:text-slate-700" stroke="currentColor" strokeWidth="1" x1="40" x2="630" y1="210" y2="210" />
 
-                    {/* Bars for 6 days + Today (100% REAL) */}
+                    {/* Bars for 6 days + Today (cột xếp chồng phẳng khít liền mạch giữa các tầng, không bị khuyết góc) */}
                     {weeklyTrendData.map((dItem, idx) => {
                       const xOffset = 65 + idx * 80;
                       const isToday = idx === 6;
 
-                      const hPresent = (dItem.present / yAxisTop) * chartHeight;
-                      const yPresent = 210 - hPresent;
+                      const rawSegments = [
+                        { key: 'present', count: dItem.present, label: 'Đúng giờ', fill: '#10B981' },
+                        { key: 'late', count: dItem.late, label: 'Đi muộn / Về sớm', fill: '#F59E0B' },
+                        { key: 'excused', count: dItem.excused, label: 'Nghỉ có phép', fill: '#6366F1' },
+                        { key: 'missingCo', count: dItem.missingCo, label: 'Thiếu check-out', fill: '#A855F7' },
+                        { key: 'absent', count: dItem.absent, label: 'Vắng không phép', fill: '#F43F5E' },
+                      ].filter((s) => s.count > 0);
 
-                      const hLate = (dItem.late / yAxisTop) * chartHeight;
-                      const yLate = yPresent - hLate;
-
-                      const hExcused = (dItem.excused / yAxisTop) * chartHeight;
-                      const yExcused = yLate - hExcused;
-
-                      const hAbsent = (dItem.absent / yAxisTop) * chartHeight;
-                      const yAbsent = yExcused - hAbsent;
+                      let currentBottomY = 210;
+                      const renderedSegments = rawSegments.map((seg) => {
+                        const segHeight = (seg.count / yAxisTop) * chartHeight;
+                        const yPos = currentBottomY - segHeight;
+                        currentBottomY = yPos;
+                        return { ...seg, yPos, segHeight };
+                      });
 
                       return (
                         <g key={idx} transform={`translate(${xOffset}, 0)`}>
                           {isToday && (
-                            <rect className="fill-brand-50 dark:fill-brand-950/50" height="204" opacity="0.8" rx="8" width="40" x="-6" y="10" />
+                            <rect className="fill-indigo-50/80 dark:fill-indigo-950/40" height="204" rx="8" width="40" x="-6" y="10" />
                           )}
-                          {hPresent > 0 && <rect fill="rgb(var(--brand-600))" height={hPresent} rx="4" width="28" x="0" y={yPresent} />}
-                          {hLate > 0 && <rect fill="#64748B" height={hLate} rx="2" width="28" x="0" y={yLate} />}
-                          {hExcused > 0 && <rect fill="rgb(var(--brand-400))" height={hExcused} rx="2" width="28" x="0" y={yExcused} />}
-                          {hAbsent > 0 && <rect fill="#F43F5E" height={hAbsent} rx="2" width="28" x="0" y={yAbsent} />}
+                          {renderedSegments.map((seg) => (
+                            <rect
+                              key={seg.key}
+                              fill={seg.fill}
+                              height={seg.segHeight}
+                              width="28"
+                              x="0"
+                              y={seg.yPos}
+                            >
+                              <title>{`${dItem.day} • ${seg.label}: ${seg.count}`}</title>
+                            </rect>
+                          ))}
                           <text
-                            fill={isToday ? 'rgb(var(--brand-600))' : '#64748B'}
+                            fill={isToday ? '#4F46E5' : '#64748B'}
                             fontFamily="Inter"
                             fontSize="11"
                             fontWeight={isToday ? '700' : '500'}
@@ -940,67 +1068,109 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Right (5 cols): Cơ Cấu Điểm Danh Hôm Nay */}
+        {/* Right (5 cols): Cơ Cấu Điểm Danh */}
         <div className="lg:col-span-5 p-6 flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                Cơ Cấu Điểm Danh Hôm Nay
-              </h2>
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                Tổng: {totalStaff} CB-GV
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                  Cơ Cấu Điểm Danh
+                </h2>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {donutScope === 'today'
+                    ? `Hôm nay • ${totalDonutRecords} lượt / ${totalStaff} CB-GV`
+                    : `7 ngày gần nhất • ${totalDonutRecords} bản ghi`}
+                </p>
+              </div>
+              <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setDonutScope('today')}
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    donutScope === 'today'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+                  }`}
+                >
+                  Hôm nay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDonutScope('7days')}
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    donutScope === '7days'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+                  }`}
+                >
+                  7 ngày
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6 my-3">
-              {/* Donut SVG Chart */}
+              {/* Donut SVG Chart — vẽ đủ cả 5 nhóm trạng thái bằng màu riêng biệt, tỷ lệ chính xác */}
               <div className="relative w-44 h-44 flex items-center justify-center shrink-0">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                   {/* Background track */}
                   <circle className="text-slate-200 dark:text-slate-800" cx="50" cy="50" fill="none" r="38" stroke="currentColor" strokeWidth="12" />
-                  {/* On-time (Brand) */}
+                  {/* Đúng giờ (Emerald) */}
                   {strokeOnTime > 0 && (
                     <circle
                       cx="50"
                       cy="50"
                       fill="none"
                       r="38"
-                      stroke="rgb(var(--brand-600))"
+                      stroke="#10B981"
                       strokeDasharray={`${strokeOnTime} ${circumference}`}
                       strokeDashoffset="0"
-                      strokeLinecap="round"
+                      strokeLinecap="butt"
                       strokeWidth="12"
                     />
                   )}
-                  {/* Late (Slate) */}
+                  {/* Đi muộn / Về sớm (Amber) */}
                   {strokeLate > 0 && (
                     <circle
                       cx="50"
                       cy="50"
                       fill="none"
                       r="38"
-                      stroke="#64748B"
+                      stroke="#F59E0B"
                       strokeDasharray={`${strokeLate} ${circumference}`}
                       strokeDashoffset={`-${strokeOnTime}`}
-                      strokeLinecap="round"
+                      strokeLinecap="butt"
                       strokeWidth="12"
                     />
                   )}
-                  {/* Leave (Brand Light) */}
+                  {/* Nghỉ phép đã duyệt (Indigo) */}
                   {strokeExcused > 0 && (
                     <circle
                       cx="50"
                       cy="50"
                       fill="none"
                       r="38"
-                      stroke="rgb(var(--brand-400))"
+                      stroke="#6366F1"
                       strokeDasharray={`${strokeExcused} ${circumference}`}
                       strokeDashoffset={`-${strokeOnTime + strokeLate}`}
-                      strokeLinecap="round"
+                      strokeLinecap="butt"
                       strokeWidth="12"
                     />
                   )}
-                  {/* Absent (Rose) */}
+                  {/* Thiếu check-out (Purple) */}
+                  {strokeMissingCo > 0 && (
+                    <circle
+                      cx="50"
+                      cy="50"
+                      fill="none"
+                      r="38"
+                      stroke="#A855F7"
+                      strokeDasharray={`${strokeMissingCo} ${circumference}`}
+                      strokeDashoffset={`-${strokeOnTime + strokeLate + strokeExcused}`}
+                      strokeLinecap="butt"
+                      strokeWidth="12"
+                    />
+                  )}
+                  {/* Vắng không phép (Rose) */}
                   {strokeAbsent > 0 && (
                     <circle
                       cx="50"
@@ -1009,8 +1179,8 @@ export const Dashboard: React.FC = () => {
                       r="38"
                       stroke="#F43F5E"
                       strokeDasharray={`${strokeAbsent} ${circumference}`}
-                      strokeDashoffset={`-${strokeOnTime + strokeLate + strokeExcused}`}
-                      strokeLinecap="round"
+                      strokeDashoffset={`-${strokeOnTime + strokeLate + strokeExcused + strokeMissingCo}`}
+                      strokeLinecap="butt"
                       strokeWidth="12"
                     />
                   )}
@@ -1018,49 +1188,49 @@ export const Dashboard: React.FC = () => {
 
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                   <span className="text-2xl font-extrabold text-slate-900 dark:text-white leading-none">
-                    {todayAttendanceStats.rate}%
+                    {donutStats.rate}%
                   </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    {totalRecordsToday > 0 ? 'Hiện diện' : 'Chưa có lượt quét'}
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                    {totalDonutRecords > 0 ? 'Hiện diện' : 'Chưa có lượt quét'}
                   </span>
                 </div>
               </div>
 
-              {/* Breakdown List (100% REAL) */}
+              {/* Breakdown List (100% REAL — màu khớp tuyệt đối với vòng Donut) */}
               <div className="flex flex-col gap-2 w-full sm:w-auto flex-1">
                 <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-brand-600"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Đúng giờ</span>
                   </div>
                   <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">
-                    {todayAttendanceStats.onTime}{' '}
+                    {donutStats.onTime}{' '}
                     <span className="text-[10px] font-normal text-slate-500">({onTimePct}%)</span>
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
                       Đi muộn / Về sớm
                     </span>
                   </div>
                   <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">
-                    {lateAndEarlyToday}{' '}
+                    {donutStats.lateAndEarly}{' '}
                     <span className="text-[10px] font-normal text-slate-500">({latePct}%)</span>
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
                       Nghỉ phép đã duyệt
                     </span>
                   </div>
                   <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">
-                    {todayAttendanceStats.excused}{' '}
+                    {donutStats.excused}{' '}
                     <span className="text-[10px] font-normal text-slate-500">({excusedPct}%)</span>
                   </span>
                 </div>
@@ -1071,23 +1241,21 @@ export const Dashboard: React.FC = () => {
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Vắng không phép</span>
                   </div>
                   <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">
-                    {todayAttendanceStats.absent}{' '}
+                    {donutStats.absent}{' '}
                     <span className="text-[10px] font-normal text-slate-500">({absentPct}%)</span>
                   </span>
                 </div>
 
-                {todayAttendanceStats.thieuCheckOut > 0 && (
-                  <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
-                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Thiếu check-out</span>
-                    </div>
-                    <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">
-                      {todayAttendanceStats.thieuCheckOut}{' '}
-                      <span className="text-[10px] font-normal text-slate-500">({missingCoPct}%)</span>
-                    </span>
+                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Thiếu check-out</span>
                   </div>
-                )}
+                  <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">
+                    {donutStats.thieuCheckOut}{' '}
+                    <span className="text-[10px] font-normal text-slate-500">({missingCoPct}%)</span>
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1111,64 +1279,100 @@ export const Dashboard: React.FC = () => {
           4. REALTIME BIOMETRIC ATTENDANCE LIVE FEED (THE STITCH TABLE)
       ===================================================================== */}
       <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-            </span>
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-              Lịch Sử Điểm Danh Sinh Trắc Học Thời Gian Thực
-            </h2>
-            <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-400">
-              Hôm nay
-            </span>
+        <div className="flex flex-col gap-3.5 mb-5">
+          {/* Hàng 1: Tiêu đề + Chuyển phạm vi Hôm nay / Gần đây */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight">
+                Lịch Sử Điểm Danh Sinh Trắc Học
+              </h2>
+            </div>
+
+            <div className="flex items-center rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs font-semibold shrink-0">
+              <button
+                type="button"
+                onClick={() => setTableDateScope('today')}
+                className={`px-3 py-1 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                  tableDateScope === 'today'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                Hôm nay ({scopedTodayPunches.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTableDateScope('7days')}
+                className={`px-3 py-1 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                  tableDateScope === '7days'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                7 ngày qua ({scopedSevenDaysPunches.length})
+              </button>
+            </div>
           </div>
 
-          {/* Filters & Search */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs font-semibold">
+          {/* Hàng 2: Bộ lọc phương thức chấm công + Ô tìm kiếm thẳng hàng */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex flex-wrap items-center rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs font-semibold gap-0.5">
               <button
                 onClick={() => setTableFilter('ALL')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                   tableFilter === 'ALL'
                     ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
                 type="button"
               >
-                Tất cả ({recentPunches.length})
+                Tất cả ({punchMethodCounts.all})
               </button>
               <button
                 onClick={() => setTableFilter('face_ai')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                   tableFilter === 'face_ai'
                     ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
                 type="button"
               >
-                Camera Face AI
+                Camera Face AI ({punchMethodCounts.face})
+              </button>
+              <button
+                onClick={() => setTableFilter('qr_code')}
+                className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                  tableFilter === 'qr_code'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+                type="button"
+              >
+                Mã QR ({punchMethodCounts.qr})
               </button>
               <button
                 onClick={() => setTableFilter('GPS')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                   tableFilter === 'GPS'
                     ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
                 type="button"
               >
-                Mobile GPS
+                Mobile GPS ({punchMethodCounts.gps})
               </button>
             </div>
 
-            <div className="relative">
+            <div className="relative w-full sm:w-64 shrink-0">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 value={searchPunchKeyword}
                 onChange={(e) => setSearchPunchKeyword(e.target.value)}
-                className="w-48 sm:w-56 h-8 pl-8 pr-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full h-9 pl-8 pr-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 placeholder="Lọc mã CB, họ tên..."
                 type="text"
               />
@@ -1294,7 +1498,14 @@ export const Dashboard: React.FC = () => {
                     const userObj = item.nguoi_dung;
                     const deptName = userObj?.don_vi_chinh?.ten_phong_ban || 'Ban Giám Hiệu';
                     const shiftName = item.ca?.ten_ca || 'Ca Hành Chính';
-                    const firstPunch = item.luot_quet?.[0];
+                    const firstPunch =
+                      (tableFilter === 'qr_code'
+                        ? item.luot_quet?.find((lq: any) => String(lq?.phuong_thuc || '').toLowerCase().includes('qr'))
+                        : tableFilter === 'GPS'
+                          ? item.luot_quet?.find((lq: any) => String(lq?.phuong_thuc || '').toLowerCase().includes('gps'))
+                          : tableFilter === 'face_ai'
+                            ? item.luot_quet?.find((lq: any) => String(lq?.phuong_thuc || '').toLowerCase().includes('face'))
+                            : null) || item.luot_quet?.[0];
                     const conf = firstPunch?.do_tin_cay_ai;
                     const distMeters = firstPunch?.khoang_cach_met;
                     const rawMethod = String(firstPunch?.phuong_thuc || '').toLowerCase();
@@ -1347,6 +1558,11 @@ export const Dashboard: React.FC = () => {
                         {/* Thời Gian (Vào - Ra) */}
                         <td className="py-2.5 px-2 font-mono overflow-hidden">
                           <div className="flex flex-col text-[11px] leading-tight">
+                            {tableDateScope === '7days' && item.ngay_cong && (
+                              <span className="text-[10px] font-semibold text-slate-400 mb-0.5">
+                                {formatShortDateDDMM(item.ngay_cong)}
+                              </span>
+                            )}
                             <div className="flex items-center gap-1 truncate">
                               <span className="text-[10px] font-bold text-slate-400 uppercase w-5 shrink-0">Vào</span>
                               <span className={hasCheckedIn ? 'font-bold text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}>
@@ -1386,8 +1602,8 @@ export const Dashboard: React.FC = () => {
                             </div>
                           ) : rawMethod.includes('qr') ? (
                             <div className="flex items-center gap-1 text-[11px] font-medium text-sky-600 dark:text-sky-400 truncate" title="Mã QR động">
-                              <ScanFace className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                              <span className="truncate">QR Động</span>
+                              <QrCode className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                              <span className="truncate">Mã QR</span>
                             </div>
                           ) : rawMethod.includes('thu_cong') || rawMethod.includes('manual') ? (
                             <div className="flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate" title="Thủ công (Admin)">
@@ -1444,59 +1660,102 @@ export const Dashboard: React.FC = () => {
         {/* Left (7 cols): Lịch Họp Giao Ban & Sự Kiện Trọng Tâm Hôm Nay */}
         <div className="lg:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <CalendarDays className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Lịch Giảng Dạy & Sự Kiện Trọng Tâm Hôm Nay
-                </h3>
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <CalendarDays className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
+                    Lịch Giảng Dạy Hôm Nay
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{currentDateStr}</p>
+                </div>
               </div>
-              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-full">
-                {todaySchedules.length} Lịch trình
+              <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/70 dark:border-indigo-800/60 px-2.5 py-1 rounded-full shrink-0">
+                {todaySchedules.length} lịch trình
               </span>
             </div>
 
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2.5">
               {todaySchedules.length > 0 ? (
-                todaySchedules.slice(0, 3).map((sched: any, sIdx) => {
-                  const subjectName = sched.mon_hoc?.ten_mon || 'Lập Trình Web & AI';
-                  const shiftName = sched.ca?.ten_ca || 'Ca Sáng';
+                todaySchedules.slice(0, 4).map((sched: any, sIdx) => {
+                  const subjectName = sched.mon_hoc?.ten_mon || 'Lịch giảng dạy';
+                  const subjectCode = sched.mon_hoc?.ma_mon || '';
+                  const shiftName = sched.ca?.ten_ca || '';
+                  const teacherName = sched.nguoi_dung?.ho_ten || '';
+                  const isMakeup = sched.loai_lich === 'day_bu';
+                  const isOnline = Boolean(sched.la_truc_tuyen);
+                  const startHHMM = String(sched.gio_bat_dau || '').slice(0, 5);
+                  const endHHMM = String(sched.gio_ket_thuc || '').slice(0, 5);
+
+                  const accentBorder = isMakeup
+                    ? 'border-l-amber-500'
+                    : isOnline
+                      ? 'border-l-sky-500'
+                      : 'border-l-indigo-500';
+                  const timePillCls = isMakeup
+                    ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/60'
+                    : isOnline
+                      ? 'bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border-sky-200/80 dark:border-sky-800/60'
+                      : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/60';
+                  const badgeCls = isMakeup
+                    ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200/70 dark:border-amber-800/60'
+                    : isOnline
+                      ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200/70 dark:border-sky-800/60'
+                      : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200/70 dark:border-indigo-800/60';
+                  const badgeLabel = isMakeup ? 'Dạy bù' : isOnline ? 'Trực tuyến' : 'Chính khóa';
 
                   return (
                     <div
                       key={sched.id || sIdx}
-                      className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex items-start justify-between gap-3"
+                      className={`group p-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/70 border-l-4 ${accentBorder} transition-all flex items-center justify-between gap-3`}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex flex-col items-center justify-center shrink-0 shadow-sm">
-                          <span className="text-[10px] font-bold uppercase tracking-wider">
-                            Th{new Date().getMonth() + 1}
-                          </span>
-                          <span className="text-base font-extrabold leading-tight">
-                            {new Date().getDate()}
-                          </span>
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Khung giờ dạy trực quan thay cho ô ngày lặp lại */}
+                        <div className={`w-16 py-1.5 px-1 rounded-xl border flex flex-col items-center justify-center shrink-0 font-mono ${timePillCls}`}>
+                          <span className="text-xs font-extrabold leading-tight">{startHHMM || '--:--'}</span>
+                          <span className="text-[10px] opacity-75 leading-tight">{endHHMM || '--:--'}</span>
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white">
-                            {subjectName}
-                          </span>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-slate-500">
-                            <span className="flex items-center gap-1 font-mono">
-                              <Clock className="w-3.5 h-3.5 text-indigo-500" />
-                              {sched.gio_bat_dau} - {sched.gio_ket_thuc}
+
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {subjectCode && (
+                              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-200 shrink-0">
+                                {subjectCode}
+                              </span>
+                            )}
+                            <span className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                              {subjectName}
                             </span>
-                            <span className="flex items-center gap-1">
-                              <Building2 className="w-3.5 h-3.5 text-blue-500" />
-                              Phòng: {sched.phong_hoc || 'A302'}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            {teacherName && (
+                              <span className="inline-flex items-center gap-1 font-medium text-slate-700 dark:text-slate-300 truncate">
+                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="truncate">{teacherName}</span>
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 truncate">
+                              {isOnline ? (
+                                <Video className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                              ) : (
+                                <Building2 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                              )}
+                              <span>{formatRoomDisplay(sched.phong_hoc)}</span>
                             </span>
-                            <span className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
-                              {shiftName}
-                            </span>
+                            {shiftName && (
+                              <span className="text-[11px] text-slate-400 dark:text-slate-500 hidden sm:inline">
+                                • {shiftName}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
-                      <span className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold shrink-0">
-                        Chính khóa
+
+                      <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold shrink-0 ${badgeCls}`}>
+                        {badgeLabel}
                       </span>
                     </div>
                   );
@@ -1515,12 +1774,18 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-4 pt-3 flex items-center justify-end border-t border-slate-100 dark:border-slate-800">
+          <div className="mt-4 pt-3.5 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {todaySchedules.length > 4
+                ? `Đang hiển thị 4 / ${todaySchedules.length} lịch hôm nay`
+                : `Tổng ${todaySchedules.length} lịch trong ngày`}
+            </span>
             <button
               onClick={() => navigate('/lich-trinh')}
-              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
+              type="button"
             >
-              <span>Xem lịch biểu công tác toàn trường</span>
+              <span>Xem lịch biểu toàn trường</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -1529,51 +1794,106 @@ export const Dashboard: React.FC = () => {
         {/* Right (5 cols): Duyệt Nhanh Đơn Công Tác & Nghỉ Phép */}
         <div className="lg:col-span-5 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Duyệt Nhanh Đơn Công Tác & Nghỉ Phép
-                </h3>
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
+                    Đơn Chờ Phê Duyệt
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Nghỉ phép, dạy bù & giải trình công</p>
+                </div>
               </div>
-              <span className="px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-xs font-bold border border-rose-200 dark:border-rose-800">
-                {pendingLeaveCount} Đang chờ
+              <span className="px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-xs font-bold border border-rose-200/80 dark:border-rose-800/70 shrink-0">
+                {pendingLeaveCount} đang chờ
               </span>
             </div>
 
             <div className="flex flex-col gap-2.5">
               {pendingLeaveList.length > 0 ? (
-                pendingLeaveList.map((reqItem: any) => {
+                pendingLeaveList.slice(0, 4).map((reqItem: any) => {
                   const staffName = reqItem.nguoi_dung?.ho_ten || 'Cán bộ';
                   const staffCode = reqItem.nguoi_dung?.ma_can_bo || 'NTU';
-                  const isApproving = isApprovingId === (reqItem.id);
+                  const matchedUser = allUsersList.find((u: any) => String(u.id) === String(reqItem.nguoi_dung?.id || reqItem.nguoi_dung_id));
+                  const staffAvatar = reqItem.nguoi_dung?.anh_dai_dien || matchedUser?.anh_dai_dien || null;
+                  const isApproving = isApprovingId === reqItem.id;
+                  const typeMeta = LEAVE_TYPE_META[reqItem.loai_don] || {
+                    label: 'Đơn từ',
+                    badgeCls: 'bg-slate-100 text-slate-700 border-slate-200',
+                  };
+                  const startShort = formatShortDateDDMM(reqItem.ngay_bat_dau);
+                  const endShort = formatShortDateDDMM(reqItem.ngay_ket_thuc);
+                  const dateSpan =
+                    startShort && endShort && startShort !== endShort
+                      ? `${startShort}–${endShort}`
+                      : startShort;
+                  const stageLabel =
+                    reqItem.trang_thai === 'pending_dean'
+                      ? 'Chờ Khoa'
+                      : reqItem.trang_thai === 'pending_bgh'
+                        ? 'Chờ BGH'
+                        : 'Chờ duyệt';
 
                   return (
                     <div
                       key={reqItem.id}
-                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3"
+                      className="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/70 transition-all flex items-center justify-between gap-3"
                     >
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                          {staffName} • {staffCode}
-                        </span>
-                        <span className="text-[11px] text-slate-500 truncate mt-0.5">
-                          {reqItem.ly_do || 'Nghỉ phép công tác theo lịch cá nhân'}
-                        </span>
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5 overflow-hidden border border-slate-200/80 dark:border-slate-700">
+                          {staffAvatar ? (
+                            <img
+                              src={staffAvatar}
+                              alt={staffName}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            getInitials(staffName)
+                          )}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                              {staffName}
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                              {staffCode}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            <span className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold leading-none ${typeMeta.badgeCls}`}>
+                              {typeMeta.label}
+                            </span>
+                            {dateSpan && (
+                              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                                {dateSpan}
+                                {Number(reqItem.so_ngay) > 0 ? ` (${reqItem.so_ngay}d)` : ''}
+                              </span>
+                            )}
+                            <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                              • {stageLabel}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-1" title={reqItem.ly_do || ''}>
+                            {reqItem.ly_do || 'Đề xuất theo lịch công tác cá nhân'}
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
                         <button
                           disabled={isApproving}
                           onClick={() => handleQuickApproveLeave(reqItem.id)}
-                          className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
                           type="button"
                         >
-                          {isApproving ? 'Đang duyệt...' : 'Duyệt'}
+                          {isApproving ? '...' : 'Duyệt'}
                         </button>
                         <button
                           onClick={() => navigate('/don-nghi-phep')}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold hover:bg-slate-200 transition-colors cursor-pointer"
+                          className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                           type="button"
                         >
                           Xem
@@ -1596,14 +1916,17 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-4 pt-3 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 px-3.5 py-2 rounded-xl border border-slate-100 dark:border-slate-800">
-            <span className="text-xs text-slate-500">Tất cả đề xuất đều tuân thủ quy chế BGH</span>
+          <div className="mt-4 pt-3.5 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {pendingLeaveCount > 0 ? `Còn ${pendingLeaveCount} đơn cần xử lý` : 'Đã xử lý sạch đơn chờ'}
+            </span>
             <button
               onClick={() => navigate('/don-nghi-phep')}
-              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
               type="button"
             >
-              Phê duyệt toàn bộ ({pendingLeaveCount})
+              <span>Quản lý tất cả đơn ({pendingLeaveCount})</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

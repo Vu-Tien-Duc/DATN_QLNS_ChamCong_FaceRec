@@ -279,6 +279,15 @@ const getAttendanceHistory = async (req, res) => {
 
 // GET /api/cham-cong/lich-su-cua-toi - Lịch sử chấm công của chính người dùng đang đăng nhập
 const getMyAttendanceHistory = async (req, res) => {
+  if (hasAnyActiveRole(req.user, NON_ATTENDANCE_ROLES)) {
+    return sendError(
+      res,
+      'Tài khoản Quản trị viên IT / Kiểm toán không có dữ liệu chấm công cá nhân.',
+      null,
+      403,
+      'AUTH_FORBIDDEN'
+    );
+  }
   const { trang_thai, tu_ngay, den_ngay, phuong_thuc, co_gian_lan, trang = 1, gioi_han = 20 } = req.query || {};
   const currentId = req.user?.id;
   const result = await fetchAttendanceHistory({

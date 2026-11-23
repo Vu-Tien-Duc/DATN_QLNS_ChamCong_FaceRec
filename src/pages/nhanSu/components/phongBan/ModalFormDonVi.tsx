@@ -182,13 +182,17 @@ export const ModalFormDonVi: React.FC<ModalFormDonViProps> = ({
 
     const allowedDeptIds = new Set<string>();
     if (!isEditing) {
-      if (type === 'bo_mon' && parentId) allowedDeptIds.add(String(parentId));
+      if (type === 'bo_mon' && parentId) {
+        allowedDeptIds.add(String(parentId));
+        (childrenByFacultyId[String(parentId)] || []).forEach((child) => allowedDeptIds.add(String(child.id)));
+      }
     } else if (editingId) {
       allowedDeptIds.add(editingId);
       if (type === 'khoa') {
         (childrenByFacultyId[editingId] || []).forEach((child) => allowedDeptIds.add(String(child.id)));
       } else if (type === 'bo_mon' && parentId) {
         allowedDeptIds.add(String(parentId));
+        (childrenByFacultyId[String(parentId)] || []).forEach((child) => allowedDeptIds.add(String(child.id)));
       }
     }
 
@@ -395,10 +399,16 @@ export const ModalFormDonVi: React.FC<ModalFormDonViProps> = ({
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  {isEditing ? `Cập Nhật Đơn Vị: ${editingDept?.ten_phong_ban}` : 'Thêm Mới Khoa / Bộ Môn / Phòng Ban'}
+                  {isEditing
+                    ? `Cập Nhật Đơn Vị: ${editingDept?.ten_phong_ban}`
+                    : presetType === 'bo_mon'
+                      ? 'Thêm Mới Bộ Môn Chuyên Môn'
+                      : 'Thêm Mới Khoa / Phòng Ban'}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Cơ cấu phân cấp tổ chức & Geofence điểm danh
+                  {!isEditing && presetType === 'bo_mon'
+                    ? 'Đơn vị cấp 2 trực thuộc Khoa đào tạo & Geofence điểm danh'
+                    : 'Cơ cấu phân cấp tổ chức & Geofence điểm danh'}
                 </p>
               </div>
             </div>
@@ -417,39 +427,46 @@ export const ModalFormDonVi: React.FC<ModalFormDonViProps> = ({
               {/* Khối 1: Thông tin & Phân cấp */}
               <div className="space-y-3.5">
                 <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  1. Phân loại & Thông tin đơn vị
+                  {!isEditing && presetType === 'bo_mon' ? '1. Thông tin Bộ môn' : '1. Phân loại & Thông tin đơn vị'}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {(
-                    [
-                      { id: 'khoa' as DepartmentType, title: 'Khoa Đào Tạo', sub: 'Cấp 1 • Trực thuộc BGH' },
-                      { id: 'bo_mon' as DepartmentType, title: 'Bộ Môn', sub: 'Cấp 2 • Trực thuộc Khoa' },
-                      { id: 'phong_ban' as DepartmentType, title: 'Phòng Ban', sub: 'Cấp 1 • Khối Hành chính' },
-                    ] as const
-                  ).map((item) => {
-                    const disabled = isTypeOptionDisabled(item.id);
-                    const active = type === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => handleTypeSelect(item.id)}
-                        className={`p-3 rounded-2xl border text-left transition-all ${
-                          active
-                            ? 'border-brand-600 bg-brand-50/70 dark:bg-brand-950/40 ring-2 ring-brand-500/20'
-                            : disabled
-                              ? 'border-slate-200/60 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 opacity-50 cursor-not-allowed'
-                              : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 cursor-pointer'
-                        }`}
-                      >
-                        <div className="text-xs font-bold text-slate-900 dark:text-slate-100">{item.title}</div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">{item.sub}</div>
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Khi thêm Bộ môn: ẩn hàng tab loại đơn vị; khi thêm Khoa/Phòng ban: chỉ hiện 2 loại cấp 1; khi Sửa: giữ đủ 3 loại */}
+                {(isEditing || presetType !== 'bo_mon') && (
+                  <div className={`grid grid-cols-1 ${isEditing ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2.5`}>
+                    {(isEditing
+                      ? [
+                          { id: 'khoa' as DepartmentType, title: 'Khoa Đào Tạo', sub: 'Cấp 1 • Trực thuộc BGH' },
+                          { id: 'bo_mon' as DepartmentType, title: 'Bộ Môn', sub: 'Cấp 2 • Trực thuộc Khoa' },
+                          { id: 'phong_ban' as DepartmentType, title: 'Phòng Ban', sub: 'Cấp 1 • Khối Hành chính' },
+                        ]
+                      : [
+                          { id: 'khoa' as DepartmentType, title: 'Khoa Đào Tạo', sub: 'Cấp 1 • Trực thuộc BGH' },
+                          { id: 'phong_ban' as DepartmentType, title: 'Phòng Ban', sub: 'Cấp 1 • Khối Hành chính' },
+                        ]
+                    ).map((item) => {
+                      const disabled = isTypeOptionDisabled(item.id);
+                      const active = type === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => handleTypeSelect(item.id)}
+                          className={`p-3 rounded-2xl border text-left transition-all ${
+                            active
+                              ? 'border-brand-600 bg-brand-50/70 dark:bg-brand-950/40 ring-2 ring-brand-500/20'
+                              : disabled
+                                ? 'border-slate-200/60 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 opacity-50 cursor-not-allowed'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 cursor-pointer'
+                          }`}
+                        >
+                          <div className="text-xs font-bold text-slate-900 dark:text-slate-100">{item.title}</div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">{item.sub}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {isEditing && (editConstraints.hasChildren || editConstraints.hasMembers || editConstraints.hasSubjects) && (
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
@@ -524,91 +541,99 @@ export const ModalFormDonVi: React.FC<ModalFormDonViProps> = ({
                 )}
               </div>
 
-              {/* Khối 2: Bổ nhiệm Trưởng đơn vị (Cách 2) */}
-              <div className="space-y-2.5 pt-4 border-t border-slate-100 dark:border-slate-800">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <UserCheck className="w-3.5 h-3.5 text-brand-500" />
-                    2. {getUnitLeaderTitle(type, name || editingDept?.ten_phong_ban)}
-                  </span>
-                  {candidateEntry.status === 'loading' && (
-                    <span className="text-[11px] text-slate-400 inline-flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3 animate-spin" /> Đang tải nhân sự đơn vị...
+              {/* Khối 2: Bổ nhiệm Trưởng đơn vị (ẩn ô chọn khi tạo mới Khoa/Phòng ban chưa có nhân sự) */}
+              {canAssignManagerInForm ? (
+                <div className="space-y-2.5 pt-4 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <UserCheck className="w-3.5 h-3.5 text-brand-500" />
+                      2. {getUnitLeaderTitle(type, name || editingDept?.ten_phong_ban)}
                     </span>
+                    {candidateEntry.status === 'loading' && (
+                      <span className="text-[11px] text-slate-400 inline-flex items-center gap-1">
+                        <RefreshCw className="w-3 h-3 animate-spin" /> Đang tải nhân sự đơn vị...
+                      </span>
+                    )}
+                  </div>
+
+                  <select
+                    value={managerId}
+                    disabled={candidateEntry.status === 'loading'}
+                    onChange={(e) => {
+                      setManagerId(e.target.value);
+                      setPendingConfirm(null);
+                    }}
+                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 disabled:opacity-60 disabled:bg-slate-50 dark:disabled:bg-slate-800/60"
+                  >
+                    <option value="">-- Chưa bổ nhiệm / Bổ nhiệm sau --</option>
+                    {eligibleManagers.map((u) => {
+                      const deptLabel = u.ten_phong_ban || u.don_vi_chinh?.ten_phong_ban || '';
+                      return (
+                        <option key={u.id} value={u.id}>
+                          {u.ho_ten} ({u.ma_can_bo || u.email})
+                          {deptLabel ? ` — ${deptLabel}` : ''} • {getRoleDisplayLabel(u.vai_tro_chinh)}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  {candidateEntry.status === 'loaded' && eligibleManagers.length === 0 && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                      Chưa có nhân sự nội bộ đủ điều kiện thuộc phạm vi đơn vị này (cùng khối công tác, đang hoạt động và chưa làm trưởng đơn vị khác). Hãy điều chuyển nhân sự vào đơn vị tại mục Danh sách cán bộ trước.
+                    </p>
                   )}
-                </div>
 
-                <select
-                  value={canAssignManagerInForm ? managerId : ''}
-                  disabled={!canAssignManagerInForm || candidateEntry.status === 'loading'}
-                  onChange={(e) => {
-                    setManagerId(e.target.value);
-                    setPendingConfirm(null);
-                  }}
-                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 disabled:opacity-60 disabled:bg-slate-50 dark:disabled:bg-slate-800/60"
-                >
-                  <option value="">-- Chưa bổ nhiệm / Bổ nhiệm sau --</option>
-                  {eligibleManagers.map((u) => {
-                    const deptLabel = u.ten_phong_ban || u.don_vi_chinh?.ten_phong_ban || '';
-                    return (
-                      <option key={u.id} value={u.id}>
-                        {u.ho_ten} ({u.ma_can_bo || u.email})
-                        {deptLabel ? ` — ${deptLabel}` : ''} • {getRoleDisplayLabel(u.vai_tro_chinh)}
-                      </option>
-                    );
-                  })}
-                </select>
-
-                {!canAssignManagerInForm ? (
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Đơn vị mới tạo chưa có nhân sự trực thuộc. Hãy tạo đơn vị trước, sau đó phân bổ nhân sự vào đơn vị tại mục Quản lý Người dùng rồi bổ nhiệm Trưởng đơn vị.
-                  </p>
-                ) : candidateEntry.status === 'loaded' && eligibleManagers.length === 0 ? (
-                  <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
-                    Chưa có nhân sự nội bộ đủ điều kiện thuộc phạm vi đơn vị này (cùng khối công tác, đang hoạt động và chưa làm trưởng đơn vị khác). Hãy điều chuyển nhân sự vào đơn vị tại mục Quản lý Người dùng trước.
-                  </p>
-                ) : null}
-
-                {/* Bước xác nhận inline thay cho window.confirm */}
-                {pendingConfirm && (
-                  <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 space-y-2.5">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <div className="text-xs font-bold text-amber-900 dark:text-amber-200">
-                          {pendingConfirm.title}
+                  {/* Bước xác nhận inline thay cho window.confirm */}
+                  {pendingConfirm && (
+                    <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 space-y-2.5">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <div className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                            {pendingConfirm.title}
+                          </div>
+                          <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-amber-800 dark:text-amber-200/90">
+                            {pendingConfirm.summaryLines.map((line, idx) => (
+                              <li key={idx}>{line}</li>
+                            ))}
+                          </ul>
                         </div>
-                        <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-amber-800 dark:text-amber-200/90">
-                          {pendingConfirm.summaryLines.map((line, idx) => (
-                            <li key={idx}>{line}</li>
-                          ))}
-                        </ul>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPendingConfirm(null)}
+                          disabled={submitting}
+                        >
+                          Quay lại sửa
+                        </Button>
+                        <Button type="submit" variant="primary" size="sm" isLoading={submitting}>
+                          Xác nhận & Lưu
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPendingConfirm(null)}
-                        disabled={submitting}
-                      >
-                        Quay lại sửa
-                      </Button>
-                      <Button type="submit" variant="primary" size="sm" isLoading={submitting}>
-                        Xác nhận & Lưu
-                      </Button>
-                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/70 flex items-start gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+                    <UserCheck className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />
+                    <p className="leading-relaxed">
+                      <strong className="text-slate-800 dark:text-slate-100">Bổ nhiệm {getUnitLeaderTitle(type, name)}:</strong>{' '}
+                      Sau khi tạo đơn vị, hãy thêm hoặc điều chuyển nhân sự vào đơn vị tại mục <strong>Danh sách cán bộ</strong>, rồi quay lại <strong>Chỉnh sửa</strong> để bổ nhiệm người phụ trách.
+                    </p>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Khối 3: Geofence GPS */}
               <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                     <Compass className="w-3.5 h-3.5 text-emerald-500" />
-                    3. Tọa độ Geofence & Bán kính điểm danh
+                    {canAssignManagerInForm ? '3.' : '2.'} Tọa độ Geofence & Bán kính điểm danh
                   </span>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button

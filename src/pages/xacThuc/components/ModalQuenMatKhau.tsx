@@ -20,10 +20,12 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setEmail(defaultEmail || '');
+      setErrorMsg(null);
     }
   }, [isOpen, defaultEmail]);
 
@@ -32,6 +34,7 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
+    setErrorMsg(null);
     setLoading(true);
     try {
       const res = await authApi.forgotPassword(email.trim());
@@ -39,10 +42,18 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
         toast.success(res.message || 'Đã gửi mã OTP đặt lại mật khẩu về email.');
         setStep('reset');
       } else {
-        toast.error(res.message || 'Không thể gửi mã OTP.');
+        const msg = res.message || 'Không thể gửi mã OTP.';
+        setErrorMsg(msg);
+        toast.error(msg);
       }
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Không thể gửi yêu cầu OTP.');
+      const msg =
+        err?.response?.data?.message ||
+        (err?.code === 'ECONNABORTED'
+          ? 'Hết thời gian chờ phản hồi từ máy chủ gửi email. Vui lòng kiểm tra kết nối SMTP.'
+          : 'Không thể kết nối máy chủ để gửi yêu cầu OTP.');
+      setErrorMsg(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -51,9 +62,12 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!otp.trim() || newPassword.length < 6) {
-      toast.error('Vui lòng nhập đủ mã OTP và mật khẩu mới tối thiểu 6 ký tự.');
+      const msg = 'Vui lòng nhập đủ mã OTP và mật khẩu mới tối thiểu 6 ký tự.';
+      setErrorMsg(msg);
+      toast.error(msg);
       return;
     }
+    setErrorMsg(null);
     setLoading(true);
     try {
       const res = await authApi.resetPassword({
@@ -65,10 +79,14 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
         toast.success(res.message || 'Đặt lại mật khẩu thành công!');
         setStep('done');
       } else {
-        toast.error(res.message || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
+        const msg = res.message || 'Mã OTP không hợp lệ hoặc đã hết hạn.';
+        setErrorMsg(msg);
+        toast.error(msg);
       }
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Đặt lại mật khẩu thất bại.');
+      const msg = err?.response?.data?.message || 'Đặt lại mật khẩu thất bại.';
+      setErrorMsg(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -78,6 +96,7 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
     setStep('request');
     setOtp('');
     setNewPassword('');
+    setErrorMsg(null);
     onClose();
   };
 
@@ -105,6 +124,11 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
         </div>
 
         <div className="p-5">
+          {errorMsg && (
+            <div className="mb-4 rounded-xl border border-rose-200 dark:border-rose-800/60 bg-rose-50 dark:bg-rose-950/40 px-3.5 py-2.5 text-xs font-medium text-rose-700 dark:text-rose-300">
+              {errorMsg}
+            </div>
+          )}
           {step === 'request' && (
             <form onSubmit={handleRequestOtp} className="space-y-4">
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -171,7 +195,10 @@ export const ModalQuenMatKhau: React.FC<ModalQuenMatKhauProps> = ({
               <div className="flex justify-between items-center">
                 <button
                   type="button"
-                  onClick={() => setStep('request')}
+                  onClick={() => {
+                    setErrorMsg(null);
+                    setStep('request');
+                  }}
                   className="text-xs text-brand-600 hover:underline"
                 >
                   Gửi lại OTP

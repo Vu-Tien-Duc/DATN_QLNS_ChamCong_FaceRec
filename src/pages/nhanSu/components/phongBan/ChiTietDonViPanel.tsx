@@ -18,6 +18,7 @@ import {
   RefreshCw,
   ScanFace,
   Search,
+  ShieldCheck,
   Trash2,
   User,
   UserCheck,
@@ -35,6 +36,7 @@ import {
   getDeptManagerId,
   getDeptParentId,
   getRoleDisplayLabel,
+  getUnitDeputyMeta,
   getUnitLeaderTitle,
   getUserPrimaryDeptId,
   isActiveStaff,
@@ -141,6 +143,50 @@ export const ChiTietDonViPanel: React.FC<ChiTietDonViPanelProps> = ({
     [classifiedMembers]
   );
 
+  // Danh sách Phó đơn vị (Phó Trưởng Khoa / Phó Trưởng Bộ môn / Phó Trưởng Phòng) còn hiệu lực của đơn vị đang xem
+  const deputyMeta = useMemo(
+    () => (activeDepartment ? getUnitDeputyMeta(activeDepartment.loai_don_vi, activeDepartment.ten_phong_ban) : null),
+    [activeDepartment]
+  );
+
+  const deputyLeaders = useMemo(() => {
+    if (!activeDepartment || !deputyMeta) return [] as Array<{ user: UserProfile; isDelegated: boolean }>;
+    const todayKey = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const activeDeptId = String(activeDepartment.id);
+    const list: Array<{ user: UserProfile; isDelegated: boolean }> = [];
+
+    for (const { user, primaryDeptId } of classifiedMembers) {
+      if (!isActiveStaff(user)) continue;
+      const roleRows = Array.isArray(user.danh_sach_vai_tro) ? user.danh_sach_vai_tro : [];
+      const matchingRoleRow = roleRows.find((r: any) => {
+        if (!r || String(r.ma_vai_tro || '').toLowerCase().trim() !== deputyMeta.role) return false;
+        const rowDeptId = r.don_vi_id ? String(r.don_vi_id) : primaryDeptId;
+        if (rowDeptId !== activeDeptId) return false;
+        const start = r.tu_ngay ? String(r.tu_ngay).slice(0, 10) : null;
+        const end = r.den_ngay ? String(r.den_ngay).slice(0, 10) : null;
+        if (start && start > todayKey) return false;
+        if (end && end < todayKey) return false;
+        return true;
+      });
+      const isPrimaryDeputy =
+        String(user.vai_tro_chinh || '').toLowerCase().trim() === deputyMeta.role &&
+        primaryDeptId === activeDeptId;
+
+      if (matchingRoleRow || isPrimaryDeputy) {
+        list.push({
+          user,
+          isDelegated: Boolean((matchingRoleRow as any)?.duoc_uy_quyen),
+        });
+      }
+    }
+    return list.sort((a, b) => (a.user.ho_ten || '').localeCompare(b.user.ho_ten || '', 'vi'));
+  }, [activeDepartment, deputyMeta, classifiedMembers]);
+
   const filteredMembers = useMemo(() => {
     const q = staffSearchQuery.toLowerCase().trim();
     return classifiedMembers.filter(({ user, primaryDeptId, isOfficial }) => {
@@ -198,7 +244,7 @@ export const ChiTietDonViPanel: React.FC<ChiTietDonViPanelProps> = ({
                   leftIcon={<Plus className="w-3.5 h-3.5" />}
                   onClick={() => onOpenCreate('khoa')}
                 >
-                  Thêm đơn vị mới
+                  Thêm Khoa mới
                 </Button>
               )}
             </div>
@@ -574,6 +620,91 @@ export const ChiTietDonViPanel: React.FC<ChiTietDonViPanelProps> = ({
                   >
                     Bổ nhiệm ngay
                   </button>
+                )}
+              </div>
+            )}
+
+            {/* Phần Phó Trưởng Khoa / Phó Trưởng Bộ môn / Phó Trưởng Phòng */}
+            {deputyMeta && (
+              <div className="pt-3 mt-1 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <UsersIcon className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                    {deputyMeta.title}
+                    {deputyLeaders.length > 0 && (
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                        {deputyLeaders.length}
+                      </span>
+                    )}
+                  </span>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/nguoi-dung')}
+                      className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:underline cursor-pointer"
+                    >
+                      Phân công / Ủy quyền
+                    </button>
+                  )}
+                </div>
+
+                {deputyLeaders.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {deputyLeaders.map(({ user: depUser, isDelegated }) => {
+                      const { cleanName, title } = splitNameAndTitle(depUser.ho_ten);
+                      return (
+                        <button
+                          key={depUser.id}
+                          type="button"
+                          onClick={() => onSelectMember(depUser)}
+                          className="w-full flex items-center gap-3 text-left rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 p-1.5 -m-1.5 transition-colors cursor-pointer"
+                        >
+                          <UserAvatar
+                            user={depUser}
+                            name={depUser.ho_ten}
+                            avatarUrl={depUser.anh_dai_dien}
+                            staffCode={depUser.ma_can_bo || depUser.id}
+                            size="sm"
+                            shape="circle"
+                          />
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                                {cleanName}
+                              </span>
+                              {isDelegated && (
+                                <span
+                                  title="Được ủy quyền duyệt đơn cấp 1 & xếp lịch/môn học thay Trưởng đơn vị"
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800"
+                                >
+                                  <ShieldCheck className="w-2.5 h-2.5" /> Ủy quyền
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                              {depUser.ma_can_bo && (
+                                <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded text-[10px] font-semibold">
+                                  {depUser.ma_can_bo}
+                                </span>
+                              )}
+                              {title && <span className="truncate">{title}</span>}
+                              {depUser.email && (
+                                <span className="text-slate-400 truncate inline-flex items-center gap-1">
+                                  <Mail className="w-2.5 h-2.5 shrink-0" /> {depUser.email}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 italic">
+                    {membersEntry.status === 'loading'
+                      ? 'Đang tải danh sách lãnh đạo...'
+                      : `Chưa có ${deputyMeta.title} được phân công.`}
+                  </p>
                 )}
               </div>
             )}
