@@ -383,10 +383,20 @@ const emitQueueStats = (queueStats) => {
 };
 
 // Ngắt toàn bộ kết nối WebSocket đang mở của một người dùng (khi đăng xuất / đổi mật khẩu / khóa tài khoản)
-const disconnectUserSockets = (userId) => {
+const disconnectUserSockets = (userId, reason = null) => {
   if (!io || !userId || typeof io.in !== 'function') return 0;
   try {
-    io.in(`user:${String(userId)}`).disconnectSockets(true);
+    const roomName = `user:${String(userId)}`;
+    io.to(roomName).emit('auth:force-logout', {
+      reason: reason || 'Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.',
+      timestamp: Date.now(),
+    });
+    const timer = setTimeout(() => {
+      try {
+        io?.in(roomName).disconnectSockets(true);
+      } catch (_) {}
+    }, 150);
+    if (typeof timer.unref === 'function') timer.unref();
     return 1;
   } catch (_) {
     return 0;

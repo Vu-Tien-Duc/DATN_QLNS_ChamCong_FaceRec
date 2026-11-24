@@ -24,6 +24,7 @@ const { isValidUuid, normalizePagination } = require('../../utils/hoTroSequelize
 const hoTroChamCong = require('../../utils/hoTroChamCong');
 const ketNoiDichVuKhuonMat = require('../khuonMat/ketNoiDichVuKhuonMat');
 const { normalizeSafeAvatarUrl } = require('../heThong/taiTep.service');
+const { disconnectUserSockets } = require('../../config/socket');
 const ServiceError = require('../../utils/loiNghiepVu');
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -258,6 +259,7 @@ const normalizeAndValidateRoleRows = async (roleList, fallbackRole, fallbackDept
 
   const seen = new Set();
   const normalizedRows = [];
+  const deptById = new Map();
 
   for (const r of roleList) {
     if (!r || typeof r !== 'object') {
@@ -304,6 +306,9 @@ const normalizeAndValidateRoleRows = async (roleList, fallbackRole, fallbackDept
 
       if (candidateDeptId) {
         const dept = await validateDepartmentRoleRule(maVaiTro, candidateDeptId);
+        if (dept) {
+          deptById.set(String(candidateDeptId), dept);
+        }
         const actualDeptScope = dept?.loai_don_vi || null;
         if (rawScope && actualDeptScope && rawScope !== actualDeptScope) {
           throw new ServiceError(
@@ -374,6 +379,38 @@ const normalizeAndValidateRoleRows = async (roleList, fallbackRole, fallbackDept
       tu_ngay: tuNgay,
       den_ngay: denNgay,
     });
+  }
+
+  // Chặn gán trùng vai trò Giảng viên ở cả Khoa cha và Bộ môn con trực thuộc cùng một Khoa
+  const lecturerDeptIds = normalizedRows
+    .filter((row) => row.ma_vai_tro === 'giang_vien' && row.don_vi_id)
+    .map((row) => String(row.don_vi_id));
+  if (
+    normPrimaryRole === 'giang_vien' &&
+    normalizedPrimaryDeptId &&
+    !lecturerDeptIds.includes(normalizedPrimaryDeptId)
+  ) {
+    lecturerDeptIds.push(normalizedPrimaryDeptId);
+    if (!deptById.has(normalizedPrimaryDeptId)) {
+      const primaryDept = await PhongBan.findByPk(normalizedPrimaryDeptId);
+      if (primaryDept) {
+        deptById.set(normalizedPrimaryDeptId, primaryDept);
+      }
+    }
+  }
+  for (let i = 0; i < lecturerDeptIds.length; i += 1) {
+    const idA = lecturerDeptIds[i];
+    const parentA = deptById.get(idA)?.don_vi_cha_id ? String(deptById.get(idA).don_vi_cha_id) : null;
+    for (let j = i + 1; j < lecturerDeptIds.length; j += 1) {
+      const idB = lecturerDeptIds[j];
+      const parentB = deptById.get(idB)?.don_vi_cha_id ? String(deptById.get(idB).don_vi_cha_id) : null;
+      if (parentA === idB || parentB === idA) {
+        throw new ServiceError(
+          'Không thể gán trùng vai trò Giảng viên ở cả Khoa và Bộ môn trực thuộc cùng một Khoa.',
+          400
+        );
+      }
+    }
   }
 
   return normalizedRows;
@@ -1535,7 +1572,15 @@ const updateExistingUser = async (id, data, currentUser, dia_chi_ip = null) => {
     });
   });
 
-  if (meta.shouldRevokeSessions) await revokeGraceTokensSafe(user.id);
+  if (meta.shouldRevokeSessions) {
+    await revokeGraceTokensSafe(user.id);
+    disconnectUserSockets(
+      user.id,
+      meta.isDeactivated
+        ? 'Tài khoản của bạn đã bị vô hiệu hóa hoặc đã nghỉ việc.'
+        : 'Thông tin bảo mật tài khoản đã thay đổi. Vui lòng đăng nhập lại.'
+    );
+  }
   if (meta.isDeactivated) await purgeUserBiometricsCache(user.id);
 
   NhatKyKiemToan.create({
@@ -1585,6 +1630,7 @@ const softDeleteUser = async (id, currentUser, dia_chi_ip = null) => {
   });
 
   await revokeGraceTokensSafe(user.id);
+  disconnectUserSockets(user.id, 'Tài khoản của bạn đã bị vô hiệu hóa hoặc đã nghỉ việc.');
   await purgeUserBiometricsCache(user.id);
 
   NhatKyKiemToan.create({

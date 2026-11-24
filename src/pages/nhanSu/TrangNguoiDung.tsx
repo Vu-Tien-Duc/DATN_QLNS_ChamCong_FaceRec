@@ -74,6 +74,30 @@ const formatDateVN = (raw?: string | null): string => {
   return `${d}/${m}/${y}`;
 };
 
+const getDeptParentId = (dept?: DepartmentItem | null): string | null => {
+  if (!dept?.don_vi_cha_id) return null;
+  if (typeof dept.don_vi_cha_id === 'object' && dept.don_vi_cha_id !== null && 'id' in dept.don_vi_cha_id) {
+    return String((dept.don_vi_cha_id as any).id || '') || null;
+  }
+  return String(dept.don_vi_cha_id) || null;
+};
+
+const isParentChildDeptConflict = (
+  deptIdA: string | null | undefined,
+  deptIdB: string | null | undefined,
+  departments: DepartmentItem[]
+): boolean => {
+  if (!deptIdA || !deptIdB) return false;
+  const idA = String(deptIdA);
+  const idB = String(deptIdB);
+  if (idA === idB) return false;
+  const deptA = departments.find((d) => String(d.id) === idA);
+  const deptB = departments.find((d) => String(d.id) === idB);
+  const parentA = getDeptParentId(deptA);
+  const parentB = getDeptParentId(deptB);
+  return parentA === idB || parentB === idA;
+};
+
 const getAllowedDeptsForSecondaryRole = (role: string, departments: DepartmentItem[]): DepartmentItem[] => {
   if (GLOBAL_SCOPE_ROLES.has(role)) return [];
   if (role === 'pho_khoa') return departments.filter((d) => getDeptCategory(d) === 'khoa');
@@ -1139,11 +1163,26 @@ export const Users: React.FC = () => {
         continue;
       }
       const allowedDepts = getAllowedDeptsForSecondaryRole(candidateRole, departments);
+      const existingLecturerDepts = [
+        ...(currentPrimaryRole === 'giang_vien' && currentPrimaryEffDept ? [String(currentPrimaryEffDept)] : []),
+        ...roleAssignments
+          .filter((r) => r.ma_vai_tro === 'giang_vien' && r.don_vi_id)
+          .map((r) => String(r.don_vi_id)),
+      ];
       const preferredOrder = [
         ...allowedDepts.filter((d) => String(d.id) === String(formData.don_vi_chinh_id || '')),
         ...allowedDepts.filter((d) => String(d.id) !== String(formData.don_vi_chinh_id || '')),
       ];
-      const freeDept = preferredOrder.find((d) => !usedKeys.has(`${candidateRole}::${d.id}`));
+      const freeDept = preferredOrder.find((d) => {
+        if (usedKeys.has(`${candidateRole}::${d.id}`)) return false;
+        if (
+          candidateRole === 'giang_vien' &&
+          existingLecturerDepts.some((otherId) => isParentChildDeptConflict(d.id, otherId, departments))
+        ) {
+          return false;
+        }
+        return true;
+      });
       if (freeDept) {
         chosenRole = candidateRole;
         chosenDeptId = freeDept.id;
@@ -1284,6 +1323,8 @@ export const Users: React.FC = () => {
     if (canCreateOrDelete && roleAssignments.length > 0) {
       const primaryEffDeptCheck = primaryScopeCheck === 'toan_truong' ? null : primaryDeptIdCheck;
       const seenRoleKeys = new Set<string>([`${primaryRole}::${primaryEffDeptCheck || 'ALL'}`]);
+      const seenLecturerDeptIds: string[] =
+        primaryRole === 'giang_vien' && primaryEffDeptCheck ? [String(primaryEffDeptCheck)] : [];
       roleAssignments.forEach((row, idx) => {
         const lineNum = idx + 1;
         if (SECONDARY_FORBIDDEN_ROLES.has(row.ma_vai_tro)) {
@@ -1303,7 +1344,20 @@ export const Users: React.FC = () => {
         if (seenRoleKeys.has(rowKey)) {
           addErr('basic', `Vai trò kiêm nhiệm #${lineNum}: Bị trùng vai trò và đơn vị`);
         }
+        if (
+          row.ma_vai_tro === 'giang_vien' &&
+          row.don_vi_id &&
+          seenLecturerDeptIds.some((otherId) => isParentChildDeptConflict(row.don_vi_id, otherId, departments))
+        ) {
+          addErr(
+            'basic',
+            `Vai trò kiêm nhiệm #${lineNum}: Không thể gán trùng Giảng viên ở cả Khoa và Bộ môn trực thuộc cùng một Khoa`
+          );
+        }
         seenRoleKeys.add(rowKey);
+        if (row.ma_vai_tro === 'giang_vien' && row.don_vi_id) {
+          seenLecturerDeptIds.push(String(row.don_vi_id));
+        }
       });
     }
 
@@ -2531,7 +2585,31 @@ export const Users: React.FC = () => {
                               {roleAssignments.map((ra, rIdx) => {
                                 const isGlobalSecondary = GLOBAL_SCOPE_ROLES.has(ra.ma_vai_tro);
                                 const isDeputySecondary = DEPUTY_DELEGATION_ROLES.has(ra.ma_vai_tro);
-                                const allowedDepts = getAllowedDeptsForSecondaryRole(ra.ma_vai_tro, departments);
+                                const otherLecturerDeptIds = [
+                                  ...(formData.vai_tro_chinh === 'giang_vien' && formData.don_vi_chinh_id
+                                    ? [String(formData.don_vi_chinh_id)]
+                                    : []),
+                                  ...roleAssignments
+                                    .filter((other, oIdx) => oIdx !== rIdx && other.ma_vai_tro === 'giang_vien' && other.don_vi_id)
+                                    .map((other) => String(other.don_vi_id)),
+                                ];
+                                const hasParentChildLecturerConflict =
+                                  ra.ma_vai_tro === 'giang_vien' &&
+                                  Boolean(ra.don_vi_id) &&
+                                  otherLecturerDeptIds.some((otherId) =>
+                                    isParentChildDeptConflict(ra.don_vi_id, otherId, departments)
+                                  );
+                                const rawAllowedDepts = getAllowedDeptsForSecondaryRole(ra.ma_vai_tro, departments);
+                                const allowedDepts =
+                                  ra.ma_vai_tro === 'giang_vien'
+                                    ? rawAllowedDepts.filter((d) => {
+                                        if (String(d.id) === String(ra.don_vi_id || '')) return true;
+                                        if (otherLecturerDeptIds.includes(String(d.id))) return false;
+                                        return !otherLecturerDeptIds.some((otherId) =>
+                                          isParentChildDeptConflict(d.id, otherId, departments)
+                                        );
+                                      })
+                                    : rawAllowedDepts;
                                 const isLegacyOption = !secondaryRoleOptions.some((o) => o.value === ra.ma_vai_tro);
                                 const legacyMeta = isLegacyOption ? getRoleMeta(ra.ma_vai_tro) : null;
                                 const showDateRow = Boolean(expandedRoleDateRows[rIdx] || ra.den_ngay);
@@ -2539,7 +2617,11 @@ export const Users: React.FC = () => {
                                 return (
                                   <div
                                     key={rIdx}
-                                    className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 space-y-2"
+                                    className={`p-2.5 rounded-lg bg-white dark:bg-slate-900 border space-y-2 ${
+                                      hasParentChildLecturerConflict
+                                        ? 'border-rose-300 dark:border-rose-700 bg-rose-50/40 dark:bg-rose-950/20'
+                                        : 'border-slate-200/90 dark:border-slate-700'
+                                    }`}
                                   >
                                     {/* 1 hàng ngang duy nhất: Chức vụ + Đơn vị + Đặt hạn + Xóa */}
                                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -2549,7 +2631,17 @@ export const Users: React.FC = () => {
                                         onChange={(e) => {
                                           const nextRole = e.target.value;
                                           const nextIsGlobal = GLOBAL_SCOPE_ROLES.has(nextRole);
-                                          const nextAllowedDepts = getAllowedDeptsForSecondaryRole(nextRole, departments);
+                                          const baseAllowedDepts = getAllowedDeptsForSecondaryRole(nextRole, departments);
+                                          const nextAllowedDepts =
+                                            nextRole === 'giang_vien'
+                                              ? baseAllowedDepts.filter(
+                                                  (d) =>
+                                                    !otherLecturerDeptIds.includes(String(d.id)) &&
+                                                    !otherLecturerDeptIds.some((otherId) =>
+                                                      isParentChildDeptConflict(d.id, otherId, departments)
+                                                    )
+                                                )
+                                              : baseAllowedDepts;
                                           setRoleAssignments((prev) =>
                                             prev.map((item, idx) => {
                                               if (idx !== rIdx) return item;
@@ -2665,6 +2757,15 @@ export const Users: React.FC = () => {
                                         </button>
                                       </div>
                                     </div>
+
+                                    {hasParentChildLecturerConflict && (
+                                      <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                        <span>
+                                          Trùng phạm vi Khoa – Bộ môn trực thuộc với vai trò Giảng viên khác. Hãy chọn Khoa khác hoặc xóa dòng này.
+                                        </span>
+                                      </p>
+                                    )}
 
                                     {/* Dòng phụ CHỈ hiện khi là cấp Phó (nút gạt ủy quyền) hoặc khi người dùng bật "Đặt hạn" */}
                                     {(isDeputySecondary || showDateRow) && (

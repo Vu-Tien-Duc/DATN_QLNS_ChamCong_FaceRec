@@ -19,6 +19,7 @@ import {
   publicFacultyApi,
   PublicFacultyDetail as FacultyDetailType,
 } from '../../api/public_giangvien/giangVien.api';
+import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 
 export const FacultyDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -124,21 +125,14 @@ export const FacultyDetail: React.FC = () => {
           <div className="p-6 text-center">
             {/* Avatar lớn */}
             <div className="w-36 h-36 mx-auto rounded-full p-1.5 bg-gradient-to-tr from-[#0c3b82] via-blue-500 to-amber-400 shadow-md mb-4">
-              {faculty.anh_dai_dien ? (
-                <img
-                  src={faculty.anh_dai_dien}
-                  alt={faculty.ho_ten}
-                  className="w-full h-full object-cover rounded-full bg-slate-100"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src =
-                      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=500&q=80';
-                  }}
-                />
-              ) : (
-                <div className="w-full h-full rounded-full bg-gradient-to-br from-blue-900 to-[#0c3b82] flex items-center justify-center text-white text-4xl font-bold">
-                  {faculty.ho_ten.charAt(0)}
-                </div>
-              )}
+              <UserAvatar
+                name={faculty.ho_ten}
+                avatarUrl={faculty.anh_dai_dien}
+                staffCode={faculty.id}
+                size="full"
+                shape="circle"
+                className="w-full h-full"
+              />
             </div>
 
             {/* Badge danh hiệu */}

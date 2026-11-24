@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, MapPin, BookOpen, ArrowRight } from 'lucide-react';
 import { PublicFacultyItem } from '../../../api/public_giangvien/giangVien.api';
+import { UserAvatar } from '../../../components/chung/AnhDaiDienNguoiDung';
 
 interface FacultyCardProps {
   faculty: PublicFacultyItem;
@@ -26,21 +27,14 @@ export const FacultyCard: React.FC<FacultyCardProps> = ({ faculty }) => {
       {/* Avatar & Name */}
       <div className="p-5 flex items-start gap-4">
         <div className="w-20 h-20 rounded-full border border-slate-200 overflow-hidden shrink-0 bg-slate-100">
-          {faculty.anh_dai_dien ? (
-            <img
-              src={faculty.anh_dai_dien}
-              alt={faculty.ho_ten}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src =
-                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=500&q=80';
-              }}
-            />
-          ) : (
-            <div className="w-full h-full bg-[#002b5c] flex items-center justify-center text-white text-xl font-bold">
-              {faculty.ho_ten.charAt(0)}
-            </div>
-          )}
+          <UserAvatar
+            name={faculty.ho_ten}
+            avatarUrl={faculty.anh_dai_dien}
+            staffCode={faculty.id}
+            size="full"
+            shape="circle"
+            className="w-full h-full"
+          />
         </div>
 
         <div className="min-w-0 flex-1">

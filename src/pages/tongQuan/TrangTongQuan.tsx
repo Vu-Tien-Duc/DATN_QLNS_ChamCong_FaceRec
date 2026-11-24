@@ -38,6 +38,7 @@ import { DepartmentSelect, DepartmentItem } from '../../components/chung/ChonDon
 import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { Button } from '../../components/chung/NutBam';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
+import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { canPersonalCheckIn } from '../../utils/phanQuyen';
@@ -50,7 +51,7 @@ import { useSocketEvent, useSocketStatus } from '../../api/socket';
 import { FaceAttendanceScannerModal } from '../../components/sinhTracHoc/ModalQuetChamCong';
 import { ScheduleItem } from '../../types/index';
 import { getRoleLabel, hasRole } from '../../utils/phanQuyen';
-import { formatVND, formatTimeVN, getInitials } from '../../utils/dinhDang';
+import { formatVND, formatTimeVN } from '../../utils/dinhDang';
 
 // =============================================================================
 // HELPER FORMATTERS
@@ -1404,17 +1405,10 @@ export const Dashboard: React.FC = () => {
                   <div key={item.id || idx} className="py-3 flex flex-col gap-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                          {userObj?.anh_dai_dien ? (
-                            <img
-                              src={userObj.anh_dai_dien}
-                              alt="Avatar"
-                              className="w-full h-full rounded-full object-cover"
-                            />
-                          ) : (
-                            getInitials(userObj?.ho_ten)
-                          )}
-                        </div>
+                        <UserAvatar
+                          user={userObj}
+                          size="sm"
+                        />
                         <div className="flex flex-col min-w-0">
                           <span className="font-bold text-slate-900 dark:text-white truncate text-xs">
                             {userObj?.ho_ten || 'Cán bộ'}
@@ -1519,17 +1513,11 @@ export const Dashboard: React.FC = () => {
                         {/* Cán bộ (Thu nhỏ khoảng không gian gọn gàng) */}
                         <td className="py-2.5 px-2.5 sm:px-3 overflow-hidden">
                           <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0 shadow-xs">
-                              {userObj?.anh_dai_dien ? (
-                                <img
-                                  src={userObj.anh_dai_dien}
-                                  alt="Avatar"
-                                  className="w-full h-full rounded-full object-cover"
-                                />
-                              ) : (
-                                getInitials(userObj?.ho_ten)
-                              )}
-                            </div>
+                            <UserAvatar
+                              user={userObj}
+                              size="sm"
+                              className="scale-90 origin-left"
+                            />
                             <div className="flex flex-col min-w-0 overflow-hidden">
                               <span className="font-bold text-slate-900 dark:text-white truncate text-xs block" title={userObj?.ho_ten || 'Cán bộ'}>
                                 {userObj?.ho_ten || 'Cán bộ'}
@@ -1842,17 +1830,13 @@ export const Dashboard: React.FC = () => {
                       className="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/70 transition-all flex items-center justify-between gap-3"
                     >
                       <div className="flex items-start gap-2.5 min-w-0">
-                        <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5 overflow-hidden border border-slate-200/80 dark:border-slate-700">
-                          {staffAvatar ? (
-                            <img
-                              src={staffAvatar}
-                              alt={staffName}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            getInitials(staffName)
-                          )}
-                        </div>
+                        <UserAvatar
+                          name={staffName}
+                          avatarUrl={staffAvatar}
+                          staffCode={reqItem.nguoi_dung?.ma_can_bo || matchedUser?.ma_can_bo || reqItem.nguoi_dung?.id || reqItem.nguoi_dung_id || staffName}
+                          size="md"
+                          className="mt-0.5"
+                        />
                         <div className="flex flex-col min-w-0">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className="text-xs font-bold text-slate-900 dark:text-white truncate">

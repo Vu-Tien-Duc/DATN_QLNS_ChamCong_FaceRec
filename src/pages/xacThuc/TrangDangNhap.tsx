@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { FORCE_LOGOUT_MESSAGE_KEY } from '../../api/apiClient';
 import {
   GraduationCap,
   Mail,
@@ -29,6 +30,18 @@ export const Login: React.FC = () => {
   const [rememberMe, setRememberMe] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
+
+  useEffect(() => {
+    try {
+      const forcedMsg = sessionStorage.getItem(FORCE_LOGOUT_MESSAGE_KEY);
+      if (forcedMsg) {
+        sessionStorage.removeItem(FORCE_LOGOUT_MESSAGE_KEY);
+        setErrorMessage(forcedMsg);
+      }
+    } catch {
+      // Ignore storage access errors
+    }
+  }, []);
 
 
   const demoAccounts = [

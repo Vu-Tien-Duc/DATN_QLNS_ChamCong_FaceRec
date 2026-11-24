@@ -992,11 +992,13 @@ describe('Luồng 2 - Bảo mật, RBAC đa vai trò, Hồ sơ & Thu hồi phiê
     const bghActor = { id: ID_ADMIN, vai_tro_chinh: 'bgh', kich_hoat: true, phien_ban_token: 1, danh_sach_vai_tro: [] };
     let persistedRoles = [];
 
+    const ID_KHOA_OTHER = '88888888-8888-4888-8888-888888888888';
     stubTx();
     stub(models.PhongBan, 'findByPk', async (id) => {
-      if (id === ID_KHOA) return { id: ID_KHOA, loai_don_vi: 'khoa', ten_phong_ban: 'Khoa CNTT' };
-      if (id === ID_BOMON) return { id: ID_BOMON, loai_don_vi: 'bo_mon', ten_phong_ban: 'Bộ môn KTPM' };
-      if (id === ID_PHONG) return { id: ID_PHONG, loai_don_vi: 'phong_ban', ten_phong_ban: 'Phòng TCCB' };
+      if (id === ID_KHOA) return { id: ID_KHOA, loai_don_vi: 'khoa', ten_phong_ban: 'Khoa CNTT', don_vi_cha_id: null };
+      if (id === ID_BOMON) return { id: ID_BOMON, loai_don_vi: 'bo_mon', ten_phong_ban: 'Bộ môn KTPM', don_vi_cha_id: ID_KHOA };
+      if (id === ID_KHOA_OTHER) return { id: ID_KHOA_OTHER, loai_don_vi: 'khoa', ten_phong_ban: 'Khoa Kinh tế', don_vi_cha_id: null };
+      if (id === ID_PHONG) return { id: ID_PHONG, loai_don_vi: 'phong_ban', ten_phong_ban: 'Phòng TCCB', don_vi_cha_id: null };
       return null;
     });
     stub(models.NguoiDung, 'findOne', async () => null);
@@ -1147,6 +1149,54 @@ describe('Luồng 2 - Bảo mật, RBAC đa vai trò, Hồ sơ & Thu hồi phiê
     assert.equal(persistedRoles.length, 1);
     assert.equal(persistedRoles[0].pham_vi, 'bo_mon');
     assert.equal(persistedRoles[0].don_vi_id, ID_BOMON);
+
+    // 7. Chặn gán trùng vai trò giang_vien giữa Khoa cha và Bộ môn con (cả 2 chiều), vẫn cho phép kiêm giảng sang Khoa khác
+    await assert.rejects(
+      () =>
+        nguoiDungService.createNewUser(
+          {
+            ...basePayload,
+            don_vi_chinh_id: ID_KHOA,
+            danh_sach_vai_tro: [
+              { ma_vai_tro: 'giang_vien', don_vi_id: ID_KHOA },
+              { ma_vai_tro: 'giang_vien', don_vi_id: ID_BOMON },
+            ],
+          },
+          bghActor
+        ),
+      (err) => err.statusCode === 400 && /Khoa và Bộ môn trực thuộc/.test(err.message)
+    );
+
+    await assert.rejects(
+      () =>
+        nguoiDungService.createNewUser(
+          {
+            ...basePayload,
+            don_vi_chinh_id: ID_BOMON,
+            danh_sach_vai_tro: [
+              { ma_vai_tro: 'giang_vien', don_vi_id: ID_BOMON },
+              { ma_vai_tro: 'giang_vien', don_vi_id: ID_KHOA },
+            ],
+          },
+          bghActor
+        ),
+      (err) => err.statusCode === 400 && /Khoa và Bộ môn trực thuộc/.test(err.message)
+    );
+
+    persistedRoles = [];
+    await nguoiDungService.createNewUser(
+      {
+        ...basePayload,
+        don_vi_chinh_id: ID_BOMON,
+        danh_sach_vai_tro: [
+          { ma_vai_tro: 'giang_vien', don_vi_id: ID_BOMON },
+          { ma_vai_tro: 'giang_vien', don_vi_id: ID_KHOA_OTHER, den_ngay: '2026-11-24' },
+        ],
+      },
+      bghActor
+    );
+    assert.equal(persistedRoles.length, 2);
+    assert.equal(persistedRoles[1].don_vi_id, ID_KHOA_OTHER);
   });
 
   it('fetchUserById bung phẳng đúng dữ liệu từ Sequelize HoSoCanBo instance (ngay_sinh, so_cccd, dia_chi, chuc_vu, he_so_luong) và không rò dataValues', async () => {

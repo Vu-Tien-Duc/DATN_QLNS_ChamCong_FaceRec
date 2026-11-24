@@ -88,7 +88,13 @@ const verifyToken = async (req, res, next) => {
     }
 
     if (user.kich_hoat === false || user.trang_thai_lam_viec === 'da_nghi_viec') {
-      return sendError(res, 'Tài khoản của bạn đã bị vô hiệu hóa hoặc đã nghỉ việc.', null, 403);
+      return sendError(
+        res,
+        'Tài khoản của bạn đã bị vô hiệu hóa hoặc đã nghỉ việc.',
+        null,
+        403,
+        'ACCOUNT_DISABLED'
+      );
     }
 
     const userTokenVersion = user.phien_ban_token || 1;

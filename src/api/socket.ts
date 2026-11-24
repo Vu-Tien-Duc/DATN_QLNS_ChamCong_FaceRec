@@ -4,6 +4,7 @@
 import { io, Socket } from 'socket.io-client';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../stores/useXacThucStore';
+import { clearStoredAuthAndRedirect } from './apiClient';
 
 let socketInstance: Socket | null = null;
 
@@ -35,6 +36,12 @@ export function getSocket(): Socket {
 
     socketInstance.on('connect_error', () => {
       // Fallback polling silently
+    });
+
+    socketInstance.on('auth:force-logout', (payload?: { reason?: string }) => {
+      clearStoredAuthAndRedirect(
+        payload?.reason || 'Tài khoản của bạn đã bị vô hiệu hóa hoặc phiên đăng nhập đã bị thu hồi.'
+      );
     });
   }
 

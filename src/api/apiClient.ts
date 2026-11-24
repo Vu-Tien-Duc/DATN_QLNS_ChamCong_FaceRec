@@ -22,6 +22,41 @@ export const clearApiClientAuthHeader = () => {
   delete apiClient.defaults.headers.common['Authorization'];
 };
 
+export const FORCE_LOGOUT_MESSAGE_KEY = 'ntu_force_logout_msg';
+let isRedirectingToLogin = false;
+
+export const clearStoredAuthAndRedirect = (reason?: string) => {
+  const isPublicRoute =
+    typeof window !== 'undefined' &&
+    (window.location.pathname.startsWith('/giang-vien') ||
+      window.location.pathname === '/dang-nhap' ||
+      window.location.pathname === '/login');
+
+  for (const st of [sessionStorage, localStorage]) {
+    st.removeItem('accessToken');
+    st.removeItem('token');
+    st.removeItem('refreshToken');
+    st.removeItem('user');
+    st.removeItem('ntu_last_activity');
+  }
+  clearApiClientAuthHeader();
+
+  if (typeof window !== 'undefined') {
+    if (reason) {
+      try {
+        sessionStorage.setItem(FORCE_LOGOUT_MESSAGE_KEY, reason);
+      } catch {
+        // Ignore storage quota errors
+      }
+    }
+    window.dispatchEvent(new CustomEvent('auth:session-cleared'));
+    if (!isPublicRoute && !isRedirectingToLogin) {
+      isRedirectingToLogin = true;
+      window.location.href = '/dang-nhap';
+    }
+  }
+};
+
 // Request Interceptor: Gắn Bearer Token & Chuẩn hóa Payload / Query Params
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
@@ -112,6 +147,23 @@ apiClient.interceptors.response.use(
       requestUrl.includes('/xac-thuc/quen-mat-khau') ||
       requestUrl.includes('/xac-thuc/dat-lai-mat-khau');
 
+    // Tự động đăng xuất ngay nếu tài khoản bị vô hiệu hóa / khóa mềm hoặc đã nghỉ việc
+    const responseStatus = error.response?.status;
+    const responseErrorCode = error.response?.data?.errorCode;
+    const responseMessage = error.response?.data?.message || '';
+    const isAccountDisabled =
+      responseStatus === 403 &&
+      !isAuthBypassRoute &&
+      (responseErrorCode === 'ACCOUNT_DISABLED' ||
+        responseMessage.includes('đã bị vô hiệu hóa hoặc đã nghỉ việc'));
+
+    if (isAccountDisabled) {
+      clearStoredAuthAndRedirect(
+        responseMessage || 'Tài khoản của bạn đã bị vô hiệu hóa hoặc đã nghỉ việc.'
+      );
+      return Promise.reject(error);
+    }
+
     // Bỏ qua nếu lỗi không phải 401 hoặc thuộc các endpoint xác thực công khai/đăng xuất
     if (!error.response || error.response.status !== 401 || isAuthBypassRoute) {
       return Promise.reject(error);
@@ -135,29 +187,6 @@ apiClient.interceptors.response.use(
         })
         .catch((err) => Promise.reject(err));
     }
-
-    const isPublicRoute =
-      typeof window !== 'undefined' &&
-      (window.location.pathname.startsWith('/giang-vien') ||
-        window.location.pathname === '/dang-nhap' ||
-        window.location.pathname === '/login');
-
-    const clearStoredAuthAndRedirect = () => {
-      for (const st of [sessionStorage, localStorage]) {
-        st.removeItem('accessToken');
-        st.removeItem('token');
-        st.removeItem('refreshToken');
-        st.removeItem('user');
-        st.removeItem('ntu_last_activity');
-      }
-      clearApiClientAuthHeader();
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('auth:session-cleared'));
-        if (!isPublicRoute) {
-          window.location.href = '/dang-nhap';
-        }
-      }
-    };
 
     isRefreshing = true;
     const refreshToken = sessionStorage.getItem('refreshToken') || localStorage.getItem('refreshToken');

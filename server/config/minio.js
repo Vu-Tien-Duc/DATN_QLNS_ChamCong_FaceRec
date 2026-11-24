@@ -163,6 +163,12 @@ const putObject = async (objectKey, buffer, contentType = 'application/octet-str
         ...sanitizedMeta,
       };
       await minioClient.putObject(MINIO_BUCKET_NAME, cleanKey, buffer, buffer.length, uploadMeta);
+      // Đồng bộ bản sao dự phòng cục bộ để không mất ảnh/tệp khi MinIO tạm ngắt
+      try {
+        const mirrorPath = resolveLocalPath(cleanKey);
+        await fsp.mkdir(path.dirname(mirrorPath), { recursive: true });
+        await fsp.writeFile(mirrorPath, buffer);
+      } catch (_) {}
       return {
         objectKey: cleanKey,
         bucket: MINIO_BUCKET_NAME,
