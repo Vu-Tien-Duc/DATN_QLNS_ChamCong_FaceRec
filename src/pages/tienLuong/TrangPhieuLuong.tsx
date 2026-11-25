@@ -41,6 +41,7 @@ import {
 } from '../../api/phieuLuong.api';
 import { hasRole, isAdmin } from '../../utils/phanQuyen';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
+import { SearchInput } from '../../components/chung/OTimKiem';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import { ThanhPhanTrang } from '../../components/chung/ThanhPhanTrang';
@@ -909,33 +910,16 @@ export const Payroll: React.FC = () => {
             </button>
 
             {/* Personnel Search Input */}
-            <div className="relative flex-1 min-w-[180px]">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                <Search className="w-4 h-4" />
-              </span>
-              <input
-                value={searchKeyword}
-                onChange={(e) => {
-                  setSearchKeyword(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full h-9 pl-9 pr-8 bg-slate-50/80 dark:bg-slate-800/80 rounded-xl text-slate-800 dark:text-slate-100 text-xs placeholder:text-slate-400 border border-slate-200/80 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
-                placeholder="Tìm tên, mã nhân viên..."
-                type="text"
-              />
-              {searchKeyword && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchKeyword('');
-                    setCurrentPage(1);
-                  }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-0.5"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+            <SearchInput
+              value={searchKeyword}
+              onChange={(next) => {
+                setSearchKeyword(next);
+                setCurrentPage(1);
+              }}
+              debounceMs={180}
+              placeholder="Tìm tên, mã nhân viên..."
+              className="relative flex-1 min-w-[180px]"
+            />
 
             {/* Faculty / Department Select Dropdown Phân Cấp */}
             <div className="w-full sm:w-52 shrink-0">

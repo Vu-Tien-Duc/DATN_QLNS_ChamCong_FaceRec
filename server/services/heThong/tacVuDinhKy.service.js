@@ -721,6 +721,7 @@ const scanAndMarkExpiredShiftsAbsent = async (targetDate = new Date()) => {
     if (holiday) return;
 
     const activeSchedules = await getTodayActiveSchedules(targetDate);
+    const createdResults = [];
 
     for (const schedule of activeSchedules) {
       try {
@@ -735,10 +736,46 @@ const scanAndMarkExpiredShiftsAbsent = async (targetDate = new Date()) => {
 
         // Chỉ tự động đánh vắng sau khi ca thường trong ngày đã thực sự kết thúc (bỏ qua ca qua đêm sang ngày hôm sau)
         if (!isOvernightShift && currentMinutes > endMinutes) {
-          await processScheduleAttendanceCheck(schedule, dayRange);
+          const itemResult = await processScheduleAttendanceCheck(schedule, dayRange);
+          if (itemResult?.action === 'CREATED') {
+            createdResults.push(itemResult);
+          }
         }
       } catch (itemErr) {
         console.error(`[Cron Service] Lỗi khi xử lý lịch ${schedule.id}:`, itemErr.message);
+      }
+    }
+
+    // Chỉ ghi nhật ký kiểm toán khi thực sự phát sinh ít nhất 1 bản ghi vắng mới (tránh spam log mỗi 5 phút)
+    if (createdResults.length > 0) {
+      try {
+        const absentCount = createdResults.filter((r) => r.status === 'absent').length;
+        const excusedCount = createdResults.filter((r) => r.status === 'excused_absence').length;
+        await NhatKyKiemToan.create({
+          nguoi_thuc_hien_id: null,
+          loai_chu_the: 'system',
+          hanh_dong: 'CRON_AUTO_ABSENT',
+          doi_tuong_id: `CRON_SHIFT_${dayRange.dateStr}`,
+          loai_doi_tuong: 'nhat_ky_cham_cong',
+          dia_chi_ip: '127.0.0.1',
+          chi_tiet: {
+            source: 'scan_expired_shifts',
+            scannedDate: dayRange.dateStr,
+            absentCount,
+            excusedCount,
+            results: createdResults.map((r) => ({
+              scheduleId: r.scheduleId,
+              userId: r.userId,
+              teacherName: r.teacherName,
+              shiftName: r.shiftName,
+              status: r.status,
+              logId: r.logId,
+              emailSent: r.emailSent || false,
+            })),
+          },
+        });
+      } catch (auditErr) {
+        console.error('[Cron Service] Lỗi ghi audit log đánh vắng hết ca:', auditErr.message);
       }
     }
   } catch (error) {
@@ -761,6 +798,7 @@ const danhDauThieuCheckOut = async (referenceDate = new Date()) => {
   });
 
   let flaggedCount = 0;
+  const flaggedItems = [];
   for (const log of openLogs) {
     try {
       const dayKey = String(log.ngay_cong).slice(0, 10);
@@ -776,8 +814,33 @@ const danhDauThieuCheckOut = async (referenceDate = new Date()) => {
       log.ly_do_ghi_de = log.ly_do_ghi_de || 'Hệ thống đánh dấu thiếu Check-out cuối ngày, chờ giải trình và duyệt công';
       await log.save();
       flaggedCount += 1;
+      flaggedItems.push({
+        logId: log.id,
+        userId: log.nguoi_dung_id,
+        workDate: dayKey,
+      });
     } catch (err) {
       console.error(`[Cron MissingCheckout] Không thể đánh dấu thiếu check-out log ${log.id}:`, err.message);
+    }
+  }
+
+  if (flaggedCount > 0) {
+    try {
+      await NhatKyKiemToan.create({
+        nguoi_thuc_hien_id: null,
+        loai_chu_the: 'system',
+        hanh_dong: 'CRON_MISSING_CHECKOUT',
+        doi_tuong_id: `CRON_CHECKOUT_${todayStr}`,
+        loai_doi_tuong: 'nhat_ky_cham_cong',
+        dia_chi_ip: '127.0.0.1',
+        chi_tiet: {
+          scannedDate: todayStr,
+          flaggedCount,
+          items: flaggedItems,
+        },
+      });
+    } catch (auditErr) {
+      console.error('[Cron MissingCheckout] Lỗi ghi audit log thiếu check-out:', auditErr.message);
     }
   }
 
@@ -838,6 +901,28 @@ const cleanupExpiredRetentionData = async (referenceDate = new Date()) => {
     punch.anh_minh_chung = null;
     await punch.save();
     clearedPhotosCount += 1;
+  }
+
+  if (clearedPhotosCount > 0) {
+    try {
+      const { dateStr } = getVietnamDayRange(referenceDate);
+      await NhatKyKiemToan.create({
+        nguoi_thuc_hien_id: null,
+        loai_chu_the: 'system',
+        hanh_dong: 'CRON_RETENTION_CLEANUP',
+        doi_tuong_id: `CRON_RETENTION_${dateStr}`,
+        loai_doi_tuong: 'nhat_ky_cham_cong',
+        dia_chi_ip: '127.0.0.1',
+        chi_tiet: {
+          scannedDate: dateStr,
+          clearedPhotosCount,
+          photoRetentionYears,
+          metadataRetentionYears,
+        },
+      });
+    } catch (auditErr) {
+      console.error('[Cron Retention] Lỗi ghi audit log dọn dữ liệu hết hạn:', auditErr.message);
+    }
   }
 
   // Sổ cái kiểm toán NhatKyKiemToan được bảo toàn bất biến (chuỗi băm SHA-256), không xóa tự động.

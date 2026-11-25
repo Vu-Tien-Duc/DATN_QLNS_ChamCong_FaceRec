@@ -35,6 +35,7 @@ import { useAuthStore } from '../../stores/useXacThucStore';
 import { Button } from '../../components/chung/NutBam';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
 import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
+import { SearchInput } from '../../components/chung/OTimKiem';
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
@@ -773,25 +774,14 @@ export const AttendanceManage: React.FC = () => {
         <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 space-y-2.5">
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Search */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-                placeholder="Tìm theo họ tên, mã CB, email, ca học..."
-                className="w-full h-9 pl-9 pr-8 rounded-xl bg-slate-50/70 dark:bg-slate-800/70 border border-slate-200/90 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-xs focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 outline-none transition-all"
-              />
-              {searchKeyword && (
-                <button
-                  type="button"
-                  onClick={() => setSearchKeyword('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+            <SearchInput
+              value={searchKeyword}
+              onChange={setSearchKeyword}
+              debounceMs={180}
+              placeholder="Tìm theo họ tên, mã CB, email, ca học..."
+              className="relative flex-1 min-w-[200px]"
+              iconClassName="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            />
 
             {/* Quick Date Preset */}
             <div className="relative h-9">

@@ -287,14 +287,21 @@ const detectScheduleConflicts = async ({
     gio_ket_thuc,
   };
 
+  const formatWeekdayLabel = (weekdayNum) => {
+    const labels = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+    const num = Number(weekdayNum);
+    return Number.isInteger(num) && num >= 0 && num <= 6 ? labels[num] : `Thứ ${weekdayNum}`;
+  };
+
   const assertNoConflictWithCandidate = (cand, candId, candLecturerId, candLecturerName, candWeekday) => {
     if (!checkPeriodOrTimeOverlap(incomingSched, cand)) return;
 
+    const weekdayLabel = formatWeekdayLabel(candWeekday);
     if (String(candLecturerId) === String(nguoi_dung_id)) {
       throw new ServiceError(
         `Xung đột lịch Giảng viên: ${candLecturerName || 'Giảng viên'} đã có lịch giảng dạy khác vào ${
           cand.gio_bat_dau || `tiết ${cand.tiet_bat_dau}`
-        } (Thứ ${candWeekday})!`,
+        } (${weekdayLabel})!`,
         409,
         'SCHEDULE_LECTURER_CONFLICT',
         { conflictingScheduleId: candId }
@@ -305,7 +312,7 @@ const detectScheduleConflicts = async ({
       throw new ServiceError(
         `Xung đột Phòng học: ${phong_hoc} đã được bố trí cho lớp học khác vào ${
           cand.gio_bat_dau || `tiết ${cand.tiet_bat_dau}`
-        } (Thứ ${candWeekday})!`,
+        } (${weekdayLabel})!`,
         409,
         'SCHEDULE_ROOM_CONFLICT',
         { conflictingScheduleId: candId, room: phong_hoc }
@@ -927,8 +934,17 @@ const removeSchedule = async (scheduleId, currentUser) => {
   return { message: 'Đã xóa lịch giảng dạy/công tác thành công.' };
 };
 
-// Ghi nhận ngoại lệ cho một buổi học (nghỉ, hủy hoặc dạy bù)
-const addScheduleException = async ({ scheduleId, ngay, ly_do, trang_thai = 'nghi', ngay_day_bu, currentUser }) => {
+// Ghi nhận ngoại lệ cho một buổi học (nghỉ, hủy, dạy bù hoặc đổi ca/dạy thay)
+const addScheduleException = async ({
+  scheduleId,
+  ngay,
+  ly_do,
+  trang_thai = 'nghi',
+  ngay_day_bu,
+  giang_vien_day_thay_id = null,
+  ca_thay_the_id = null,
+  currentUser,
+}) => {
   if (!isValidUuid(scheduleId)) {
     throw new ServiceError('ID lịch trình không hợp lệ.', 400);
   }
@@ -965,6 +981,10 @@ const addScheduleException = async ({ scheduleId, ngay, ly_do, trang_thai = 'ngh
   }
 
   let cleanMakeupDate = null;
+  let validSubstituteLecturerId = null;
+  let validReplacementShiftId = null;
+  let replacementShiftDoc = null;
+
   if (trang_thai === 'day_bu') {
     cleanMakeupDate = ngay_day_bu ? String(ngay_day_bu).slice(0, 10) : '';
     if (!isValidCalendarDate(cleanMakeupDate)) {
@@ -974,6 +994,63 @@ const addScheduleException = async ({ scheduleId, ngay, ly_do, trang_thai = 'ngh
       throw new ServiceError('Ngày dạy bù không được trùng với ngày nghỉ gốc.', 400);
     }
     await validateHolidayForScheduleDate(cleanMakeupDate);
+  } else if (trang_thai === 'doi_ca') {
+    const rawSubId = giang_vien_day_thay_id ? String(giang_vien_day_thay_id).trim() : '';
+    const rawShiftId = ca_thay_the_id ? String(ca_thay_the_id).trim() : '';
+    const rawSwapDate = ngay_day_bu ? String(ngay_day_bu).slice(0, 10) : '';
+
+    if (rawSwapDate) {
+      if (!isValidCalendarDate(rawSwapDate)) {
+        throw new ServiceError('Ngày đổi ca không hợp lệ (yêu cầu YYYY-MM-DD).', 400);
+      }
+      await validateHolidayForScheduleDate(rawSwapDate);
+      cleanMakeupDate = rawSwapDate;
+    }
+
+    if (rawSubId) {
+      if (!isValidUuid(rawSubId)) {
+        throw new ServiceError('ID giảng viên dạy thay không đúng định dạng UUID.', 400);
+      }
+      if (rawSubId === String(schedule.nguoi_dung_id)) {
+        throw new ServiceError('Giảng viên dạy thay không được trùng với giảng viên phụ trách chính của buổi học.', 400);
+      }
+      const subLecturer = await NguoiDung.findByPk(rawSubId, {
+        attributes: ['id', 'vai_tro_chinh', 'kich_hoat', 'trang_thai_lam_viec'],
+        include: [{ model: VaiTroNguoiDung, as: 'danh_sach_vai_tro', attributes: ['ma_vai_tro', 'tu_ngay', 'den_ngay'] }],
+      });
+      if (!subLecturer || subLecturer.kich_hoat === false || subLecturer.trang_thai_lam_viec === 'da_nghi_viec') {
+        throw new ServiceError('Không tìm thấy giảng viên dạy thay đang hoạt động trên hệ thống.', 404);
+      }
+      if (hasAnyActiveRole(subLecturer, [ROLES.ADMIN])) {
+        throw new ServiceError(
+          'Tài khoản Quản trị viên hệ thống (Admin) không tham gia chấm công hoặc giảng dạy.',
+          403,
+          'SCHEDULE_ADMIN_EXEMPT'
+        );
+      }
+      validSubstituteLecturerId = rawSubId;
+    }
+
+    if (rawShiftId) {
+      if (!isValidUuid(rawShiftId)) {
+        throw new ServiceError('ID ca thay thế không đúng định dạng UUID.', 400);
+      }
+      replacementShiftDoc = await CaLamViec.findByPk(rawShiftId);
+      if (!replacementShiftDoc) {
+        throw new ServiceError('Không tìm thấy ca làm việc thay thế được chọn.', 404);
+      }
+      if (replacementShiftDoc.kich_hoat === false) {
+        throw new ServiceError('Ca làm việc thay thế đã ngừng kích hoạt, vui lòng chọn ca khác.', 400);
+      }
+      validReplacementShiftId = rawShiftId;
+    }
+
+    if (!validSubstituteLecturerId && !validReplacementShiftId && !cleanMakeupDate) {
+      throw new ServiceError(
+        'Vui lòng chọn ít nhất Giảng viên dạy thay, Ca thay thế hoặc Ngày đổi ca khi ghi nhận ngoại lệ đổi ca.',
+        400
+      );
+    }
   }
 
   await withDistributedLock('schedule_write_lock', 15, async () => {
@@ -997,6 +1074,29 @@ const addScheduleException = async ({ scheduleId, ngay, ly_do, trang_thai = 'ngh
         excludeScheduleId: null,
         excludeExceptionNgay: { lich_trinh_id: schedule.id, ngay: cleanDate },
       });
+    } else if (trang_thai === 'doi_ca') {
+      const swapTargetDate = cleanMakeupDate || cleanDate;
+      const swapVn = getVietnamTime(`${swapTargetDate}T08:00:00+07:00`);
+      const swapWeekday = swapVn.getDay();
+      const targetStartTime = replacementShiftDoc?.gio_bat_dau || schedule.gio_bat_dau;
+      const targetEndTime = replacementShiftDoc?.gio_ket_thuc || schedule.gio_ket_thuc;
+
+      await detectScheduleConflicts({
+        nguoi_dung_id: validSubstituteLecturerId || schedule.nguoi_dung_id,
+        phong_hoc: schedule.phong_hoc,
+        la_truc_tuyen: Boolean(schedule.la_truc_tuyen),
+        thu_trong_tuan: swapWeekday,
+        tiet_bat_dau: replacementShiftDoc ? null : schedule.tiet_bat_dau,
+        so_tiet: replacementShiftDoc ? null : schedule.so_tiet,
+        gio_bat_dau: targetStartTime,
+        gio_ket_thuc: targetEndTime,
+        ngay_bat_dau: swapTargetDate,
+        ngay_ket_thuc: swapTargetDate,
+        danh_sach_tuan: [],
+        loai_lich: 'day_bu',
+        excludeScheduleId: swapTargetDate === cleanDate ? schedule.id : null,
+        excludeExceptionNgay: { lich_trinh_id: schedule.id, ngay: cleanDate },
+      });
     }
 
     const existing = await NgoaiLeLichTrinh.findOne({
@@ -1015,14 +1115,18 @@ const addScheduleException = async ({ scheduleId, ngay, ly_do, trang_thai = 'ngh
       existing.ly_do = ly_do || existing.ly_do;
       existing.trang_thai = trang_thai;
       existing.ngay_day_bu = cleanMakeupDate;
+      existing.giang_vien_day_thay_id = trang_thai === 'doi_ca' ? validSubstituteLecturerId : null;
+      existing.ca_thay_the_id = trang_thai === 'doi_ca' ? validReplacementShiftId : null;
       await existing.save();
     } else {
       await NgoaiLeLichTrinh.create({
         lich_trinh_id: schedule.id,
         ngay: cleanDate,
-        ly_do: ly_do || 'Giảng viên có lý do công tác',
+        ly_do: ly_do || (trang_thai === 'doi_ca' ? 'Đổi ca / phân công giảng viên dạy thay' : 'Giảng viên có lý do công tác'),
         trang_thai,
         ngay_day_bu: cleanMakeupDate,
+        giang_vien_day_thay_id: trang_thai === 'doi_ca' ? validSubstituteLecturerId : null,
+        ca_thay_the_id: trang_thai === 'doi_ca' ? validReplacementShiftId : null,
       });
     }
   });

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { SearchInput } from '../../components/chung/OTimKiem';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -76,12 +77,18 @@ const ACTION_LABELS: Record<string, string> = {
   CREATE_USER: 'Tạo nhân sự',
   UPDATE_USER: 'Cập nhật nhân sự',
   SOFT_DELETE_USER: 'Khóa tài khoản',
+  IMPORT_USERS_EXCEL: 'Nhập nhân sự từ Excel',
   UPDATE_AVATAR: 'Đổi ảnh đại diện',
   REGISTER_FACE_DESCRIPTOR: 'Đăng ký Face ID',
   FORCE_REGISTER_FACE_DESCRIPTOR: 'Ghi đè Face ID',
   BIOMETRIC_DATA_PURGED_RIGHT_TO_ERASURE: 'Xóa dữ liệu Face ID',
   REPLAY_ATTACK_DETECTED: 'Cảnh báo giả mạo',
   ADMIN_OVERRIDE_ATTENDANCE: 'Điều chỉnh công',
+  ATTENDANCE_QR_CHECK_IN: 'Vào ca bằng mã QR',
+  ATTENDANCE_QR_CHECK_OUT: 'Tan ca bằng mã QR',
+  ATTENDANCE_GPS_CHECK_IN: 'Vào ca trực tuyến GPS',
+  ATTENDANCE_GPS_CHECK_OUT: 'Tan ca trực tuyến GPS',
+  CREATE_LEAVE_REQUEST: 'Tạo đơn xin nghỉ / giải trình',
   APPROVE_LEAVE_FINAL: 'Duyệt đơn phép',
   CANCEL_LEAVE_AND_ROLLBACK: 'Hủy đơn & hoàn phép',
   ASSIGN_SUBSTITUTE_LECTURER: 'Phân công dạy thay',
@@ -91,13 +98,29 @@ const ACTION_LABELS: Record<string, string> = {
   CREATE_SCHEDULE: 'Tạo lịch dạy',
   UPDATE_SCHEDULE: 'Sửa lịch dạy',
   DELETE_SCHEDULE: 'Xóa lịch dạy',
+  ADD_SCHEDULE_EXCEPTION: 'Cập nhật ngoại lệ lịch dạy',
   SCHEDULE_AUTO_CANCELLED_LATE: 'Tự hủy lịch trễ',
+  CREATE_SHIFT: 'Tạo ca làm việc',
+  UPDATE_SHIFT: 'Sửa ca làm việc',
+  DELETE_SHIFT: 'Xóa ca làm việc',
+  CREATE_SUBJECT: 'Tạo môn học',
+  UPDATE_SUBJECT: 'Sửa môn học',
+  DELETE_SUBJECT: 'Xóa môn học',
+  CREATE_HOLIDAY: 'Tạo ngày nghỉ lễ',
+  UPDATE_HOLIDAY: 'Sửa ngày nghỉ lễ',
+  DELETE_HOLIDAY: 'Xóa ngày nghỉ lễ',
   GENERATE_PAYROLL: 'Khởi tạo bảng lương',
   LOCK_PAYROLL: 'Khóa sổ lương',
   UNLOCK_PAYROLL: 'Mở khóa sổ lương',
+  MARK_PAYROLL_PAID: 'Xác nhận chi trả lương',
+  CREATE_SYSTEM_CONFIG: 'Tạo cấu hình hệ thống',
   UPDATE_SYSTEM_CONFIG: 'Sửa cấu hình',
-  CRON_AUTO_ABSENT: 'Quét vắng tự động',
+  UPLOAD_RAG_DOCUMENT: 'Tải lên tài liệu AI',
+  DELETE_RAG_DOCUMENT: 'Xóa tài liệu AI',
+  CRON_AUTO_ABSENT: 'Hệ thống tự đánh vắng',
+  CRON_MISSING_CHECKOUT: 'Hệ thống đánh dấu thiếu check-out',
   CRON_HOLIDAY_SKIPPED: 'Bỏ qua ngày lễ',
+  CRON_RETENTION_CLEANUP: 'Dọn dữ liệu hết hạn lưu trữ',
 };
 
 function getActionLabel(action?: string): string {
@@ -107,6 +130,8 @@ function getActionLabel(action?: string): string {
   if (upper.startsWith('APPROVE_LEAVE_LEVEL_')) return 'Duyệt đơn cấp 1';
   if (upper.startsWith('REJECT_LEAVE_LEVEL_')) return 'Từ chối đơn phép';
   if (upper.startsWith('ATTENDANCE_FACE_') || upper.startsWith('ATTENDANCE_QUEUE_')) {
+    if (upper.endsWith('_CHECK_OUT')) return 'Tan ca Face ID';
+    if (upper.endsWith('_CHECK_IN')) return 'Vào ca Face ID';
     return 'Điểm danh Face ID';
   }
   return act || 'Thao tác';
@@ -257,8 +282,10 @@ export const AuditLogs: React.FC = () => {
   // =============================================================================
 
   const [summaryCounts, setSummaryCounts] = useState<{ successCount: number; failedCount: number } | null>(null);
+  const fetchSeqRef = useRef(0);
 
   const fetchAuditLogs = useCallback(async () => {
+    const reqSeq = ++fetchSeqRef.current;
     setIsLoading(true);
     try {
       const params: any = {
@@ -273,6 +300,7 @@ export const AuditLogs: React.FC = () => {
       if (endDate) params.den_ngay = endDate;
 
       const res = await auditLogApi.getAuditLogs(params);
+      if (reqSeq !== fetchSeqRef.current) return;
       setLogs(res.logs || []);
       setTotalRecords(res.totalRecords || 0);
       setSummaryCounts(
@@ -282,10 +310,13 @@ export const AuditLogs: React.FC = () => {
       );
       setPagination(res.pagination);
     } catch (err: any) {
+      if (reqSeq !== fetchSeqRef.current) return;
       console.error('Lỗi khi tải nhật ký kiểm toán:', err);
       toast.error(err.response?.data?.message || 'Không thể tải nhật ký kiểm toán.');
     } finally {
-      setIsLoading(false);
+      if (reqSeq === fetchSeqRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [currentPage, pageSize, keyword, selectedStatus, selectedTargetType, startDate, endDate]);
 
@@ -516,28 +547,16 @@ export const AuditLogs: React.FC = () => {
         <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 space-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
             {/* Keyword Search */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Tìm theo hành động, loại đối tượng, ID..."
-                value={keyword}
-                onChange={(e) => {
-                  setKeyword(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full h-9 pl-9 pr-8 text-xs rounded-xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
-              />
-              {keyword && (
-                <button
-                  type="button"
-                  onClick={() => setKeyword('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+            <SearchInput
+              value={keyword}
+              onChange={(next) => {
+                setKeyword(next);
+                setCurrentPage(1);
+              }}
+              debounceMs={300}
+              placeholder="Tìm theo hành động, loại đối tượng, ID..."
+              className="relative flex-1 min-w-[200px]"
+            />
 
             {/* Target Type Filter */}
             <select

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -23,7 +23,8 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { apiClient } from '../../api/apiClient';
-import { hasRole, canManageSubjects } from '../../utils/phanQuyen';
+import { useSocketEvent } from '../../api/socket';
+import { hasRole, canManageSubjects, canApproveLevel1, canApproveLeaveRequest } from '../../utils/phanQuyen';
 import { cameraManager } from '../../utils/quanLyCamera';
 
 interface SidebarProps {
@@ -79,32 +80,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
     navigate('/dang-nhap', { replace: true });
   };
 
-  // Fetch real count of pending leave requests from backend
-  useEffect(() => {
-    let isMounted = true;
-    const fetchPendingLeave = async () => {
-      try {
-        const res = await apiClient.get('/don-nghi-phep', {
-          params: { trang_thai: 'pending' },
-        });
-        const raw = res.data?.data || res.data;
-        const list = Array.isArray(raw) ? raw : raw?.items || raw?.leaveRequests || [];
-        if (isMounted) {
-          setPendingLeaveCount(list.length);
-        }
-      } catch {
-        // Quiet fail if user does not have permission or server is offline
-      }
-    };
-
-    if (user) {
-      fetchPendingLeave();
+  // Fetch real count of actionable pending leave requests from backend (khớp đúng thẩm quyền duyệt + cập nhật realtime)
+  const fetchPendingLeave = useCallback(async () => {
+    if (!user) {
+      setPendingLeaveCount(null);
+      return;
     }
+    try {
+      const res = await apiClient.get('/don-nghi-phep', {
+        params: { trang_thai: 'pending' },
+      });
+      const raw = res.data?.data || res.data;
+      const list: any[] = Array.isArray(raw) ? raw : raw?.items || raw?.leaveRequests || [];
 
-    return () => {
-      isMounted = false;
-    };
+      const isApprover = canApproveLevel1(user) || hasRole(user, ['admin', 'bgh', 'tccb']);
+      if (isApprover) {
+        // Chỉ đếm đúng các đơn đang chờ CHÍNH người dùng hiện tại xét duyệt
+        setPendingLeaveCount(list.filter((item) => canApproveLeaveRequest(user, item)).length);
+      } else {
+        // Nhân sự thường / không có quyền duyệt: chỉ đếm đơn cá nhân đang chờ duyệt
+        const myId = String(user.id || '').toLowerCase();
+        setPendingLeaveCount(
+          list.filter((item) => String(item?.nguoi_dung?.id || item?.nguoi_dung_id || '').toLowerCase() === myId).length
+        );
+      }
+    } catch {
+      // Quiet fail if user does not have permission or server is offline
+    }
   }, [user]);
+
+  useEffect(() => {
+    fetchPendingLeave();
+    const handleLocalRefresh = () => {
+      fetchPendingLeave();
+    };
+    window.addEventListener('leave-requests:changed', handleLocalRefresh);
+    return () => {
+      window.removeEventListener('leave-requests:changed', handleLocalRefresh);
+    };
+  }, [fetchPendingLeave]);
+
+  useSocketEvent('leave:status-changed', fetchPendingLeave);
 
   // Check if current user has access to a menu item based on allowed & excluded roles or custom predicate
   const hasRoleAccess = (

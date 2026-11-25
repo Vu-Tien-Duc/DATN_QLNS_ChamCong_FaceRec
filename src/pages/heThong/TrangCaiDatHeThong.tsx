@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { SearchInput } from '../../components/chung/OTimKiem';
 import {
   Settings as SettingsIcon,
   Save,
@@ -779,24 +780,13 @@ export const Settings: React.FC = () => {
         <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 space-y-3">
         {/* Search Bar & Action Buttons */}
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Tìm kiếm tham số theo mã khóa, mô tả chức năng hoặc giá trị..."
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              className="w-full h-9 pl-9 pr-8 text-xs rounded-xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-colors"
-            />
-            {searchKeyword && (
-              <button
-                onClick={() => setSearchKeyword('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          <SearchInput
+            value={searchKeyword}
+            onChange={setSearchKeyword}
+            debounceMs={180}
+            placeholder="Tìm kiếm tham số theo mã khóa, mô tả chức năng hoặc giá trị..."
+            className="relative flex-1"
+          />
 
           <div className="flex flex-wrap items-center gap-2.5">
             <Button

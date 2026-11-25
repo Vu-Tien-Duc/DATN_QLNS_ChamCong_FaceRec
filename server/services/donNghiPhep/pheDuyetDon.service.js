@@ -289,20 +289,9 @@ const applyMissingCheckOutApproval = async (request, { currentUserId, so_tiet_xa
   }
 };
 
-// Kiểm tra xung đột lịch và tạo/cập nhật ngoại lệ dạy bù / đổi ca khi duyệt cuối
+// Tạo/cập nhật ngoại lệ dạy bù / đổi ca khi duyệt cuối (kiểm tra xung đột đã chạy trước transaction để tránh SQL Server self-deadlock)
 const syncScheduleExceptionsOnApproval = async (request, transaction) => {
   if (!['day_bu', 'doi_ca'].includes(request.loai_don) || !request.lich_trinh_id) return;
-
-  const targetSchedule = await LichTrinh.findByPk(request.lich_trinh_id, { transaction });
-  if (targetSchedule) {
-    await validateLeaveScheduleConflict({
-      targetSchedule,
-      substituteShiftId: request.ca_thay_the_id,
-      substituteLecturerId: request.giang_vien_day_thay_id,
-      conflictDateStr: request.ngay_day_bu || getVietnamDateKey(request.ngay_bat_dau),
-      applicantId: request.nguoi_dung_id,
-    });
-  }
 
   const upsertLeaveException = async (lichTrinhId, ngay, payload) => {
     const [ex, created] = await NgoaiLeLichTrinh.findOrCreate({
@@ -595,6 +584,20 @@ const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong,
   const isFinalApproval = isBghOrHrActor || currentLevel >= requiredLevels;
   const nextStatus = isFinalApproval ? 'approved' : 'pending_bgh';
 
+  // Kiểm tra xung đột lịch dạy bù / đổi ca TRƯỚC khi mở transaction (tránh self-deadlock khóa bảng don_nghi_phep trên SQL Server)
+  if (isFinalApproval && ['day_bu', 'doi_ca'].includes(request.loai_don) && request.lich_trinh_id) {
+    const targetSchedule = await LichTrinh.findByPk(request.lich_trinh_id);
+    if (targetSchedule) {
+      await validateLeaveScheduleConflict({
+        targetSchedule,
+        substituteShiftId: request.ca_thay_the_id,
+        substituteLecturerId: request.giang_vien_day_thay_id,
+        conflictDateStr: request.ngay_day_bu || getVietnamDateKey(request.ngay_bat_dau),
+        applicantId: request.nguoi_dung_id,
+      });
+    }
+  }
+
   const updatedRequest = await runInTransaction(async (transaction) => {
     await assertSufficientAnnualLeaveQuota(request, transaction);
 
@@ -637,17 +640,17 @@ const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong,
     return DonNghiPhep.findByPk(request.id, { include: leaveInclude, transaction });
   });
 
-  await NhatKyKiemToan.create({
+  NhatKyKiemToan.create({
     nguoi_thuc_hien_id: currentUserId,
     loai_chu_the: 'user',
     hanh_dong: isFinalApproval ? 'APPROVE_LEAVE_FINAL' : `APPROVE_LEAVE_LEVEL_${currentLevel}`,
     doi_tuong_id: String(request.id),
     loai_doi_tuong: 'don_nghi_phep',
     dia_chi_ip: dia_chi_ip || null,
-  });
+  }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   if (isFinalApproval && request.giang_vien_day_thay_id) {
-    await NhatKyKiemToan.create({
+    NhatKyKiemToan.create({
       nguoi_thuc_hien_id: currentUserId,
       loai_chu_the: 'user',
       hanh_dong: 'ASSIGN_SUBSTITUTE_LECTURER',
@@ -665,7 +668,10 @@ const approveLeaveRequestDomain = async ({ id, ghi_chu_duyet, phien_ban_ky_vong,
     }).catch(() => {});
   }
 
-  const applicant = await NguoiDung.findByPk(request.nguoi_dung_id, { attributes: ['id', 'email', 'ho_ten'] });
+  const applicant =
+    updatedRequest?.nguoi_dung?.email
+      ? updatedRequest.nguoi_dung
+      : await NguoiDung.findByPk(request.nguoi_dung_id, { attributes: ['id', 'email', 'ho_ten'] });
   const { user: mailUser, pass: mailPass } = resolveSmtpCredentials(String(process.env.EMAIL_HOST || 'smtp.gmail.com').trim());
   if (applicant?.email && mailUser && mailPass && isFinalApproval) {
     sendLeaveApprovedEmail({
@@ -748,16 +754,19 @@ const rejectLeaveRequestDomain = async ({ id, ly_do_tu_choi, phien_ban_ky_vong, 
     return DonNghiPhep.findByPk(request.id, { include: leaveInclude, transaction });
   });
 
-  await NhatKyKiemToan.create({
+  NhatKyKiemToan.create({
     nguoi_thuc_hien_id: currentUserId,
     loai_chu_the: 'user',
     hanh_dong: `REJECT_LEAVE_LEVEL_${approvalLevelLabel === 'bgh' ? 2 : 1}`,
     doi_tuong_id: String(request.id),
     loai_doi_tuong: 'don_nghi_phep',
     dia_chi_ip: dia_chi_ip || null,
-  });
+  }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
-  const applicant = await NguoiDung.findByPk(request.nguoi_dung_id, { attributes: ['id', 'email', 'ho_ten'] });
+  const applicant =
+    updatedRequest?.nguoi_dung?.email
+      ? updatedRequest.nguoi_dung
+      : await NguoiDung.findByPk(request.nguoi_dung_id, { attributes: ['id', 'email', 'ho_ten'] });
   const { user: mailUser, pass: mailPass } = resolveSmtpCredentials(String(process.env.EMAIL_HOST || 'smtp.gmail.com').trim());
   if (applicant?.email && mailUser && mailPass) {
     sendLeaveRejectedEmail({
@@ -939,18 +948,17 @@ const cancelLeaveRequestDomain = async ({ id, phien_ban_ky_vong, currentUser, di
 
   const currentUserId = String(currentUser.id);
   const isApplicant = String(request.nguoi_dung_id) === currentUserId;
-  const isAdmin = hasAnyActiveRole(currentUser, ['admin', 'bgh']);
-  if (!isApplicant && !isAdmin) {
-    throw new ServiceError('Bạn chỉ có quyền hủy đơn của chính mình.', 403, 'CANCEL_UNAUTHORIZED');
+  if (!isApplicant) {
+    throw new ServiceError('Chỉ người tạo đơn mới có quyền hủy đơn của chính mình. Cấp trên vui lòng dùng chức năng Phê duyệt hoặc Từ chối.', 403, 'CANCEL_UNAUTHORIZED');
   }
 
   const currentStatus = request.trang_thai;
   if (['cancelled', 'rejected'].includes(currentStatus)) {
     throw new ServiceError(`Đơn đã ở trạng thái ${currentStatus}, không thể hủy.`, 400);
   }
-  if (currentStatus === 'approved' && getVietnamDateKey(request.ngay_bat_dau) <= getVietnamDateKey(new Date()) && !isAdmin) {
+  if (currentStatus === 'approved' && getVietnamDateKey(request.ngay_bat_dau) <= getVietnamDateKey(new Date())) {
     throw new ServiceError(
-      'Không thể tự hủy đơn đã phê duyệt khi đã đến hoặc qua ngày nghỉ. Vui lòng liên hệ Admin.',
+      'Không thể hủy đơn đã phê duyệt khi đã đến hoặc qua ngày nghỉ.',
       400,
       'CANNOT_CANCEL_PAST_APPROVED_LEAVE'
     );
@@ -977,14 +985,14 @@ const cancelLeaveRequestDomain = async ({ id, phien_ban_ky_vong, currentUser, di
     return DonNghiPhep.findByPk(request.id, { include: leaveInclude, transaction });
   });
 
-  await NhatKyKiemToan.create({
+  NhatKyKiemToan.create({
     nguoi_thuc_hien_id: currentUserId,
     loai_chu_the: 'user',
     hanh_dong: 'CANCEL_LEAVE_AND_ROLLBACK',
     doi_tuong_id: String(request.id),
     loai_doi_tuong: 'don_nghi_phep',
     dia_chi_ip: dia_chi_ip || null,
-  });
+  }).catch((err) => console.error('[AuditLog Error]:', err.message));
 
   return formatAndEmitLeaveUpdate(updatedRequest, request.nguoi_dung_id);
 };

@@ -38,10 +38,8 @@ export function getSocket(): Socket {
       // Fallback polling silently
     });
 
-    socketInstance.on('auth:force-logout', (payload?: { reason?: string }) => {
-      clearStoredAuthAndRedirect(
-        payload?.reason || 'Tài khoản của bạn đã bị vô hiệu hóa hoặc phiên đăng nhập đã bị thu hồi.'
-      );
+    socketInstance.on('auth:force-logout', (payload?: { reason?: string | null }) => {
+      clearStoredAuthAndRedirect(payload?.reason || undefined);
     });
   }
 

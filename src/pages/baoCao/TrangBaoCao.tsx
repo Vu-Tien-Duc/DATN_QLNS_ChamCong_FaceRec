@@ -45,10 +45,12 @@ import { Badge } from '../../components/chung/NhanTrangThai';
 import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
+import { SearchInput } from '../../components/chung/OTimKiem';
 import { DepartmentSelect } from '../../components/chung/ChonDonVi';
 import * as XLSX from 'xlsx';
 import { departmentApi } from '../../api/phongBan.api';
 import { DepartmentItem } from '../../types/index';
+import { hasRole, normalizeRoleKey } from '../../utils/phanQuyen';
 import {
   reportApi,
   AttendanceReportSummary,
@@ -137,6 +139,85 @@ export const Reports: React.FC = () => {
     };
     fetchDepts();
   }, []);
+
+  const canViewAllDepts = useMemo(() => {
+    if (!user) return false;
+    const perms = Array.isArray((user as any).quyen_han) ? (user as any).quyen_han : [];
+    return (
+      perms.includes('CONG:XEM_TOAN_TRUONG') ||
+      hasRole(user, ['admin', 'bgh', 'tccb', 'ke_toan'])
+    );
+  }, [user]);
+
+  const scopedDepartments = useMemo(() => {
+    if (canViewAllDepts || !user || departments.length === 0) return departments;
+
+    const normUuid = (val: unknown): string => String(val || '').trim().toLowerCase();
+    const leaderRoleSet = new Set([
+      'truong_khoa',
+      'pho_khoa',
+      'truong_bo_mon',
+      'pho_bo_mon',
+      'truong_phong',
+      'pho_phong',
+    ]);
+    const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+    const seedIds = new Set<string>();
+
+    const primaryRole = normalizeRoleKey(user.vai_tro_chinh);
+    const primaryDeptId = normUuid(
+      typeof user.don_vi_chinh_id === 'object' && user.don_vi_chinh_id !== null
+        ? (user.don_vi_chinh_id as any).id
+        : user.don_vi_chinh_id
+    );
+    if (leaderRoleSet.has(primaryRole) && primaryDeptId) {
+      seedIds.add(primaryDeptId);
+    }
+
+    if (Array.isArray(user.danh_sach_vai_tro)) {
+      user.danh_sach_vai_tro.forEach((r: any) => {
+        if (!r) return;
+        const code = normalizeRoleKey(r.ma_vai_tro);
+        if (!leaderRoleSet.has(code)) return;
+        const tuNgay = r.tu_ngay ? String(r.tu_ngay).slice(0, 10) : '';
+        const denNgay = r.den_ngay ? String(r.den_ngay).slice(0, 10) : '';
+        if (tuNgay && tuNgay > todayIso) return;
+        if (denNgay && denNgay < todayIso) return;
+        const deptId = normUuid(
+          typeof r.don_vi_id === 'object' && r.don_vi_id !== null
+            ? r.don_vi_id.id
+            : r.don_vi_id
+        ) || primaryDeptId;
+        if (deptId) seedIds.add(deptId);
+      });
+    }
+
+    if (seedIds.size === 0 && primaryDeptId) {
+      seedIds.add(primaryDeptId);
+    }
+    if (seedIds.size === 0) return [];
+
+    // Mở rộng đệ quy toàn bộ bộ môn con thuộc các đơn vị quản lý
+    const allowedIds = new Set<string>(seedIds);
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      for (const d of departments) {
+        const deptKey = normUuid(d.id);
+        const parentId = normUuid(
+          typeof d.don_vi_cha_id === 'object' && d.don_vi_cha_id !== null
+            ? (d.don_vi_cha_id as any).id
+            : d.don_vi_cha_id
+        );
+        if (parentId && allowedIds.has(parentId) && deptKey && !allowedIds.has(deptKey)) {
+          allowedIds.add(deptKey);
+          expanded = true;
+        }
+      }
+    }
+
+    return departments.filter((d) => allowedIds.has(normUuid(d.id)));
+  }, [canViewAllDepts, user, departments]);
 
   // ===========================================================================
   // FETCH REPORTS DATA
@@ -547,11 +628,11 @@ export const Reports: React.FC = () => {
 
             <div className="w-48 sm:w-56">
               <DepartmentSelect
-                departments={departments}
+                departments={scopedDepartments}
                 value={selectedDeptId || 'ALL'}
                 onChange={(val) => setSelectedDeptId(!val || val === 'ALL' ? '' : val)}
                 placeholder="Chọn đơn vị..."
-                allLabel="Toàn Trường (Tất cả)"
+                allLabel={canViewAllDepts ? 'Toàn Trường (Tất cả)' : 'Tất cả đơn vị quản lý'}
                 allowAll={true}
                 size="sm"
               />
@@ -777,25 +858,13 @@ export const Reports: React.FC = () => {
           </div>
 
           {activeTab === 'staff-summary' && (
-            <div className="relative w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={tableSearchKeyword}
-                onChange={(e) => setTableSearchKeyword(e.target.value)}
-                placeholder="Tìm cán bộ trong bảng..."
-                className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-colors"
-              />
-              {tableSearchKeyword && (
-                <button
-                  type="button"
-                  onClick={() => setTableSearchKeyword('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-0.5"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+            <SearchInput
+              value={tableSearchKeyword}
+              onChange={setTableSearchKeyword}
+              debounceMs={180}
+              placeholder="Tìm cán bộ trong bảng..."
+              className="relative w-64"
+            />
           )}
         </div>
 

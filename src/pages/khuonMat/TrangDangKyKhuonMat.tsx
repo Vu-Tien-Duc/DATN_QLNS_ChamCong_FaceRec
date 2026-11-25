@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { SearchInput } from '../../components/chung/OTimKiem';
 import {
   Camera,
   ShieldCheck,
@@ -193,8 +194,11 @@ export const FaceRegistrationPage: React.FC = () => {
     }
   };
 
+  const searchSeqRef = useRef(0);
+
   const searchEmployees = async (keyword = '') => {
     if (!canManageOthers) return;
+    const reqSeq = ++searchSeqRef.current;
     try {
       setLoadingEmployees(true);
       const res = await apiClient.get<any>(`/nguoi-dung?trang=1&gioi_han=100&tim_kiem=${encodeURIComponent(keyword)}`);
@@ -213,13 +217,16 @@ export const FaceRegistrationPage: React.FC = () => {
           if (Array.isArray(extra)) users = users.concat(extra);
         });
       }
+      if (reqSeq !== searchSeqRef.current) return;
       if (Array.isArray(users)) {
         // Quản trị viên hệ thống (admin) chỉ quản trị, không tham gia chấm công sinh trắc học
         setEmployeeList(users.filter((u: any) => !isAdmin(u)));
       }
     } catch (_) {
     } finally {
-      setLoadingEmployees(false);
+      if (reqSeq === searchSeqRef.current) {
+        setLoadingEmployees(false);
+      }
     }
   };
 
@@ -227,7 +234,6 @@ export const FaceRegistrationPage: React.FC = () => {
     loadStatus();
     loadHealth();
     if (canManageOthers) {
-      searchEmployees();
       userApi.getDepartments().then((res: any) => {
         if (res?.data && Array.isArray(res.data)) {
           setDepartments(res.data);
@@ -235,6 +241,12 @@ export const FaceRegistrationPage: React.FC = () => {
       }).catch(() => {});
     }
   }, [canManageOthers]);
+
+  useEffect(() => {
+    if (canManageOthers) {
+      searchEmployees(employeeSearch);
+    }
+  }, [canManageOthers, employeeSearch]);
 
   const handleOpenEmployeeEnroll = (emp: any) => {
     if (isAdmin(emp)) {
@@ -677,34 +689,17 @@ export const FaceRegistrationPage: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden w-full">
         <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2.5">
           {/* Ô tìm kiếm */}
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={employeeSearch}
-              onChange={(e) => {
-                setEmployeeSearch(e.target.value);
-                setCurrentPage(1);
-                searchEmployees(e.target.value);
-              }}
-              placeholder="Tìm theo tên, mã CB, email..."
-              className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-200/90 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-all"
-            />
-            {employeeSearch && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEmployeeSearch('');
-                  setCurrentPage(1);
-                  searchEmployees('');
-                }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
-                title="Xóa từ khóa tìm kiếm"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          <SearchInput
+            value={employeeSearch}
+            onChange={(next) => {
+              setEmployeeSearch(next);
+              setCurrentPage(1);
+            }}
+            debounceMs={300}
+            placeholder="Tìm theo tên, mã CB, email..."
+            className="relative flex-1 min-w-[220px]"
+            iconClassName="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+          />
 
           {/* Bộ lọc Khoa / Bộ môn */}
           <div className="w-full sm:w-52">

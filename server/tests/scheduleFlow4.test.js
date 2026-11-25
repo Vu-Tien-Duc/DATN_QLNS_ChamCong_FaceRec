@@ -712,6 +712,94 @@ describe('Luồng 4.4 - Express RBAC, IDOR, removeSchedule FK & addScheduleExcep
       (err) => err.statusCode === 409 && err.errorCode === 'SCHEDULE_EXCEPTION_LOCKED'
     );
   });
+
+  it('addScheduleException hỗ trợ doi_ca chọn giảng viên dạy thay, chặn trùng GV chính/Admin và lưu giang_vien_day_thay_id', async () => {
+    const adminActor = { id: UUID_3, vai_tro_chinh: 'admin', danh_sach_vai_tro: [] };
+    stubTransactionPassThrough();
+    stub(models.LichTrinh, 'findByPk', async () => ({
+      id: SCHED_1,
+      nguoi_dung_id: UUID_1,
+      phong_hoc: 'A1-101',
+      la_truc_tuyen: false,
+      thu_trong_tuan: 5,
+      gio_bat_dau: '07:00',
+      gio_ket_thuc: '11:30',
+      tiet_bat_dau: 1,
+      so_tiet: 3,
+      ngay_bat_dau: '2026-09-01',
+      ngay_ket_thuc: '2026-12-20',
+      ngoai_le: [],
+    }));
+    stub(models.LichTrinh, 'findAll', async () => []);
+    stub(models.NgoaiLeLichTrinh, 'findAll', async () => []);
+    stub(models.DonNghiPhep, 'findAll', async () => []);
+    stub(models.NgayNghiLe, 'findOne', async () => null);
+    stub(models.NgoaiLeLichTrinh, 'findOne', async () => null);
+    stub(models.NhatKyKiemToan, 'create', async () => ({}));
+
+    // 1. Chặn doi_ca thiếu cả GV dạy thay, ca thay thế và ngày đổi ca
+    await assert.rejects(
+      () =>
+        addScheduleException({
+          scheduleId: SCHED_1,
+          ngay: '2026-09-18',
+          trang_thai: 'doi_ca',
+          ly_do: 'Đổi ca trống',
+          currentUser: adminActor,
+        }),
+      (err) => err.statusCode === 400
+    );
+
+    // 2. Chặn chọn trùng giảng viên chính
+    await assert.rejects(
+      () =>
+        addScheduleException({
+          scheduleId: SCHED_1,
+          ngay: '2026-09-18',
+          trang_thai: 'doi_ca',
+          giang_vien_day_thay_id: UUID_1,
+          currentUser: adminActor,
+        }),
+      (err) => err.statusCode === 400
+    );
+
+    // 3. Chặn chọn tài khoản admin làm giảng viên dạy thay
+    stub(models.NguoiDung, 'findByPk', async (id) => {
+      if (id === UUID_3) return { id: UUID_3, vai_tro_chinh: 'admin', kich_hoat: true, danh_sach_vai_tro: [] };
+      if (id === UUID_2) return { id: UUID_2, vai_tro_chinh: 'giang_vien', kich_hoat: true, danh_sach_vai_tro: [] };
+      return null;
+    });
+    await assert.rejects(
+      () =>
+        addScheduleException({
+          scheduleId: SCHED_1,
+          ngay: '2026-09-18',
+          trang_thai: 'doi_ca',
+          giang_vien_day_thay_id: UUID_3,
+          currentUser: adminActor,
+        }),
+      (err) => err.statusCode === 403 && err.errorCode === 'SCHEDULE_ADMIN_EXEMPT'
+    );
+
+    // 4. Ghi nhận thành công doi_ca kèm giang_vien_day_thay_id hợp lệ
+    let createdPayload = null;
+    stub(models.NgoaiLeLichTrinh, 'create', async (payload) => {
+      createdPayload = payload;
+      return payload;
+    });
+    await addScheduleException({
+      scheduleId: SCHED_1,
+      ngay: '2026-09-18',
+      trang_thai: 'doi_ca',
+      giang_vien_day_thay_id: UUID_2,
+      ly_do: 'Phân công dạy thay do công tác',
+      currentUser: adminActor,
+    });
+    assert.ok(createdPayload);
+    assert.equal(createdPayload.trang_thai, 'doi_ca');
+    assert.equal(createdPayload.giang_vien_day_thay_id, UUID_2);
+    assert.equal(createdPayload.ca_thay_the_id, null);
+  });
 });
 
 describe('Luồng 4.5 - Ca làm việc, Ngày nghỉ lễ & Môn học validation + Audit Log', () => {

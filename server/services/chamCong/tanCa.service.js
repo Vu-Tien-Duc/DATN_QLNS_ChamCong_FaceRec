@@ -1,6 +1,6 @@
 // Xử lý điểm danh ra về (Check-out), tính thời lượng làm việc và số tiết thực dạy
 const { Op } = require('sequelize');
-const { NhatKyChamCong, LuotQuetChamCong, LichTrinh, CaLamViec, NguoiDung } = require('../../models');
+const { NhatKyChamCong, LuotQuetChamCong, LichTrinh, CaLamViec, NguoiDung, NhatKyKiemToan } = require('../../models');
 const { sendCheckOutNotificationEmail } = require('../heThong/guiEmail.service');
 const { validateGeofence, resolveUserGeofenceTargets } = require('../../utils/hoTroChamCong');
 const { runInTransaction } = require('../../utils/giaoDichDb');
@@ -247,6 +247,21 @@ const performCheckOut = async ({
       });
     }
   } catch (_) {}
+
+  NhatKyKiemToan?.create?.({
+    nguoi_thuc_hien_id: nguoi_dung_id,
+    loai_chu_the: 'user',
+    hanh_dong: 'ATTENDANCE_GPS_CHECK_OUT',
+    doi_tuong_id: String(openLog.id),
+    loai_doi_tuong: 'nhat_ky_cham_cong',
+    chi_tiet: {
+      ngay_cong: openLog.ngay_cong,
+      trang_thai: finalStatus,
+      phuong_thuc: finalMethod,
+      so_gio_cong: openLog.so_gio_cong,
+      co_gian_lan: Boolean(isFraud),
+    },
+  })?.catch?.((err) => console.error('[AuditLog Error ATTENDANCE_GPS_CHECK_OUT]:', err.message));
 
   return {
     success: true,

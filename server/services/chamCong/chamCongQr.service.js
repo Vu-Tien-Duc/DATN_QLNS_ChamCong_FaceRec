@@ -1,6 +1,6 @@
 // Xử lý quét mã QR động điểm danh (Check-in / Check-out) kèm xác thực vị trí GPS và lưu SQL Server 3NF
 const { Op } = require('sequelize');
-const { NhatKyChamCong, LuotQuetChamCong, LichTrinh, CaLamViec, NguoiDung } = require('../../models');
+const { NhatKyChamCong, LuotQuetChamCong, LichTrinh, CaLamViec, NguoiDung, NhatKyKiemToan } = require('../../models');
 const { validateGeofence, verifyDynamicQRCode, resolveUserGeofenceTargets } = require('../../utils/hoTroChamCong');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
@@ -293,6 +293,20 @@ const processScanQRCode = async ({
       }
     } catch (_) {}
 
+    NhatKyKiemToan?.create?.({
+      nguoi_thuc_hien_id: nguoi_dung_id,
+      loai_chu_the: 'user',
+      hanh_dong: 'ATTENDANCE_QR_CHECK_IN',
+      doi_tuong_id: String(savedAttendance.id),
+      loai_doi_tuong: 'nhat_ky_cham_cong',
+      chi_tiet: {
+        ngay_cong: dateStr,
+        trang_thai: calculatedStatus,
+        phuong_thuc: 'qr_code',
+        co_gian_lan: Boolean(isFraud),
+      },
+    })?.catch?.((err) => console.error('[AuditLog Error ATTENDANCE_QR_CHECK_IN]:', err.message));
+
     return {
       loai_quet: 'check_in',
       message: isFraud
@@ -390,6 +404,21 @@ const processScanQRCode = async ({
       });
     }
   } catch (_) {}
+
+  NhatKyKiemToan?.create?.({
+    nguoi_thuc_hien_id: nguoi_dung_id,
+    loai_chu_the: 'user',
+    hanh_dong: 'ATTENDANCE_QR_CHECK_OUT',
+    doi_tuong_id: String(savedAttendance.id),
+    loai_doi_tuong: 'nhat_ky_cham_cong',
+    chi_tiet: {
+      ngay_cong: dateStr,
+      trang_thai: finalStatus,
+      phuong_thuc: 'qr_code',
+      so_gio_cong: savedAttendance.so_gio_cong,
+      co_gian_lan: Boolean(isFraud),
+    },
+  })?.catch?.((err) => console.error('[AuditLog Error ATTENDANCE_QR_CHECK_OUT]:', err.message));
 
   return {
     loai_quet: 'check_out',

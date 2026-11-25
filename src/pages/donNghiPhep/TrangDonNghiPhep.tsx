@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   FileText,
   Calendar,
@@ -52,11 +52,12 @@ import { shiftApi } from '../../api/caLamViec.api';
 import { holidayApi, HolidayItem } from '../../api/ngayNghiLe.api';
 import { apiClient, extractArray } from '../../api/apiClient';
 import { DepartmentItem, ShiftItem } from '../../types/index';
-import { isAdmin as checkIsAdmin, hasRole, canApproveLevel1, getUserRoles } from '../../utils/phanQuyen';
+import { isAdmin as checkIsAdmin, hasRole, canApproveLevel1, canApproveLeaveRequest } from '../../utils/phanQuyen';
 import { useSocketEvent } from '../../api/socket';
 import { formatDateVN, formatDateTimeVN } from '../../utils/dinhDang';
-import { ModalPheDuyetDon } from './components/ModalPheDuyetDon';
+import { ModalPheDuyetDon, ApprovalModalSubmitPayload } from './components/ModalPheDuyetDon';
 import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
+import { SearchInput } from '../../components/chung/OTimKiem';
 
 // =============================================================================
 // HELPER FUNCTIONS & FORMATTERS
@@ -249,7 +250,6 @@ export const LeaveRequests: React.FC = () => {
     () => !hasRole(user, ['admin', 'bgh']),
     [user]
   );
-  const isBghOrAdminApprover = useMemo(() => hasRole(user, ['admin', 'bgh']), [user]);
   const isBghOrHrApprover = useMemo(() => hasRole(user, ['admin', 'bgh', 'tccb']), [user]);
   const isUnitApprover = useMemo(() => canApproveLevel1(user) || isBghOrHrApprover, [user, isBghOrHrApprover]);
 
@@ -285,10 +285,8 @@ export const LeaveRequests: React.FC = () => {
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState<boolean>(false);
   const [selectedRequest, setSelectedRequest] = useState<LeaveRequestData | null>(null);
   const [approvalAction, setApprovalAction] = useState<'APPROVE' | 'REJECT'>('APPROVE');
-  const [approvalNote, setApprovalNote] = useState<string>('');
-  const [rejectionReason, setRejectionReason] = useState<string>('');
-  const [soTietXacNhan, setSoTietXacNhan] = useState<number | ''>('');
   const [actionSubmitting, setActionSubmitting] = useState<boolean>(false);
+  const createReasonRef = useRef<HTMLTextAreaElement>(null);
 
   // Helper kiểm tra URL minh chứng hợp lệ (loại bỏ chuỗi undefined, null từ đơn cũ)
   const isValidAttachmentUrl = useCallback((url?: string | null): boolean => {
@@ -348,47 +346,24 @@ export const LeaveRequests: React.FC = () => {
   }, [getAttachmentFullUrl, getAttachmentFileName]);
 
   const canApproveRequest = useCallback(
-    (req: LeaveRequestData): boolean => {
-      const applicant = req.nguoi_dung;
-      const applicantId = applicant?.id || req.nguoi_dung_id;
-      if (applicantId === currentUserId) return false;
-      const applicantRoles = applicant ? getUserRoles(applicant as any) : new Set<string>();
-      const st = req.trang_thai || '';
-      if (st === 'pending_bgh') {
-        if (!isBghOrHrApprover) return false;
-        if (!isBghOrAdminApprover && (applicantRoles.has('admin') || applicantRoles.has('bgh'))) return false;
-        return true;
-      }
-      if (st === 'pending' || st === 'pending_dean') {
-        if (!isUnitApprover) return false;
-        if (!isBghOrHrApprover && (applicantRoles.has('truong_khoa') || applicantRoles.has('admin') || applicantRoles.has('bgh'))) {
-          return false;
-        }
-        return true;
-      }
-      return false;
-    },
-    [currentUserId, isBghOrAdminApprover, isBghOrHrApprover, isUnitApprover]
+    (req: LeaveRequestData): boolean => canApproveLeaveRequest(user, req),
+    [user]
   );
 
   const canCancelRequest = useCallback(
     (req: LeaveRequestData): boolean => {
       const applicant = req.nguoi_dung;
       const applicantId = applicant?.id || req.nguoi_dung_id;
-      const isOwner = applicantId === currentUserId;
-      const isBghOrAdmin = hasRole(user, ['admin', 'bgh']);
-      const st = req.trang_thai || '';
-      if (isBghOrAdmin) {
-        return ['pending', 'pending_dean', 'pending_bgh', 'approved'].includes(st);
-      }
+      const isOwner = Boolean(currentUserId && applicantId && String(applicantId).toLowerCase() === String(currentUserId).toLowerCase());
       if (!isOwner) return false;
+      const st = req.trang_thai || '';
       if (['pending', 'pending_dean', 'pending_bgh'].includes(st)) return true;
       if (st === 'approved' && req.ngay_bat_dau) {
         return String(req.ngay_bat_dau).slice(0, 10) > toLocalIsoDate(new Date());
       }
       return false;
     },
-    [currentUserId, user]
+    [currentUserId]
   );
 
   const getLatestApprovalNote = useCallback((req: LeaveRequestData): string => {
@@ -433,7 +408,6 @@ export const LeaveRequests: React.FC = () => {
   // Form State for Creating Leave Request
   const [createFormData, setCreateFormData] = useState<{
     type: BackendLeaveType;
-    reason: string;
     startDate: string;
     endDate: string;
     isHalfDay: boolean;
@@ -445,7 +419,6 @@ export const LeaveRequests: React.FC = () => {
     file: File | null;
   }>({
     type: 'nghi_phep',
-    reason: '',
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     isHalfDay: false,
@@ -619,6 +592,8 @@ export const LeaveRequests: React.FC = () => {
       // 4. Lọc Trạng thái luồng duyệt
       if (selectedWorkflowStatus !== 'all') {
         const st = req.trang_thai || '';
+        if (selectedWorkflowStatus === 'unprocessed' && !['pending', 'pending_dean', 'pending_bgh'].includes(st)) return false;
+        if (selectedWorkflowStatus === 'processed' && !['approved', 'rejected', 'cancelled'].includes(st)) return false;
         if (selectedWorkflowStatus === 'step1' && st !== 'pending' && st !== 'pending_dean') return false;
         if (selectedWorkflowStatus === 'step2' && st !== 'pending_bgh') return false;
         if (selectedWorkflowStatus === 'approved' && st !== 'approved') return false;
@@ -665,7 +640,6 @@ export const LeaveRequests: React.FC = () => {
     }
     setCreateFormData({
       type: 'nghi_phep',
-      reason: '',
       startDate: new Date().toISOString().split('T')[0],
       endDate: new Date().toISOString().split('T')[0],
       isHalfDay: false,
@@ -676,13 +650,17 @@ export const LeaveRequests: React.FC = () => {
       makeupDate: '',
       file: null,
     });
+    if (createReasonRef.current) {
+      createReasonRef.current.value = '';
+    }
     setIsCreateModalOpen(true);
   };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!createFormData.reason.trim() || createFormData.reason.trim().length < 5) {
+    const reasonText = (createReasonRef.current?.value || '').trim();
+    if (!reasonText || reasonText.length < 5) {
       toast.error('Lý do xin nghỉ phép phải có ít nhất 5 ký tự');
       return;
     }
@@ -716,7 +694,7 @@ export const LeaveRequests: React.FC = () => {
       const parsedPeriods = Number(createFormData.leavePeriods);
       const payload: CreateLeavePayload = {
         loai_don: createFormData.type,
-        ly_do: createFormData.reason.trim(),
+        ly_do: reasonText,
         ngay_bat_dau: createFormData.startDate,
         ngay_ket_thuc: createFormData.endDate,
         nua_ngay: createFormData.isHalfDay,
@@ -745,6 +723,7 @@ export const LeaveRequests: React.FC = () => {
       setIsCreateModalOpen(false);
       loadRequests();
       loadMetadata();
+      window.dispatchEvent(new Event('leave-requests:changed'));
     } catch (err: any) {
       console.error('Error creating leave request:', err);
       toast.error(err.response?.data?.message || 'Không thể gửi đơn xin nghỉ phép');
@@ -803,9 +782,6 @@ export const LeaveRequests: React.FC = () => {
   const openApprovalModal = (req: LeaveRequestData, action: 'APPROVE' | 'REJECT') => {
     setSelectedRequest(req);
     setApprovalAction(action);
-    setApprovalNote('');
-    setRejectionReason('');
-    setSoTietXacNhan('');
     setIsApprovalModalOpen(true);
   };
 
@@ -816,11 +792,15 @@ export const LeaveRequests: React.FC = () => {
     return Number.isFinite(ts) ? ts : undefined;
   }, []);
 
-  const handleApprovalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCloseApprovalModal = useCallback(() => {
+    setIsApprovalModalOpen(false);
+  }, []);
+
+  const handleApprovalSubmit = useCallback(async (payload: ApprovalModalSubmitPayload) => {
     if (!selectedRequest) return;
 
-    if (approvalAction === 'REJECT' && (!rejectionReason.trim() || rejectionReason.trim().length < 5)) {
+    const trimmedReason = payload.rejectionReason.trim();
+    if (approvalAction === 'REJECT' && (!trimmedReason || trimmedReason.length < 5)) {
       toast.error('Vui lòng nêu rõ lý do từ chối đơn (tối thiểu 5 ký tự)');
       return;
     }
@@ -838,7 +818,7 @@ export const LeaveRequests: React.FC = () => {
         const requiresConfirmedPeriods =
           isGiaiTrinhThieuCheckOut &&
           Boolean(selectedRequest.lich_trinh_id || selectedRequest.lich_trinh || selectedRequest.nhat_ky?.lich_trinh_id);
-        const parsedConfirmedPeriods = soTietXacNhan !== '' ? Number(soTietXacNhan) : undefined;
+        const parsedConfirmedPeriods = payload.soTietXacNhan !== '' ? Number(payload.soTietXacNhan) : undefined;
         if (
           requiresConfirmedPeriods &&
           (parsedConfirmedPeriods === undefined ||
@@ -850,10 +830,23 @@ export const LeaveRequests: React.FC = () => {
           setActionSubmitting(false);
           return;
         }
-        await leaveRequestApi.approveLeaveRequest(targetId, approvalNote.trim(), expectedVersion, parsedConfirmedPeriods);
+        const res = await leaveRequestApi.approveLeaveRequest(
+          targetId,
+          payload.approvalNote.trim(),
+          expectedVersion,
+          parsedConfirmedPeriods
+        );
+        const updatedDoc = (res as any)?.data || res;
+        if (updatedDoc?.id) {
+          setLeaveRequests((prev) => prev.map((r) => (String(r.id) === String(updatedDoc.id) ? { ...r, ...updatedDoc } : r)));
+        }
         toast.success('Phê duyệt đơn xin nghỉ phép thành công');
       } else {
-        await leaveRequestApi.rejectLeaveRequest(targetId, rejectionReason.trim(), expectedVersion);
+        const res = await leaveRequestApi.rejectLeaveRequest(targetId, trimmedReason, expectedVersion);
+        const updatedDoc = (res as any)?.data || res;
+        if (updatedDoc?.id) {
+          setLeaveRequests((prev) => prev.map((r) => (String(r.id) === String(updatedDoc.id) ? { ...r, ...updatedDoc } : r)));
+        }
         toast.success('Đã từ chối đơn xin nghỉ phép');
       }
 
@@ -861,13 +854,14 @@ export const LeaveRequests: React.FC = () => {
       setIsDetailModalOpen(false);
       loadRequests();
       loadMetadata();
+      window.dispatchEvent(new Event('leave-requests:changed'));
     } catch (err: any) {
       console.error('Error updating approval status:', err);
       toast.error(err.response?.data?.message || 'Thao tác xét duyệt thất bại');
     } finally {
       setActionSubmitting(false);
     }
-  };
+  }, [selectedRequest, approvalAction, getExpectedVersion, loadRequests, loadMetadata]);
 
   // Xử lý Hủy đơn trực tuyến (Chủ đơn hoặc Admin)
   const handleCancelRequest = async (requestId: string, expectedVersion?: number) => {
@@ -881,6 +875,7 @@ export const LeaveRequests: React.FC = () => {
       setIsDetailModalOpen(false);
       loadRequests();
       loadMetadata();
+      window.dispatchEvent(new Event('leave-requests:changed'));
     } catch (err: any) {
       console.error('Error cancelling leave request:', err);
       toast.error(err.response?.data?.message || 'Hủy đơn thất bại');
@@ -952,7 +947,7 @@ export const LeaveRequests: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col w-full space-y-4">
+    <div className="flex flex-col w-full space-y-4 pb-24">
       {/* =========================================================================
           1. PAGE HEADER + ACTIONS
          ========================================================================= */}
@@ -1063,25 +1058,13 @@ export const LeaveRequests: React.FC = () => {
         <div className="p-3.5 border-b border-slate-200/70 dark:border-slate-800 space-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
             {/* Search */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-                placeholder="Tìm theo tên, mã CB, môn học hoặc lý do..."
-                className="w-full h-9 pl-9 pr-8 rounded-xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 transition-colors"
-              />
-              {searchKeyword && (
-                <button
-                  type="button"
-                  onClick={() => setSearchKeyword('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+            <SearchInput
+              value={searchKeyword}
+              onChange={setSearchKeyword}
+              debounceMs={180}
+              placeholder="Tìm theo tên, mã CB, môn học hoặc lý do..."
+              className="relative flex-1 min-w-[200px]"
+            />
 
             {/* Date Preset */}
             <div className="relative h-9 shrink-0">
@@ -1109,11 +1092,13 @@ export const LeaveRequests: React.FC = () => {
                 aria-label="Trạng thái duyệt"
               >
                 <option value="all">Tất cả trạng thái</option>
-                <option value="step1">Chờ duyệt Cấp 1</option>
-                <option value="step2">Chờ duyệt Cấp 2</option>
-                <option value="approved">Đã phê duyệt</option>
-                <option value="rejected">Từ chối / Giải trình</option>
-                <option value="cancelled">Đã hủy</option>
+                <option value="unprocessed">Chưa xử lý (Chờ duyệt)</option>
+                <option value="processed">Đã xử lý</option>
+                <option value="step1">── Chờ duyệt Cấp 1</option>
+                <option value="step2">── Chờ duyệt Cấp 2</option>
+                <option value="approved">── Đã phê duyệt</option>
+                <option value="rejected">── Từ chối</option>
+                <option value="cancelled">── Đã hủy</option>
               </select>
               <ChevronRight className="w-3.5 h-3.5 rotate-90 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
@@ -1215,25 +1200,25 @@ export const LeaveRequests: React.FC = () => {
           )}
         </div>
 
-        {/* Responsive Table với thanh cuộn ngang khi màn hình hẹp, đảm bảo không chồng lấn cột Thao tác và Trạng thái */}
+        {/* Responsive Table cố định tỷ lệ cột để vừa gọn màn hình Desktop không cần cuộn ngang */}
         <div className="w-full overflow-x-auto scrollbar-thin">
-          <table className="w-full min-w-[860px] text-left border-collapse">
+          <table className="w-full min-w-[820px] table-fixed text-left border-collapse">
             <colgroup>
-              <col style={{ width: '21%', minWidth: '180px' }} />
-              <col style={{ width: '14%', minWidth: '125px' }} />
-              <col style={{ width: '14%', minWidth: '115px' }} />
-              <col style={{ width: '21%', minWidth: '160px' }} />
-              <col style={{ width: '16%', minWidth: '135px' }} />
-              <col style={{ width: '14%', minWidth: '120px' }} />
+              <col style={{ width: '22%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '21%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '12%' }} />
             </colgroup>
             <thead className="bg-slate-50/70 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 uppercase text-[11px] font-bold tracking-wider border-b border-slate-100 dark:border-slate-800 select-none">
               <tr>
-                <th className="py-3 px-3.5 text-left align-middle truncate font-bold">Cán bộ / Giảng viên</th>
-                <th className="py-3 px-3.5 text-left align-middle truncate font-bold">Loại phép</th>
-                <th className="py-3 px-3.5 text-left align-middle truncate font-bold">Thời gian nghỉ</th>
-                <th className="py-3 px-3.5 text-left align-middle truncate font-bold">Lý do &amp; Kế hoạch bù</th>
-                <th className="py-3 px-3.5 text-center align-middle truncate font-bold">Trạng thái duyệt</th>
-                <th className="py-3 px-3.5 text-center align-middle truncate font-bold">Thao tác</th>
+                <th className="py-3 pl-3.5 pr-2.5 text-left align-middle truncate font-bold">Cán bộ / Giảng viên</th>
+                <th className="py-3 px-2.5 text-left align-middle truncate font-bold">Loại phép</th>
+                <th className="py-3 px-2.5 text-left align-middle truncate font-bold">Thời gian nghỉ</th>
+                <th className="py-3 px-2.5 text-left align-middle truncate font-bold">Lý do &amp; Bù lịch</th>
+                <th className="py-3 px-2.5 text-center align-middle truncate font-bold">Trạng thái</th>
+                <th className="py-3 pl-2 pr-3 text-center align-middle truncate font-bold">Thao tác</th>
               </tr>
             </thead>
 
@@ -1290,7 +1275,7 @@ export const LeaveRequests: React.FC = () => {
                       title="Nhấp để xem chi tiết hồ sơ đơn & minh chứng đính kèm"
                     >
                       {/* Cột 1: Cán bộ / Giảng viên */}
-                      <td className="py-2.5 px-3.5 align-middle">
+                      <td className="py-2.5 pl-3.5 pr-2.5 align-middle">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <UserAvatar
                             name={displayName}
@@ -1317,20 +1302,23 @@ export const LeaveRequests: React.FC = () => {
                       </td>
 
                       {/* Cột 2: Loại phép */}
-                      <td className="py-2.5 px-3.5 align-middle">
+                      <td className="py-2.5 px-2.5 align-middle">
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold whitespace-nowrap truncate max-w-full ${typeMeta.badgeClass}`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold max-w-full ${typeMeta.badgeClass}`}
                           title={typeMeta.label}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full ${typeMeta.dotColor}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${typeMeta.dotColor}`} />
                           <span className="truncate">{typeMeta.label}</span>
                         </span>
                       </td>
 
                       {/* Cột 3: Thời gian nghỉ */}
-                      <td className="py-2.5 px-3.5 align-middle">
-                        <div className="flex flex-col leading-tight whitespace-nowrap">
-                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 tabular-nums">
+                      <td className="py-2.5 px-2.5 align-middle">
+                        <div className="flex flex-col leading-tight min-w-0">
+                          <span
+                            className="text-[11.5px] font-semibold text-slate-800 dark:text-slate-200 tabular-nums truncate"
+                            title={`${formatDateVN(item.ngay_bat_dau)}${item.ngay_ket_thuc && item.ngay_ket_thuc !== item.ngay_bat_dau ? ` → ${formatDateVN(item.ngay_ket_thuc)}` : ''}`}
+                          >
                             {formatDateVN(item.ngay_bat_dau)}
                             {item.ngay_ket_thuc && item.ngay_ket_thuc !== item.ngay_bat_dau ? ` → ${formatDateVN(item.ngay_ket_thuc)}` : ''}
                           </span>
@@ -1347,8 +1335,8 @@ export const LeaveRequests: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Cột 4: Lý do & Kế hoạch bù / Dẫn chứng */}
-                      <td className="py-2.5 px-3.5 align-middle">
+                      {/* Cột 4: Lý do & Bù lịch (rút gọn 2 dòng, xem đầy đủ khi mở chi tiết) */}
+                      <td className="py-2.5 px-2.5 align-middle">
                         <div className="flex flex-col min-w-0 leading-tight gap-0.5">
                           <span
                             className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate"
@@ -1357,67 +1345,85 @@ export const LeaveRequests: React.FC = () => {
                             {item.ly_do || 'Nghỉ theo kế hoạch'}
                           </span>
 
-                          {(Number(item.so_tiet_nghi || 0) > 0 || item.lich_trinh || item.ca_thay_the) && (
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
-                              {[
+                          {(Number(item.so_tiet_nghi || 0) > 0 ||
+                            item.giang_vien_day_thay ||
+                            item.ngay_day_bu ||
+                            hasValidAttachment ||
+                            item.lich_trinh?.mon_hoc?.ten_mon) && (
+                            <div
+                              className="flex items-center gap-1.5 min-w-0 text-[10.5px] text-slate-400 dark:text-slate-500"
+                              title={[
                                 Number(item.so_tiet_nghi || 0) > 0 ? `${item.so_tiet_nghi} tiết` : '',
                                 item.lich_trinh?.mon_hoc?.ten_mon || item.lich_trinh?.phong_hoc || '',
                                 item.ca_thay_the?.ten_ca ? `Ca thay: ${item.ca_thay_the.ten_ca}` : '',
+                                item.giang_vien_day_thay?.ho_ten ? `Dạy thay: ${item.giang_vien_day_thay.ho_ten}` : '',
+                                item.ngay_day_bu ? `Dạy bù: ${formatDateVN(item.ngay_day_bu)}` : '',
+                                hasValidAttachment ? 'Có tệp minh chứng' : '',
                               ]
                                 .filter(Boolean)
                                 .join(' • ')}
-                            </span>
-                          )}
-
-                          {item.giang_vien_day_thay ? (
-                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold truncate flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                              Dạy thay: {item.giang_vien_day_thay.ho_ten || 'Đã phân công'}
-                            </span>
-                          ) : item.ngay_day_bu ? (
-                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold truncate flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                              Dạy bù: {formatDateVN(item.ngay_day_bu)}
-                            </span>
-                          ) : null}
-
-                          {hasValidAttachment && (
-                            <span
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-brand-600 dark:text-brand-400 w-fit"
-                              title="Cán bộ có đính kèm tệp minh chứng"
                             >
-                              <Paperclip className="w-2.5 h-2.5 shrink-0" />
-                              <span>Tệp minh chứng</span>
-                            </span>
+                              {Number(item.so_tiet_nghi || 0) > 0 && (
+                                <span className="shrink-0 font-mono text-slate-500 dark:text-slate-400">
+                                  {item.so_tiet_nghi} tiết
+                                </span>
+                              )}
+
+                              {item.giang_vien_day_thay ? (
+                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold truncate">
+                                  {Number(item.so_tiet_nghi || 0) > 0 ? '• ' : ''}Thay: {item.giang_vien_day_thay.ho_ten || 'Đã phân công'}
+                                </span>
+                              ) : item.ngay_day_bu ? (
+                                <span className="text-amber-600 dark:text-amber-400 font-semibold truncate">
+                                  {Number(item.so_tiet_nghi || 0) > 0 ? '• ' : ''}Bù: {formatDateVN(item.ngay_day_bu)}
+                                </span>
+                              ) : item.lich_trinh?.mon_hoc?.ten_mon ? (
+                                <span className="truncate">
+                                  {Number(item.so_tiet_nghi || 0) > 0 ? '• ' : ''}
+                                  {item.lich_trinh.mon_hoc.ten_mon}
+                                </span>
+                              ) : null}
+
+                              {hasValidAttachment && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 font-semibold text-brand-600 dark:text-brand-400 shrink-0"
+                                  title="Có tệp minh chứng đính kèm"
+                                >
+                                  <Paperclip className="w-2.5 h-2.5 shrink-0" />
+                                  <span>Tệp</span>
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
                       </td>
 
                       {/* Cột 5: Trạng thái duyệt */}
-                      <td className="py-2.5 px-3.5 align-middle text-center">
-                        <div className="flex flex-col items-center gap-0.5">
+                      <td className="py-2.5 px-2.5 align-middle text-center">
+                        <div className="flex flex-col items-center gap-0.5 min-w-0">
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold whitespace-nowrap ${statusMeta.badgeClass}`}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold max-w-full ${statusMeta.badgeClass}`}
+                            title={statusMeta.label}
                           >
                             <span
-                              className={`w-1.5 h-1.5 rounded-full ${statusMeta.dotColor} ${
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusMeta.dotColor} ${
                                 statusMeta.isPulse ? 'animate-pulse' : ''
                               }`}
                             />
-                            {statusMeta.label}
+                            <span className="truncate">{statusMeta.label}</span>
                           </span>
                           {(item.trang_thai) === 'approved' && (
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-[150px] mt-0.5" title={`Duyệt bởi: ${getApproverDisplayName(item)}`}>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-full mt-0.5" title={`Duyệt bởi: ${getApproverDisplayName(item)}`}>
                               {getApproverDisplayName(item)}
                             </span>
                           )}
                           {(item.trang_thai) === 'pending_bgh' && (
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-[150px] mt-0.5" title={`Khoa đã thông qua: ${getStep1ApproverName(item)}`}>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-full mt-0.5" title={`Khoa đã thông qua: ${getStep1ApproverName(item)}`}>
                               Khoa: {getStep1ApproverName(item)}
                             </span>
                           )}
                           {(item.trang_thai) === 'rejected' && (
-                            <span className="text-[10px] text-rose-600 dark:text-rose-400 truncate max-w-[150px] mt-0.5" title={`Từ chối bởi ${getApproverDisplayName(item)}: ${item.ly_do_tu_choi || ''}`}>
+                            <span className="text-[10px] text-rose-600 dark:text-rose-400 truncate max-w-full mt-0.5" title={`Từ chối bởi ${getApproverDisplayName(item)}: ${item.ly_do_tu_choi || ''}`}>
                               {getApproverDisplayName(item)}
                             </span>
                           )}
@@ -1425,7 +1431,7 @@ export const LeaveRequests: React.FC = () => {
                       </td>
 
                       {/* Cột 6: Thao tác */}
-                      <td className="py-3 px-3 align-middle text-center" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-2.5 pl-2 pr-3 align-middle text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="inline-flex items-center justify-center gap-1">
                           {canApprove && (
                             <>
@@ -1815,8 +1821,8 @@ export const LeaveRequests: React.FC = () => {
                     Lý do xin nghỉ chi tiết:
                   </label>
                   <textarea
-                    value={createFormData.reason}
-                    onChange={(e) => setCreateFormData({ ...createFormData, reason: e.target.value })}
+                    ref={createReasonRef}
+                    defaultValue=""
                     placeholder="Ghi rõ lý do xin nghỉ phép, kế hoạch bàn giao công việc..."
                     rows={2}
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
@@ -2521,17 +2527,11 @@ export const LeaveRequests: React.FC = () => {
         isOpen={isApprovalModalOpen}
         selectedRequest={selectedRequest}
         approvalAction={approvalAction}
-        approvalNote={approvalNote}
-        rejectionReason={rejectionReason}
         submitting={actionSubmitting}
-        soTietXacNhan={soTietXacNhan}
-        onChangeSoTietXacNhan={setSoTietXacNhan}
-        onChangeApprovalNote={setApprovalNote}
-        onChangeRejectionReason={setRejectionReason}
         isValidAttachmentUrl={isValidAttachmentUrl}
         getAttachmentFullUrl={getAttachmentFullUrl}
         onOpenAttachment={handleOpenAttachment}
-        onClose={() => setIsApprovalModalOpen(false)}
+        onClose={handleCloseApprovalModal}
         onSubmit={handleApprovalSubmit}
       />
     </div>

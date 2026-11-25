@@ -388,7 +388,7 @@ const disconnectUserSockets = (userId, reason = null) => {
   try {
     const roomName = `user:${String(userId)}`;
     io.to(roomName).emit('auth:force-logout', {
-      reason: reason || 'Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.',
+      reason: reason || null,
       timestamp: Date.now(),
     });
     const timer = setTimeout(() => {

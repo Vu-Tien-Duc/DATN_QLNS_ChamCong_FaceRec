@@ -115,15 +115,17 @@ const getTodaySchedules = async (req, res) => {
   return sendSuccess(res, 'Lấy lịch làm việc hôm nay thành công.', schedules);
 };
 
-// POST /api/lich-trinh/:id/ngoai-le - Thêm ngoại lệ cho buổi học (nghỉ / dạy bù)
+// POST /api/lich-trinh/:id/ngoai-le - Thêm ngoại lệ cho buổi học (nghỉ / hủy / dạy bù / đổi ca)
 const addException = async (req, res) => {
-  const { ngay, ly_do, trang_thai, ngay_day_bu } = req.body || {};
+  const { ngay, ly_do, trang_thai, ngay_day_bu, giang_vien_day_thay_id, ca_thay_the_id } = req.body || {};
   const updated = await addScheduleException({
     scheduleId: req.params.id,
     ngay,
     ly_do,
     trang_thai,
     ngay_day_bu,
+    giang_vien_day_thay_id,
+    ca_thay_the_id,
     currentUser: req.user,
   });
   return sendSuccess(res, 'Ghi nhận ngoại lệ buổi học thành công.', updated);

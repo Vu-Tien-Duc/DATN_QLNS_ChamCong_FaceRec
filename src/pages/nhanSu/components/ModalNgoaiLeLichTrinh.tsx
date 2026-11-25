@@ -2,11 +2,14 @@ import React from 'react';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { Portal } from '../../../components/chung/CongDichChuyen';
 import { Button } from '../../../components/chung/NutBam';
+import { ScheduleExceptionStatus, ShiftItem, UserProfile } from '../../../types';
 
-interface ExceptionFormData {
+export interface ExceptionFormData {
   date: string;
-  status: 'nghi' | 'day_bu' | 'huy' | string;
+  status: ScheduleExceptionStatus | string;
   makeupDate: string;
+  substituteLecturerId: string;
+  replacementShiftId: string;
   reason: string;
 }
 
@@ -14,6 +17,9 @@ interface ModalNgoaiLeLichTrinhProps {
   isOpen: boolean;
   exceptionData: ExceptionFormData;
   submitting: boolean;
+  lecturers?: UserProfile[];
+  shifts?: ShiftItem[];
+  currentLecturerId?: string;
   onChange: (next: ExceptionFormData) => void;
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
@@ -23,20 +29,32 @@ export const ModalNgoaiLeLichTrinh: React.FC<ModalNgoaiLeLichTrinhProps> = ({
   isOpen,
   exceptionData,
   submitting,
+  lecturers = [],
+  shifts = [],
+  currentLecturerId = '',
   onChange,
   onClose,
   onSubmit,
 }) => {
   if (!isOpen) return null;
 
+  const normalizedStatus = String(exceptionData.status || '').toLowerCase();
+  const isMakeup = normalizedStatus === 'day_bu';
+  const isShiftSwap = normalizedStatus === 'doi_ca';
+
+  const substituteCandidates = lecturers.filter(
+    (u) => String(u.id) !== String(currentLecturerId || '') && u.kich_hoat !== false
+  );
+  const activeShifts = shifts.filter((s) => s.kich_hoat !== false);
+
   return (
     <Portal>
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 w-full max-w-md overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 animate-in zoom-in-95 duration-200 p-6 space-y-4">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl shadow-black/50 ring-1 ring-black/10 dark:ring-white/10 animate-in zoom-in-95 duration-200 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-500" />
-              Ghi Nhận Báo Nghỉ / Bù
+              Ghi Nhận Báo Nghỉ / Bù / Đổi Ca
             </h3>
             <button
               type="button"
@@ -67,16 +85,27 @@ export const ModalNgoaiLeLichTrinh: React.FC<ModalNgoaiLeLichTrinhProps> = ({
               </label>
               <select
                 value={exceptionData.status}
-                onChange={(e) => onChange({ ...exceptionData, status: e.target.value })}
+                onChange={(e) => {
+                  const nextStatus = e.target.value;
+                  onChange({
+                    ...exceptionData,
+                    status: nextStatus,
+                    ...(nextStatus !== 'day_bu' && nextStatus !== 'doi_ca' ? { makeupDate: '' } : {}),
+                    ...(nextStatus !== 'doi_ca'
+                      ? { substituteLecturerId: '', replacementShiftId: '' }
+                      : {}),
+                  });
+                }}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
               >
                 <option value="nghi">Báo Nghỉ (Tạm hoãn buổi học)</option>
                 <option value="day_bu">Xếp Lịch Học Bù</option>
+                <option value="doi_ca">Đổi Ca / Dạy Thay</option>
                 <option value="huy">Hủy Bỏ Buổi Học Này</option>
               </select>
             </div>
 
-            {String(exceptionData.status).toLowerCase() === 'day_bu' && (
+            {isMakeup && (
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Ngày học bù dự kiến <span className="text-rose-500">*</span>
@@ -91,6 +120,65 @@ export const ModalNgoaiLeLichTrinh: React.FC<ModalNgoaiLeLichTrinhProps> = ({
               </div>
             )}
 
+            {isShiftSwap && (
+              <div className="space-y-3 p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/25 border border-indigo-200/70 dark:border-indigo-900/50">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Giảng viên dạy thay
+                  </label>
+                  <select
+                    aria-label="Giảng viên dạy thay"
+                    value={exceptionData.substituteLecturerId}
+                    onChange={(e) => onChange({ ...exceptionData, substituteLecturerId: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                  >
+                    <option value="">-- Giữ nguyên giảng viên chính --</option>
+                    {substituteCandidates.map((lec) => (
+                      <option key={lec.id} value={lec.id}>
+                        {lec.ho_ten}
+                        {lec.ma_can_bo ? ` (${lec.ma_can_bo})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Ca thay thế (tùy chọn)
+                  </label>
+                  <select
+                    aria-label="Ca thay thế"
+                    value={exceptionData.replacementShiftId}
+                    onChange={(e) => onChange({ ...exceptionData, replacementShiftId: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                  >
+                    <option value="">-- Giữ nguyên ca hiện tại --</option>
+                    {activeShifts.map((shift) => (
+                      <option key={shift.id} value={shift.id}>
+                        {shift.ten_ca} ({shift.gio_bat_dau} - {shift.gio_ket_thuc})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Ngày đổi ca (tùy chọn, nếu dời sang ngày khác)
+                  </label>
+                  <input
+                    type="date"
+                    value={exceptionData.makeupDate}
+                    onChange={(e) => onChange({ ...exceptionData, makeupDate: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                  />
+                </div>
+
+                <p className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                  Chọn ít nhất 1 thay đổi: Giảng viên dạy thay, Ca thay thế hoặc Ngày đổi ca.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Lý do ghi nhận
@@ -99,7 +187,11 @@ export const ModalNgoaiLeLichTrinh: React.FC<ModalNgoaiLeLichTrinhProps> = ({
                 value={exceptionData.reason}
                 onChange={(e) => onChange({ ...exceptionData, reason: e.target.value })}
                 rows={2}
-                placeholder="Nhập lý do giảng viên bận công tác / lịch bù..."
+                placeholder={
+                  isShiftSwap
+                    ? 'Nhập lý do đổi ca / phân công giảng viên dạy thay...'
+                    : 'Nhập lý do giảng viên bận công tác / lịch bù...'
+                }
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
               />
             </div>

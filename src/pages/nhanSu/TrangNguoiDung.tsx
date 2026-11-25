@@ -58,6 +58,7 @@ import { DepartmentSelect, getDeptCategory } from '../../components/chung/ChonDo
 import { Portal } from '../../components/chung/CongDichChuyen';
 import { HoSoBenTrai, ThanhTabHoSo, TruongThongTin } from '../../components/chung/HoSoBenTrai';
 import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
+import { SearchInput } from '../../components/chung/OTimKiem';
 
 // =============================================================================
 // HẰNG SỐ VÀ BẢNG ÁNH XẠ CHUẨN ĐẠI HỌC (CSDL v2.5)
@@ -1686,31 +1687,16 @@ export const Users: React.FC = () => {
         {/* Thanh công cụ tìm kiếm & lọc 1 hàng Flux Style */}
         <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2.5">
           {/* Ô tìm kiếm */}
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="Tìm tên cán bộ, mã CB, email, SĐT..."
-              className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchTerm('');
-                  setCurrentPage(1);
-                }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          <SearchInput
+            value={searchTerm}
+            onChange={(next) => {
+              setSearchTerm(next);
+              setCurrentPage(1);
+            }}
+            debounceMs={180}
+            placeholder="Tìm tên cán bộ, mã CB, email, SĐT..."
+            className="relative flex-1 min-w-[220px]"
+          />
 
           {/* Lọc Khoa / Đơn vị */}
           <div className="w-full sm:w-56 shrink-0">

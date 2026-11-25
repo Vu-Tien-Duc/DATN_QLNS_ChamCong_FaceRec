@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { SearchInput } from '../../components/chung/OTimKiem';
 import {
   Clock,
   Plus,
@@ -498,33 +499,16 @@ export const Shifts: React.FC = () => {
 
       <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col overflow-hidden" data-purpose="shift-table-card">
         <div className="p-3.5 border-b border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-              <Search className="w-4 h-4" />
-            </span>
-            <input
-              value={searchKeyword}
-              onChange={(e) => {
-                setSearchKeyword(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full h-9 pl-9 pr-8 bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-colors"
-              placeholder="Tìm theo tên ca, khung giờ (VD: Ca Sáng, 07:00)..."
-              type="text"
-            />
-            {searchKeyword && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchKeyword('');
-                  setCurrentPage(1);
-                }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-0.5"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+          <SearchInput
+            value={searchKeyword}
+            onChange={(next) => {
+              setSearchKeyword(next);
+              setCurrentPage(1);
+            }}
+            debounceMs={180}
+            placeholder="Tìm theo tên ca, khung giờ (VD: Ca Sáng, 07:00)..."
+            className="relative flex-1 min-w-[200px]"
+          />
 
           <select
             value={selectedPeriod}

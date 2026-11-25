@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { SearchInput } from '../../components/chung/OTimKiem';
 import {
   BookOpen,
   Plus,
@@ -100,7 +101,10 @@ export const Subjects: React.FC = () => {
   // ===========================================================================
   // FETCH SUBJECTS LIST
   // ===========================================================================
+  const fetchSeqRef = useRef(0);
+
   const fetchSubjects = useCallback(async () => {
+    const reqSeq = ++fetchSeqRef.current;
     setIsLoading(true);
     try {
       let isActiveParam: boolean | undefined = undefined;
@@ -116,6 +120,7 @@ export const Subjects: React.FC = () => {
         gioi_han: limit,
       });
 
+      if (reqSeq !== fetchSeqRef.current) return;
       setSubjects(res.subjects || []);
       setTotalCount(res.total || 0);
       setTotalPages(res.totalPages || 1);
@@ -127,11 +132,14 @@ export const Subjects: React.FC = () => {
         });
       }
     } catch (err: any) {
+      if (reqSeq !== fetchSeqRef.current) return;
       console.error('Lỗi khi tải danh sách môn học:', err);
       toast.error(err.response?.data?.message || 'Không thể tải danh mục môn học.');
       setSubjects([]);
     } finally {
-      setIsLoading(false);
+      if (reqSeq === fetchSeqRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [searchKeyword, selectedDeptId, selectedStatus, selectedCredits, currentPage, limit]);
 
@@ -458,33 +466,16 @@ export const Subjects: React.FC = () => {
       <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col" data-purpose="course-table-card">
         <div className="p-3.5 border-b border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-2">
           {/* Text Search input */}
-          <div className="relative flex-1 min-w-[200px]">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-              <Search className="w-4 h-4" />
-            </span>
-            <input
-              value={searchKeyword}
-              onChange={(e) => {
-                setSearchKeyword(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full h-9 pl-9 pr-8 text-xs bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-slate-800 dark:text-slate-100 placeholder-slate-400 transition-colors"
-              placeholder="Tìm theo mã môn hoặc tên môn..."
-              type="text"
-            />
-            {searchKeyword && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchKeyword('');
-                  setCurrentPage(1);
-                }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-0.5"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+          <SearchInput
+            value={searchKeyword}
+            onChange={(next) => {
+              setSearchKeyword(next);
+              setCurrentPage(1);
+            }}
+            debounceMs={300}
+            placeholder="Tìm theo mã môn hoặc tên môn..."
+            className="relative flex-1 min-w-[200px]"
+          />
 
           {/* Select: Khoa / Bộ Môn */}
           <div className="w-full sm:w-56 shrink-0">

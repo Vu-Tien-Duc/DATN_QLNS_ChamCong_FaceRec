@@ -88,7 +88,7 @@ export const scheduleApi = {
   },
 
   /**
-   * Ghi nhận ngoại lệ buổi học (Nghỉ, Hủy, Dạy bù)
+   * Ghi nhận ngoại lệ buổi học (Nghỉ, Hủy, Dạy bù, Đổi ca / Dạy thay)
    */
   addException: async (
     id: string,
@@ -97,6 +97,8 @@ export const scheduleApi = {
       ly_do?: string;
       trang_thai?: 'nghi' | 'huy' | 'day_bu' | 'doi_ca';
       ngay_day_bu?: string;
+      giang_vien_day_thay_id?: string | null;
+      ca_thay_the_id?: string | null;
     }
   ): Promise<ApiResponse<ScheduleItem>> => {
     const res = await apiClient.post<ApiResponse<ScheduleItem>>(`/lich-trinh/${id}/ngoai-le`, payload);

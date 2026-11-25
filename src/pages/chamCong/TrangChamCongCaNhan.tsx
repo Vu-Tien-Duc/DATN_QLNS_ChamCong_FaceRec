@@ -38,6 +38,8 @@ import { Portal } from '../../components/chung/CongDichChuyen';
 import { Badge } from '../../components/chung/NhanTrangThai';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import { AnhBaoMat } from '../../components/chung/AnhBaoMat';
+import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
+import { SearchInput } from '../../components/chung/OTimKiem';
 import { getRoleLabel, hasRole } from '../../utils/phanQuyen';
 import {
   attendanceApi,
@@ -245,6 +247,7 @@ export const AttendanceMe: React.FC = () => {
   });
   const [giaiTrinhLyDo, setGiaiTrinhLyDo] = useState('');
   const [isSubmittingGiaiTrinh, setIsSubmittingGiaiTrinh] = useState(false);
+  const [explanationStatusByLogId, setExplanationStatusByLogId] = useState<Record<string, string>>({});
 
   // Đồng hồ thời gian thực
   useEffect(() => {
@@ -320,11 +323,19 @@ export const AttendanceMe: React.FC = () => {
     setIsLoading(true);
     try {
       const currentUserId = user?.id;
-      const res = await attendanceApi.getMyAttendanceHistory({
-        tu_ngay: dateRange.from,
-        den_ngay: dateRange.to,
-        gioi_han: 100,
-      });
+      const [res, explanationRes] = await Promise.all([
+        attendanceApi.getMyAttendanceHistory({
+          tu_ngay: dateRange.from,
+          den_ngay: dateRange.to,
+          gioi_han: 100,
+        }),
+        leaveRequestApi
+          .getLeaveRequests({
+            loai_don: 'giai_trinh_thieu_check_out',
+            ...(currentUserId ? { nguoi_dung_id: String(currentUserId) } : {}),
+          })
+          .catch(() => null),
+      ]);
       // Đảm bảo lọc sạch 100% chỉ giữ bản ghi thuộc về chính bản thân người dùng hiện tại
       const myRecords = (res.records || []).filter((r: any) => {
         if (!currentUserId) return true;
@@ -332,6 +343,24 @@ export const AttendanceMe: React.FC = () => {
         return !recUid || String(recUid) === String(currentUserId);
       });
       setRecords(myRecords);
+
+      const rawRequests = Array.isArray(explanationRes?.data)
+        ? explanationRes.data
+        : Array.isArray(explanationRes?.data?.requests)
+          ? explanationRes.data.requests
+          : Array.isArray(explanationRes)
+            ? explanationRes
+            : [];
+      const activeStatuses = new Set(['pending', 'pending_dean', 'pending_bgh', 'approved']);
+      const nextExplanationMap: Record<string, string> = {};
+      rawRequests.forEach((req: any) => {
+        const logId = req?.nhat_ky_id ? String(req.nhat_ky_id).trim().toLowerCase() : '';
+        const st = String(req?.trang_thai || '').toLowerCase();
+        if (logId && activeStatuses.has(st)) {
+          nextExplanationMap[logId] = st;
+        }
+      });
+      setExplanationStatusByLogId(nextExplanationMap);
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Không thể tải lịch sử chấm công.';
       toast.error(msg);
@@ -684,52 +713,52 @@ export const AttendanceMe: React.FC = () => {
   }, [selectedYear, selectedMonth, records, today]);
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* =====================================================================
-          1. HEADER CARD: NHÂN SỰ & HÀNH ĐỘNG SINH TRẮC HỌC REALTIME
-      ===================================================================== */}
+    <div className="space-y-5 pb-24">
       {/* =====================================================================
           1. PERSONAL ATTENDANCE HEADER + QUICK PUNCH ACTIONS
       ===================================================================== */}
-      <div className="pb-3 border-b border-slate-200/80 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
-            <span>{user?.ho_ten || 'Cán Bộ Giảng Viên'}</span>
-            {user?.ma_can_bo && (
-              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-mono font-medium">
-                {user.ma_can_bo}
-              </span>
-            )}
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
-            <span>
-              {user?.ten_phong_ban || (user as any)?.don_vi_chinh?.ten_phong_ban || 'Khoa / Đơn vị công tác'}
-            </span>
-            <span>•</span>
-            <span className="text-brand-600 dark:text-brand-400 font-medium">
-              {getRoleLabel(user?.vai_tro_chinh)}
-            </span>
-            {campusDistance !== null && (
-              <>
-                <span>•</span>
-                <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
-                  <MapPin className="w-3 h-3" />
-                  Cách trường ~{campusDistance}m
+      <div className="pb-4 border-b border-slate-200/80 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <UserAvatar user={user} size="lg" />
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
+              <span className="truncate">{user?.ho_ten || 'Cán Bộ Giảng Viên'}</span>
+              {user?.ma_can_bo && (
+                <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-mono font-medium shrink-0">
+                  {user.ma_can_bo}
                 </span>
-              </>
-            )}
-            <span>•</span>
-            <span className="font-mono">
-              {liveClock} ({formatDateVN(today)})
-            </span>
-          </p>
+              )}
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+              <span>
+                {user?.ten_phong_ban || (user as any)?.don_vi_chinh?.ten_phong_ban || 'Khoa / Đơn vị công tác'}
+              </span>
+              <span>•</span>
+              <span className="text-brand-600 dark:text-brand-400 font-semibold">
+                {getRoleLabel(user?.vai_tro_chinh)}
+              </span>
+              {campusDistance !== null && (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                    <MapPin className="w-3 h-3" />
+                    Cách trường ~{campusDistance}m
+                  </span>
+                </>
+              )}
+              <span>•</span>
+              <span className="font-mono text-slate-600 dark:text-slate-300">
+                {liveClock} ({formatDateVN(today)})
+              </span>
+            </p>
+          </div>
         </div>
 
         {/* Cụm nút hành động điểm danh nhanh */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             onClick={() => setScannerMode('check-in')}
-            className="h-9 inline-flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs px-3.5 rounded-full shadow-xs transition-colors cursor-pointer"
+            className="h-9 inline-flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs px-3.5 rounded-xl shadow-xs transition-colors cursor-pointer"
           >
             <ScanFace className="w-3.5 h-3.5" />
             <span>Vào ca (FaceID)</span>
@@ -737,7 +766,7 @@ export const AttendanceMe: React.FC = () => {
 
           <button
             onClick={() => setScannerMode('check-out')}
-            className="h-9 inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-semibold text-xs px-3.5 rounded-full shadow-xs transition-colors cursor-pointer"
+            className="h-9 inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-semibold text-xs px-3.5 rounded-xl shadow-xs transition-colors cursor-pointer"
           >
             <ScanFace className="w-3.5 h-3.5 text-cyan-300" />
             <span>Tan ca (FaceID)</span>
@@ -748,7 +777,7 @@ export const AttendanceMe: React.FC = () => {
               setManualAction('check-in');
               setIsManualModalOpen(true);
             }}
-            className="h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
+            className="h-9 inline-flex items-center gap-1.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
             title="Điểm danh Web / GPS"
           >
             <Laptop className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
@@ -757,7 +786,7 @@ export const AttendanceMe: React.FC = () => {
 
           <button
             onClick={() => setIsQrModalOpen(true)}
-            className="h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
+            className="h-9 inline-flex items-center gap-1.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
             title="Quét mã QR TOTP động"
           >
             <QrCode className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -807,140 +836,152 @@ export const AttendanceMe: React.FC = () => {
           3. MAIN PERSONAL ATTENDANCE CARD (CHUẨN FACE ID)
       ===================================================================== */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
-        <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-2.5">
-        {/* Nhóm điều hướng tháng */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center bg-slate-100/80 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700 h-9">
-            <button
-              onClick={handlePrevMonth}
-              className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
-              title="Tháng trước"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <div className="px-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 tabular-nums">
-              <Calendar className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
-              <span>Tháng {selectedMonth} / {selectedYear}</span>
+        {/* Hàng 1: Điều hướng tháng + Chuyển chế độ hiển thị + Xuất/In/Làm mới */}
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center bg-slate-100/80 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700 h-9">
+              <button
+                onClick={handlePrevMonth}
+                className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+                title="Tháng trước"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="px-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 tabular-nums whitespace-nowrap">
+                <Calendar className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+                <span>Tháng {selectedMonth} / {selectedYear}</span>
+              </div>
+              <button
+                onClick={handleNextMonth}
+                className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+                title="Tháng sau"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
+
             <button
-              onClick={handleNextMonth}
-              className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
-              title="Tháng sau"
+              onClick={handleResetToCurrentMonth}
+              className="h-9 px-3 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
             >
-              <ChevronRight className="w-4 h-4" />
+              Hôm nay
             </button>
           </div>
 
-          <button
-            onClick={handleResetToCurrentMonth}
-            className="h-9 px-3 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-          >
-            Hôm nay
-          </button>
-
-          {/* Ô tìm kiếm từ khóa */}
-          <div className="relative flex-1 sm:w-52 min-w-[160px]">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              placeholder="Tìm ca, phòng, môn..."
-              className="w-full h-9 pl-9 pr-8 text-xs rounded-xl bg-slate-50/70 dark:bg-slate-800/70 border border-slate-200/90 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-500 transition-all"
-            />
-            {searchKeyword && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Switcher chế độ hiển thị: Bảng vs Lịch */}
+            <div className="flex items-center bg-slate-100/80 dark:bg-slate-800 p-1 rounded-xl h-9 gap-0.5">
               <button
-                onClick={() => setSearchKeyword('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                onClick={() => setViewMode('table')}
+                className={`h-7 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
               >
-                <X className="w-3.5 h-3.5" />
+                <CalendarRange className="w-3.5 h-3.5" />
+                <span>Danh sách</span>
+              </button>
+              <button
+                onClick={() => setViewMode('calendar')}
+                className={`h-7 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'calendar'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>Lịch tháng</span>
+              </button>
+            </div>
+
+            {/* Nút xuất Excel & In & Làm mới */}
+            <button
+              onClick={handleExportExcel}
+              className="h-9 inline-flex items-center gap-1.5 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+              title="Xuất bảng công cá nhân ra file Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden sm:inline">Xuất Excel</span>
+            </button>
+            <button
+              onClick={handlePrint}
+              className="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+              title="In bảng công"
+            >
+              <Printer className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={fetchMyAttendance}
+              className="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+              title="Làm mới"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-brand-500' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+        {/* Hàng 2: Thanh tìm kiếm & bộ lọc trạng thái / phương thức */}
+        <div className="px-4 py-2.5 bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+            {/* Ô tìm kiếm từ khóa */}
+            <SearchInput
+              value={searchKeyword}
+              onChange={setSearchKeyword}
+              debounceMs={180}
+              placeholder="Tìm ca, phòng, môn..."
+              className="relative flex-1 min-w-[180px] max-w-xs"
+              iconClassName="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            />
+
+            {/* Lọc Trạng thái */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-9 px-3 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
+            >
+              <option value="ALL">Tất cả trạng thái</option>
+              <option value="on_time">Đúng giờ</option>
+              <option value="late">Đi muộn</option>
+              <option value="early_leave">Về sớm</option>
+              <option value="thieu_check_out">Thiếu check-out</option>
+              <option value="excused_absence">Nghỉ có phép</option>
+              <option value="absent">Vắng mặt</option>
+            </select>
+
+            {/* Lọc Phương thức */}
+            <select
+              value={methodFilter}
+              onChange={(e) => setMethodFilter(e.target.value)}
+              className="h-9 px-3 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
+            >
+              <option value="ALL">Tất cả phương thức</option>
+              <option value="face_ai">FaceID</option>
+              <option value="qr_code">Mã QR</option>
+              <option value="gps_mobile">GPS Mobile</option>
+              <option value="thu_cong_admin">Thủ công / Quản trị</option>
+              <option value="system_auto">Hệ thống tự động</option>
+            </select>
+
+            {(statusFilter !== 'ALL' || methodFilter !== 'ALL' || searchKeyword.trim() !== '') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter('ALL');
+                  setMethodFilter('ALL');
+                  setSearchKeyword('');
+                }}
+                className="h-9 px-2.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-rose-200/80 dark:border-rose-800/70 transition-colors cursor-pointer"
+              >
+                Xóa lọc
               </button>
             )}
           </div>
+
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0">
+            Hiển thị <strong className="text-slate-800 dark:text-slate-200">{filteredRecords.length}</strong> / {records.length} bản ghi
+          </span>
         </div>
-
-        {/* Nhóm bộ lọc trạng thái, phương thức và chuyển đổi View Mode */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Lọc Trạng thái */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 px-3 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer"
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="on_time">Đúng giờ</option>
-            <option value="late">Đi muộn</option>
-            <option value="early_leave">Về sớm</option>
-<option value="thieu_check_out">Thiếu check-out</option>
-            <option value="excused_absence">Nghỉ có phép</option>
-            <option value="absent">Vắng mặt</option>
-          </select>
-
-          {/* Lọc Phương thức */}
-          <select
-            value={methodFilter}
-            onChange={(e) => setMethodFilter(e.target.value)}
-            className="h-9 px-3 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-brand-500 cursor-pointer hidden sm:inline-block"
-          >
-            <option value="ALL">Tất cả phương thức</option>
-            <option value="face_ai">FaceID</option>
-            <option value="qr_code">Mã QR</option>
-            <option value="gps_mobile">GPS Mobile</option>
-            <option value="thu_cong_admin">Thủ công / Quản trị</option>
-            <option value="system_auto">Hệ thống tự động</option>
-          </select>
-
-          {/* Switcher chế độ hiển thị: Bảng vs Lịch */}
-          <div className="flex items-center bg-slate-100/80 dark:bg-slate-800 p-1 rounded-xl h-9 gap-0.5">
-            <button
-              onClick={() => setViewMode('table')}
-              className={`h-7 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                viewMode === 'table'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              <CalendarRange className="w-3.5 h-3.5" />
-              <span>Danh sách</span>
-            </button>
-            <button
-              onClick={() => setViewMode('calendar')}
-              className={`h-7 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                viewMode === 'calendar'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              <CalendarDays className="w-3.5 h-3.5" />
-              <span>Lịch tháng</span>
-            </button>
-          </div>
-
-          {/* Nút xuất Excel & In & Làm mới */}
-          <button
-            onClick={handleExportExcel}
-            className="h-9 inline-flex items-center gap-1.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
-            title="Xuất bảng công cá nhân ra file Excel (.xlsx)"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span className="hidden sm:inline">Xuất Excel</span>
-          </button>
-          <button
-            onClick={handlePrint}
-            className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
-            title="In bảng công"
-          >
-            <Printer className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={fetchMyAttendance}
-            className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
-            title="Làm mới"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-brand-500' : ''}`} />
-          </button>
-        </div>
-      </div>
 
       {/* =====================================================================
           4. VIEW MODE 1: CHẾ ĐỘ BẢNG DỮ LIỆU CHI TIẾT (TABLE VIEW)
@@ -959,7 +1000,7 @@ export const AttendanceMe: React.FC = () => {
                   <th className="py-2.5 px-3.5 w-[85px] whitespace-nowrap">Thời Lượng</th>
                   <th className="py-2.5 px-3.5 w-[115px] whitespace-nowrap">Trạng Thái</th>
                   <th className="py-2.5 px-3.5 w-[125px] whitespace-nowrap">Phương Thức</th>
-                  <th className="py-3 px-2 text-center w-12">Chi Tiết</th>
+                  <th className="py-3 px-3 text-center w-[76px] whitespace-nowrap">Chi Tiết</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -993,13 +1034,8 @@ export const AttendanceMe: React.FC = () => {
                     const methodKey =
                       r.luot_quet?.[0]?.phuong_thuc ||
                       r.phuong_thuc ||
-                      (r.ghi_de_thu_cong ? 'thu_cong_admin' : '');
-                    const methodCfg = METHOD_CONFIG[methodKey] || {
-                      label: methodKey || 'Chưa rõ',
-                      icon: Clock,
-                      color: 'text-slate-500 dark:text-slate-400',
-                      bg: 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700',
-                    };
+                      (r.ghi_de_thu_cong ? 'thu_cong_admin' : 'system_auto');
+                    const methodCfg = METHOD_CONFIG[methodKey] || METHOD_CONFIG.system_auto;
                     const logDate = r.ngay_cong;
                     const todayLocalStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                     const isTodayRecord = logDate === todayLocalStr;
@@ -1372,25 +1408,50 @@ export const AttendanceMe: React.FC = () => {
                 <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm">Thiếu check-out</p>
-                  <p className="text-xs mt-1">
-                    Bạn đã check-in nhưng chưa check-out khối ca này. Công chưa được tính, vui lòng gửi đơn giải trình để cấp trên duyệt.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!selectedLog.id) return;
-                      setGiaiTrinhLyDo('');
-                      setGiaiTrinhModal({
-                        open: true,
-                        nhat_ky_id: String(selectedLog.id),
-                        ngay: String(selectedLog.ngay_cong || ''),
-                      });
-                    }}
-                    className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    Gửi đơn giải trình
-                  </button>
+                  {(() => {
+                    const existingExpStatus = selectedLog.id
+                      ? explanationStatusByLogId[String(selectedLog.id).trim().toLowerCase()]
+                      : undefined;
+                    if (existingExpStatus) {
+                      const isApproved = existingExpStatus === 'approved';
+                      return (
+                        <>
+                          <p className="text-xs mt-1">
+                            {isApproved
+                              ? 'Đơn giải trình thiếu check-out cho buổi này đã được phê duyệt.'
+                              : 'Bạn đã gửi đơn giải trình thiếu check-out cho buổi này. Vui lòng chờ cấp trên xét duyệt.'}
+                          </p>
+                          <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-700">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            {isApproved ? 'Đã duyệt giải trình' : 'Đã gửi đơn giải trình (Đang chờ duyệt)'}
+                          </span>
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        <p className="text-xs mt-1">
+                          Bạn đã check-in nhưng chưa check-out khối ca này. Công chưa được tính, vui lòng gửi đơn giải trình để cấp trên duyệt.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!selectedLog.id) return;
+                            setGiaiTrinhLyDo('');
+                            setGiaiTrinhModal({
+                              open: true,
+                              nhat_ky_id: String(selectedLog.id),
+                              ngay: String(selectedLog.ngay_cong || ''),
+                            });
+                          }}
+                          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          Gửi đơn giải trình
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -1891,6 +1952,10 @@ export const AttendanceMe: React.FC = () => {
                         nhat_ky_id: giaiTrinhModal.nhat_ky_id,
                       });
                       toast.success('Gửi đơn giải trình thành công! Chờ cấp trên phê duyệt.');
+                      setExplanationStatusByLogId((prev) => ({
+                        ...prev,
+                        [String(giaiTrinhModal.nhat_ky_id).trim().toLowerCase()]: 'pending',
+                      }));
                       setGiaiTrinhModal({ open: false, nhat_ky_id: '', ngay: '' });
                       setSelectedLog(null);
                       fetchMyAttendance();

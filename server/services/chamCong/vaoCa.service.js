@@ -1,6 +1,6 @@
 // Xử lý điểm danh vào ca (Check-in) kèm đối soát lịch/ca trực và xác thực vị trí GPS
 const { Op } = require('sequelize');
-const { NhatKyChamCong, LuotQuetChamCong, CaLamViec, NguoiDung, LichTrinh } = require('../../models');
+const { NhatKyChamCong, LuotQuetChamCong, CaLamViec, NguoiDung, LichTrinh, NhatKyKiemToan } = require('../../models');
 const { sendCheckInNotificationEmail } = require('../heThong/guiEmail.service');
 const { validateGeofence, resolveUserGeofenceTargets } = require('../../utils/hoTroChamCong');
 const { runInTransaction } = require('../../utils/giaoDichDb');
@@ -280,6 +280,20 @@ const performCheckIn = async ({
       });
     }
   } catch (_) {}
+
+  NhatKyKiemToan?.create?.({
+    nguoi_thuc_hien_id: nguoi_dung_id,
+    loai_chu_the: 'user',
+    hanh_dong: 'ATTENDANCE_GPS_CHECK_IN',
+    doi_tuong_id: String(attendance.id),
+    loai_doi_tuong: 'nhat_ky_cham_cong',
+    chi_tiet: {
+      ngay_cong: dateStr,
+      trang_thai: calculatedStatus,
+      phuong_thuc: finalMethod,
+      co_gian_lan: Boolean(isFraud),
+    },
+  })?.catch?.((err) => console.error('[AuditLog Error ATTENDANCE_GPS_CHECK_IN]:', err.message));
 
   return {
     success: true,

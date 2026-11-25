@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import toast from 'react-hot-toast';
 import { UserProfile, UserRoleLegacy } from '../types';
-import { clearApiClientAuthHeader } from '../api/apiClient';
+import { clearApiClientAuthHeader, FORCE_LOGOUT_MESSAGE_KEY } from '../api/apiClient';
 import { authApi, LoginPayload } from '../api/xacThuc.api';
 import { disconnectSocket, updateSocketAuthToken } from '../api/socket';
 
@@ -214,6 +214,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     const currentRefreshToken = getStoredRefreshToken() || get().refreshToken;
+    // Ngắt Socket trước khi gọi API logout để tab hiện tại không tự nhận sự kiện force-logout
+    disconnectSocket();
+    try {
+      sessionStorage.removeItem(FORCE_LOGOUT_MESSAGE_KEY);
+    } catch {
+      // Bỏ qua lỗi storage
+    }
     try {
       await authApi.logout(currentRefreshToken);
     } catch {
@@ -221,6 +228,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } finally {
       disconnectSocket();
       clearAllAuthStorage();
+      try {
+        sessionStorage.removeItem(FORCE_LOGOUT_MESSAGE_KEY);
+      } catch {
+        // Bỏ qua lỗi storage
+      }
       clearApiClientAuthHeader();
       set({
         user: null,

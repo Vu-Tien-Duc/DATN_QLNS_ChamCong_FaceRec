@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const minioStorage = require('../../config/minio');
-const { DonNghiPhep, NguoiDung, HoSoCanBo, LichTrinh, VaiTroNguoiDung } = require('../../models');
+const { DonNghiPhep, NguoiDung, HoSoCanBo, LichTrinh, VaiTroNguoiDung, NhatKyKiemToan } = require('../../models');
 const { runInTransaction } = require('../../utils/giaoDichDb');
 const { isValidUuid } = require('../../utils/hoTroSequelize');
 const { getDeanScopedUserIds, isUserInDeanScope } = require('../../utils/phamViTruongKhoa');
@@ -388,6 +388,21 @@ const createLeaveRequestDomain = async ({
     });
 
     const createdDoc = formatLeaveRequestDoc(leaveRequest);
+    NhatKyKiemToan?.create?.({
+      nguoi_thuc_hien_id: userId,
+      loai_chu_the: 'user',
+      hanh_dong: 'CREATE_LEAVE_REQUEST',
+      doi_tuong_id: String(leaveRequest.id),
+      loai_doi_tuong: 'don_nghi_phep',
+      chi_tiet: {
+        loai_don: canonicalType,
+        ngay_bat_dau: startKey,
+        ngay_ket_thuc: endKey,
+        so_ngay: serverCalculatedDays,
+        trang_thai: initialStatus,
+      },
+    })?.catch?.((err) => console.error('[AuditLog Error CREATE_LEAVE_REQUEST]:', err.message));
+
     try {
       const { emitLeaveRequestUpdate } = require('../../config/socket');
       emitLeaveRequestUpdate({

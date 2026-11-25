@@ -173,6 +173,59 @@ export const canApproveLevel1 = (user: UserProfile | null | undefined): boolean 
 };
 
 /**
+ * Kiểm tra người dùng hiện tại có đúng thẩm quyền duyệt một đơn nghỉ phép cụ thể hay không
+ * (dùng chung cho TrangDonNghiPhep và badge đếm trên ThanhBen để luôn khớp 100%).
+ */
+export const canApproveLeaveRequest = (
+  user: UserProfile | null | undefined,
+  req: {
+    trang_thai?: string | null;
+    nguoi_dung_id?: string | null;
+    nguoi_dung?: any;
+  } | null | undefined
+): boolean => {
+  if (!user || !req) return false;
+  const currentUserId = user.id;
+  const applicant = req.nguoi_dung;
+  const applicantId = applicant?.id || req.nguoi_dung_id;
+  if (
+    currentUserId &&
+    applicantId &&
+    String(applicantId).toLowerCase() === String(currentUserId).toLowerCase()
+  ) {
+    return false;
+  }
+
+  const isBghOrAdminApprover = hasRole(user, ['admin', 'bgh']);
+  const isBghOrHrApprover = hasRole(user, ['admin', 'bgh', 'tccb']);
+  const isUnitApprover = canApproveLevel1(user) || isBghOrHrApprover;
+
+  const applicantRoles = applicant ? getUserRoles(applicant as any) : new Set<string>();
+  const st = String(req.trang_thai || '').toLowerCase();
+
+  if (st === 'pending_bgh') {
+    if (!isBghOrHrApprover) return false;
+    if (!isBghOrAdminApprover && (applicantRoles.has('admin') || applicantRoles.has('bgh'))) {
+      return false;
+    }
+    return true;
+  }
+
+  if (st === 'pending' || st === 'pending_dean') {
+    if (!isUnitApprover) return false;
+    if (
+      !isBghOrHrApprover &&
+      (applicantRoles.has('truong_khoa') || applicantRoles.has('admin') || applicantRoles.has('bgh'))
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+};
+
+/**
  * Kiểm tra quyền tạo/sửa danh mục môn học (khớp BE LICH:XEP_LICH | HE_THONG:CAU_HINH)
  */
 export const canManageSubjects = (user: UserProfile | null | undefined): boolean => {

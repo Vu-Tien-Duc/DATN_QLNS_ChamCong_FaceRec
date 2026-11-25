@@ -39,6 +39,7 @@ import { PageHeader } from '../../components/chung/TieuDeTrang';
 import { Button } from '../../components/chung/NutBam';
 import { CompactStatsBar } from '../../components/chung/ThanhThongKeGon';
 import { UserAvatar } from '../../components/chung/AnhDaiDienNguoiDung';
+import { SearchInput } from '../../components/chung/OTimKiem';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/useXacThucStore';
 import { canPersonalCheckIn } from '../../utils/phanQuyen';
@@ -1368,16 +1369,15 @@ export const Dashboard: React.FC = () => {
               </button>
             </div>
 
-            <div className="relative w-full sm:w-64 shrink-0">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={searchPunchKeyword}
-                onChange={(e) => setSearchPunchKeyword(e.target.value)}
-                className="w-full h-9 pl-8 pr-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="Lọc mã CB, họ tên..."
-                type="text"
-              />
-            </div>
+            <SearchInput
+              value={searchPunchKeyword}
+              onChange={setSearchPunchKeyword}
+              debounceMs={180}
+              placeholder="Lọc mã CB, họ tên..."
+              className="relative w-full sm:w-64 shrink-0"
+              iconClassName="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              inputClassName="w-full h-9 pl-8 pr-8 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
           </div>
         </div>
 

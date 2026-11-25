@@ -9,6 +9,10 @@ export interface ScheduleExceptionItem {
   ly_do?: string;
   trang_thai: ScheduleExceptionStatus;
   ngay_day_bu?: string | null;
+  giang_vien_day_thay_id?: string | null;
+  giang_vien_day_thay?: { id: string; ho_ten: string; email?: string; ma_can_bo?: string } | null;
+  ca_thay_the_id?: string | null;
+  ca_thay_the?: { id: string; ten_ca: string; gio_bat_dau?: string; gio_ket_thuc?: string } | null;
   tao_luc?: string;
 }
 

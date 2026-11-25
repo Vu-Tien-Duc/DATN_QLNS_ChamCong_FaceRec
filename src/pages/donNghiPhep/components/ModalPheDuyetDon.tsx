@@ -1,47 +1,58 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { CheckCircle2, Paperclip, X, XCircle } from 'lucide-react';
 import { Portal } from '../../../components/chung/CongDichChuyen';
 import { Button } from '../../../components/chung/NutBam';
 import { LeaveRequestData } from '../../../api/donNghiPhep.api';
 
+export interface ApprovalModalSubmitPayload {
+  approvalNote: string;
+  rejectionReason: string;
+  soTietXacNhan: number | '';
+}
+
 interface ModalPheDuyetDonProps {
   isOpen: boolean;
   selectedRequest: LeaveRequestData | null;
   approvalAction: 'APPROVE' | 'REJECT';
-  approvalNote: string;
-  rejectionReason: string;
   submitting: boolean;
-  soTietXacNhan?: number | '';
-  onChangeSoTietXacNhan?: (val: number | '') => void;
-  onChangeApprovalNote: (val: string) => void;
-  onChangeRejectionReason: (val: string) => void;
   isValidAttachmentUrl: (url?: string) => boolean;
   getAttachmentFullUrl: (url?: string) => string;
   onOpenAttachment?: (url?: string, download?: boolean) => void;
   onClose: () => void;
-  onSubmit: (e: React.FormEvent) => void;
+  onSubmit: (payload: ApprovalModalSubmitPayload) => void;
 }
 
-export const ModalPheDuyetDon: React.FC<ModalPheDuyetDonProps> = ({
+export const ModalPheDuyetDon: React.FC<ModalPheDuyetDonProps> = React.memo(({
   isOpen,
   selectedRequest,
   approvalAction,
-  approvalNote,
-  rejectionReason,
   submitting,
-  soTietXacNhan,
-  onChangeSoTietXacNhan,
-  onChangeApprovalNote,
-  onChangeRejectionReason,
   isValidAttachmentUrl,
   getAttachmentFullUrl,
   onOpenAttachment,
   onClose,
   onSubmit,
 }) => {
+  const approvalNoteRef = useRef<HTMLTextAreaElement>(null);
+  const rejectionReasonRef = useRef<HTMLTextAreaElement>(null);
+  const soTietXacNhanRef = useRef<HTMLInputElement>(null);
+
   if (!isOpen || !selectedRequest) return null;
 
   const attachmentUrl = selectedRequest.tep_dinh_kem || undefined;
+  const requiresConfirmedPeriods = Boolean(
+    selectedRequest.lich_trinh_id || selectedRequest.lich_trinh || selectedRequest.nhat_ky?.lich_trinh_id
+  );
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const rawPeriods = soTietXacNhanRef.current?.value ?? '';
+    onSubmit({
+      approvalNote: approvalNoteRef.current?.value ?? '',
+      rejectionReason: rejectionReasonRef.current?.value ?? '',
+      soTietXacNhan: rawPeriods === '' ? '' : Number(rawPeriods),
+    });
+  };
 
   return (
     <Portal>
@@ -71,7 +82,11 @@ export const ModalPheDuyetDon: React.FC<ModalPheDuyetDonProps> = ({
             </button>
           </div>
 
-          <form onSubmit={onSubmit} className="flex flex-col flex-1 min-h-0">
+          <form
+            key={`${selectedRequest.id}-${approvalAction}`}
+            onSubmit={handleFormSubmit}
+            className="flex flex-col flex-1 min-h-0"
+          >
             <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3.5 text-xs">
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
                 <div>
@@ -126,18 +141,18 @@ export const ModalPheDuyetDon: React.FC<ModalPheDuyetDonProps> = ({
 
               {approvalAction === 'APPROVE' ? (
                 <div className="space-y-3">
-                  {selectedRequest.loai_don === 'giai_trinh_thieu_check_out' && onChangeSoTietXacNhan && (
+                  {selectedRequest.loai_don === 'giai_trinh_thieu_check_out' && (
                     <div>
                       <label className="block font-bold text-purple-700 dark:text-purple-400 mb-1">
-                        Số tiết xác nhận {selectedRequest.lich_trinh_id || selectedRequest.lich_trinh || selectedRequest.nhat_ky?.lich_trinh_id ? <span className="text-rose-500">*</span> : null}
+                        Số tiết xác nhận {requiresConfirmedPeriods ? <span className="text-rose-500">*</span> : null}
                       </label>
                       <input
+                        ref={soTietXacNhanRef}
                         type="number"
                         min={1}
                         max={15}
-                        required={Boolean(selectedRequest.lich_trinh_id || selectedRequest.lich_trinh || selectedRequest.nhat_ky?.lich_trinh_id)}
-                        value={soTietXacNhan ?? ''}
-                        onChange={(e) => onChangeSoTietXacNhan(e.target.value === '' ? '' : Number(e.target.value))}
+                        required={requiresConfirmedPeriods}
+                        defaultValue=""
                         placeholder="Nhập số tiết giảng viên đã dạy (ví dụ: 3)"
                         className="w-full px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-300 dark:border-purple-800 text-slate-900 dark:text-slate-100"
                       />
@@ -149,8 +164,8 @@ export const ModalPheDuyetDon: React.FC<ModalPheDuyetDonProps> = ({
                       Ghi chú phê duyệt (không bắt buộc):
                     </label>
                     <textarea
-                      value={approvalNote}
-                      onChange={(e) => onChangeApprovalNote(e.target.value)}
+                      ref={approvalNoteRef}
+                      defaultValue=""
                       placeholder="Đã thu xếp kế hoạch giảng dạy / đồng ý cho nghỉ..."
                       rows={2}
                       className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
@@ -163,8 +178,8 @@ export const ModalPheDuyetDon: React.FC<ModalPheDuyetDonProps> = ({
                     Lý do từ chối (bắt buộc):
                   </label>
                   <textarea
-                    value={rejectionReason}
-                    onChange={(e) => onChangeRejectionReason(e.target.value)}
+                    ref={rejectionReasonRef}
+                    defaultValue=""
                     placeholder="Nêu rõ lý do không đồng ý (trùng lịch thi, chưa có người dạy thay...)"
                     rows={3}
                     className="w-full px-3 py-2 rounded-lg bg-rose-50/50 dark:bg-rose-950/20 border border-rose-300 dark:border-rose-800 text-slate-900 dark:text-slate-100"
@@ -200,4 +215,6 @@ export const ModalPheDuyetDon: React.FC<ModalPheDuyetDonProps> = ({
       </div>
     </Portal>
   );
-};
+});
+
+ModalPheDuyetDon.displayName = 'ModalPheDuyetDon';
