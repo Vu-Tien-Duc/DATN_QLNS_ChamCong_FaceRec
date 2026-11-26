@@ -141,13 +141,172 @@ interface ThemeState {
   resetAppearance: () => void;
 }
 
+type SlateShadeKey = '50' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '850' | '900' | '950';
+
+const DEFAULT_SLATE_SHADES: Record<SlateShadeKey, string> = {
+  50: '237 241 247',
+  100: '226 232 240',
+  200: '203 213 225',
+  300: '158 176 199',
+  400: '148 163 184',
+  500: '82 98 122',
+  600: '63 79 102',
+  700: '55 73 102',
+  800: '38 53 79',
+  850: '30 44 68',
+  900: '23 34 54',
+  950: '15 23 42',
+};
+
+export interface ThemePresetMeta {
+  id: Exclude<ThemeMode, 'system'>;
+  label: string;
+  desc: string;
+  isDark: boolean;
+  accent: AccentColor;
+  pageBg: string;
+  surfaceBg: string;
+  borderColor: string;
+  swatchHex: string;
+  slateShades: Record<SlateShadeKey, string>;
+}
+
+export const THEME_PRESETS: ThemePresetMeta[] = [
+  {
+    id: 'light',
+    label: 'Sáng Chuẩn',
+    desc: 'Nền trắng xanh NTU',
+    isDark: false,
+    accent: 'indigo',
+    pageBg: '#F8F9FC',
+    surfaceBg: '#FFFFFF',
+    borderColor: '#CBD5E1',
+    swatchHex: '#4F46E5',
+    slateShades: DEFAULT_SLATE_SHADES,
+  },
+  {
+    id: 'warm',
+    label: 'Sáng Kem Ấm',
+    desc: 'Nền giấy kem rõ nét',
+    isDark: false,
+    accent: 'amber',
+    pageBg: '#EFE4CE',
+    surfaceBg: '#FAF3E4',
+    borderColor: '#D6C29F',
+    swatchHex: '#B45309',
+    slateShades: {
+      50: '239 228 206',
+      100: '229 214 185',
+      200: '214 194 159',
+      300: '186 162 126',
+      400: '145 121 90',
+      500: '107 86 60',
+      600: '82 64 43',
+      700: '64 49 32',
+      800: '46 34 21',
+      850: '37 27 16',
+      900: '29 21 12',
+      950: '20 14 8',
+    },
+  },
+  {
+    id: 'mint',
+    label: 'Sáng Xanh Ngọc',
+    desc: 'Nền xanh bạc hà dịu',
+    isDark: false,
+    accent: 'emerald',
+    pageBg: '#D4EFE4',
+    surfaceBg: '#ECF9F3',
+    borderColor: '#9CD3BE',
+    swatchHex: '#059669',
+    slateShades: {
+      50: '212 239 228',
+      100: '192 229 214',
+      200: '156 211 190',
+      300: '112 184 157',
+      400: '72 145 119',
+      500: '45 107 86',
+      600: '31 84 67',
+      700: '22 66 52',
+      800: '15 48 38',
+      850: '11 38 30',
+      900: '8 29 23',
+      950: '4 19 15',
+    },
+  },
+  {
+    id: 'dark',
+    label: 'Tối Tiêu Chuẩn',
+    desc: 'Nền xanh xám Slate',
+    isDark: true,
+    accent: 'indigo',
+    pageBg: '#0F172A',
+    surfaceBg: '#172236',
+    borderColor: '#374966',
+    swatchHex: '#6366F1',
+    slateShades: DEFAULT_SLATE_SHADES,
+  },
+  {
+    id: 'midnight',
+    label: 'Tối Đen Tuyền',
+    desc: 'Nền đen thuần OLED',
+    isDark: true,
+    accent: 'blue',
+    pageBg: '#000000',
+    surfaceBg: '#0A0A0D',
+    borderColor: '#27272A',
+    swatchHex: '#3B82F6',
+    slateShades: {
+      50: '244 244 245',
+      100: '228 228 231',
+      200: '212 212 216',
+      300: '161 161 170',
+      400: '132 132 142',
+      500: '96 96 106',
+      600: '68 68 76',
+      700: '46 46 54',
+      800: '28 28 34',
+      850: '18 18 23',
+      900: '10 10 13',
+      950: '0 0 0',
+    },
+  },
+  {
+    id: 'forest',
+    label: 'Tối Tím Đêm',
+    desc: 'Nền tím than huyền bí',
+    isDark: true,
+    accent: 'violet',
+    pageBg: '#110B22',
+    surfaceBg: '#1B1336',
+    borderColor: '#3B2B63',
+    swatchHex: '#8B5CF6',
+    slateShades: {
+      50: '243 240 255',
+      100: '232 225 255',
+      200: '209 196 250',
+      300: '176 156 235',
+      400: '142 120 209',
+      500: '106 86 168',
+      600: '78 60 130',
+      700: '59 43 99',
+      800: '41 29 74',
+      850: '33 23 61',
+      900: '27 19 54',
+      950: '17 11 34',
+    },
+  },
+];
+
+const VALID_THEMES: ThemeMode[] = ['light', 'warm', 'mint', 'dark', 'midnight', 'forest', 'system'];
+
 const getInitialTheme = (): ThemeMode => {
-  if (typeof window === 'undefined') return 'system';
+  if (typeof window === 'undefined') return 'light';
   const saved = localStorage.getItem('app-theme') as ThemeMode;
-  if (saved && ['light', 'dark', 'system'].includes(saved)) {
+  if (saved && VALID_THEMES.includes(saved)) {
     return saved;
   }
-  return 'system';
+  return 'light';
 };
 
 const getInitialAccent = (): AccentColor => {
@@ -173,21 +332,25 @@ const getInitialReduceMotion = (): boolean => {
   return localStorage.getItem('app-reduce-motion') === 'true';
 };
 
-const resolveIsDark = (theme: ThemeMode): boolean => {
-  if (typeof window === 'undefined') return false;
-  if (theme === 'dark') return true;
-  if (theme === 'light') return false;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+const resolvePreset = (theme: ThemeMode): ThemePresetMeta => {
+  if (theme === 'system') {
+    const prefersDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return THEME_PRESETS.find((p) => p.id === (prefersDark ? 'dark' : 'light')) || THEME_PRESETS[0];
+  }
+  return THEME_PRESETS.find((p) => p.id === theme) || THEME_PRESETS[0];
 };
 
-const applyThemeToDOM = (isDark: boolean) => {
+const applyThemePresetToDOM = (preset: ThemePresetMeta) => {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  if (isDark) {
-    root.classList.add('dark');
-  } else {
-    root.classList.remove('dark');
-  }
+  root.setAttribute('data-theme', preset.id);
+  root.classList.toggle('dark', preset.isDark);
+  root.style.setProperty('--bg-page', preset.pageBg);
+  root.style.setProperty('--bg-surface', preset.surfaceBg);
+  root.style.setProperty('--border-subtle', preset.borderColor);
+  (Object.keys(preset.slateShades) as SlateShadeKey[]).forEach((shade) => {
+    root.style.setProperty(`--slate-${shade}`, preset.slateShades[shade]);
+  });
 };
 
 const applyAccentToDOM = (color: AccentColor) => {
@@ -212,22 +375,24 @@ const applyReduceMotionToDOM = (reduce: boolean) => {
 
 export const useThemeStore = create<ThemeState>((set, get) => {
   const initialTheme = getInitialTheme();
-  const initialIsDark = resolveIsDark(initialTheme);
-  const initialAccent = getInitialAccent();
+  const initialPreset = resolvePreset(initialTheme);
+  const initialIsDark = initialPreset.isDark;
+  const initialAccent = initialPreset.accent || getInitialAccent();
   const initialFontScale = getInitialFontScale();
   const initialReduceMotion = getInitialReduceMotion();
 
-  applyThemeToDOM(initialIsDark);
+  applyThemePresetToDOM(initialPreset);
   applyAccentToDOM(initialAccent);
   applyFontScaleToDOM(initialFontScale);
   applyReduceMotionToDOM(initialReduceMotion);
 
   if (typeof window !== 'undefined') {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (get().theme === 'system') {
-        const isDark = e.matches;
-        applyThemeToDOM(isDark);
-        set({ isDark });
+        const preset = resolvePreset('system');
+        applyThemePresetToDOM(preset);
+        applyAccentToDOM(preset.accent);
+        set({ isDark: preset.isDark, accentColor: preset.accent });
       }
     });
   }
@@ -240,10 +405,12 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     reduceMotion: initialReduceMotion,
 
     setTheme: (theme: ThemeMode) => {
-      const isDark = resolveIsDark(theme);
+      const preset = resolvePreset(theme);
       localStorage.setItem('app-theme', theme);
-      applyThemeToDOM(isDark);
-      set({ theme, isDark });
+      localStorage.setItem('app-accent-color', preset.accent);
+      applyThemePresetToDOM(preset);
+      applyAccentToDOM(preset.accent);
+      set({ theme, isDark: preset.isDark, accentColor: preset.accent });
     },
 
     toggleTheme: () => {
@@ -271,19 +438,19 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     },
 
     resetAppearance: () => {
-      const nextIsDark = resolveIsDark('system');
-      localStorage.setItem('app-theme', 'system');
-      localStorage.setItem('app-accent-color', 'indigo');
+      const preset = resolvePreset('light');
+      localStorage.setItem('app-theme', 'light');
+      localStorage.setItem('app-accent-color', preset.accent);
       localStorage.setItem('app-font-scale', 'normal');
       localStorage.setItem('app-reduce-motion', 'false');
-      applyThemeToDOM(nextIsDark);
-      applyAccentToDOM('indigo');
+      applyThemePresetToDOM(preset);
+      applyAccentToDOM(preset.accent);
       applyFontScaleToDOM('normal');
       applyReduceMotionToDOM(false);
       set({
-        theme: 'system',
-        isDark: nextIsDark,
-        accentColor: 'indigo',
+        theme: 'light',
+        isDark: preset.isDark,
+        accentColor: preset.accent,
         fontScale: 'normal',
         reduceMotion: false,
       });

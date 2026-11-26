@@ -412,8 +412,8 @@ export const attendanceApi = {
   /**
    * Sinh mã QR động TOTP (hiệu lực 20s)
    */
-  async generateQRCode(): Promise<any> {
-    const res = await apiClient.get<any>('/cham-cong/qr/tao-ma');
+  async generateQRCode(params?: { phong_hoc?: string; ca_id?: string; lich_trinh_id?: string }): Promise<any> {
+    const res = await apiClient.get<any>('/cham-cong/qr/tao-ma', { params });
     return res.data?.data || res.data;
   },
 

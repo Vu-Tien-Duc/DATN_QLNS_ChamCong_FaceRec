@@ -3,7 +3,6 @@ import {
   Palette,
   Sun,
   Moon,
-  Monitor,
   Check,
   RotateCcw,
   X,
@@ -11,43 +10,13 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Portal } from './CongDichChuyen';
-import { ACCENT_PALETTES, useThemeStore } from '../../stores/useGiaoDienStore';
-import { FontScale, ThemeMode } from '../../types/index';
+import { THEME_PRESETS, useThemeStore } from '../../stores/useGiaoDienStore';
+import { FontScale } from '../../types/index';
 
 interface ModalCaiDatGiaoDienProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const THEME_MODES: Array<{
-  id: ThemeMode;
-  label: string;
-  desc: string;
-  icon: React.ComponentType<{ className?: string }>;
-  previewClass: string;
-}> = [
-  {
-    id: 'light',
-    label: 'Sáng',
-    desc: 'Giao diện sáng chuẩn',
-    icon: Sun,
-    previewClass: 'bg-slate-50 border-slate-200',
-  },
-  {
-    id: 'dark',
-    label: 'Tối',
-    desc: 'Giao diện tối dịu mắt',
-    icon: Moon,
-    previewClass: 'bg-slate-900 border-slate-700',
-  },
-  {
-    id: 'system',
-    label: 'Hệ thống',
-    desc: 'Theo thiết bị OS',
-    icon: Monitor,
-    previewClass: 'bg-gradient-to-r from-slate-50 via-slate-300 to-slate-900 border-slate-400/50',
-  },
-];
 
 const FONT_SCALES: Array<{ id: FontScale; label: string; sample: string }> = [
   { id: 'compact', label: 'Nhỏ gọn', sample: '14.5px' },
@@ -59,11 +28,9 @@ export const ModalCaiDatGiaoDien: React.FC<ModalCaiDatGiaoDienProps> = ({ isOpen
   const {
     theme,
     isDark,
-    accentColor,
     fontScale,
     reduceMotion,
     setTheme,
-    setAccentColor,
     setFontScale,
     setReduceMotion,
     resetAppearance,
@@ -105,7 +72,7 @@ export const ModalCaiDatGiaoDien: React.FC<ModalCaiDatGiaoDienProps> = ({ isOpen
                   Cài Đặt Giao Diện
                 </h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Chọn chế độ Sáng / Tối và màu chủ đạo hệ thống
+                  Chọn chủ đề giao diện hoàn chỉnh &amp; cỡ chữ
                 </p>
               </div>
             </div>
@@ -122,42 +89,59 @@ export const ModalCaiDatGiaoDien: React.FC<ModalCaiDatGiaoDienProps> = ({ isOpen
 
           {/* Body */}
           <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar text-xs">
-            {/* 1. Chế độ hiển thị (Sáng / Tối / Hệ thống) */}
+            {/* 1. Chủ đề giao diện hoàn chỉnh (Sáng & Tối đa phong cách) */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="font-bold uppercase tracking-wider text-[11px] text-slate-500 dark:text-slate-400">
-                  1. Chế độ Sáng / Tối
+                  1. Chủ đề giao diện
                 </span>
                 <span className="text-[11px] font-semibold text-brand-600 dark:text-brand-400">
-                  {isDark ? 'Đang dùng nền Tối' : 'Đang dùng nền Sáng'}
+                  {isDark ? 'Tông nền Tối' : 'Tông nền Sáng'}
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5">
-                {THEME_MODES.map((m) => {
-                  const Icon = m.icon;
-                  const active = theme === m.id;
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {THEME_PRESETS.map((preset) => {
+                  const Icon = preset.isDark ? Moon : Sun;
+                  const active = theme === preset.id;
                   return (
                     <button
-                      key={m.id}
+                      key={preset.id}
                       type="button"
-                      onClick={() => setTheme(m.id)}
+                      onClick={() => setTheme(preset.id)}
                       className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-2 ${
                         active
                           ? 'border-brand-500 bg-brand-50/70 dark:bg-brand-950/50 ring-2 ring-brand-500/20'
                           : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800'
                       }`}
                     >
-                      <div className={`w-full h-7 rounded-lg border ${m.previewClass}`} />
+                      {/* Mini preview: nền + card + chấm màu nhấn */}
+                      <div
+                        className="w-full h-9 rounded-xl border p-1.5 flex items-center justify-between"
+                        style={{ backgroundColor: preset.pageBg, borderColor: preset.borderColor }}
+                      >
+                        <div
+                          className="h-full w-3/4 rounded-md border flex items-center px-1.5 gap-1"
+                          style={{ backgroundColor: preset.surfaceBg, borderColor: preset.borderColor }}
+                        >
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: preset.swatchHex }} />
+                          <span
+                            className="h-1.5 w-8 rounded-full opacity-35"
+                            style={{ backgroundColor: preset.isDark ? '#E2E8F0' : '#334155' }}
+                          />
+                        </div>
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: preset.swatchHex }} />
+                      </div>
+
                       <div className="flex items-center justify-between gap-1">
-                        <span className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                          <Icon className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
-                          {m.label}
+                        <span className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1 text-[11px] sm:text-xs whitespace-nowrap">
+                          <Icon className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />
+                          <span>{preset.label}</span>
                         </span>
                         {active && <Check className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />}
                       </div>
                       <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
-                        {m.desc}
+                        {preset.desc}
                       </span>
                     </button>
                   );
@@ -165,45 +149,12 @@ export const ModalCaiDatGiaoDien: React.FC<ModalCaiDatGiaoDienProps> = ({ isOpen
               </div>
             </div>
 
-            {/* 2. Màu chủ đạo hệ thống */}
-            <div className="space-y-2.5">
-              <span className="block font-bold uppercase tracking-wider text-[11px] text-slate-500 dark:text-slate-400">
-                2. Màu sắc chủ đạo
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {ACCENT_PALETTES.map((palette) => {
-                  const active = accentColor === palette.id;
-                  return (
-                    <button
-                      key={palette.id}
-                      type="button"
-                      onClick={() => setAccentColor(palette.id)}
-                      className={`px-3 py-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                        active
-                          ? 'border-brand-500 bg-brand-50/70 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 font-bold ring-2 ring-brand-500/20'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="w-4 h-4 rounded-full shrink-0 shadow-xs ring-2 ring-white dark:ring-slate-900"
-                          style={{ backgroundColor: palette.swatchHex }}
-                        />
-                        <span className="truncate">{palette.label}</span>
-                      </span>
-                      {active && <Check className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 3. Cỡ chữ & Hiệu ứng */}
+            {/* 2. Cỡ chữ & Hiệu ứng */}
             <div className="space-y-3 pt-1">
               <div className="space-y-2">
                 <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px] text-slate-500 dark:text-slate-400">
                   <Type className="w-3.5 h-3.5" />
-                  <span>3. Kích thước chữ</span>
+                  <span>2. Kích thước chữ</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/70 dark:border-slate-700/60">
                   {FONT_SCALES.map((fs) => {

@@ -4,6 +4,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme sáng phụ (warm / mint): đồng bộ toàn bộ nền trắng (Sidebar, Header, Card, Modal) sang màu surface */
+html[data-theme="warm"] .bg-white,
+html[data-theme="warm"] .bg-white\/95,
+html[data-theme="warm"] .bg-white\/90,
+html[data-theme="warm"] .bg-white\/80,
+html[data-theme="warm"] .bg-white\/70,
+html[data-theme="mint"] .bg-white,
+html[data-theme="mint"] .bg-white\/95,
+html[data-theme="mint"] .bg-white\/90,
+html[data-theme="mint"] .bg-white\/80,
+html[data-theme="mint"] .bg-white\/70 {
+  background-color: var(--bg-surface) !important;
+}
+
 @layer base {
   :root {
     --bg-page: #F8F9FC;
@@ -13,6 +27,18 @@
     --border-medium: #9eb0c7;
     --text-main: #0f172a;
     --text-muted: #52627a;
+    --slate-50: 237 241 247;
+    --slate-100: 226 232 240;
+    --slate-200: 203 213 225;
+    --slate-300: 158 176 199;
+    --slate-400: 148 163 184;
+    --slate-500: 82 98 122;
+    --slate-600: 63 79 102;
+    --slate-700: 55 73 102;
+    --slate-800: 38 53 79;
+    --slate-850: 30 44 68;
+    --slate-900: 23 34 54;
+    --slate-950: 15 23 42;
     --brand-primary: #4f46e5;
     --brand-50: 238 242 255;
     --brand-100: 224 231 255;
@@ -169,17 +195,17 @@
 
 @layer utilities {
   .glass-card {
-    background: rgba(255, 255, 255, 0.96);
+    background: var(--bg-surface);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-subtle);
   }
 
   .dark .glass-card {
-    background: rgba(23, 34, 54, 0.94);
+    background: var(--bg-surface);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    border: 1px solid #374966;
+    border: 1px solid var(--border-subtle);
   }
 
   .glass-card-hover {

@@ -16,14 +16,19 @@ import {
   ShieldCheck,
   KeyRound,
   Sparkles,
+  Upload,
+  Maximize2,
+  Minimize2,
+  Building2,
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import QRCode from 'qrcode';
 import toast from 'react-hot-toast';
 import confetti from 'canvas-confetti';
-import { apiClient } from '../../../api/apiClient';
+import { apiClient, extractArray } from '../../../api/apiClient';
 import { attendanceApi, AttendancePunchResult } from '../../../api/chamCong.api';
 import { shiftApi, ShiftItem } from '../../../api/caLamViec.api';
+import { scheduleApi } from '../../../api/lichTrinh.api';
 import { useAuthStore } from '../../../stores/useXacThucStore';
 import { audioFeedback } from '../../../utils/amThanh';
 import { cameraManager } from '../../../utils/quanLyCamera';
@@ -121,6 +126,10 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
   const [qrCountdown, setQrCountdown] = useState<number>(20);
   const [loadingDynamicQr, setLoadingDynamicQr] = useState<boolean>(false);
   const [copiedToken, setCopiedToken] = useState<boolean>(false);
+  const [isKioskFullscreen, setIsKioskFullscreen] = useState<boolean>(false);
+  const [availableRooms, setAvailableRooms] = useState<string[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<string>('');
+  const qrFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Tải cấu hình khuôn viên & danh sách ca
   useEffect(() => {
@@ -364,11 +373,42 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
     return () => clearInterval(timer);
   }, [mode, qrSubMode, isQrCamActive, submitQrToken]);
 
-  // Sinh mã QR động 20s cho Kiosk / Giảng đường
+  // Tải danh sách phòng học có lịch hôm nay cho chế độ Phát QR Kiosk
+  useEffect(() => {
+    if (!allowKioskQrDisplay) return;
+    let active = true;
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const todayIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    scheduleApi
+      .getTodaySchedules({ ngay: todayIso })
+      .then((res) => {
+        if (!active) return;
+        const list = extractArray<any>(res?.data || []);
+        const roomSet = new Set<string>();
+        list.forEach((item: any) => {
+          const r = String(item?.phong_hoc || '').trim();
+          if (r && !/online|zoom|meet|teams/i.test(r)) {
+            roomSet.add(r);
+          }
+        });
+        setAvailableRooms(Array.from(roomSet).sort((a, b) => a.localeCompare(b, 'vi')));
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [allowKioskQrDisplay]);
+
+  // Sinh mã QR động 20s cho Kiosk / Giảng đường (theo phòng đã chọn)
   const loadDynamicQr = useCallback(async () => {
     setLoadingDynamicQr(true);
     try {
-      const res = await attendanceApi.generateQRCode();
+      const res = await attendanceApi.generateQRCode(
+        selectedRoom ? { phong_hoc: selectedRoom } : undefined
+      );
       const token = res?.qrToken || res?.ma_qr || '';
       if (!token) throw new Error('Không nhận được mã QR từ máy chủ.');
       const dataUrl = await QRCode.toDataURL(token, {
@@ -381,7 +421,7 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
         qrToken: token,
         dataUrl,
         expiresIn,
-        room: res?.qrPayload?.room || 'MAY_CHAM_CONG',
+        room: res?.qrPayload?.room || selectedRoom || 'MAY_CHAM_CONG',
       });
       setQrCountdown(expiresIn);
     } catch (err: any) {
@@ -389,7 +429,7 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
     } finally {
       setLoadingDynamicQr(false);
     }
-  }, []);
+  }, [selectedRoom]);
 
   useEffect(() => {
     if (mode === 'qr' && qrSubMode === 'display') {
@@ -422,6 +462,45 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
     } catch {
       toast.error('Không thể sao chép vào bộ nhớ tạm.');
     }
+  };
+
+  // Giải mã QR từ ảnh tải lên (chụp màn hình hoặc thư viện ảnh)
+  const handleQrImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const img = new Image();
+    const objUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas không khả dụng');
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'attemptBoth',
+        });
+        if (code?.data) {
+          setQrTokenInput(code.data);
+          submitQrToken(code.data);
+        } else {
+          toast.error('Không tìm thấy mã QR hợp lệ trong ảnh đã chọn.');
+        }
+      } catch {
+        toast.error('Không thể đọc ảnh mã QR.');
+      } finally {
+        URL.revokeObjectURL(objUrl);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objUrl);
+      toast.error('Tệp ảnh không hợp lệ.');
+    };
+    img.src = objUrl;
   };
 
   // =========================================================================
@@ -684,19 +763,38 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
         </div>
 
         {qrSubMode === 'scan' && (
-          <button
-            type="button"
-            onClick={isQrCamActive ? stopQrCamera : startQrCamera}
-            disabled={qrCamLoading}
-            className={`h-9 px-3 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 border transition-colors cursor-pointer ${
-              isQrCamActive
-                ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800'
-                : 'bg-brand-600 text-white border-brand-600 hover:bg-brand-700'
-            }`}
-          >
-            {isQrCamActive ? <CameraOff className="w-3.5 h-3.5" /> : <Camera className="w-3.5 h-3.5" />}
-            <span>{isQrCamActive ? 'Tắt Camera QR' : 'Mở Camera Quét QR'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={qrFileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleQrImageUpload}
+            />
+            <button
+              type="button"
+              onClick={() => qrFileInputRef.current?.click()}
+              disabled={isSubmitting}
+              className="h-9 px-3 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+              title="Tải ảnh chứa mã QR để điểm danh"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>Tải ảnh QR</span>
+            </button>
+            <button
+              type="button"
+              onClick={isQrCamActive ? stopQrCamera : startQrCamera}
+              disabled={qrCamLoading}
+              className={`h-9 px-3 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 border transition-colors cursor-pointer ${
+                isQrCamActive
+                  ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800'
+                  : 'bg-brand-600 text-white border-brand-600 hover:bg-brand-700'
+              }`}
+            >
+              {isQrCamActive ? <CameraOff className="w-3.5 h-3.5" /> : <Camera className="w-3.5 h-3.5" />}
+              <span>{isQrCamActive ? 'Tắt Camera QR' : 'Mở Camera Quét QR'}</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -780,9 +878,32 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
       ) : (
         /* Sub-mode 2: Hiển thị mã QR động 20s cho Kiosk / Giảng đường */
         <div className="flex flex-col items-center text-center py-3 space-y-4">
+          <div className="w-full max-w-xs space-y-1.5 text-left">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+              <span>Chọn phòng học / vị trí đặt trạm QR</span>
+            </label>
+            <select
+              value={selectedRoom}
+              onChange={(e) => setSelectedRoom(e.target.value)}
+              className="w-full h-9 px-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+            >
+              <option value="">Trạm điểm danh chung (Sảnh chính)</option>
+              {availableRooms.map((room) => (
+                <option key={room} value={room}>
+                  {room}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 border border-brand-200/70 dark:border-brand-800/60 text-[11px] font-semibold">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Mã QR TOTP ký HMAC-SHA256 • Tự làm mới mỗi 20 giây</span>
+            <span>
+              {dynamicQrData?.room && dynamicQrData.room !== 'MAY_CHAM_CONG'
+                ? `Phòng: ${dynamicQrData.room} • Tự làm mới mỗi 20s`
+                : 'Trạm chung • Tự làm mới mỗi 20 giây'}
+            </span>
           </div>
 
           <div className="p-4 rounded-2xl bg-white border-2 border-slate-200/90 shadow-sm relative">
@@ -825,7 +946,7 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
               onClick={loadDynamicQr}
@@ -844,7 +965,67 @@ export const KhungDiemDanhTrucTuyenVaQr: React.FC<KhungDiemDanhTrucTuyenVaQrProp
               {copiedToken ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedToken ? 'Đã sao chép' : 'Sao chép Token'}</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setIsKioskFullscreen(true)}
+              disabled={!dynamicQrData?.dataUrl}
+              className="h-9 px-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span>Phóng to Kiosk</span>
+            </button>
           </div>
+
+          {/* Chế độ chiếu toàn màn hình (mô phỏng màn hình QR đặt tại cửa phòng) */}
+          {isKioskFullscreen && dynamicQrData?.dataUrl && (
+            <div className="fixed inset-0 z-[110] bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-white">
+              <button
+                type="button"
+                onClick={() => setIsKioskFullscreen(false)}
+                className="absolute top-5 right-5 h-10 px-4 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-bold inline-flex items-center gap-2 cursor-pointer"
+              >
+                <Minimize2 className="w-4 h-4" />
+                <span>Thu nhỏ</span>
+              </button>
+
+              <div className="max-w-md w-full flex flex-col items-center text-center gap-5">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 text-xs font-bold">
+                  <QrCode className="w-4 h-4" />
+                  <span>
+                    TRẠM ĐIỂM DANH QR •{' '}
+                    {dynamicQrData.room === 'MAY_CHAM_CONG' ? 'SẢNH CHÍNH (CHUNG)' : dynamicQrData.room}
+                  </span>
+                </div>
+
+                <div className="p-6 rounded-3xl bg-white shadow-2xl">
+                  <img
+                    src={dynamicQrData.dataUrl}
+                    alt="Mã QR điểm danh Kiosk"
+                    className="w-[300px] h-[300px] object-contain"
+                  />
+                </div>
+
+                <div className="w-full max-w-xs space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-300 font-medium">Tự làm mới sau</span>
+                    <span className={`font-mono font-black text-lg ${qrCountdown <= 5 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {qrCountdown}s
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-1000 ${qrCountdown <= 5 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                      style={{ width: `${Math.max(0, Math.min(100, (qrCountdown / (dynamicQrData.expiresIn || 20)) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-400">
+                  Giảng viên mở mục <b className="text-white">Điểm Danh AI & QR → Quét mã QR động</b> trên thiết bị cá nhân để quét mã này.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

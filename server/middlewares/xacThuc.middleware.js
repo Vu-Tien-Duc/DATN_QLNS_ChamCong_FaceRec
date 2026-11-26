@@ -17,6 +17,17 @@ const getJwtSecret = () => {
   throw new Error('JWT_SECRET chưa được cấu hình trên môi trường production.');
 };
 
+const AUTH_USER_CACHE_TTL_MS = 15000;
+const authUserCache = new Map();
+
+const invalidateAuthUserCache = (userId) => {
+  if (!userId) {
+    authUserCache.clear();
+    return;
+  }
+  authUserCache.delete(String(userId).toLowerCase());
+};
+
 // Xác thực JWT Bearer token, kiểm tra thu hồi và nạp thông tin người dùng vào req.user
 const verifyToken = async (req, res, next) => {
   try {
@@ -60,28 +71,43 @@ const verifyToken = async (req, res, next) => {
       return sendError(res, 'Token đã bị vô hiệu hóa do đăng xuất. Vui lòng đăng nhập lại.', null, 401);
     }
 
-    const user = await NguoiDung.findByPk(tokenUserId, {
-      attributes: [
-        'id',
-        'vai_tro_chinh',
-        'don_vi_chinh_id',
-        'kich_hoat',
-        'trang_thai_lam_viec',
-        'doi_mat_khau_luc',
-        'phien_ban_token',
-        'ho_ten',
-        'email',
-        'ma_can_bo',
-        'anh_dai_dien',
-      ],
-      include: [
-        {
-          model: VaiTroNguoiDung,
-          as: 'danh_sach_vai_tro',
-          attributes: ['id', 'ma_vai_tro', 'pham_vi', 'don_vi_id', 'duoc_uy_quyen', 'tu_ngay', 'den_ngay'],
-        },
-      ],
-    });
+    const cacheKey = String(tokenUserId).toLowerCase();
+    const useCache = process.env.NODE_ENV !== 'test';
+    const cachedEntry = useCache ? authUserCache.get(cacheKey) : null;
+    let user = cachedEntry && cachedEntry.expiresAt > Date.now() ? cachedEntry.user : null;
+
+    if (!user) {
+      user = await NguoiDung.findByPk(tokenUserId, {
+        attributes: [
+          'id',
+          'vai_tro_chinh',
+          'don_vi_chinh_id',
+          'kich_hoat',
+          'trang_thai_lam_viec',
+          'doi_mat_khau_luc',
+          'phien_ban_token',
+          'ho_ten',
+          'email',
+          'ma_can_bo',
+          'anh_dai_dien',
+        ],
+        include: [
+          {
+            model: VaiTroNguoiDung,
+            as: 'danh_sach_vai_tro',
+            attributes: ['id', 'ma_vai_tro', 'pham_vi', 'don_vi_id', 'duoc_uy_quyen', 'tu_ngay', 'den_ngay'],
+          },
+        ],
+      });
+
+      if (useCache && user) {
+        if (authUserCache.size > 500) authUserCache.clear();
+        authUserCache.set(cacheKey, {
+          user,
+          expiresAt: Date.now() + AUTH_USER_CACHE_TTL_MS,
+        });
+      }
+    }
 
     if (!user) {
       return sendError(res, 'Người dùng không tồn tại trên hệ thống.', null, 401);
@@ -344,4 +370,5 @@ module.exports = {
   verifyTerminalKey,
   getActiveRoles,
   getUserPermissions,
+  invalidateAuthUserCache,
 };

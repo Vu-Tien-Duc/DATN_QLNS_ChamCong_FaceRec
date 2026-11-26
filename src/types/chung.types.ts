@@ -9,7 +9,7 @@ export interface StatMetric {
   iconName: string;
 }
 
-export type ThemeMode = 'light' | 'dark' | 'system';
+export type ThemeMode = 'light' | 'warm' | 'mint' | 'dark' | 'midnight' | 'forest' | 'system';
 
 export type AccentColor = 'indigo' | 'blue' | 'emerald' | 'violet' | 'rose' | 'amber';
 

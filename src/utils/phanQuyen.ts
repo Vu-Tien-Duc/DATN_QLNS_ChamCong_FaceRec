@@ -130,21 +130,12 @@ export const canPersonalCheckIn = (user: UserProfile | null | undefined): boolea
 };
 
 /**
- * Kiểm tra quyền vận hành Trạm điểm danh Kiosk & phát mã QR động (20s).
- * Chỉ cấp Quản trị / BGH / TCCB / Đào tạo / Lãnh đạo đơn vị được phép phát mã QR động.
- * Giảng viên / nhân viên thông thường KHÔNG được tự sinh mã QR để chống gian lận điểm danh hộ.
+ * Kiểm tra quyền phát mã QR động (20s) mô phỏng màn hình QR đặt trước cửa phòng học / trạm điểm danh.
+ * Chỉ Quản trị viên IT ('admin' — tài khoản không tự chấm công cá nhân) mới được phát mã QR mô phỏng,
+ * tránh việc các vai trò quản lý vừa tự phát mã QR vừa tự quét cho bản thân.
  */
 export const KIOSK_OPERATOR_ROLES = [
   'admin',
-  'bgh',
-  'tccb',
-  'dao_tao',
-  'truong_khoa',
-  'pho_khoa',
-  'truong_bo_mon',
-  'pho_bo_mon',
-  'truong_phong',
-  'pho_phong',
 ] as const;
 
 export const canOperateAttendanceKiosk = (user: UserProfile | null | undefined): boolean => {

@@ -15,6 +15,8 @@ const dialectOptions = {
     encrypt: dbEncrypt,
     trustServerCertificate: dbTrustServerCertificate,
     enableArithAbort: true,
+    requestTimeout: 30000,
+    connectTimeout: 15000,
   },
 };
 

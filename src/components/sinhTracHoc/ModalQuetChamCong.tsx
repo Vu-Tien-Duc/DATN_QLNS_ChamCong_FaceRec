@@ -116,6 +116,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
   const stableFaceCountRef = useRef<number>(0);
   const isExecutingRef = useRef<boolean>(false);
   const cooldownUntilRef = useRef<number>(0);
+  const cachedCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     setActiveMode(initialMode);
@@ -123,8 +124,8 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
 
   useEffect(() => {
     const pCanvas = document.createElement('canvas');
-    pCanvas.width = 320;
-    pCanvas.height = 240;
+    pCanvas.width = 480;
+    pCanvas.height = 360;
     processCanvasRef.current = pCanvas;
   }, []);
 
@@ -172,7 +173,27 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       isExecutingRef.current = false;
       cooldownUntilRef.current = Date.now() + 600;
 
-      // 1. Kiểm tra trạng thái đăng ký Face ID
+      // Pre-fetch GPS vị trí trong nền để bước xác nhận không phải chờ
+      if (typeof navigator !== 'undefined' && navigator.geolocation && !cachedCoordsRef.current) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            cachedCoordsRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          },
+          () => {},
+          { timeout: 3000, enableHighAccuracy: false, maximumAge: 120000 }
+        );
+      }
+
+      // 1. Nếu store đã xác nhận đăng ký Face ID -> mở camera ngay, không cần gọi lại API check
+      const alreadyRegistered = Boolean(authUser?.da_dang_ky_face);
+      if (alreadyRegistered) {
+        setIsNotRegistered(false);
+        setCheckingRegistration(false);
+        setStatusText(`Đang quét khuôn mặt để ${activeMode === 'check-in' ? 'Check-in (Vào ca)' : 'Check-out (Tan ca)'}...`);
+        startCamera();
+        return;
+      }
+
       setCheckingRegistration(true);
       try {
         const res = await faceApi.getRegistrationStatus();
@@ -185,7 +206,6 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
             setCheckingRegistration(false);
             return;
           } else if (authUser && !authUser.da_dang_ky_face) {
-            // Tự động đồng bộ cờ da_dang_ky_face vào Zustand Store
             useAuthStore.getState().setUser({
               ...authUser,
               da_dang_ky_face: true,
@@ -194,12 +214,10 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
         }
       } catch (err: any) {
         if (isCancelled) return;
-        if (!authUser?.da_dang_ky_face) {
-          setIsNotRegistered(true);
-          setErrorMsg('Tài khoản của bạn chưa đăng ký khuôn mặt trong hệ thống.');
-          setCheckingRegistration(false);
-          return;
-        }
+        setIsNotRegistered(true);
+        setErrorMsg('Tài khoản của bạn chưa đăng ký khuôn mặt trong hệ thống.');
+        setCheckingRegistration(false);
+        return;
       } finally {
         if (!isCancelled) {
           setCheckingRegistration(false);
@@ -218,7 +236,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       isCancelled = true;
       stopCamera();
     };
-  }, [isOpen, activeMode, authUser?.id, authUser?.da_dang_ky_face]);
+  }, [isOpen, activeMode, authUser?.id]);
 
   // Khởi động Camera
   const startCamera = async () => {
@@ -311,17 +329,18 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       const blob = pendingBlobRef.current || (await captureHighQualityBlob());
       if (!blob) throw new Error('Không tìm thấy dữ liệu ảnh để hoàn tất.');
 
-      let coords: { lat: number; lng: number } | null = null;
-      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      let coords: { lat: number; lng: number } | null = cachedCoordsRef.current;
+      if (!coords && typeof navigator !== 'undefined' && navigator.geolocation) {
         try {
           const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 2500,
-              enableHighAccuracy: true,
-              maximumAge: 60000,
+              timeout: 1800,
+              enableHighAccuracy: false,
+              maximumAge: 120000,
             });
           });
           coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          cachedCoordsRef.current = coords;
         } catch {
           // Fallback sang cấu hình khuôn viên trường
         }
@@ -410,21 +429,21 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
 
         const now = performance.now();
 
-        // Gửi frame nhỏ (320x240) sang backend phát hiện khuôn mặt mỗi ~350ms
-        if (!isDetecting && now - lastDetectTime >= 350) {
+        // Gửi frame 480x360 chất lượng 0.85 sang backend mỗi ~250ms để tránh báo mờ giả
+        if (!isDetecting && now - lastDetectTime >= 250) {
           isDetecting = true;
           lastDetectTime = now;
 
           if (!processCanvasRef.current) {
             processCanvasRef.current = document.createElement('canvas');
-            processCanvasRef.current.width = 320;
-            processCanvasRef.current.height = 240;
+            processCanvasRef.current.width = 480;
+            processCanvasRef.current.height = 360;
           }
           const pCanvas = processCanvasRef.current;
           const pCtx = pCanvas.getContext('2d');
 
           if (pCtx) {
-            pCtx.drawImage(video, 0, 0, 320, 240);
+            pCtx.drawImage(video, 0, 0, 480, 360);
             pCanvas.toBlob(
               async (blob) => {
                 if (blob) {
@@ -441,7 +460,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                 }
               },
               'image/jpeg',
-              0.5
+              0.85
             );
           } else {
             isDetecting = false;
@@ -469,8 +488,8 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
     }
 
     setFaceDetected(true);
-    const scaleX = canvasW / 320;
-    const scaleY = canvasH / 240;
+    const scaleX = canvasW / 480;
+    const scaleY = canvasH / 360;
 
     const rawBox = data.bbox;
     const scaledBoxW = rawBox.width * scaleX;
@@ -516,10 +535,10 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       return;
     }
 
-    // Tự động kích hoạt nhận diện khi mặt ổn định 3 frame liên tiếp
+    // Tự động kích hoạt nhận diện khi mặt ổn định 2 frame liên tiếp (~0.5s)
     stableFaceCountRef.current += 1;
     if (
-      stableFaceCountRef.current >= 3 &&
+      stableFaceCountRef.current >= 2 &&
       Date.now() > cooldownUntilRef.current &&
       !isExecutingRef.current &&
       !successInfo &&
@@ -876,7 +895,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
         });
       }
     } catch (err: any) {
-      cooldownUntilRef.current = Date.now() + 4500;
+      cooldownUntilRef.current = Date.now() + 1500;
       stableFaceCountRef.current = 0;
       const displayMsg = err.message || 'Thao tác thất bại, vui lòng thử lại.';
       setStatusText(displayMsg);
@@ -1122,12 +1141,12 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
 
           {/* Khung Camera hoặc Màn hình Chưa đăng ký */}
           {checkingRegistration ? (
-            <div className="aspect-4/3 rounded-2xl bg-black/60 border-2 border-indigo-500/30 flex flex-col items-center justify-center gap-3 p-8 text-center">
+            <div className="aspect-[4/3] min-h-[320px] w-full rounded-2xl bg-black/60 border-2 border-indigo-500/30 flex flex-col items-center justify-center gap-3 p-8 text-center">
               <Loader2 className="w-10 h-10 animate-spin text-indigo-400" />
               <p className="text-sm font-bold text-slate-200">Đang kiểm tra dữ liệu Face ID...</p>
             </div>
           ) : isNotRegistered ? (
-            <div className="aspect-4/3 rounded-2xl bg-gradient-to-b from-amber-950/40 via-slate-900 to-black border-2 border-amber-500/40 flex flex-col items-center justify-center gap-4 p-8 text-center shadow-2xl relative overflow-hidden">
+            <div className="aspect-[4/3] min-h-[320px] w-full rounded-2xl bg-gradient-to-b from-amber-950/40 via-slate-900 to-black border-2 border-amber-500/40 flex flex-col items-center justify-center gap-4 p-8 text-center shadow-2xl relative overflow-hidden">
               <div className="w-16 h-16 rounded-3xl bg-amber-500/20 border-2 border-amber-400/50 flex items-center justify-center text-amber-300 shadow-xl shadow-amber-500/20 animate-bounce">
                 <AlertCircle className="w-8 h-8" />
               </div>
@@ -1154,7 +1173,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
               </button>
             </div>
           ) : (
-            <div className="relative aspect-4/3 rounded-2xl overflow-hidden bg-black border-2 border-indigo-500/40 flex items-center justify-center shadow-2xl">
+            <div className="relative aspect-[4/3] min-h-[320px] w-full rounded-2xl overflow-hidden bg-black border-2 border-indigo-500/40 flex items-center justify-center shadow-2xl">
               <video
                 ref={videoRef}
                 autoPlay
@@ -1195,10 +1214,10 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
               )}
 
               {submitting && (
-                <div className="absolute inset-0 bg-black/75 backdrop-blur-xs flex flex-col items-center justify-center gap-3 text-white z-20">
+                <div className="absolute inset-0 bg-black/75 backdrop-blur-xs flex flex-col items-center justify-center gap-3 text-white z-20 px-4 text-center">
                   <Loader2 className="w-10 h-10 animate-spin text-cyan-400" />
                   <p className="text-xs font-black tracking-wider uppercase text-cyan-200">
-                    Đang quét & nhận diện khuôn mặt...
+                    {statusText || 'Đang quét & nhận diện khuôn mặt...'}
                   </p>
                 </div>
               )}

@@ -25,18 +25,7 @@ const { isUserInDeanScope } = require('../utils/phamViTruongKhoa');
 const { hasAnyActiveRole, UNIT_LEADER_ROLES } = require('../utils/vaiTro.utils');
 
 const NON_ATTENDANCE_ROLES = ['admin'];
-const KIOSK_QR_ROLES = [
-  'admin',
-  'bgh',
-  'tccb',
-  'dao_tao',
-  'truong_khoa',
-  'pho_khoa',
-  'truong_bo_mon',
-  'pho_bo_mon',
-  'truong_phong',
-  'pho_phong',
-];
+const KIOSK_QR_ROLES = ['admin'];
 
 // Xác định người dùng mục tiêu và kiểm tra phạm vi lãnh đạo đơn vị khi xem/chấm công hộ
 const resolveAttendanceTarget = async (req, requestedUserId) => {

@@ -145,10 +145,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         },
         {
           id: 'face-kiosk',
-          name: 'Điểm Danh AI',
+          name: 'Điểm Danh AI & QR',
           path: '/diem-danh-khuon-mat',
           icon: Camera,
           excludeRoles: ['admin'],
+        },
+        {
+          id: 'admin-qr-kiosk',
+          name: 'Trạm QR Cửa Phòng',
+          path: '/diem-danh-khuon-mat?tab=qr',
+          icon: Camera,
+          roles: ['admin'],
         },
       ],
     },

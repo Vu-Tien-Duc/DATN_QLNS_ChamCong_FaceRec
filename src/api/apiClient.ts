@@ -137,7 +137,30 @@ apiClient.interceptors.response.use(
       error.response.data.message = formatFriendlyErrorMessage(error.response.data.message);
     }
 
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const originalRequest = error.config as InternalAxiosRequestConfig & {
+      _retry?: boolean;
+      _getRetryCount?: number;
+    };
+
+    // Tự động retry tối đa 2 lần cho GET khi server đang khởi động lại / lỗi proxy tạm thời (502/503/504 hoặc ECONNREFUSED)
+    const method = String(originalRequest?.method || '').toLowerCase();
+    const status = error.response?.status;
+    const isTransientProxyOrNetworkError =
+      (!error.response && error.code !== 'ECONNABORTED' && error.code !== 'ERR_CANCELED') ||
+      status === 502 ||
+      status === 503 ||
+      status === 504;
+
+    if (
+      originalRequest &&
+      method === 'get' &&
+      isTransientProxyOrNetworkError &&
+      (originalRequest._getRetryCount ?? 0) < 2
+    ) {
+      originalRequest._getRetryCount = (originalRequest._getRetryCount ?? 0) + 1;
+      await new Promise((resolve) => setTimeout(resolve, 800 * (originalRequest._getRetryCount ?? 1)));
+      return apiClient(originalRequest);
+    }
 
     const requestUrl = originalRequest?.url || '';
     const isAuthBypassRoute =

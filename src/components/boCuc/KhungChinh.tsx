@@ -73,7 +73,7 @@ export const MainLayout: React.FC = () => {
        Sidebar & main each manage their own overflow internally. */
     <div
       data-app-shell="true"
-      className="h-screen flex overflow-hidden bg-[#F8F9FC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200"
+      className="h-screen flex overflow-hidden bg-[var(--bg-page)] text-slate-900 dark:text-slate-100 transition-colors duration-200"
     >
       {/* Sidebar — fixed-height flex child on desktop, overlay on mobile */}
       <Sidebar

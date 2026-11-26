@@ -874,6 +874,7 @@ export const Schedules: React.FC = () => {
   // =============================================================================
 
   const openCreateModal = (initWeekday?: number, initShift?: ShiftItem, initUserId?: string) => {
+    if (!isAdminOrDean) return;
     setIsEditing(false);
     setSelectedSchedule(null);
     setConflictError(null);
@@ -1481,21 +1482,27 @@ export const Schedules: React.FC = () => {
                           }`}
                         >
                           {cellSchedules.length === 0 ? (
-                            /* Empty Cell: Compact pill on 1-day view, Centered "Trống" on 7-day grid */
+                            /* Empty Cell: Chỉ cấp quản lý mới có nút Thêm lịch khi rê chuột/click */
                             <div
-                              onClick={() => openCreateModal(day.weekday, shift)}
-                              title={`Thêm lịch vào ${day.label} (${shift.ten_ca})`}
+                              onClick={isAdminOrDean ? () => openCreateModal(day.weekday, shift) : undefined}
+                              title={isAdminOrDean ? `Thêm lịch vào ${day.label} (${shift.ten_ca})` : undefined}
                               className={`h-full ${
                                 isSingleDay ? 'min-h-[72px] flex-row gap-3 px-4' : 'min-h-[110px] flex-col p-2'
-                              } flex items-center justify-center text-center rounded-xl border border-dashed border-slate-200/70 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700/60 hover:bg-blue-50/20 dark:hover:bg-blue-950/20 cursor-pointer group/empty transition-all`}
+                              } flex items-center justify-center text-center rounded-xl ${
+                                isAdminOrDean
+                                  ? 'hover:bg-blue-50/30 dark:hover:bg-blue-950/20 cursor-pointer group/empty'
+                                  : ''
+                              } transition-all`}
                             >
-                              <span className="text-xs font-medium text-slate-400 group-hover/empty:hidden">
+                              <span className={`text-xs font-medium text-slate-400 ${isAdminOrDean ? 'group-hover/empty:hidden' : ''}`}>
                                 {isSingleDay ? 'Chưa có lịch giảng dạy trong ca này' : 'Trống'}
                               </span>
-                              <div className="hidden group-hover/empty:flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 py-1 px-3 rounded-lg shadow-2xs">
-                                <Plus className="w-3.5 h-3.5" />
-                                <span>{isSingleDay ? 'Thêm lịch vào ca này' : '+ Thêm'}</span>
-                              </div>
+                              {isAdminOrDean && (
+                                <div className="hidden group-hover/empty:flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 py-1 px-3 rounded-lg shadow-2xs">
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>{isSingleDay ? 'Thêm lịch vào ca này' : '+ Thêm'}</span>
+                                </div>
+                              )}
                             </div>
                           ) : (
                             /* Occupied Cell: Grid 2-3 cột gọn đẹp khi xem 1 ngày, Stacked Cards khi xem 7 ngày */

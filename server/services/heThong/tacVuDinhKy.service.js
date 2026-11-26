@@ -971,7 +971,7 @@ const initCronJobs = () => {
     } catch (e) {
       console.error('[Cron Service] Lỗi quét khởi động máy chủ:', e.message);
     }
-  }, 2000);
+  }, 8000);
 
   scheduledCronTasks.push(
     cron.schedule(

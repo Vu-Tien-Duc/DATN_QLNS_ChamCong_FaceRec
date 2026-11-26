@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Camera,
   CameraOff,
@@ -57,8 +58,15 @@ export const FaceAttendance: React.FC = () => {
   const allowPersonalCheckIn = canPersonalCheckIn(authUser);
   const allowKioskQrDisplay = canOperateAttendanceKiosk(authUser);
 
-  // Chế độ & Tính năng tự động
-  const [attendanceMethod, setAttendanceMethod] = useState<'face' | 'online' | 'qr'>('face');
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab');
+  // Chế độ & Tính năng tự động (Admin mặc định mở thẳng tab phát mã QR Kiosk)
+  const [attendanceMethod, setAttendanceMethod] = useState<'face' | 'online' | 'qr'>(() => {
+    if (initialTab === 'qr') return 'qr';
+    if (initialTab === 'online' && allowPersonalCheckIn) return 'online';
+    if (!allowPersonalCheckIn && allowKioskQrDisplay) return 'qr';
+    return 'face';
+  });
   const [actionType, setActionType] = useState<'check_in' | 'check_out'>('check_in');
   const [isAutoScan, setIsAutoScan] = useState<boolean>(true);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
@@ -89,7 +97,9 @@ export const FaceAttendance: React.FC = () => {
   // Khởi tạo camera khi vào trang và dập tắt hoàn toàn khi unmount
   useEffect(() => {
     isMountedRef.current = true;
-    startCamera();
+    if (!allowPersonalCheckIn && allowKioskQrDisplay) {
+      setAttendanceMethod('qr');
+    }
     loadRecentHistory();
     loadAiHealth();
     loadKhoiHomNay();
@@ -98,7 +108,7 @@ export const FaceAttendance: React.FC = () => {
       isMountedRef.current = false;
       stopCamera();
     };
-  }, []);
+  }, [allowPersonalCheckIn, allowKioskQrDisplay]);
 
   // C1: Tải thông tin khối ca hôm nay
   const loadKhoiHomNay = async () => {
@@ -470,10 +480,14 @@ export const FaceAttendance: React.FC = () => {
           1. HEADER CARD: TIÊU ĐỀ CHUẨN PAGEHEADER & THANH CÔNG CỤ TINH TẾ
       ===================================================================== */}
       <PageHeader
-        title="Điểm Danh Trực Tuyến & Sinh Trắc Học"
-        subtitle="Hỗ trợ nhận diện khuôn mặt AI 512D, điểm danh trực tuyến kèm định vị GPS và quét mã QR động TOTP."
-        icon={<ScanFace className="w-5 h-5" />}
-        badge="Đa phương thức"
+        title={allowPersonalCheckIn ? 'Điểm Danh Trực Tuyến & Sinh Trắc Học' : 'Trạm Phát Mã QR Cửa Phòng'}
+        subtitle={
+          allowPersonalCheckIn
+            ? 'Hỗ trợ nhận diện khuôn mặt AI 512D, điểm danh trực tuyến kèm định vị GPS và quét mã QR động TOTP.'
+            : 'Mô phỏng màn hình mã QR động đổi mỗi 20 giây đặt tại cửa phòng học / giảng đường để giảng viên quét điểm danh.'
+        }
+        icon={allowPersonalCheckIn ? <ScanFace className="w-5 h-5" /> : <QrCode className="w-5 h-5" />}
+        badge={allowPersonalCheckIn ? 'Đa phương thức' : 'QR Kiosk 20s'}
         badgeVariant="brand"
         actions={
           <>
@@ -566,9 +580,9 @@ export const FaceAttendance: React.FC = () => {
       />
 
       {/* =====================================================================
-          C1. BANNER KHỐI CA HÔM NAY
+          C1. BANNER KHỐI CA HÔM NAY (Chỉ hiển thị cho tài khoản có chấm công cá nhân)
       ===================================================================== */}
-      {khoiHomNay && (
+      {allowPersonalCheckIn && khoiHomNay && (
         <div
           className={`flex items-start gap-3 px-4 py-3 rounded-2xl border text-xs font-medium shadow-xs transition-all ${
             khoiHomNay.co_the_check_in
@@ -642,18 +656,20 @@ export const FaceAttendance: React.FC = () => {
       ===================================================================== */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
-          <button
-            type="button"
-            onClick={() => setAttendanceMethod('face')}
-            className={`h-9 px-4 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition-all cursor-pointer ${
-              attendanceMethod === 'face'
-                ? 'bg-brand-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/70'
-            }`}
-          >
-            <ScanFace className="w-4 h-4" />
-            <span>{allowPersonalCheckIn ? 'Face ID (AI 512D)' : 'Trạm Kiosk Face ID (1:N)'}</span>
-          </button>
+          {allowPersonalCheckIn && (
+            <button
+              type="button"
+              onClick={() => setAttendanceMethod('face')}
+              className={`h-9 px-4 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition-all cursor-pointer ${
+                attendanceMethod === 'face'
+                  ? 'bg-brand-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/70'
+              }`}
+            >
+              <ScanFace className="w-4 h-4" />
+              <span>Face ID (AI 512D)</span>
+            </button>
+          )}
 
           {allowPersonalCheckIn && (
             <button
@@ -704,8 +720,8 @@ export const FaceAttendance: React.FC = () => {
           2. MAIN WORKSPACE: KHUNG ĐIỂM DANH (TRÁI) & KẾT QUẢ / LỊCH SỬ (PHẢI)
       ===================================================================== */}
       <div className="grid grid-cols-1 xl:grid-cols-5 lg:grid-cols-2 gap-6 items-start">
-        {/* CỘT TRÁI: KHUNG ĐIỂM DANH THEO PHƯƠNG THỨC ĐÃ CHỌN (7 Cột) */}
-        <div className="xl:col-span-3 lg:col-span-1 space-y-4">
+        {/* CỘT TRÁI: KHUNG ĐIỂM DANH THEO PHƯƠNG THỨC ĐÃ CHỌN */}
+        <div className="xl:col-span-3 lg:col-span-1 space-y-4 min-w-0">
           {attendanceMethod !== 'face' ? (
             <KhungDiemDanhTrucTuyenVaQr
               mode={attendanceMethod}
@@ -720,6 +736,56 @@ export const FaceAttendance: React.FC = () => {
                 loadKhoiHomNay();
               }}
             />
+          ) : allowPersonalCheckIn ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-xs flex flex-col items-center text-center gap-5">
+              {/* Segmented Control Chọn Chế Độ Vào Ca / Tan Ca */}
+              <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80">
+                <button
+                  type="button"
+                  onClick={() => setActionType('check_in')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    actionType === 'check_in'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <span>Vào Ca (Check-in)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActionType('check_out')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    actionType === 'check_out'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <span>Tan Ca (Check-out)</span>
+                </button>
+              </div>
+
+              <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/70 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                <ScanFace className="w-8 h-8" />
+              </div>
+
+              <div className="space-y-1.5 max-w-md">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Chấm Công Khuôn Mặt AI Face ID
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Mở trình quét Face ID nhanh với nhận diện 512D, kiểm tra thực thể sống (Liveness) và đối chiếu thông tin trước khi ghi nhận công.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsScannerModalOpen(true)}
+                className="h-11 px-6 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-md shadow-indigo-500/20 inline-flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+              >
+                <Camera className="w-4 h-4" />
+                <span>Điểm danh Face ID</span>
+              </button>
+            </div>
           ) : (
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs space-y-4">
             {/* Thanh điều khiển trên Camera: Chế độ Vào/Tan Ca & Bật/Tắt Cam */}
@@ -981,7 +1047,7 @@ export const FaceAttendance: React.FC = () => {
         </div>
 
         {/* CỘT PHẢI: KẾT QUẢ VỪA QUÉT & LỊCH SỬ CHẤM CÔNG (5 Cột) */}
-        <div className="xl:col-span-2 lg:col-span-1 space-y-4">
+        <div className="xl:col-span-2 lg:col-span-1 space-y-4 min-w-0">
           {/* 1. THẺ KẾT QUẢ VỪA ĐIỂM DANH */}
           {lastResult ? (
             <div className="p-4 rounded-2xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 space-y-3 animate-fade-in">
@@ -1183,7 +1249,9 @@ export const FaceAttendance: React.FC = () => {
         mode={actionType === 'check_in' ? 'check-in' : 'check-out'}
         onClose={() => {
           setIsScannerModalOpen(false);
-          startCamera();
+          if (!allowPersonalCheckIn) {
+            startCamera();
+          }
         }}
         onSuccess={() => {
           loadRecentHistory();

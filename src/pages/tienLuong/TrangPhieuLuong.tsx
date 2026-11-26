@@ -139,11 +139,16 @@ function getAllowanceRows(p?: PayrollRecord | null): Array<{ label: string; amou
       return { label, amount: Number(item.so_tien || 0) };
     });
   }
-  return [
+  const rows = [
     { label: 'Phụ cấp chức vụ lãnh đạo', amount: Number(p.phu_cap_chuc_vu || 0) },
     { label: 'Phụ cấp thâm niên nghề giáo', amount: Number(p.phu_cap_tham_nien || 0) },
     { label: 'Phụ cấp ưu đãi nhà giáo', amount: Number(p.phu_cap_uu_dai_nghe || 0) },
   ].filter((item) => item.amount > 0);
+
+  if (rows.length === 0 && Number(p.tong_phu_cap || 0) > 0) {
+    return [{ label: 'Tổng phụ cấp (Chức vụ / Thâm niên / Ưu đãi)', amount: Number(p.tong_phu_cap) }];
+  }
+  return rows;
 }
 
 function getDeductionRows(p?: PayrollRecord | null): Array<{ label: string; amount: number }> {
@@ -969,32 +974,32 @@ export const Payroll: React.FC = () => {
 
           {/* Main Data Table Container */}
           <div className="flex flex-col">
-            <div className="w-full overflow-hidden">
-              <table className="w-full table-fixed text-left border-collapse">
+            <div className="w-full overflow-x-auto">
+              <table className="w-full min-w-[1040px] table-fixed text-left border-collapse">
                 <colgroup>
+                  <col style={{ width: '3%' }} />
+                  <col style={{ width: '19%' }} />
+                  <col style={{ width: '12.5%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '11.5%' }} />
+                  <col style={{ width: '10.5%' }} />
+                  <col style={{ width: '11.5%' }} />
+                  <col style={{ width: '10.5%' }} />
+                  <col style={{ width: '10%' }} />
                   <col style={{ width: '3.5%' }} />
-                  <col style={{ width: '21%' }} />
-                  <col style={{ width: '14%' }} />
-                  <col style={{ width: '11%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '11%' }} />
-                  <col style={{ width: '11%' }} />
-                  <col style={{ width: '8.5%' }} />
-                  <col style={{ width: '5%' }} />
                 </colgroup>
                 <thead>
-                  <tr className="bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider select-none border-b border-slate-200/70 dark:border-slate-800">
-                    <th className="py-3 px-2 text-center">#</th>
-                    <th className="py-2.5 px-3.5 truncate">Cán bộ / Giảng viên</th>
-                    <th className="py-2.5 px-3.5 truncate">Lương chính (HS)</th>
-                    <th className="py-2.5 px-3.5 truncate">Tổng phụ cấp</th>
-                    <th className="py-2.5 px-3.5 truncate">Vượt giờ dạy</th>
-                    <th className="py-2.5 px-3.5 truncate">Thu nhập Gross</th>
-                    <th className="py-2.5 px-3.5 truncate">Bảo hiểm &amp; Thuế</th>
-                    <th className="py-2.5 px-3.5 truncate">Thực lĩnh (Net)</th>
-                    <th className="py-3 px-2 text-center truncate">Trạng thái</th>
-                    <th className="py-3 px-2 text-center">Chi tiết</th>
+                  <tr className="bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-wider select-none border-b border-slate-200/70 dark:border-slate-800 whitespace-nowrap">
+                    <th className="py-3 px-1.5 text-center">#</th>
+                    <th className="py-2.5 px-2.5">Cán bộ / Giảng viên</th>
+                    <th className="py-2.5 px-2.5">Lương chính</th>
+                    <th className="py-2.5 px-2.5">Phụ cấp</th>
+                    <th className="py-2.5 px-2.5">Vượt giờ</th>
+                    <th className="py-2.5 px-2.5">Thu nhập Gross</th>
+                    <th className="py-2.5 px-2.5">BH &amp; Thuế</th>
+                    <th className="py-2.5 px-2.5">Thực lĩnh</th>
+                    <th className="py-3 px-2 text-center">Trạng thái</th>
+                    <th className="py-3 px-1.5 text-center">Xem</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1035,7 +1040,8 @@ export const Payroll: React.FC = () => {
                       const quotaHours = p.gio_giang?.dinh_muc_goc ?? p.so_tiet_nghia_vu ?? 0;
                       const grossIncome = p.tong_thu_nhap_gross ?? (primarySalary + (p.tong_phu_cap || 0) + overtimePay);
                       const netSalary = p.thuc_linh_net ?? p.thuc_linh ?? 0;
-                      const allowancesTotal = getAllowanceRows(p).reduce((sum, item) => sum + item.amount, 0);
+                      const computedAllowances = getAllowanceRows(p).reduce((sum, item) => sum + item.amount, 0);
+                      const allowancesTotal = Number(p.tong_phu_cap || 0) || computedAllowances;
                       const statusInfo = STATUS_CONFIG[p.trang_thai || 'nhap'] || STATUS_CONFIG.nhap;
 
                       return (
@@ -1044,13 +1050,13 @@ export const Payroll: React.FC = () => {
                           className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors whitespace-nowrap group"
                         >
                           {/* STT */}
-                          <td className="py-3 px-2 text-center text-sm tabular-nums text-slate-400">
+                          <td className="py-3 px-1.5 text-center text-sm tabular-nums text-slate-400">
                             {stt}
                           </td>
 
                           {/* Cán Bộ / Giảng Viên */}
-                          <td className="py-2.5 px-3.5 truncate">
-                            <div className="flex items-center gap-2.5 min-w-0">
+                          <td className="py-2.5 px-2.5 truncate">
+                            <div className="flex items-center gap-2 min-w-0">
                               <UserAvatar
                                 user={u}
                                 name={u.ho_ten}
@@ -1063,7 +1069,7 @@ export const Payroll: React.FC = () => {
                                 <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate block">
                                   {u.ho_ten || '—'}
                                 </span>
-                                <span className="text-xs text-slate-500 dark:text-slate-400 block truncate">
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400 block truncate" title={`${u.ma_can_bo || '—'} • ${deptName}`}>
                                   {u.ma_can_bo || '—'} • {deptName}
                                 </span>
                               </div>
@@ -1071,53 +1077,54 @@ export const Payroll: React.FC = () => {
                           </td>
 
                           {/* Lương Chính (Hệ Số) */}
-                          <td className="py-2.5 px-3.5 truncate tabular-nums text-slate-800 dark:text-slate-200">
+                          <td className="py-2.5 px-2.5 truncate tabular-nums text-slate-800 dark:text-slate-200">
                             <span className="text-sm font-semibold block truncate">{formatVND(primarySalary)}</span>
-                            <span className="text-slate-400 text-xs font-normal block truncate">
+                            <span className="text-slate-400 text-[11px] font-normal block truncate">
                               HS {p.he_so_luong ?? 0} • {p.so_cong_thuc_te ?? 0}/{p.so_cong_chuan ?? 22} công
                             </span>
                           </td>
 
                           {/* Tổng Phụ Cấp */}
-                          <td className="py-2.5 px-3.5 truncate text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-200">
+                          <td className="py-2.5 px-2.5 truncate text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-200">
                             {formatVND(allowancesTotal)}
                           </td>
 
                           {/* Vượt Giờ Giảng Dạy */}
-                          <td className="py-2.5 px-3.5 truncate tabular-nums text-amber-700 dark:text-amber-400">
+                          <td className="py-2.5 px-2.5 truncate tabular-nums text-amber-700 dark:text-amber-400">
                             <span className="text-sm font-semibold block truncate">+{formatVND(overtimePay)}</span>
-                            <span className="text-slate-400 text-xs font-normal block truncate">
-                              {accumulatedHours}/{quotaHours} giờ ({overtimeHours} giờ vượt)
+                            <span className="text-slate-400 text-[11px] font-normal block truncate">
+                              {accumulatedHours}/{quotaHours}h (+{overtimeHours}h vượt)
                             </span>
                           </td>
 
                           {/* Thu Nhập Gross */}
-                          <td className="py-2.5 px-3.5 truncate text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                          <td className="py-2.5 px-2.5 truncate text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                             {formatVND(grossIncome)}
                           </td>
 
-                          {/* Bảo Hiểm & Thuế */}
-                          <td className="py-2.5 px-3.5 truncate text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                            BH: {formatVND(ins.total)} | Thuế: {formatVND(tax)}
+                          {/* Bảo Hiểm & Thuế (xếp 2 dòng gọn, không bị cắt chữ) */}
+                          <td className="py-2.5 px-2.5 truncate text-[11px] tabular-nums text-slate-500 dark:text-slate-400 leading-snug">
+                            <span className="block truncate">BH: {formatVND(ins.total)}</span>
+                            <span className="block truncate">Thuế: {formatVND(tax)}</span>
                           </td>
 
                           {/* Thực Lĩnh (Net) */}
-                          <td className="py-2.5 px-3.5 truncate text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                          <td className="py-2.5 px-2.5 truncate text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
                             {formatVND(netSalary)}
                           </td>
 
                           {/* Trạng Thái */}
-                          <td className="py-3 px-2 text-center truncate">
+                          <td className="py-3 px-1.5 text-center">
                             <span
-                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.badgeCls}`}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${statusInfo.badgeCls}`}
                             >
-                              <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dotColor}`}></span>
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusInfo.dotColor}`}></span>
                               <span>{statusInfo.label}</span>
                             </span>
                           </td>
 
                           {/* Chi Tiết */}
-                          <td className="py-2.5 px-2 text-center">
+                          <td className="py-2.5 px-1.5 text-center">
                             <button
                               onClick={() => setSelectedPayrollDetail(p)}
                               className="w-6 h-6 inline-flex items-center justify-center rounded-md hover:bg-indigo-50 text-indigo-600 transition-colors cursor-pointer"

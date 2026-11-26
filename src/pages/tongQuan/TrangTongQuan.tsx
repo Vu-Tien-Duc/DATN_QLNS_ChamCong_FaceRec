@@ -51,7 +51,7 @@ import { scheduleApi } from '../../api/lichTrinh.api';
 import { useSocketEvent, useSocketStatus } from '../../api/socket';
 import { FaceAttendanceScannerModal } from '../../components/sinhTracHoc/ModalQuetChamCong';
 import { ScheduleItem } from '../../types/index';
-import { getRoleLabel, hasRole } from '../../utils/phanQuyen';
+import { getRoleLabel, hasRole, canApproveLeaveRequest, canApproveLevel1, canOperateAttendanceKiosk } from '../../utils/phanQuyen';
 import { formatVND, formatTimeVN } from '../../utils/dinhDang';
 
 // =============================================================================
@@ -169,10 +169,46 @@ const getDescendantDepartmentIds = (rootDeptId: string, departments: DepartmentI
   return result;
 };
 
+/** Đồng hồ realtime tách riêng để tránh re-render toàn bộ Dashboard mỗi giây */
+const LiveClockText: React.FC = React.memo(() => {
+  const [timeStr, setTimeStr] = useState<string>(() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      setTimeStr(`${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return <>{timeStr}</>;
+});
+
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const isSocketConnected = useSocketStatus();
+
+  // =========================================================================
+  // ROLE FLAGS — tính 1 lần, dùng xuyên suốt component
+  // =========================================================================
+  const isAdminRole   = hasRole(user, ['admin']);
+  const isBGHRole     = hasRole(user, ['bgh']);
+  const isTCCBRole    = hasRole(user, ['tccb']);
+  const isKeToanRole  = hasRole(user, ['ke_toan']);
+  const isUnitLeader  = hasRole(user, ['truong_khoa', 'pho_khoa', 'truong_bo_mon', 'pho_bo_mon', 'truong_phong', 'pho_phong']);
+  const isSchoolWideManager = isAdminRole || isBGHRole || isTCCBRole || isKeToanRole;
+  /** Các role cấp trên có thể xem thống kê tổng thể nhiều người */
+  const isManagerView = isSchoolWideManager || isUnitLeader;
+  /** Giảng viên / Nhân viên / Đào tạo — xem tổng quan cá nhân */
+  const isPersonalView = !isManagerView;
+  /** Có quyền duyệt đơn từ (cấp 1 hoặc cấp 2) */
+  const canApproveAny = canApproveLevel1(user) || hasRole(user, ['admin', 'bgh', 'tccb']);
 
   // Loading & Modal states
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -201,24 +237,12 @@ export const Dashboard: React.FC = () => {
   const [tableFilter, setTableFilter] = useState<'ALL' | 'face_ai' | 'qr_code' | 'GPS'>('ALL');
   const [searchPunchKeyword, setSearchPunchKeyword] = useState<string>('');
 
-  // Realtime clock
-  const [currentTimeStr, setCurrentTimeStr] = useState<string>('00:00:00');
-  const [currentDateStr, setCurrentDateStr] = useState<string>('');
-
-  useEffect(() => {
-    const updateClock = () => {
-      const now = new Date();
-      const pad = (n: number) => String(n).padStart(2, '0');
-      setCurrentTimeStr(`${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`);
-
-      const daysOfWeek = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
-      const dayName = daysOfWeek[now.getDay()];
-      setCurrentDateStr(`${dayName}, ${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`);
-    };
-
-    updateClock();
-    const timer = setInterval(updateClock, 1000);
-    return () => clearInterval(timer);
+  // Today date label (static per mount — không re-render mỗi giây)
+  const currentDateStr = useMemo(() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const daysOfWeek = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+    return `${daysOfWeek[now.getDay()]}, ${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
   }, []);
 
   // Today ISO Date string (YYYY-MM-DD)
@@ -239,18 +263,48 @@ export const Dashboard: React.FC = () => {
       const currentMonth = now.getMonth() + 1;
       const currentYear = now.getFullYear();
 
-      const canViewUsers = hasRole(user, ['admin', 'bgh', 'tccb', 'truong_khoa', 'pho_khoa']);
+      const canViewUsers = isManagerView;
       const canViewLeaves = true;
       const canViewPayrollSummary = hasRole(user, ['admin', 'bgh', 'ke_toan', 'truong_khoa', 'pho_khoa']);
 
-      // 1. Tải danh sách nhân sự (theo phân quyền) & đơn vị & cấu hình khuôn viên
-      const [usersRes, deptsRes, campusRes] = await Promise.all([
-        canViewUsers
-          ? apiClient.get('/nguoi-dung?gioi_han=500').catch(() => ({ data: { data: [] } }))
-          : Promise.resolve({ data: { data: [] } }),
-        apiClient.get('/phong-ban?cay=false').catch(() => ({ data: { data: [] } })),
-        attendanceApi.getCampusConfig().catch(() => null),
-      ]);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dStart = new Date();
+      dStart.setDate(dStart.getDate() - 6);
+      const startIso = `${dStart.getFullYear()}-${pad(dStart.getMonth() + 1)}-${pad(dStart.getDate())}`;
+
+      // Tải song song toàn bộ API để tránh nghẽn chuỗi tuần tự (waterfall)
+      const [usersRes, deptsRes, campusRes, todayRes, leaveRes, payrollRes, schedRes, sevenDaysRes] =
+        await Promise.all([
+          canViewUsers
+            ? apiClient.get('/nguoi-dung?gioi_han=500').catch(() => ({ data: { data: [] } }))
+            : Promise.resolve({ data: { data: [] } }),
+          apiClient.get('/phong-ban?cay=false').catch(() => ({ data: { data: [] } })),
+          attendanceApi.getCampusConfig().catch(() => null),
+          attendanceApi
+            .getAttendanceHistory({
+              tu_ngay: todayDateIso,
+              den_ngay: todayDateIso,
+              gioi_han: 500,
+            })
+            .catch(() => ({ records: [], pagination: { total: 0, page: 1, limit: 500, totalPages: 1 } })),
+          canViewLeaves
+            ? leaveRequestApi.getLeaveRequests({ trang_thai: 'pending' }).catch(() => ({ data: [] }))
+            : Promise.resolve({ data: [] }),
+          canViewPayrollSummary
+            ? payrollApi
+                .getPayrollSummary(currentMonth, currentYear)
+                .catch(() => ({ tong_thuc_linh: 0, da_khoa: false, da_khoa_mot_phan: false }))
+            : Promise.resolve({ tong_thuc_linh: 0, da_khoa: false, da_khoa_mot_phan: false }),
+          scheduleApi.getTodaySchedules({ ngay: todayDateIso }).catch(() => ({ data: [] })),
+          attendanceApi
+            .getAttendanceHistory({
+              tu_ngay: startIso,
+              den_ngay: todayDateIso,
+              gioi_han: 500,
+            })
+            .catch(() => ({ records: [] })),
+        ]);
+
       const rawUsersList = extractArray(usersRes.data);
       const usersList = rawUsersList.filter(
         (u: any) => !['admin', 'bgh'].includes(String(u.vai_tro_chinh || '').trim().toLowerCase())
@@ -266,40 +320,35 @@ export const Dashboard: React.FC = () => {
         });
       }
 
-      // 2. Tải dữ liệu chấm công hôm nay
-      const todayRes = await attendanceApi
-        .getAttendanceHistory({
-          tu_ngay: todayDateIso,
-          den_ngay: todayDateIso,
-          gioi_han: 500,
-        })
-        .catch(() => ({ records: [], pagination: { total: 0, page: 1, limit: 500, totalPages: 1 } }));
+      const currentUserId = String(user?.id || (user as any)?._id || '').toLowerCase();
+      const matchesCurrentUser = (r: any) => {
+        if (!currentUserId) return true;
+        const rid = String(r?.nguoi_dung_id || r?.nguoi_dung?.id || r?.nguoi_dung?._id || '').toLowerCase();
+        return !rid || rid === currentUserId;
+      };
 
-      const todayRecords = todayRes.records || [];
-      setTodayAttendanceRecords(todayRecords);
+      const rawTodayRecords = todayRes.records || [];
+      setTodayAttendanceRecords(
+        isPersonalView ? rawTodayRecords.filter(matchesCurrentUser) : rawTodayRecords
+      );
 
-      // 3. Tải đơn nghỉ phép chờ duyệt
       if (canViewLeaves) {
-        const leaveRes = await leaveRequestApi
-          .getLeaveRequests({ trang_thai: 'pending' })
-          .catch(() => ({ data: [] }));
         const requests = Array.isArray(leaveRes?.data)
           ? leaveRes.data
-          : Array.isArray(leaveRes?.requests)
-            ? leaveRes.requests
+          : Array.isArray((leaveRes as any)?.requests)
+            ? (leaveRes as any).requests
             : [];
-        setPendingLeaveCount(requests.length);
-        setPendingLeaveList(requests.slice(0, 4));
+        const scopedRequests = canApproveAny
+          ? requests.filter((r: any) => canApproveLeaveRequest(user, r))
+          : requests.filter(matchesCurrentUser);
+        setPendingLeaveCount(scopedRequests.length);
+        setPendingLeaveList(scopedRequests.slice(0, 4));
       } else {
         setPendingLeaveCount(0);
         setPendingLeaveList([]);
       }
 
-      // 4. Tải quỹ lương tháng hiện tại
       if (canViewPayrollSummary) {
-        const payrollRes = await payrollApi
-          .getPayrollSummary(currentMonth, currentYear)
-          .catch(() => ({ tong_thuc_linh: 0, da_khoa: false, da_khoa_mot_phan: false }));
         setPayrollNetSalary(payrollRes.tong_thuc_linh || 0);
         setPayrollStatus(
           payrollRes.da_khoa
@@ -313,34 +362,19 @@ export const Dashboard: React.FC = () => {
         setPayrollStatus('Không áp dụng');
       }
 
-      // 5. Tải lịch trình / thời khóa biểu hôm nay
-      const schedRes = await scheduleApi
-        .getTodaySchedules({ ngay: todayDateIso })
-        .catch(() => ({ data: [] }));
       setTodaySchedules(extractArray<ScheduleItem>(schedRes.data || []));
 
-      // 6. Tải dữ liệu chấm công 7 ngày qua (dùng chung cho biểu đồ xu hướng, Donut và bảng lịch sử)
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const dStart = new Date();
-      dStart.setDate(dStart.getDate() - 6);
-      const startIso = `${dStart.getFullYear()}-${pad(dStart.getMonth() + 1)}-${pad(dStart.getDate())}`;
-
-      const sevenDaysRes = await attendanceApi
-        .getAttendanceHistory({
-          tu_ngay: startIso,
-          den_ngay: todayDateIso,
-          gioi_han: 500,
-        })
-        .catch(() => ({ records: [] }));
-
-      setSevenDaysRecords(sevenDaysRes.records || []);
+      const rawSevenDays = sevenDaysRes.records || [];
+      setSevenDaysRecords(
+        isPersonalView ? rawSevenDays.filter(matchesCurrentUser) : rawSevenDays
+      );
     } catch (err: any) {
       console.error('Lỗi khi tải dữ liệu Dashboard:', err);
       toast.error('Không thể đồng bộ toàn bộ dữ liệu Dashboard.');
     } finally {
       setIsLoading(false);
     }
-  }, [todayDateIso, user]);
+  }, [todayDateIso, user, isManagerView, isPersonalView, canApproveAny]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -350,14 +384,17 @@ export const Dashboard: React.FC = () => {
   // REALTIME SOCKET.IO LISTENERS (< 100ms UI UPDATE)
   // ===========================================================================
   useSocketEvent('attendance:new-punch', (punchData: any) => {
-    const isCheckOut = punchData?.loai_quet === 'check_out';
-    const punchUserName = punchData?.ho_ten || 'Cán bộ';
-    toast.success(
-      `Điểm danh: ${punchUserName} vừa quét ${
-        isCheckOut ? 'tan ca' : 'vào ca'
-      }!`,
-      { icon: '⚡' }
-    );
+    const isMyPunch = String(punchData?.nguoi_dung_id || '').toLowerCase() === String(user?.id || '').toLowerCase();
+    if (isManagerView || isMyPunch) {
+      const isCheckOut = punchData?.loai_quet === 'check_out';
+      const punchUserName = punchData?.ho_ten || 'Cán bộ';
+      toast.success(
+        `Điểm danh: ${punchUserName} vừa quét ${
+          isCheckOut ? 'tan ca' : 'vào ca'
+        }!`,
+        { icon: '⚡' }
+      );
+    }
     fetchDashboardData();
   });
 
@@ -366,6 +403,7 @@ export const Dashboard: React.FC = () => {
   });
 
   useSocketEvent('security:fraud-alert', (alertData: any) => {
+    if (!isManagerView) return;
     toast.error(`Cảnh báo an ninh: ${alertData?.message || 'Phát hiện vị trí chấm công ngoài vùng trường!'}`, {
       icon: '🚨',
       duration: 6000,
@@ -380,8 +418,9 @@ export const Dashboard: React.FC = () => {
   const handleQuickApproveLeave = async (requestId: string) => {
     setIsApprovingId(requestId);
     try {
-      await leaveRequestApi.approveLeaveRequest(requestId, 'Phê duyệt nhanh qua Dashboard BGH.');
+      await leaveRequestApi.approveLeaveRequest(requestId, 'Phê duyệt nhanh qua Dashboard.');
       toast.success('Đã phê duyệt đơn nghỉ phép thành công!');
+      window.dispatchEvent(new Event('leave-requests:changed'));
       fetchDashboardData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Không thể phê duyệt đơn.');
@@ -444,6 +483,33 @@ export const Dashboard: React.FC = () => {
   }, [allUsersList, departmentFilter, departments, scopedDeptIds]);
 
   const totalStaff = filteredUsersList.length;
+
+  const faceRegisteredCount = useMemo(
+    () => filteredUsersList.filter((u: any) => Boolean(u.da_dang_ky_face)).length,
+    [filteredUsersList]
+  );
+
+  const myTodayRecord = useMemo(() => {
+    const myId = String(user?.id || '').toLowerCase();
+    return (
+      todayAttendanceRecords.find(
+        (r: any) => String(r?.nguoi_dung_id || r?.nguoi_dung?.id || '').toLowerCase() === myId
+      ) || todayAttendanceRecords[0] || null
+    );
+  }, [todayAttendanceRecords, user?.id]);
+
+  const personalSevenDayStats = useMemo(() => {
+    let onTime = 0;
+    let lateAndEarly = 0;
+    let total = sevenDaysRecords.length;
+    sevenDaysRecords.forEach((r: any) => {
+      if (r.trang_thai === 'on_time') onTime++;
+      else if (r.trang_thai === 'late' || r.trang_thai === 'early_leave') lateAndEarly++;
+    });
+    const present = onTime + lateAndEarly + sevenDaysRecords.filter((r: any) => r.trang_thai === 'thieu_check_out').length;
+    const rate = total > 0 ? Math.min(100, Math.round((present / total) * 100)) : 0;
+    return { onTime, lateAndEarly, present, total, rate };
+  }, [sevenDaysRecords]);
 
   const isLogInScopedDept = useCallback(
     (log: any) => {
@@ -737,32 +803,67 @@ export const Dashboard: React.FC = () => {
           1. PAGE HEADER & ACTIONS
       ===================================================================== */}
       <PageHeader
-        title="Bảng Điều Khiển Giám Sát"
-        subtitle="Theo dõi chấm công nhận diện khuôn mặt, đơn từ và lịch trình toàn trường."
+        title={isPersonalView ? 'Trang Tổng Quan Cá Nhân' : 'Bảng Điều Khiển Giám Sát'}
+        subtitle={
+          isPersonalView
+            ? 'Theo dõi chấm công, lịch dạy và đơn từ của bạn.'
+            : 'Theo dõi chấm công nhận diện khuôn mặt, đơn từ và lịch trình toàn trường.'
+        }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="w-full sm:w-64">
-              <DepartmentSelect
-                departments={departments}
-                value={departmentFilter}
-                onChange={(val) => setDepartmentFilter(val)}
-                allowAll={true}
-                allLabel="Tất cả đơn vị"
-                placeholder="Lọc theo Khoa / Phòng ban..."
+            {/* Bộ lọc Đơn vị — chỉ hiện với Manager */}
+            {isManagerView && (
+              <div className="w-full sm:w-64">
+                <DepartmentSelect
+                  departments={departments}
+                  value={departmentFilter}
+                  onChange={(val) => setDepartmentFilter(val)}
+                  allowAll={true}
+                  allLabel="Tất cả đơn vị"
+                  placeholder="Lọc theo Khoa / Phòng ban..."
+                  size="sm"
+                />
+              </div>
+            )}
+
+            {/* Xuất Excel — chỉ hiện với Manager */}
+            {isManagerView && (
+              <Button
+                onClick={handleExportMorningReportExcel}
+                variant="outline"
                 size="sm"
-              />
-            </div>
+                leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+                type="button"
+                title="Xuất danh sách điểm danh sáng nay ra file Excel (.xlsx)"
+              >
+                Xuất sáng nay
+              </Button>
+            )}
 
             <Button
-              onClick={handleExportMorningReportExcel}
+              onClick={fetchDashboardData}
               variant="outline"
               size="sm"
-              leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+              leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-indigo-600' : ''}`} />}
               type="button"
-              title="Xuất danh sách điểm danh sáng nay ra file Excel (.xlsx)"
+              title="Làm mới dữ liệu Dashboard"
+              disabled={isLoading}
             >
-              Xuất sáng nay
+              {isLoading ? 'Đang tải...' : 'Làm mới'}
             </Button>
+
+            {canOperateAttendanceKiosk(user) && (
+              <Button
+                onClick={() => navigate('/diem-danh-khuon-mat?tab=qr')}
+                variant="outline"
+                size="sm"
+                leftIcon={<QrCode className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />}
+                type="button"
+                title="Mở màn hình phát mã QR động 20s tại cửa phòng / trạm điểm danh"
+              >
+                Phát mã QR Kiosk
+              </Button>
+            )}
 
             {canPersonalCheckIn(user) && (
               <>
@@ -794,15 +895,15 @@ export const Dashboard: React.FC = () => {
       {/* =====================================================================
           FLUX HERO CARD: GOOD MORNING BANNER + 4 EMBEDDED METRICS
       ===================================================================== */}
-      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-blue-600 p-6 sm:p-7 text-white shadow-md shadow-indigo-500/15">
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-50 via-white to-brand-100/70 border border-brand-200/80 dark:from-slate-900 dark:via-slate-900 dark:to-brand-950/90 dark:border-slate-800 p-6 sm:p-7 text-slate-900 dark:text-white shadow-xs dark:shadow-none">
         <div className="relative z-10 flex flex-col justify-between gap-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-[11px] font-semibold text-indigo-100 mb-2">
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-100/80 dark:bg-white/15 backdrop-blur-md text-[11px] font-semibold text-brand-700 dark:text-indigo-100 mb-2">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 dark:text-amber-300" />
                 <span>Hệ thống Nhân sự & Điểm danh Thông minh NTU</span>
               </div>
-              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
                 {(() => {
                   const hour = new Date().getHours();
                   if (hour < 12) return 'Chào buổi sáng';
@@ -811,8 +912,8 @@ export const Dashboard: React.FC = () => {
                 })()}
                 , {user?.ho_ten || 'Quý Thầy/Cô'}!
               </h1>
-              <p className="text-xs sm:text-sm text-indigo-100/90 mt-1">
-                {currentDateStr} • {currentTimeStr} — Chúc Thầy/Cô một ngày làm việc và giảng dạy hiệu quả.
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-indigo-100/90 mt-1">
+                {currentDateStr} • <LiveClockText /> — Chúc Thầy/Cô một ngày làm việc và giảng dạy hiệu quả.
               </p>
             </div>
 
@@ -821,7 +922,7 @@ export const Dashboard: React.FC = () => {
                 <button
                   onClick={() => setScannerMode('check-in')}
                   type="button"
-                  className="h-9 px-4 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 text-xs font-bold shadow-sm inline-flex items-center gap-2 transition-all cursor-pointer"
+                  className="h-9 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 text-white dark:bg-white dark:hover:bg-indigo-50 dark:text-indigo-700 text-xs font-bold shadow-sm inline-flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <Camera className="w-3.5 h-3.5 shrink-0" />
                   <span>Điểm danh Face ID</span>
@@ -829,7 +930,7 @@ export const Dashboard: React.FC = () => {
                 <button
                   onClick={() => navigate('/don-nghi-phep')}
                   type="button"
-                  className="h-9 px-4 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/25 backdrop-blur-sm text-xs font-semibold inline-flex items-center gap-2 transition-all cursor-pointer"
+                  className="h-9 px-4 rounded-xl bg-white/80 hover:bg-white text-slate-700 border border-slate-200 dark:bg-white/15 dark:hover:bg-white/25 dark:text-white dark:border-white/25 backdrop-blur-sm text-xs font-semibold inline-flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <FilePlus className="w-3.5 h-3.5 shrink-0" />
                   <span>Nộp đơn phép</span>
@@ -838,68 +939,161 @@ export const Dashboard: React.FC = () => {
             )}
           </div>
 
-          {/* 4 Metric Cards inside Hero Banner (Flux Style) */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 pt-2">
-            <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5">
-              <div className="flex items-center justify-between text-xs font-medium text-indigo-100">
-                <span>Tổng nhân sự</span>
-                <Users className="w-4 h-4 text-indigo-200" />
-              </div>
-              <div className="mt-2">
-                <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
-                  {totalStaff}
+          {/* 4 Metric Cards inside Hero Banner (Role-Aware Flux Style) */}
+          {isPersonalView ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 pt-2">
+              <div className="rounded-2xl bg-white/85 dark:bg-white/10 backdrop-blur-md border border-brand-200/60 dark:border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5 shadow-2xs dark:shadow-none">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-indigo-100">
+                  <span>Điểm danh hôm nay</span>
+                  <ScanFace className="w-4 h-4 text-brand-600 dark:text-indigo-200" />
                 </div>
-                <div className="text-[11px] text-indigo-200 mt-1">
-                  {totalDepartments} khoa & phòng ban
+                <div className="mt-2">
+                  <div className="text-xl sm:text-2xl font-black font-mono tracking-tight truncate text-slate-900 dark:text-white">
+                    {myTodayRecord?.thoi_gian_vao
+                      ? formatTimeVN(myTodayRecord.thoi_gian_vao)
+                      : myTodayRecord?.trang_thai === 'excused_absence'
+                        ? 'Nghỉ phép'
+                        : 'Chưa check-in'}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-indigo-200 mt-1 truncate">
+                    {myTodayRecord?.thoi_gian_ra
+                      ? `Tan ca: ${formatTimeVN(myTodayRecord.thoi_gian_ra)}`
+                      : myTodayRecord?.thoi_gian_vao
+                        ? (STATUS_CONFIGS[myTodayRecord.trang_thai]?.label || 'Đã vào ca')
+                        : 'Sẵn sàng điểm danh'}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5">
-              <div className="flex items-center justify-between text-xs font-medium text-indigo-100">
-                <span>Tỷ lệ đi làm</span>
-                <Clock className="w-4 h-4 text-emerald-300" />
-              </div>
-              <div className="mt-2">
-                <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-emerald-300">
-                  {todayAttendanceStats.rate}%
+              <div className="rounded-2xl bg-white/85 dark:bg-white/10 backdrop-blur-md border border-brand-200/60 dark:border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5 shadow-2xs dark:shadow-none">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-indigo-100">
+                  <span>Chuyên cần 7 ngày</span>
+                  <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
                 </div>
-                <div className="text-[11px] text-indigo-200 mt-1">
-                  {todayAttendanceStats.onTime} đúng giờ • {todayAttendanceStats.late} muộn
+                <div className="mt-2">
+                  <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-emerald-600 dark:text-emerald-300">
+                    {personalSevenDayStats.rate}%
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-indigo-200 mt-1">
+                    {personalSevenDayStats.onTime} đúng giờ • {personalSevenDayStats.lateAndEarly} muộn/sớm
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5">
-              <div className="flex items-center justify-between text-xs font-medium text-indigo-100">
-                <span>Đơn chờ duyệt</span>
-                <FileText className="w-4 h-4 text-amber-300" />
-              </div>
-              <div className="mt-2">
-                <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-amber-300">
-                  {String(pendingLeaveCount).padStart(2, '0')}
+              <div className="rounded-2xl bg-white/85 dark:bg-white/10 backdrop-blur-md border border-brand-200/60 dark:border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5 shadow-2xs dark:shadow-none">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-indigo-100">
+                  <span>Đơn từ của tôi</span>
+                  <FileText className="w-4 h-4 text-amber-600 dark:text-amber-300" />
                 </div>
-                <div className="text-[11px] text-indigo-200 mt-1">
-                  Cần trưởng đơn vị duyệt
+                <div className="mt-2">
+                  <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-amber-600 dark:text-amber-300">
+                    {String(pendingLeaveCount).padStart(2, '0')}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-indigo-200 mt-1">
+                    Đang chờ cấp trên duyệt
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5">
-              <div className="flex items-center justify-between text-xs font-medium text-indigo-100">
-                <span>Quỹ lương T{new Date().getMonth() + 1}</span>
-                <DollarSign className="w-4 h-4 text-indigo-200" />
-              </div>
-              <div className="mt-2">
-                <div className="text-xl sm:text-2xl font-black font-mono tracking-tight truncate">
-                  {payrollNetSalary > 0 ? formatVND(payrollNetSalary) : '0 đ'}
+              <div className="rounded-2xl bg-white/85 dark:bg-white/10 backdrop-blur-md border border-brand-200/60 dark:border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5 shadow-2xs dark:shadow-none">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-indigo-100">
+                  <span>Lịch trình hôm nay</span>
+                  <CalendarDays className="w-4 h-4 text-brand-600 dark:text-indigo-200" />
                 </div>
-                <div className="text-[11px] text-indigo-200 mt-1 truncate">
-                  Trạng thái: {payrollStatus}
+                <div className="mt-2">
+                  <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 dark:text-white">
+                    {todaySchedules.length}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-indigo-200 mt-1 truncate">
+                    {todaySchedules[0]
+                      ? `${String((todaySchedules[0] as any).gio_bat_dau || '').slice(0, 5)} • ${(todaySchedules[0] as any).mon_hoc?.ten_mon || 'Lịch giảng dạy'}`
+                      : 'Hôm nay chưa có lịch'}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 pt-2">
+              <div className="rounded-2xl bg-white/85 dark:bg-white/10 backdrop-blur-md border border-brand-200/60 dark:border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5 shadow-2xs dark:shadow-none">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-indigo-100">
+                  <span>{isUnitLeader && !isSchoolWideManager ? 'Nhân sự đơn vị' : 'Tổng nhân sự'}</span>
+                  <Users className="w-4 h-4 text-brand-600 dark:text-indigo-200" />
+                </div>
+                <div className="mt-2">
+                  <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 dark:text-white">
+                    {totalStaff}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-indigo-200 mt-1 truncate">
+                    {isUnitLeader && !isSchoolWideManager
+                      ? (user?.don_vi_chinh?.ten_phong_ban || 'Đơn vị trực thuộc')
+                      : `${totalDepartments} khoa & phòng ban`}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white/85 dark:bg-white/10 backdrop-blur-md border border-brand-200/60 dark:border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5 shadow-2xs dark:shadow-none">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-indigo-100">
+                  <span>Tỷ lệ đi làm</span>
+                  <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
+                </div>
+                <div className="mt-2">
+                  <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-emerald-600 dark:text-emerald-300">
+                    {todayAttendanceStats.rate}%
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-indigo-200 mt-1">
+                    {todayAttendanceStats.onTime} đúng giờ • {todayAttendanceStats.late} muộn
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white/85 dark:bg-white/10 backdrop-blur-md border border-brand-200/60 dark:border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5 shadow-2xs dark:shadow-none">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-indigo-100">
+                  <span>Đơn chờ duyệt</span>
+                  <FileText className="w-4 h-4 text-amber-600 dark:text-amber-300" />
+                </div>
+                <div className="mt-2">
+                  <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-amber-600 dark:text-amber-300">
+                    {String(pendingLeaveCount).padStart(2, '0')}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-indigo-200 mt-1">
+                    {canApproveAny ? 'Cần bạn phê duyệt' : 'Đang chờ xử lý'}
+                  </div>
+                </div>
+              </div>
+
+              {isTCCBRole && !hasRole(user, ['admin', 'bgh', 'ke_toan']) ? (
+                <div className="rounded-2xl bg-white/85 dark:bg-white/10 backdrop-blur-md border border-brand-200/60 dark:border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5 shadow-2xs dark:shadow-none">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-indigo-100">
+                    <span>Đã đăng ký Face ID</span>
+                    <ScanFace className="w-4 h-4 text-brand-600 dark:text-indigo-200" />
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 dark:text-white">
+                      {faceRegisteredCount}/{totalStaff}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-indigo-200 mt-1 truncate">
+                      Tỷ lệ {totalStaff > 0 ? Math.round((faceRegisteredCount / totalStaff) * 100) : 0}% nhân sự
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-white/85 dark:bg-white/10 backdrop-blur-md border border-brand-200/60 dark:border-white/15 p-4 flex flex-col justify-between transition-transform hover:-translate-y-0.5 shadow-2xs dark:shadow-none">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-indigo-100">
+                    <span>Quỹ lương T{new Date().getMonth() + 1}</span>
+                    <DollarSign className="w-4 h-4 text-brand-600 dark:text-indigo-200" />
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-xl sm:text-2xl font-black font-mono tracking-tight truncate text-slate-900 dark:text-white">
+                      {payrollNetSalary > 0 ? formatVND(payrollNetSalary) : '0 đ'}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-indigo-200 mt-1 truncate">
+                      Trạng thái: {payrollStatus}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Decorative background glow */}
@@ -928,7 +1122,11 @@ export const Dashboard: React.FC = () => {
                   </h2>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Biểu đồ tổng hợp trạng thái điểm danh nhân sự giảng viên toàn viện
+                  {isPersonalView
+                    ? 'Thống kê trạng thái điểm danh cá nhân trong 7 ngày gần nhất'
+                    : isUnitLeader && !isSchoolWideManager
+                      ? 'Biểu đồ tổng hợp trạng thái điểm danh nhân sự thuộc đơn vị'
+                      : 'Biểu đồ tổng hợp trạng thái điểm danh nhân sự giảng viên toàn viện'}
                 </p>
               </div>
 
@@ -1290,7 +1488,7 @@ export const Dashboard: React.FC = () => {
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
               </span>
               <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight">
-                Lịch Sử Điểm Danh Sinh Trắc Học
+                {isPersonalView ? 'Lịch Sử Điểm Danh Của Bạn' : 'Lịch Sử Điểm Danh Sinh Trắc Học'}
               </h2>
             </div>
 
@@ -1369,15 +1567,17 @@ export const Dashboard: React.FC = () => {
               </button>
             </div>
 
-            <SearchInput
-              value={searchPunchKeyword}
-              onChange={setSearchPunchKeyword}
-              debounceMs={180}
-              placeholder="Lọc mã CB, họ tên..."
-              className="relative w-full sm:w-64 shrink-0"
-              iconClassName="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-              inputClassName="w-full h-9 pl-8 pr-8 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
+            {isManagerView && (
+              <SearchInput
+                value={searchPunchKeyword}
+                onChange={setSearchPunchKeyword}
+                debounceMs={180}
+                placeholder="Lọc mã CB, họ tên..."
+                className="relative w-full sm:w-64 shrink-0"
+                iconClassName="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                inputClassName="w-full h-9 pl-8 pr-8 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            )}
           </div>
         </div>
 
@@ -1609,7 +1809,7 @@ export const Dashboard: React.FC = () => {
                         {/* Thao tác */}
                         <td className="py-2.5 px-2 text-right">
                           <button
-                            onClick={() => navigate('/quan-ly-cham-cong')}
+                            onClick={() => navigate(isPersonalView ? '/cham-cong-ca-nhan' : '/quan-ly-cham-cong')}
                             className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
                             type="button"
                             title="Xem chi tiết"
@@ -1629,13 +1829,13 @@ export const Dashboard: React.FC = () => {
         {/* Table Footer */}
         <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
           <span>
-            Hiển thị <b>{filteredPunches.length}</b> lượt điểm danh gần nhất trong ngày
+            Hiển thị <b>{filteredPunches.length}</b> lượt điểm danh {tableDateScope === 'today' ? 'hôm nay' : 'trong 7 ngày qua'}
           </span>
           <button
-            onClick={() => navigate('/quan-ly-cham-cong')}
+            onClick={() => navigate(isPersonalView ? '/cham-cong-ca-nhan' : '/quan-ly-cham-cong')}
             className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
           >
-            <span>Xem toàn bộ dữ liệu chấm công chi tiết</span>
+            <span>{isPersonalView ? 'Xem lịch sử chấm công cá nhân' : 'Xem toàn bộ dữ liệu chấm công chi tiết'}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -1655,7 +1855,7 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
-                    Lịch Giảng Dạy Hôm Nay
+                    {isPersonalView ? 'Lịch Giảng Dạy & Công Tác Của Tôi' : 'Lịch Giảng Dạy Hôm Nay'}
                   </h3>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">{currentDateStr}</p>
                 </div>
@@ -1773,7 +1973,7 @@ export const Dashboard: React.FC = () => {
               className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
               type="button"
             >
-              <span>Xem lịch biểu toàn trường</span>
+              <span>{isPersonalView ? 'Xem lịch biểu cá nhân' : 'Xem lịch biểu toàn trường'}</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -1789,9 +1989,11 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
-                    Đơn Chờ Phê Duyệt
+                    {isPersonalView ? 'Đơn Từ Cá Nhân Đang Chờ' : 'Đơn Chờ Phê Duyệt'}
                   </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Nghỉ phép, dạy bù & giải trình công</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {isPersonalView ? 'Các đơn nghỉ phép, dạy bù bạn đã gửi' : 'Nghỉ phép, dạy bù & giải trình công'}
+                  </p>
                 </div>
               </div>
               <span className="px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-xs font-bold border border-rose-200/80 dark:border-rose-800/70 shrink-0">
@@ -1867,14 +2069,16 @@ export const Dashboard: React.FC = () => {
                       </div>
 
                       <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
-                        <button
-                          disabled={isApproving}
-                          onClick={() => handleQuickApproveLeave(reqItem.id)}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
-                          type="button"
-                        >
-                          {isApproving ? '...' : 'Duyệt'}
-                        </button>
+                        {canApproveLeaveRequest(user, reqItem) && (
+                          <button
+                            disabled={isApproving}
+                            onClick={() => handleQuickApproveLeave(reqItem.id)}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
+                            type="button"
+                          >
+                            {isApproving ? '...' : 'Duyệt'}
+                          </button>
+                        )}
                         <button
                           onClick={() => navigate('/don-nghi-phep')}
                           className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
@@ -1890,10 +2094,14 @@ export const Dashboard: React.FC = () => {
                 <div className="py-10 text-center flex flex-col items-center justify-center text-slate-400">
                   <CheckCircle2 className="w-8 h-8 mb-2 stroke-[1.5] text-emerald-500/80" />
                   <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Không có đơn xin nghỉ phép nào đang chờ duyệt.
+                    {isPersonalView
+                      ? 'Bạn chưa có đơn từ nào đang chờ duyệt.'
+                      : 'Không có đơn xin nghỉ phép nào đang chờ duyệt.'}
                   </p>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                    Tất cả đề xuất đã được giải quyết hoặc chưa phát sinh đơn mới.
+                    {isPersonalView
+                      ? 'Khi bạn gửi đơn nghỉ phép hoặc dạy bù, trạng thái sẽ hiển thị tại đây.'
+                      : 'Tất cả đề xuất đã được giải quyết hoặc chưa phát sinh đơn mới.'}
                   </p>
                 </div>
               )}
@@ -1902,14 +2110,22 @@ export const Dashboard: React.FC = () => {
 
           <div className="mt-4 pt-3.5 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              {pendingLeaveCount > 0 ? `Còn ${pendingLeaveCount} đơn cần xử lý` : 'Đã xử lý sạch đơn chờ'}
+              {isPersonalView
+                ? pendingLeaveCount > 0
+                  ? `Bạn có ${pendingLeaveCount} đơn đang chờ duyệt`
+                  : 'Không có đơn đang chờ'
+                : pendingLeaveCount > 0
+                  ? `Còn ${pendingLeaveCount} đơn cần xử lý`
+                  : 'Đã xử lý sạch đơn chờ'}
             </span>
             <button
               onClick={() => navigate('/don-nghi-phep')}
               className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
               type="button"
             >
-              <span>Quản lý tất cả đơn ({pendingLeaveCount})</span>
+              <span>
+                {isPersonalView ? 'Quản lý đơn từ của tôi' : `Quản lý tất cả đơn (${pendingLeaveCount})`}
+              </span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>

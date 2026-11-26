@@ -147,10 +147,33 @@ const processScanQRCode = async ({
   const targetScheduleId = isCheckOutAction
     ? attendance?.lich_trinh_id || null
     : evalResult?.selectedSchedule?.id || null;
-  let isOnlineSchedule = Boolean(!isCheckOutAction && evalResult?.selectedSchedule?.la_truc_tuyen);
-  if (!isOnlineSchedule && targetScheduleId && isValidUuid(String(targetScheduleId))) {
-    const schedForOnline = await LichTrinh.findByPk(targetScheduleId, { attributes: ['id', 'la_truc_tuyen'] });
-    isOnlineSchedule = Boolean(schedForOnline?.la_truc_tuyen);
+  let targetSchedule = !isCheckOutAction ? evalResult?.selectedSchedule || null : null;
+  if ((!targetSchedule || targetSchedule.phong_hoc === undefined) && targetScheduleId && isValidUuid(String(targetScheduleId))) {
+    targetSchedule = await LichTrinh.findByPk(targetScheduleId, {
+      attributes: ['id', 'la_truc_tuyen', 'phong_hoc'],
+    });
+  }
+  const isOnlineSchedule = Boolean(targetSchedule?.la_truc_tuyen);
+
+  // Ràng buộc phòng học: nếu mã QR gắn với 1 phòng cụ thể (khác trạm chung MAY_CHAM_CONG) thì phải khớp phòng theo lịch
+  const qrRoomRaw = String(verifyResult.data?.room || '').trim();
+  if (qrRoomRaw && qrRoomRaw !== 'MAY_CHAM_CONG') {
+    const normalizeRoom = (val) =>
+      String(val || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^phòng\s+/i, '')
+        .replace(/\s+/g, ' ');
+    const qrRoomNorm = normalizeRoom(qrRoomRaw);
+    const schedRoomRaw = String(targetSchedule?.phong_hoc || '').trim();
+    const schedRoomNorm = normalizeRoom(schedRoomRaw);
+    if (schedRoomNorm && qrRoomNorm !== schedRoomNorm) {
+      throw new ServiceError(
+        `Mã QR này thuộc phòng "${qrRoomRaw}", không khớp với phòng học theo lịch của bạn ("${schedRoomRaw}").`,
+        400,
+        'QR_ROOM_MISMATCH'
+      );
+    }
   }
   if (!isOnlineSchedule && !hasCoordinates) {
     throw new ServiceError(

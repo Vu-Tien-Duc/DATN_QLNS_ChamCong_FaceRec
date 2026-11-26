@@ -80,7 +80,7 @@ export const App: React.FC = () => {
           <Route
             path="diem-danh-khuon-mat"
             element={
-              <ProtectedRoute excludeRoles={['admin']}>
+              <ProtectedRoute>
                 <FaceAttendance />
               </ProtectedRoute>
             }
