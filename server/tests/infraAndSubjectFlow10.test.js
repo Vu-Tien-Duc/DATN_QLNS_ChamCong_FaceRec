@@ -199,10 +199,10 @@ describe('Luồng 10 - Express, Rate Limit, Health & Env', () => {
 describe('Luồng 10 - Upload, Magic Bytes, Path Traversal & Quyền xem tệp', () => {
   it('Chặn Path Traversal ở resolveLocalPath & kiểm tra Magic Bytes thật khi upload', async () => {
     assert.throws(() => minioStorage.resolveLocalPath('../../etc/passwd'), /traversal|vượt quá phạm vi|không hợp lệ/);
-    assert.throws(() => minioStorage.resolveLocalPath('attachments/../../secret.txt'), /traversal|vượt quá phạm vi/);
+    assert.throws(() => minioStorage.resolveLocalPath('tep_dinh_kem/../../secret.txt'), /traversal|vượt quá phạm vi/);
     assert.throws(() => minioStorage.resolveLocalPath('C:\\Windows\\win.ini'), /không hợp lệ|traversal/);
 
-    const safeResolved = minioStorage.resolveLocalPath('attachments/test-ok.pdf');
+    const safeResolved = minioStorage.resolveLocalPath('tep_dinh_kem/test-ok.pdf');
     assert.ok(safeResolved.startsWith(path.resolve(minioStorage.LOCAL_STORAGE_ROOT) + path.sep) || safeResolved.includes('uploads'));
 
     assert.equal(validateFileMagicBytes(Buffer.from('<script>alert(1)</script>'), 'image/jpeg'), false);

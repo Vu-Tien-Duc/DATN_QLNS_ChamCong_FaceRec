@@ -1,4 +1,4 @@
-// Lưu trữ tệp lên MinIO/S3 (evidence/, attachments/, faces/, avatars/) và tự động fallback ổ đĩa cục bộ khi MinIO offline
+// Lưu trữ tệp lên MinIO/S3 (minh_chung/, tep_dinh_kem/, khuon_mat/, avatars/) và tự động fallback ổ đĩa cục bộ khi MinIO offline
 
 const Minio = require('minio');
 const fs = require('fs');
@@ -23,7 +23,7 @@ const LOCAL_STORAGE_ROOT = path.resolve(
 const getLocalEvidenceDir = () =>
   path.resolve(process.env.ATTENDANCE_EVIDENCE_DIR || path.resolve(__dirname, '../../private/attendance-evidence'));
 
-for (const dir of [LOCAL_STORAGE_ROOT, getLocalEvidenceDir(), path.join(LOCAL_STORAGE_ROOT, 'faces'), path.join(LOCAL_STORAGE_ROOT, 'attachments')]) {
+for (const dir of [LOCAL_STORAGE_ROOT, getLocalEvidenceDir(), path.join(LOCAL_STORAGE_ROOT, 'khuon_mat'), path.join(LOCAL_STORAGE_ROOT, 'tep_dinh_kem')]) {
   if (!fs.existsSync(dir)) {
     try {
       fs.mkdirSync(dir, { recursive: true });
@@ -117,8 +117,10 @@ const sanitizeObjectKey = (objectKey) => {
 // Quy đổi objectKey thành đường dẫn lưu trữ cục bộ an toàn (chống Path Traversal)
 const resolveLocalPath = (objectKey) => {
   const cleanKey = sanitizeObjectKey(objectKey);
-  if (cleanKey.startsWith('evidence/')) {
-    const filename = cleanKey.slice('evidence/'.length);
+  if (cleanKey.startsWith('minh_chung/') || cleanKey.startsWith('evidence/')) {
+    const filename = cleanKey.startsWith('minh_chung/')
+      ? cleanKey.slice('minh_chung/'.length)
+      : cleanKey.slice('evidence/'.length);
     const evidenceRoot = getLocalEvidenceDir();
     const customEvidencePath = assertPathWithinRoot(evidenceRoot, path.join(evidenceRoot, filename));
     if (fs.existsSync(customEvidencePath)) return customEvidencePath;
@@ -334,8 +336,8 @@ const deleteUserFaceFiles = async (userId, staffCode = null, photoPath = null) =
   const codeStr = staffCode ? staffCode.toString().replace(/[^a-zA-Z0-9_-]/g, '_') : '';
 
   const prefixes = [];
-  if (codeStr) prefixes.push(`faces/face-${codeStr}-`);
-  if (idStr) prefixes.push(`faces/face-${idStr}-`);
+  if (codeStr) prefixes.push(`khuon_mat/face-${codeStr}-`);
+  if (idStr) prefixes.push(`khuon_mat/face-${idStr}-`);
 
   const hasMinio = await ensureBucketExists();
   if (hasMinio && minioClient) {
@@ -344,7 +346,7 @@ const deleteUserFaceFiles = async (userId, staffCode = null, photoPath = null) =
 
       if (photoPath) {
         const clean = photoPath.replace(/^\/api\/(?:v1\/)?uploads\//, '').replace(/^\/uploads\//, '');
-        const objKey = clean.startsWith('faces/') ? clean : `faces/${clean}`;
+        const objKey = clean.startsWith('khuon_mat/') ? clean : `khuon_mat/${clean}`;
         objectsToDelete.add(objKey);
       }
 
@@ -366,7 +368,7 @@ const deleteUserFaceFiles = async (userId, staffCode = null, photoPath = null) =
   }
 
   const localDirs = [
-    path.join(LOCAL_STORAGE_ROOT, 'faces'),
+    path.join(LOCAL_STORAGE_ROOT, 'khuon_mat'),
     path.resolve(__dirname, '../../uploads/faces'),
   ];
 

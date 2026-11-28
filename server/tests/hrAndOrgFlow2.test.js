@@ -1184,13 +1184,14 @@ describe('Luồng 2 - Bảo mật, RBAC đa vai trò, Hồ sơ & Thu hồi phiê
     );
 
     persistedRoles = [];
+    const futureEndDate = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
     await nguoiDungService.createNewUser(
       {
         ...basePayload,
         don_vi_chinh_id: ID_BOMON,
         danh_sach_vai_tro: [
           { ma_vai_tro: 'giang_vien', don_vi_id: ID_BOMON },
-          { ma_vai_tro: 'giang_vien', don_vi_id: ID_KHOA_OTHER, den_ngay: '2026-11-24' },
+          { ma_vai_tro: 'giang_vien', don_vi_id: ID_KHOA_OTHER, den_ngay: futureEndDate },
         ],
       },
       bghActor

@@ -124,6 +124,15 @@ if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER_PROD ===
 // Kiểm tra trạng thái hoạt động của máy chủ và CSDL (dùng chung handler an toàn từ routes/index.js)
 app.get('/suc-khoe', apiRoutes.healthCheckHandler);
 
+// Vô hiệu hóa ETag & cache HTTP cho toàn bộ API để tránh trình duyệt dùng lại dữ liệu cũ sau khi cập nhật/đổi tài khoản
+app.set('etag', false);
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // Gắn toàn bộ API chính dưới tiền tố /api (đã áp dụng apiGeneralLimiter)
 app.use('/api', apiGeneralLimiter, apiRoutes);
 

@@ -391,6 +391,28 @@ const detectScheduleConflicts = async ({
   return true;
 };
 
+const applyLecturerAndSubstituteFilter = async (where, userIds) => {
+  const uniqueIds = [...new Set((userIds || []).filter(Boolean).map(String))];
+  if (!uniqueIds.length) return;
+
+  const subExceptions = await NgoaiLeLichTrinh.findAll({
+    where: {
+      trang_thai: 'doi_ca',
+      giang_vien_day_thay_id: uniqueIds.length === 1 ? uniqueIds[0] : { [Op.in]: uniqueIds },
+    },
+    attributes: ['lich_trinh_id'],
+    raw: true,
+  });
+  const subScheduleIds = [...new Set(subExceptions.map((e) => String(e.lich_trinh_id)).filter(Boolean))];
+  const lecturerMatcher = uniqueIds.length === 1 ? uniqueIds[0] : { [Op.in]: uniqueIds };
+
+  if (subScheduleIds.length > 0) {
+    where[Op.or] = [{ nguoi_dung_id: lecturerMatcher }, { id: { [Op.in]: subScheduleIds } }];
+  } else {
+    where.nguoi_dung_id = lecturerMatcher;
+  }
+};
+
 // Lấy danh sách thời khóa biểu theo bộ lọc, phân trang và phạm vi phân quyền
 const fetchSchedules = async (params = {}) => {
   const {
@@ -423,7 +445,7 @@ const fetchSchedules = async (params = {}) => {
   const isStaffOnly = !isGlobalViewer && !isUnitLeader;
 
   if (isStaffOnly) {
-    where.nguoi_dung_id = currentUser.id;
+    await applyLecturerAndSubstituteFilter(where, [currentUser.id]);
   } else if (isUnitLeader) {
     const scopedIds = await getDeanScopedUserIds(currentUser);
 
@@ -431,14 +453,14 @@ const fetchSchedules = async (params = {}) => {
       if (!scopedIds.map(String).includes(String(nguoi_dung_id)) && String(nguoi_dung_id) !== String(currentUser.id)) {
         throw new ServiceError('Bạn chỉ có quyền xem lịch của giảng viên thuộc khoa mình.', 403);
       }
-      where.nguoi_dung_id = nguoi_dung_id;
+      await applyLecturerAndSubstituteFilter(where, [nguoi_dung_id]);
     } else if (!scopedIds.length) {
-      where.nguoi_dung_id = currentUser.id;
+      await applyLecturerAndSubstituteFilter(where, [currentUser.id]);
     } else {
-      where.nguoi_dung_id = { [Op.in]: [...new Set([...scopedIds, String(currentUser.id)])] };
+      await applyLecturerAndSubstituteFilter(where, [...scopedIds, String(currentUser.id)]);
     }
   } else if (nguoi_dung_id) {
-    where.nguoi_dung_id = nguoi_dung_id;
+    await applyLecturerAndSubstituteFilter(where, [nguoi_dung_id]);
   }
 
   if (ca_id) where.ca_id = ca_id;
@@ -486,13 +508,20 @@ const fetchScheduleById = async (scheduleId, currentUser) => {
 
   const isGlobalViewer = hasAnyActiveRole(currentUser, [...GLOBAL_ADMIN_ROLES, 'dao_tao']);
   const isUnitLeader = !isGlobalViewer && hasAnyActiveRole(currentUser, UNIT_LEADER_ROLES);
+  const substituteIds = Array.isArray(schedule.ngoai_le)
+    ? schedule.ngoai_le
+        .filter((e) => e?.trang_thai === 'doi_ca' && e?.giang_vien_day_thay_id)
+        .map((e) => String(e.giang_vien_day_thay_id))
+    : [];
+  const isAssignedSubstitute = substituteIds.includes(String(currentUser.id));
+
   if (!isGlobalViewer && !isUnitLeader) {
-    if (String(schedule.nguoi_dung_id) !== String(currentUser.id)) {
+    if (String(schedule.nguoi_dung_id) !== String(currentUser.id) && !isAssignedSubstitute) {
       throw new ServiceError('Bạn không có quyền xem lịch trình của người khác.', 403);
     }
   } else if (isUnitLeader) {
     const inScope = await isUserInDeanScope(currentUser, schedule.nguoi_dung_id);
-    if (!inScope && String(schedule.nguoi_dung_id) !== String(currentUser.id)) {
+    if (!inScope && String(schedule.nguoi_dung_id) !== String(currentUser.id) && !isAssignedSubstitute) {
       throw new ServiceError('Bạn không có quyền xem lịch trình của nhân sự ngoài khoa.', 403);
     }
   }

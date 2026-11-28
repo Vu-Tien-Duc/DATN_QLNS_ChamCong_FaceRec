@@ -92,7 +92,7 @@ const validateImageDataUrl = (imageData) => {
 const storeAttendanceEvidence = async (imageData) => {
   const { buffer, extension, contentType } = validateImageDataUrl(imageData);
   const filename = `attendance-${crypto.randomUUID()}.${extension}`;
-  const objectKey = `evidence/${filename}`;
+  const objectKey = `minh_chung/${filename}`;
 
   await minioStorage.putObject(objectKey, buffer, contentType, {
     category: 'attendance-evidence',
@@ -118,7 +118,7 @@ const readAttendanceEvidence = async (reference) => {
   }
 
   try {
-    const objectKey = `evidence/${reference}`;
+    const objectKey = `minh_chung/${reference}`;
     const file = await minioStorage.getObject(objectKey);
     return { buffer: file.buffer, contentType: file.contentType };
   } catch (error) {
@@ -134,7 +134,7 @@ const removeAttendanceEvidence = async (reference) => {
   if (typeof reference !== 'string' || !FILE_NAME_PATTERN.test(reference)) {
     return;
   }
-  await minioStorage.deleteObject(`evidence/${reference}`);
+  await minioStorage.deleteObject(`minh_chung/${reference}`);
 };
 
 // Tạo URL tạm thời có thời hạn để xem ảnh minh chứng từ MinIO
@@ -142,7 +142,7 @@ const getEvidencePresignedUrl = async (reference, expirySeconds = 900) => {
   if (!FILE_NAME_PATTERN.test(reference)) {
     return null;
   }
-  return await minioStorage.getPresignedUrl(`evidence/${reference}`, expirySeconds);
+  return await minioStorage.getPresignedUrl(`minh_chung/${reference}`, expirySeconds);
 };
 
 module.exports = {

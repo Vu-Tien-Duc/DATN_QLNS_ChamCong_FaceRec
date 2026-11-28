@@ -265,6 +265,8 @@ interface ScheduleActiveStatus {
   isException?: boolean;
   exceptionReason?: string;
   isMakeup?: boolean;
+  isShiftSwap?: boolean;
+  substituteLecturerId?: string;
 }
 
 function isScheduleActiveOnDate(
@@ -279,13 +281,22 @@ function isScheduleActiveOnDate(
 
   const exceptions = item.ngoai_le || [];
 
-  // 1. Ngoại lệ dạy bù vào đúng ngày targetIsoDate
+  // 1. Ngoại lệ dạy bù hoặc đổi ca dời sang đúng ngày targetIsoDate
   const makeupExc = exceptions.find((e: any) => {
-    if (e.trang_thai !== 'day_bu') return false;
+    if (e.trang_thai !== 'day_bu' && e.trang_thai !== 'doi_ca') return false;
+    if (e.trang_thai === 'doi_ca' && !e.ngay_day_bu) return false;
     const mDate = e.ngay_day_bu || e.ngay;
     return mDate ? toSafeIsoDateOnly(mDate) === targetIsoDate : false;
   });
   if (makeupExc) {
+    if (makeupExc.trang_thai === 'doi_ca') {
+      return {
+        active: true,
+        isShiftSwap: true,
+        substituteLecturerId: makeupExc.giang_vien_day_thay_id || undefined,
+        exceptionReason: makeupExc.ly_do || 'Đổi ca / Dạy thay',
+      };
+    }
     return { active: true, isMakeup: true, exceptionReason: makeupExc.ly_do || 'Dạy bù' };
   }
 
@@ -305,7 +316,7 @@ function isScheduleActiveOnDate(
     return { active: false };
   }
 
-  // 3. Kiểm tra ngoại lệ gốc vào ngày targetIsoDate (Nghỉ, Hủy, Dạy bù dời sang ngày khác, Đổi ca dời ngày)
+  // 3. Kiểm tra ngoại lệ gốc vào ngày targetIsoDate (Nghỉ, Hủy, Dạy bù dời sang ngày khác, Đổi ca)
   const exc = exceptions.find((e: any) => toSafeIsoDateOnly(e.ngay) === targetIsoDate);
   if (exc) {
     const excStatus = exc.trang_thai;
@@ -316,8 +327,16 @@ function isScheduleActiveOnDate(
     if (excStatus === 'day_bu' && excMakeup && excMakeup !== targetIsoDate) {
       return { active: false, isException: true, exceptionReason: exc.ly_do || 'Đã dời sang ngày dạy bù' };
     }
-    if (excStatus === 'doi_ca' && excMakeup && excMakeup !== targetIsoDate) {
-      return { active: false, isException: true, exceptionReason: exc.ly_do || 'Đã đổi ca sang ngày khác' };
+    if (excStatus === 'doi_ca') {
+      if (excMakeup && excMakeup !== targetIsoDate) {
+        return { active: false, isException: true, exceptionReason: exc.ly_do || 'Đã đổi ca sang ngày khác' };
+      }
+      return {
+        active: true,
+        isShiftSwap: true,
+        substituteLecturerId: exc.giang_vien_day_thay_id || undefined,
+        exceptionReason: exc.ly_do || 'Đổi ca / Dạy thay',
+      };
     }
   }
 
@@ -702,10 +721,18 @@ export const Schedules: React.FC = () => {
         if (!matchTree && !matchName) return false;
       }
 
-      // 3. Filter by Lecturer
+      // 3. Filter by Lecturer (bao gồm cả lịch được phân công dạy thay qua ngoại lệ doi_ca)
       if (selectedLecturerFilter && selectedLecturerFilter !== 'all') {
         const uId = getScheduleLecturerId(item);
-        if (uId !== selectedLecturerFilter) return false;
+        const isSubstitute =
+          Array.isArray(item.ngoai_le) &&
+          item.ngoai_le.some(
+            (e: any) =>
+              e?.trang_thai === 'doi_ca' &&
+              e?.giang_vien_day_thay_id &&
+              String(e.giang_vien_day_thay_id) === String(selectedLecturerFilter)
+          );
+        if (uId !== selectedLecturerFilter && !isSubstitute) return false;
       }
 
       // 4. Keyword Search O(1) qua chỉ mục dựng sẵn (hỗ trợ cả có dấu & không dấu Tiếng Việt)
@@ -1281,6 +1308,54 @@ export const Schedules: React.FC = () => {
   };
 
   // =============================================================================
+  // SHARED QUICK ACTION OVERLAY (ĐỒNG BỘ GIỮA TUẦN, THEO GIẢNG VIÊN & DẠNG BẢNG)
+  // =============================================================================
+
+  const renderQuickActionButtons = (item: ScheduleItem, compact = false) => {
+    if (!isAdminOrDean) return null;
+    const iconSize = compact ? 'w-3 h-3' : 'w-3.5 h-3.5';
+    return (
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="absolute top-1.5 right-1.5 z-20 hidden group-hover/card:flex items-center gap-0.5 bg-white/95 dark:bg-slate-900/95 rounded-lg p-0.5 shadow-md border border-slate-200 dark:border-slate-700 backdrop-blur-xs transition-all"
+      >
+        <button
+          type="button"
+          title="Xem chi tiết"
+          onClick={(e) => openDetailModal(item, e)}
+          className="p-1 text-slate-500 hover:text-blue-600 rounded transition-colors"
+        >
+          <Eye className={iconSize} />
+        </button>
+        <button
+          type="button"
+          title="Sửa lịch"
+          onClick={(e) => openEditModal(item, e)}
+          className="p-1 text-slate-500 hover:text-blue-600 rounded transition-colors"
+        >
+          <Edit className={iconSize} />
+        </button>
+        <button
+          type="button"
+          title="Báo nghỉ / bù (Đổi ca)"
+          onClick={(e) => openExceptionModal(item, e)}
+          className="p-1 text-slate-500 hover:text-amber-600 rounded transition-colors"
+        >
+          <AlertTriangle className={iconSize} />
+        </button>
+        <button
+          type="button"
+          title="Xóa lịch"
+          onClick={(e) => handleDeleteSchedule(item.id, e)}
+          className="p-1 text-slate-500 hover:text-rose-600 rounded transition-colors"
+        >
+          <Trash2 className={iconSize} />
+        </button>
+      </div>
+    );
+  };
+
+  // =============================================================================
   // SUB-RENDERER 1: MATRIX VIEW (THỜI KHÓA BIỂU TUẦN MẪU GỐC)
   // =============================================================================
 
@@ -1527,37 +1602,7 @@ export const Schedules: React.FC = () => {
                                     } ${cardStyle.hoverBorder}`}
                                   >
                                     {/* Quick Actions Overlay (hiện mượt khi hover góc trên phải) */}
-                                    {isAdminOrDean && (
-                                      <div
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="absolute top-1.5 right-1.5 z-20 hidden group-hover/card:flex items-center gap-0.5 bg-white/95 dark:bg-slate-900/95 rounded-lg p-0.5 shadow-md border border-slate-200 dark:border-slate-700 backdrop-blur-xs transition-all"
-                                      >
-                                        <button
-                                          type="button"
-                                          title="Xem chi tiết"
-                                          onClick={(e) => openDetailModal(item, e)}
-                                          className="p-1 text-slate-500 hover:text-blue-600 rounded transition-colors"
-                                        >
-                                          <Eye className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          title="Sửa lịch"
-                                          onClick={(e) => openEditModal(item, e)}
-                                          className="p-1 text-slate-500 hover:text-blue-600 rounded transition-colors"
-                                        >
-                                          <Edit className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          title="Xóa lịch"
-                                          onClick={(e) => handleDeleteSchedule(item.id, e)}
-                                          className="p-1 text-slate-500 hover:text-rose-600 rounded transition-colors"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
-                                    )}
+                                    {renderQuickActionButtons(item)}
 
                                     {/* Top Row: Location Tag */}
                                     <div className="flex items-center gap-1 mb-1.5 pr-1">
@@ -1603,9 +1648,17 @@ export const Schedules: React.FC = () => {
                                         {item.gio_bat_dau} - {item.gio_ket_thuc}
                                       </span>
                                       <div className="flex items-center gap-1 shrink-0">
+                                        {dateStatus.isShiftSwap && (
+                                          <span
+                                            className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 text-[9px] font-bold"
+                                            title={dateStatus.exceptionReason || 'Đổi ca / Dạy thay'}
+                                          >
+                                            Đổi ca
+                                          </span>
+                                        )}
                                         {Array.isArray(item.ngoai_le) && item.ngoai_le.length > 0 && (
-                                          <span className="px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 text-[9px] font-bold">
-                                            {item.ngoai_le.length} NL
+                                          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 text-[9px] font-bold">
+                                            {item.ngoai_le.length} ngoại lệ
                                           </span>
                                         )}
                                         <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold whitespace-nowrap shrink-0 ${cardStyle.badgeColor}`}>
@@ -1686,9 +1739,18 @@ export const Schedules: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {relevantLecturers.map((lec) => {
-              // Get schedules for this lecturer
+              // Get schedules for this lecturer (bao gồm cả lịch được phân công dạy thay qua ngoại lệ doi_ca)
               const lecSchedules = filteredSchedules.filter((item) => {
-                return getScheduleLecturerId(item) === lec.id;
+                if (getScheduleLecturerId(item) === lec.id) return true;
+                return (
+                  Array.isArray(item.ngoai_le) &&
+                  item.ngoai_le.some(
+                    (e: any) =>
+                      e?.trang_thai === 'doi_ca' &&
+                      e?.giang_vien_day_thay_id &&
+                      String(e.giang_vien_day_thay_id) === String(lec.id)
+                  )
+                );
               });
 
               const deptName = getUserDepartmentName(lec);
@@ -1789,14 +1851,16 @@ export const Schedules: React.FC = () => {
                                 const sh = getScheduleShift(item, shifts);
                                 const shName = sh?.ten_ca || 'Ca học';
                                 const cardStyle = getCardStyle(shName);
+                                const dateStatus = isScheduleActiveOnDate(item, day.isoDate, day.weekday, holidayDatesSet);
 
                                 return (
                                   <div
                                     key={item.id}
                                     onClick={() => openDetailModal(item)}
-                                    className={`p-1.5 rounded-lg border text-[11px] cursor-pointer shadow-2xs transition-all hover:scale-[1.02] ${cardStyle.bg} ${cardStyle.hoverBorder}`}
+                                    className={`relative group/card p-1.5 rounded-lg border text-[11px] cursor-pointer shadow-2xs transition-all hover:scale-[1.02] ${cardStyle.bg} ${cardStyle.hoverBorder}`}
                                     title="Nhấp để xem chi tiết"
                                   >
+                                    {renderQuickActionButtons(item, true)}
                                     <div className="font-bold truncate text-slate-800 dark:text-slate-100">
                                       {subInfo?.code ? `[${subInfo.code}] ` : ''}{subName}
                                     </div>
@@ -1804,12 +1868,23 @@ export const Schedules: React.FC = () => {
                                       <MapPin className="w-2.5 h-2.5 shrink-0" />
                                       <span className="truncate">{roomName}</span>
                                     </div>
-                                    <div className="flex items-center justify-between text-[9px] mt-1 text-slate-400 font-mono">
-                                      <span>{item.gio_bat_dau} - {item.gio_ket_thuc}</span>
-                                      <span className="font-sans font-bold text-blue-600 truncate">
-                                        {shName}
-                                        {Array.isArray(item.ngoai_le) && item.ngoai_le.length > 0 ? ` • ${item.ngoai_le.length} NL` : ''}
-                                      </span>
+                                    <div className="flex items-center justify-between gap-1 text-[9px] mt-1 text-slate-400 font-mono">
+                                      <span className="shrink-0">{item.gio_bat_dau} - {item.gio_ket_thuc}</span>
+                                      <div className="flex items-center gap-1 min-w-0">
+                                        {dateStatus.isShiftSwap && (
+                                          <span className="px-1 py-0.2 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 font-sans font-bold shrink-0">
+                                            Đổi ca
+                                          </span>
+                                        )}
+                                        {Array.isArray(item.ngoai_le) && item.ngoai_le.length > 0 && (
+                                          <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-sans font-bold shrink-0">
+                                            {item.ngoai_le.length} ngoại lệ
+                                          </span>
+                                        )}
+                                        <span className="font-sans font-bold text-blue-600 truncate">
+                                          {shName}
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
                                 );
@@ -2132,15 +2207,23 @@ export const Schedules: React.FC = () => {
                   const sh = getScheduleShift(item, shifts);
                   const shName = sh?.ten_ca || 'Ca';
                   const cardStyle = getCardStyle(shName);
+                  const dateStatus = isScheduleActiveOnDate(item, cd.isoDate, cd.weekday, holidayDatesSet);
 
                   return (
                     <div
                       key={item.id}
                       onClick={() => openDetailModal(item)}
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border truncate cursor-pointer transition-transform hover:scale-[1.02] ${cardStyle.bg} ${cardStyle.hoverBorder}`}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border flex items-center justify-between gap-1 cursor-pointer transition-transform hover:scale-[1.02] ${cardStyle.bg} ${cardStyle.hoverBorder}`}
                       title={`${subInfo?.name || 'Lịch'} (${item.gio_bat_dau} - ${item.gio_ket_thuc})`}
                     >
-                      <span className="font-mono">{item.gio_bat_dau}</span> {subInfo?.name || 'Công tác'}
+                      <span className="truncate">
+                        <span className="font-mono">{item.gio_bat_dau}</span> {subInfo?.name || 'Công tác'}
+                      </span>
+                      {(dateStatus.isShiftSwap || (Array.isArray(item.ngoai_le) && item.ngoai_le.length > 0)) && (
+                        <span className="px-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 text-[8.5px] font-bold shrink-0">
+                          {dateStatus.isShiftSwap ? 'Đổi ca' : `${item.ngoai_le?.length} NL`}
+                        </span>
+                      )}
                     </div>
                   );
                 })}

@@ -23,6 +23,22 @@ export const ModalHoSoThanhVien: React.FC<ModalHoSoThanhVienProps> = ({
   const { cleanName, title } = splitNameAndTitle(member.ho_ten);
   const active = isActiveStaff(member);
   const unitLabel = member.ten_phong_ban || member.don_vi_chinh?.ten_phong_ban || departmentName || 'Chưa phân bổ';
+  const todayKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const activeRoles = Array.isArray(member.danh_sach_vai_tro)
+    ? member.danh_sach_vai_tro.filter((r: any) => {
+        if (!r) return false;
+        const start = r.tu_ngay ? String(r.tu_ngay).slice(0, 10) : null;
+        const end = r.den_ngay ? String(r.den_ngay).slice(0, 10) : null;
+        if (start && start > todayKey) return false;
+        if (end && end < todayKey) return false;
+        return true;
+      })
+    : [];
 
   return (
     <Portal>
@@ -112,14 +128,14 @@ export const ModalHoSoThanhVien: React.FC<ModalHoSoThanhVienProps> = ({
               />
             </div>
 
-            {Array.isArray(member.danh_sach_vai_tro) && member.danh_sach_vai_tro.length > 0 && (
+            {activeRoles.length > 0 && (
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                   <ShieldCheck className="w-3.5 h-3.5 text-brand-500" />
                   Vai trò đang gán
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {member.danh_sach_vai_tro.map((r: any, idx: number) => (
+                  {activeRoles.map((r: any, idx: number) => (
                     <span
                       key={`${r.ma_vai_tro}-${r.don_vi_id || 'all'}-${idx}`}
                       className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-medium"

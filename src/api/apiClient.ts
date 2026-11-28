@@ -11,7 +11,7 @@ export interface ApiResponse<T = any> {
 
 export const apiClient = axios.create({
   baseURL: '/api',
-  timeout: 15000,
+  timeout: 30000,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -57,12 +57,20 @@ export const clearStoredAuthAndRedirect = (reason?: string) => {
   }
 };
 
-// Request Interceptor: Gắn Bearer Token & Chuẩn hóa Payload / Query Params
+// Request Interceptor: Gắn Bearer Token & chống cache trình duyệt cho request GET
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = sessionStorage.getItem('token') || sessionStorage.getItem('accessToken') || localStorage.getItem('token') || localStorage.getItem('accessToken');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (config.headers) {
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      } else {
+        delete config.headers.Authorization;
+      }
+      if (String(config.method || 'get').toLowerCase() === 'get') {
+        config.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+        config.headers['Pragma'] = 'no-cache';
+      }
     }
     return config;
   },

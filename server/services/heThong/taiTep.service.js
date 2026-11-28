@@ -51,7 +51,7 @@ const saveUploadedAttachment = async (file, userId = 'anonymous') => {
   const isAvatarUpload = file.fieldname === 'avatar' && AVATAR_MIME_TYPES.has(mime);
   const filename = `${isAvatarUpload ? 'avatar' : 'attachment'}-${crypto.randomUUID()}${extension}`;
 
-  const objectKey = isAvatarUpload ? `avatars/${filename}` : `attachments/${filename}`;
+  const objectKey = isAvatarUpload ? `avatars/${filename}` : `tep_dinh_kem/${filename}`;
   const uploadResult = await minioStorage.putObject(objectKey, buffer, file.mimetype, {
     originalName: encodeURIComponent(file.originalname),
     uploadedBy: userId,
@@ -76,12 +76,12 @@ const resolveDownloadPolicy = async (safeFilename) => {
   const isAttendanceEvidence = safeFilename.startsWith('attendance-');
   const isAvatarImage = safeFilename.startsWith('avatar-');
   const objectKey = isFaceImage
-    ? `faces/${safeFilename}`
+    ? `khuon_mat/${safeFilename}`
     : isAttendanceEvidence
-      ? `evidence/${safeFilename}`
+      ? `minh_chung/${safeFilename}`
       : isAvatarImage
         ? `avatars/${safeFilename}`
-        : `attachments/${safeFilename}`;
+        : `tep_dinh_kem/${safeFilename}`;
 
   // Chỉ tệp có tiền tố avatar- mới được phép truy cập công khai
   if (isAvatarImage) {

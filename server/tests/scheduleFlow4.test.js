@@ -437,6 +437,7 @@ describe('Luồng 4.3 - fetchTodaySchedules & formatScheduleOutput', () => {
     ]);
     stub(models.NguoiDung, 'findAll', async () => [{ id: UUID_2 }]);
     stub(models.VaiTroNguoiDung, 'findAll', async () => []);
+    stub(models.NgoaiLeLichTrinh, 'findAll', async () => []);
 
     const concurrentDeanRes = await fetchSchedules({
       currentUser: {
@@ -579,6 +580,7 @@ describe('Luồng 4.4 - Express RBAC, IDOR, removeSchedule FK & addScheduleExcep
     stub(models.PhongBan, 'findAll', async () => [{ id: DEPT_ROOT, don_vi_cha_id: null }]);
     stub(models.NguoiDung, 'findAll', async () => [{ id: UUID_2 }]);
     stub(models.VaiTroNguoiDung, 'findAll', async () => []);
+    stub(models.NgoaiLeLichTrinh, 'findAll', async () => []);
 
     await assert.rejects(
       () =>

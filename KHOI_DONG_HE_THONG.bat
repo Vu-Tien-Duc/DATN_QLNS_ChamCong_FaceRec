@@ -64,7 +64,7 @@ echo   * Giao dien Web (Frontend) : http://localhost:5173
 echo   * Backend Express API      : http://localhost:5000
 echo   * Tai lieu Swagger API     : http://localhost:5000/tai-lieu-api
 echo   * Face AI Service (FastAPI): http://127.0.0.1:8001/docs
-echo   * MinIO Console (neu bat)  : http://localhost:9001 (minioadmin / minioadmin)
+echo   * MinIO Console (neu bat)  : http://localhost:9003 (minioadmin / minioadmin)
 echo   Nhan Ctrl+C hoac dong cua so nay de tat dong thoi tat ca dich vu.
 echo ----------------------------------------------------------------------------
 echo.

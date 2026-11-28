@@ -39,7 +39,7 @@ const removeStoredFacePhotoUrl = async (photoUrl) => {
   if (!photoUrl || typeof photoUrl !== 'string') return;
   const baseName = path.basename(photoUrl.split('?')[0]);
   if (!baseName) return;
-  await minioStorage.deleteObject(`faces/${baseName}`).catch(() => {});
+  await minioStorage.deleteObject(`khuon_mat/${baseName}`).catch(() => {});
 };
 
 // Lưu ảnh chính diện khuôn mặt với đuôi mở rộng & MIME chuẩn theo magic bytes và timestamp chống cache trình duyệt
@@ -67,7 +67,7 @@ const savePrimaryFacePhoto = async (file, targetUser) => {
   if (!cleanName) cleanName = 'avatar';
 
   const fileName = `face-${staffCode}-${cleanName}-${Date.now()}${sig.ext}`;
-  await minioStorage.putObject(`faces/${fileName}`, file.buffer, sig.mime, {
+  await minioStorage.putObject(`khuon_mat/${fileName}`, file.buffer, sig.mime, {
     userId: targetUserId,
     staffCode,
     fullName: targetUser.ho_ten || '',
@@ -414,7 +414,7 @@ const removeFaceDescriptorForUser = async ({ id, currentUser, ip }) => {
     ...(existingTemplates || []).map((t) => t.anh_dai_dien).filter(Boolean),
   ];
   const currentAvatar = targetUser.anh_dai_dien || '';
-  if (currentAvatar.includes('/faces/face-') || currentAvatar.includes('face-')) {
+  if (currentAvatar.includes('/khuon_mat/face-') || currentAvatar.includes('face-')) {
     storedFaceUrls.push(currentAvatar);
     targetUser.anh_dai_dien = null;
     await targetUser.save();

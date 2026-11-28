@@ -236,7 +236,7 @@ const createLeaveRequestDomain = async ({
       if (file.buffer && file.buffer.length > 0) {
         const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
         const filename = `leave-${crypto.randomUUID()}${ext}`;
-        const objectKey = `attachments/${filename}`;
+        const objectKey = `tep_dinh_kem/${filename}`;
         await minioStorage.putObject(objectKey, file.buffer, file.mimetype || 'image/png', {
           originalName: encodeURIComponent(file.originalname || 'minh-chung'),
           uploadedBy: String(userId),

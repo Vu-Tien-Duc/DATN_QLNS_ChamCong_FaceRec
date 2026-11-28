@@ -805,9 +805,37 @@ describe('Luồng 5 - Integration Express Routes, RBAC, Multer & Liveness', () =
 
     // 4. D7: parse toa_do JSON string từ multipart/form-data qua HTTP route thật và lưu đúng vi_do/kinh_do/do_chinh_xac_gps
     const validJpgHeader = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+    const {
+      issueLivenessChallenge,
+      verifyLivenessChallenge,
+    } = require('../services/khuonMat/thuThachLiveness.service');
+    const livenessChallenge = issueLivenessChallenge(USER_1);
+    const rLiveAuth = await dispatchExpress(app, {
+      method: 'GET',
+      url: '/api/cham-cong/thu-thach-mat-that',
+      headers: { Authorization: `Bearer ${gvToken}` },
+    });
+    const chToken = rLiveAuth.body?.data?.challengeToken || livenessChallenge.challengeToken;
+    const chPose = rLiveAuth.body?.data?.challenge || livenessChallenge.challenge;
+    // Đảm bảo fetch stub trả pose khớp cho verifyLivenessChallenge
+    const prevFetch = global.fetch;
+    global.fetch = async (url, opts) => {
+      if (String(url).includes('/v1/face/detect-pose')) {
+        return { ok: true, text: async () => JSON.stringify({ status: 'face_detected', pose: { pose_en: chPose } }) };
+      }
+      return prevFetch(url, opts);
+    };
+    const livenessVerified = await verifyLivenessChallenge({
+      challengeToken: chToken,
+      userId: USER_1,
+      imageBuffer: validJpgHeader,
+    });
+    global.fetch = prevFetch;
+
     const fdToaDo = new FormData();
     fdToaDo.append('image', new Blob([validJpgHeader], { type: 'image/jpeg' }), 'face.jpg');
     fdToaDo.append('toa_do', JSON.stringify({ vi_do: 20.9752, kinh_do: 105.7628, do_chinh_xac: 12 }));
+    fdToaDo.append('ve_mat_that', livenessVerified.livenessTicket);
     const rToaDo = await dispatchExpress(app, {
       method: 'POST',
       url: '/api/cham-cong/khuon-mat',

@@ -30,11 +30,13 @@ import { useAuthStore } from './stores/useXacThucStore';
 
 export const App: React.FC = () => {
   const { isDark } = useThemeStore();
-  const { fetchMe } = useAuthStore();
+  const { fetchMe, user, token } = useAuthStore();
 
   useEffect(() => {
-    fetchMe();
-  }, [fetchMe]);
+    if (token) {
+      fetchMe();
+    }
+  }, [fetchMe, token]);
 
   return (
     <BrowserRouter>
@@ -70,7 +72,7 @@ export const App: React.FC = () => {
           path="/"
           element={
             <ProtectedRoute>
-              <MainLayout />
+              <MainLayout key={user?.id || 'guest'} />
             </ProtectedRoute>
           }
         >
